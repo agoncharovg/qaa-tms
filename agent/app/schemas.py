@@ -107,3 +107,33 @@ class JobTerminalEvent(BaseModel):
     type: Literal["terminal"]
     status: JobStatus
     exit_code: int | None = Field(alias="exitCode")
+
+
+class NamespaceListResponse(BaseModel):
+    """`/namespaces` response shape."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    raw: str
+    namespaces: list[str]
+    exit_code: int = Field(alias="exitCode")
+
+
+class NamespaceStatusResponse(BaseModel):
+    """`/namespaces/{ns}/status` response shape."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    ns: str
+    raw: str
+    exit_code: int = Field(alias="exitCode")
+
+
+class NamespaceCredsResponse(BaseModel):
+    """`/namespaces/{ns}/creds` response shape."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    ns: str
+    raw: str
+    exit_code: int = Field(alias="exitCode")

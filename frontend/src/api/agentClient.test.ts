@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { DeployRequest, JobCreateResponse } from "@/api/types";
+import type {
+  DeployRequest,
+  JobCreateResponse,
+  NamespaceCreds,
+  NamespaceList,
+  NamespaceStatus,
+} from "@/api/types";
 import { agentClient } from "@/api/agentClient";
 
 describe("agentClient.deploy", () => {
@@ -55,5 +61,75 @@ describe("agentClient.deploy", () => {
     expect(headers.get("Accept")).toBe("application/json");
     expect(headers.get("X-QAA-TMS")).toBe("1");
     expect(init?.body).toBe(JSON.stringify(payload));
+  });
+});
+
+describe("agentClient namespace reads", () => {
+  const fetchMock = vi.fn<typeof fetch>();
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  it("parses the list, status, and credentials responses with bearer auth", async () => {
+    const list: NamespaceList = {
+      exitCode: 0,
+      namespaces: ["qa-demo", "qa-other"],
+      raw: "qa-demo\nqa-other\n",
+    };
+    const status: NamespaceStatus = {
+      exitCode: 3,
+      ns: "qa-demo",
+      raw: "pod/iam-api CrashLoopBackOff\n",
+    };
+    const creds: NamespaceCreds = {
+      exitCode: 0,
+      ns: "qa-demo",
+      raw: "sysadmin: secret\n",
+    };
+
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(list), {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(status), {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(creds), {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        })
+      );
+
+    const listResult = await agentClient.listNamespaces(47600, "token-123");
+    const statusResult = await agentClient.getNamespaceStatus(47600, "token-123", "qa-demo");
+    const credsResult = await agentClient.getNamespaceCreds(47600, "token-123", "qa-demo");
+
+    expect(listResult).toEqual(list);
+    expect(statusResult).toEqual(status);
+    expect(credsResult).toEqual(creds);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    const firstHeaders = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    const secondHeaders = new Headers(fetchMock.mock.calls[1]?.[1]?.headers);
+    const thirdHeaders = new Headers(fetchMock.mock.calls[2]?.[1]?.headers);
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("http://127.0.0.1:47600/namespaces");
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("http://127.0.0.1:47600/namespaces/qa-demo/status");
+    expect(fetchMock.mock.calls[2]?.[0]).toBe("http://127.0.0.1:47600/namespaces/qa-demo/creds");
+    expect(firstHeaders.get("Authorization")).toBe("Bearer token-123");
+    expect(secondHeaders.get("Authorization")).toBe("Bearer token-123");
+    expect(thirdHeaders.get("Authorization")).toBe("Bearer token-123");
   });
 });

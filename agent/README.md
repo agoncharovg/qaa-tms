@@ -61,18 +61,28 @@ Implemented in this slice:
 
 - `GET /ping`
 - `GET /preflight`
+- `GET /namespaces`
+- `GET /namespaces/{ns}/status`
+- `GET /namespaces/{ns}/creds`
+- `GET /namespaces/{ns}/logs?deploy=...`
 - `POST /deploy`
 - `GET /jobs/{id}`
 - `GET /jobs/{id}/stream`
 - `POST /jobs/{id}/cancel`
 
+The namespace endpoints are read-only wrappers around the local `staging` CLI.
+They are not jobs, do not create `jobId` or `opId` values, and do not write to
+the backend operations journal. The `creds` response is sensitive and is meant
+only for the authenticated localhost browser flow.
+
 Not implemented here:
 
 - `/setup`
-- namespace, destroy, adopt, sync, grafana, and e2e endpoints
+- destroy, adopt, sync, grafana, and e2e endpoints
+
+No new agent environment variables were added for the Namespaces slice.
 
 ## Companion App Scope
 
 This package is only the headless service. The Tauri/Electron shell that will
 embed the same agent code is a later slice.
-

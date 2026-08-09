@@ -10,6 +10,9 @@ class AgentPath(StrEnum):
     PREFLIGHT = "/preflight"
     SETUP = "/setup"
     NAMESPACES = "/namespaces"
+    STATUS = "/status"
+    CREDS = "/creds"
+    LOGS = "/logs"
     DEPLOY = "/deploy"
     DESTROY = "/destroy"
     ADOPT = "/adopt"
@@ -132,4 +135,3 @@ DEFAULT_COMMAND_TIMEOUT_SECONDS = 5.0
 DEFAULT_CANCEL_WAIT_SECONDS = 5.0
 DEFAULT_KUBECONFIG_FRESHNESS_SECONDS = 12 * 60 * 60
 PACKAGE_NAME = "qaa-tms-agent"
-

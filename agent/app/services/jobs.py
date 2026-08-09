@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
 import logging
 import os
 import signal
@@ -32,6 +31,7 @@ from app.schemas import (
     JobTerminalEvent,
 )
 from app.services.backend import build_operation_payload, push_operation
+from app.services.sse import encode_sse
 from app.services.staging import StagingInstallation, build_deploy_argv
 
 logger = logging.getLogger(__name__)
@@ -139,7 +139,7 @@ class JobManager:
                 return
 
             for event in events:
-                yield _encode_sse(event.event, event.payload)
+                yield encode_sse(event.event, event.payload)
                 if event.event is SseEvent.TERMINAL:
                     return
 
@@ -276,8 +276,3 @@ def _final_status(exit_code: int | None, cancel_requested: bool) -> JobStatus:
     if exit_code == 0:
         return JobStatus.SUCCESS
     return JobStatus.FAILED
-
-
-def _encode_sse(event: SseEvent, payload: dict[str, Any]) -> str:
-    data = json.dumps(payload, separators=(",", ":"))
-    return f"event: {event.value}\ndata: {data}\n\n"

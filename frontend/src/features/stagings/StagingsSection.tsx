@@ -1,14 +1,9 @@
-import { Alert, Button, Group, Stack, Text, Title } from "@mantine/core";
-import {
-  IconHistory,
-  IconInfoCircle,
-  IconLayoutKanban,
-  IconPlaylistAdd,
-  IconRocket,
-} from "@tabler/icons-react";
+import { Button, Group, Stack, Text, Title } from "@mantine/core";
+import { IconHistory, IconPlaylistAdd, IconRocket } from "@tabler/icons-react";
 
 import { DeployPanel } from "@/features/stagings/DeployPanel";
 import { HistoryPanel } from "@/features/stagings/HistoryPanel";
+import { NamespacesPanel } from "@/features/stagings/NamespacesPanel";
 import { PreflightPanel } from "@/features/stagings/PreflightPanel";
 import { SectionKey, TabId, ViewKey, type ViewKey as ViewKeyType } from "@/constants";
 import { useUiStore } from "@/store/uiStore";
@@ -49,30 +44,7 @@ export function StagingsSection({ mode }: StagingsSectionProps) {
   }
 
   if (mode === ViewKey.STAGINGS_NAMESPACES) {
-    return (
-      <Stack gap="lg">
-        <Group justify="space-between">
-          <div>
-            <Title order={2}>Namespaces</Title>
-            <Text c="dimmed">
-              Real namespace controls arrive with the companion app implementation in a later slice.
-            </Text>
-          </div>
-          <Button
-            leftSection={<IconLayoutKanban size={16} />}
-            onClick={() => switchTab(SectionKey.STAGINGS, TabId.STAGINGS_PREFLIGHT)}
-            variant="light"
-          >
-            Back to preflight
-          </Button>
-        </Group>
-
-        <Alert icon={<IconInfoCircle size={18} />} title="Companion app required">
-          This screen depends on the local companion app and will stay empty until that app is
-          available.
-        </Alert>
-      </Stack>
-    );
+    return <NamespacesPanel />;
   }
 
   return (

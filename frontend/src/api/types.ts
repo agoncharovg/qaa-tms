@@ -2,6 +2,7 @@ import type {
   ContentType,
   JobStatus,
   JobStreamEvent,
+  NamespaceLogStatus,
   OperationStatus,
   OperationType,
   PreflightKey,
@@ -91,6 +92,24 @@ export interface JobRead {
   finishedAt: string | null;
 }
 
+export interface NamespaceList {
+  raw: string;
+  namespaces: string[];
+  exitCode: number;
+}
+
+export interface NamespaceStatus {
+  ns: string;
+  raw: string;
+  exitCode: number;
+}
+
+export interface NamespaceCreds {
+  ns: string;
+  raw: string;
+  exitCode: number;
+}
+
 export interface JobLogEvent {
   type: "line";
   line: string;
@@ -113,6 +132,14 @@ export interface JobTerminalStreamMessage {
 }
 
 export type JobStreamMessage = JobLogStreamMessage | JobTerminalStreamMessage;
+
+export interface NamespaceLogsState {
+  deploy: string;
+  exitCode: number | null;
+  lines: string[];
+  status: NamespaceLogStatus;
+  streamError: string | null;
+}
 
 export interface OperationRecipe {
   product?: Product | null;

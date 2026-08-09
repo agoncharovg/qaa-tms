@@ -4,6 +4,12 @@ import {
   AGENT_REQUEST_HEADER,
   AGENT_REQUEST_HEADER_VALUE,
   AgentPath,
+  buildAgentJobCancelPath,
+  buildAgentJobPath,
+  buildAgentJobStreamPath,
+  buildAgentNamespaceCredsPath,
+  buildAgentNamespaceLogsPath,
+  buildAgentNamespaceStatusPath,
   DEFAULT_AGENT_PORT_RANGE,
   JobStreamEvent,
 } from "@/constants";
@@ -16,6 +22,9 @@ import type {
   JobRead,
   JobStreamMessage,
   JobTerminalEvent,
+  NamespaceCreds,
+  NamespaceList,
+  NamespaceStatus,
   PreflightItem,
 } from "@/api/types";
 import { parseSseStream } from "@/api/sse";
@@ -145,18 +154,6 @@ export async function getPreflight(token: string, signal?: AbortSignal): Promise
   };
 }
 
-export function buildAgentJobStreamPath(jobId: string): string {
-  return `${AgentPath.JOBS}/${jobId}${AgentPath.STREAM}`;
-}
-
-function buildAgentJobPath(jobId: string): string {
-  return `${AgentPath.JOBS}/${jobId}`;
-}
-
-function buildAgentJobCancelPath(jobId: string): string {
-  return `${buildAgentJobPath(jobId)}${AgentPath.CANCEL}`;
-}
-
 function parseJobStreamMessage(event: string, data: string): JobStreamMessage | null {
   if (event === JobStreamEvent.LOG) {
     return {
@@ -173,6 +170,36 @@ function parseJobStreamMessage(event: string, data: string): JobStreamMessage | 
   }
 
   return null;
+}
+
+async function streamAgentCommand(
+  port: number,
+  token: string,
+  path: string,
+  onMessage: (message: JobStreamMessage) => void,
+  signal?: AbortSignal
+): Promise<void> {
+  const response = await fetch(buildAgentUrl(port, path), {
+    headers: createAgentHeaders(token),
+    method: "GET",
+    signal,
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
+    throw new Error(payload?.detail ?? "Agent request failed.");
+  }
+
+  if (!response.body) {
+    throw new Error("Agent stream is unavailable.");
+  }
+
+  for await (const frame of parseSseStream(response.body, signal)) {
+    const message = parseJobStreamMessage(frame.event, frame.data);
+    if (message) {
+      onMessage(message);
+    }
+  }
 }
 
 export const agentClient = {
@@ -217,6 +244,46 @@ export const agentClient = {
     );
   },
 
+  getNamespaceCreds(
+    port: number,
+    token: string,
+    namespace: string,
+    signal?: AbortSignal
+  ): Promise<NamespaceCreds> {
+    return readAgentJson<NamespaceCreds>(
+      port,
+      buildAgentNamespaceCredsPath(namespace),
+      { method: "GET" },
+      token,
+      signal
+    );
+  },
+
+  getNamespaceStatus(
+    port: number,
+    token: string,
+    namespace: string,
+    signal?: AbortSignal
+  ): Promise<NamespaceStatus> {
+    return readAgentJson<NamespaceStatus>(
+      port,
+      buildAgentNamespaceStatusPath(namespace),
+      { method: "GET" },
+      token,
+      signal
+    );
+  },
+
+  listNamespaces(port: number, token: string, signal?: AbortSignal): Promise<NamespaceList> {
+    return readAgentJson<NamespaceList>(
+      port,
+      AgentPath.NAMESPACES,
+      { method: "GET" },
+      token,
+      signal
+    );
+  },
+
   async streamJob(
     port: number,
     token: string,
@@ -224,26 +291,23 @@ export const agentClient = {
     onMessage: (message: JobStreamMessage) => void,
     signal?: AbortSignal
   ): Promise<void> {
-    const response = await fetch(buildAgentUrl(port, buildAgentJobStreamPath(jobId)), {
-      headers: createAgentHeaders(token),
-      method: "GET",
-      signal,
-    });
+    return streamAgentCommand(port, token, buildAgentJobStreamPath(jobId), onMessage, signal);
+  },
 
-    if (!response.ok) {
-      const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
-      throw new Error(payload?.detail ?? "Agent request failed.");
-    }
-
-    if (!response.body) {
-      throw new Error("Agent stream is unavailable.");
-    }
-
-    for await (const frame of parseSseStream(response.body, signal)) {
-      const message = parseJobStreamMessage(frame.event, frame.data);
-      if (message) {
-        onMessage(message);
-      }
-    }
+  async streamNamespaceLogs(
+    port: number,
+    token: string,
+    namespace: string,
+    deploy: string,
+    onMessage: (message: JobStreamMessage) => void,
+    signal?: AbortSignal
+  ): Promise<void> {
+    return streamAgentCommand(
+      port,
+      token,
+      buildAgentNamespaceLogsPath(namespace, deploy),
+      onMessage,
+      signal
+    );
   },
 };

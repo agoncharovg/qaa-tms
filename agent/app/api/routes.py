@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import AuthContext, get_job_manager, get_settings, require_auth
@@ -15,9 +16,18 @@ from app.schemas import (
     DeployRequest,
     JobCreateResponse,
     JobReadResponse,
+    NamespaceCredsResponse,
+    NamespaceListResponse,
+    NamespaceStatusResponse,
     PreflightItem,
 )
 from app.services.jobs import JobManager, JobNotFoundError
+from app.services.namespaces import (
+    list_namespaces,
+    read_namespace_creds,
+    read_namespace_status,
+    stream_namespace_logs,
+)
 from app.services.preflight import collect_preflight
 from app.services.staging import StagingNotInstalledError, build_ping_response
 
@@ -68,6 +78,71 @@ async def read_job(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.") from exc
 
 
+@router.get(AgentPath.NAMESPACES.value, response_model=NamespaceListResponse)
+async def get_namespaces(
+    _: AuthDep,
+    settings: SettingsDep,
+) -> NamespaceListResponse:
+    try:
+        result, namespaces = await list_namespaces(settings)
+    except StagingNotInstalledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    return NamespaceListResponse(
+        raw=result.raw,
+        namespaces=namespaces,
+        exit_code=result.exit_code,
+    )
+
+
+@router.get(
+    f"{AgentPath.NAMESPACES.value}/{{namespace}}{AgentPath.STATUS.value}",
+    response_model=NamespaceStatusResponse,
+)
+async def get_namespace_status(
+    namespace: str,
+    _: AuthDep,
+    settings: SettingsDep,
+) -> NamespaceStatusResponse:
+    try:
+        result = await read_namespace_status(settings, namespace)
+    except StagingNotInstalledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    return NamespaceStatusResponse(
+        ns=namespace,
+        raw=result.raw,
+        exit_code=result.exit_code,
+    )
+
+
+@router.get(
+    f"{AgentPath.NAMESPACES.value}/{{namespace}}{AgentPath.CREDS.value}",
+    response_model=NamespaceCredsResponse,
+)
+async def get_namespace_creds(
+    namespace: str,
+    _: AuthDep,
+    settings: SettingsDep,
+) -> NamespaceCredsResponse:
+    try:
+        result = await read_namespace_creds(settings, namespace)
+    except StagingNotInstalledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    return NamespaceCredsResponse(
+        ns=namespace,
+        raw=result.raw,
+        exit_code=result.exit_code,
+    )
+
+
 @router.get(f"{AgentPath.JOBS.value}/{{job_id}}{AgentPath.STREAM.value}")
 async def stream_job(
     job_id: str,
@@ -79,15 +154,36 @@ async def stream_job(
         stream = job_manager.stream_job(job_id)
     except JobNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.") from exc
-    return StreamingResponse(
-        stream,
-        media_type="text/event-stream",
-        headers={
-            HeaderName.CONTENT_TYPE.value: "text/event-stream; charset=utf-8",
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-        },
-    )
+    return _build_sse_response(stream)
+
+
+@router.get(f"{AgentPath.NAMESPACES.value}/{{namespace}}{AgentPath.LOGS.value}")
+async def get_namespace_logs(
+    namespace: str,
+    request: Request,
+    _: AuthDep,
+    settings: SettingsDep,
+    deploy: str = Query(...),
+) -> StreamingResponse:
+    if not deploy.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The deploy query parameter is required.",
+        )
+
+    try:
+        stream = stream_namespace_logs(
+            settings,
+            namespace,
+            deploy.strip(),
+            is_disconnected=request.is_disconnected,
+        )
+    except StagingNotInstalledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    return _build_sse_response(stream)
 
 
 @router.post(
@@ -103,3 +199,15 @@ async def cancel_job(
         return await job_manager.cancel_job(job_id)
     except JobNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.") from exc
+
+
+def _build_sse_response(stream: AsyncIterator[str]) -> StreamingResponse:
+    return StreamingResponse(
+        stream,
+        media_type="text/event-stream",
+        headers={
+            HeaderName.CONTENT_TYPE.value: "text/event-stream; charset=utf-8",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
+    )

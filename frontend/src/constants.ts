@@ -67,6 +67,9 @@ export const AgentPath = {
   PREFLIGHT: "/preflight",
   SETUP: "/setup",
   NAMESPACES: "/namespaces",
+  STATUS: "/status",
+  CREDS: "/creds",
+  LOGS: "/logs",
   DEPLOY: "/deploy",
   DESTROY: "/destroy",
   ADOPT: "/adopt",
@@ -80,6 +83,33 @@ export const AgentPath = {
 } as const;
 
 export type AgentPath = (typeof AgentPath)[keyof typeof AgentPath];
+
+export function buildAgentJobPath(jobId: string): string {
+  return `${AgentPath.JOBS}/${encodeURIComponent(jobId)}`;
+}
+
+export function buildAgentJobStreamPath(jobId: string): string {
+  return `${buildAgentJobPath(jobId)}${AgentPath.STREAM}`;
+}
+
+export function buildAgentJobCancelPath(jobId: string): string {
+  return `${buildAgentJobPath(jobId)}${AgentPath.CANCEL}`;
+}
+
+export function buildAgentNamespaceStatusPath(namespace: string): string {
+  return `${AgentPath.NAMESPACES}/${encodeURIComponent(namespace)}${AgentPath.STATUS}`;
+}
+
+export function buildAgentNamespaceCredsPath(namespace: string): string {
+  return `${AgentPath.NAMESPACES}/${encodeURIComponent(namespace)}${AgentPath.CREDS}`;
+}
+
+export function buildAgentNamespaceLogsPath(namespace: string, deploy: string): string {
+  const params = new URLSearchParams({
+    deploy,
+  });
+  return `${AgentPath.NAMESPACES}/${encodeURIComponent(namespace)}${AgentPath.LOGS}?${params.toString()}`;
+}
 
 export const PreflightKey = {
   TOOLS: "tools",
@@ -152,6 +182,24 @@ export type OperationStatus = (typeof OperationStatus)[keyof typeof OperationSta
 export const JobStatus = OperationStatus;
 export type JobStatus = OperationStatus;
 
+export const NamespaceLogStatus = {
+  IDLE: "idle",
+  RUNNING: OperationStatus.RUNNING,
+  SUCCESS: OperationStatus.SUCCESS,
+  FAILED: OperationStatus.FAILED,
+  ABORTED: OperationStatus.ABORTED,
+} as const;
+
+export type NamespaceLogStatus = (typeof NamespaceLogStatus)[keyof typeof NamespaceLogStatus];
+
+export const NamespaceLogStatusLabel: Record<NamespaceLogStatus, string> = {
+  [NamespaceLogStatus.IDLE]: "Idle",
+  [NamespaceLogStatus.RUNNING]: "Running",
+  [NamespaceLogStatus.SUCCESS]: "Success",
+  [NamespaceLogStatus.FAILED]: "Failed",
+  [NamespaceLogStatus.ABORTED]: "Aborted",
+};
+
 export const OperationStatusLabel: Record<OperationStatus, string> = {
   [OperationStatus.QUEUED]: "Queued",
   [OperationStatus.RUNNING]: "Running",
@@ -204,6 +252,9 @@ export const TabTitle: Record<TabId, string> = {
 export const QueryKey = {
   AGENT_PREFLIGHT: "agent-preflight",
   AGENT_JOB: "agent-job",
+  AGENT_NAMESPACES: "agent-namespaces",
+  AGENT_NAMESPACE_STATUS: "agent-namespace-status",
+  AGENT_NAMESPACE_CREDS: "agent-namespace-creds",
   OPERATIONS: "operations",
   OPERATION_DETAIL: "operation-detail",
   OPERATION_REPLAY: "operation-replay",

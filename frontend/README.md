@@ -19,11 +19,16 @@ The Stagings section now includes four tabs:
 - `Preflight`: probe the local companion app and inspect the staging prerequisite checklist.
 - `Deploy`: submit a deploy recipe to the local agent, stream the live job log over authenticated fetch-SSE, and cancel a running job.
 - `History`: browse recorded backend operations, inspect the stored recipe and full log, and replay a deploy by prefilling the Deploy tab.
-- `Namespaces`: placeholder for later slices.
+- `Namespaces`: read the local `staging list` output, inspect namespace status, load masked credentials on demand, and tail live deployment logs over authenticated fetch-SSE.
 
 The Deploy tab requires the local companion app to be running on a probed
 localhost port, because authenticated agent requests use the same Bearer token
 as the central backend.
+
+The Namespaces tab is read-only in this slice. Credentials stay local to the
+browser session: they are fetched directly from the localhost agent, shown
+masked until revealed, and are never persisted to localStorage or sent to the
+backend.
 
 ## Docker Compose
 
@@ -42,3 +47,5 @@ local development.
   `http://localhost:8000`
 - `VITE_AGENT_PORTS`: local companion-app probe range. Default:
   `47600-47605`
+
+No new frontend environment variables were added for the Namespaces slice.
