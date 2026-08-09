@@ -8,6 +8,8 @@ import { StagingsSection } from "@/features/stagings/StagingsSection";
 
 const reactViewRegistry = {
   [ViewKey.ADMIN_USERS]: <UsersPage />,
+  [ViewKey.STAGINGS_DEPLOY]: <StagingsSection mode={ViewKey.STAGINGS_DEPLOY} />,
+  [ViewKey.STAGINGS_HISTORY]: <StagingsSection mode={ViewKey.STAGINGS_HISTORY} />,
   [ViewKey.STAGINGS_NAMESPACES]: <StagingsSection mode={ViewKey.STAGINGS_NAMESPACES} />,
   [ViewKey.STAGINGS_PREFLIGHT]: <StagingsSection mode={ViewKey.STAGINGS_PREFLIGHT} />,
 } as const;

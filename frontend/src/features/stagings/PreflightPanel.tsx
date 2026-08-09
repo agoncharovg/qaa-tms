@@ -16,21 +16,8 @@ import { IconAlertCircle, IconPlugConnectedX, IconRotateClockwise } from "@table
 import { useQuery } from "@tanstack/react-query";
 
 import { getPreflight } from "@/api/agentClient";
-import { PreflightKey } from "@/constants";
+import { PreflightLabel, QueryKey } from "@/constants";
 import { useAuthStore } from "@/store/authStore";
-
-const preflightLabelByValue = {
-  [PreflightKey.CLUSTER_REACHABLE]: "Cluster reachable",
-  [PreflightKey.DOCKER_HARBOR]: "Docker login to Harbor",
-  [PreflightKey.DOCKER_STAGING]: "Docker login to staging registry",
-  [PreflightKey.HARBOR_PULL]: "Harbor pull access",
-  [PreflightKey.KUBECONFIG]: "Kubeconfig available",
-  [PreflightKey.REPO_INSTALLED]: "qaa-stagings installed",
-  [PreflightKey.SUBMODULES]: "Git submodules initialized",
-  [PreflightKey.TOOLS]: "Required tools installed",
-  [PreflightKey.VENV]: "Virtual environment ready",
-  [PreflightKey.VPN]: "VPN connected",
-} satisfies Record<(typeof PreflightKey)[keyof typeof PreflightKey], string>;
 
 export function PreflightPanel() {
   const token = useAuthStore((state) => state.token);
@@ -38,7 +25,7 @@ export function PreflightPanel() {
   const query = useQuery({
     enabled: Boolean(token),
     queryFn: ({ signal }) => getPreflight(token ?? "", signal),
-    queryKey: ["agent", "preflight", token],
+    queryKey: [QueryKey.AGENT_PREFLIGHT, token],
     refetchOnWindowFocus: false,
     retry: false,
   });
@@ -133,7 +120,7 @@ export function PreflightPanel() {
           <Table.Tbody>
             {query.data.checklist.map((item) => (
               <Table.Tr key={item.key}>
-                <Table.Td>{preflightLabelByValue[item.key]}</Table.Td>
+                <Table.Td>{PreflightLabel[item.key]}</Table.Td>
                 <Table.Td>
                   <Badge color={item.ok ? "teal" : "red"} variant="light">
                     {item.ok ? "OK" : "Not ready"}

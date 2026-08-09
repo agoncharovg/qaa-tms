@@ -38,6 +38,22 @@ export const TAB_DEFINITIONS: Record<TabIdType, WorkspaceTabDefinition> = {
     title: TabTitle[TabId.STAGINGS_PREFLIGHT],
     viewKey: ViewKey.STAGINGS_PREFLIGHT,
   },
+  [TabId.STAGINGS_DEPLOY]: {
+    closeable: true,
+    contentType: ContentType.REACT_VIEW,
+    id: TabId.STAGINGS_DEPLOY,
+    section: SectionKey.STAGINGS,
+    title: TabTitle[TabId.STAGINGS_DEPLOY],
+    viewKey: ViewKey.STAGINGS_DEPLOY,
+  },
+  [TabId.STAGINGS_HISTORY]: {
+    closeable: true,
+    contentType: ContentType.REACT_VIEW,
+    id: TabId.STAGINGS_HISTORY,
+    section: SectionKey.STAGINGS,
+    title: TabTitle[TabId.STAGINGS_HISTORY],
+    viewKey: ViewKey.STAGINGS_HISTORY,
+  },
   [TabId.STAGINGS_NAMESPACES]: {
     closeable: true,
     contentType: ContentType.REACT_VIEW,
@@ -57,7 +73,12 @@ export const TAB_DEFINITIONS: Record<TabIdType, WorkspaceTabDefinition> = {
 };
 
 export const SECTION_TAB_CATALOG: Record<SectionKeyType, TabIdType[]> = {
-  [SectionKey.STAGINGS]: [TabId.STAGINGS_PREFLIGHT, TabId.STAGINGS_NAMESPACES],
+  [SectionKey.STAGINGS]: [
+    TabId.STAGINGS_PREFLIGHT,
+    TabId.STAGINGS_DEPLOY,
+    TabId.STAGINGS_HISTORY,
+    TabId.STAGINGS_NAMESPACES,
+  ],
   [SectionKey.ADMIN]: [TabId.ADMIN_USERS],
 };
 

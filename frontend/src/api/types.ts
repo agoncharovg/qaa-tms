@@ -1,4 +1,15 @@
-import type { PreflightKey, SectionKey, TabId, ViewKey, ContentType } from "@/constants";
+import type {
+  ContentType,
+  JobStatus,
+  JobStreamEvent,
+  OperationStatus,
+  OperationType,
+  PreflightKey,
+  Product,
+  SectionKey,
+  TabId,
+  ViewKey,
+} from "@/constants";
 
 export interface User {
   id: number;
@@ -19,14 +30,6 @@ export interface LoginResponse {
   access_token: string;
   token_type: string;
   user: User;
-}
-
-export interface OperationRecipe {
-  product?: string | null;
-  services: string[];
-  images: Record<string, string>;
-  suites: string[];
-  flags: Record<string, unknown>;
 }
 
 export interface AgentPingResponse {
@@ -57,6 +60,101 @@ export interface AgentPreflightAvailable {
 }
 
 export type AgentPreflightState = AgentPreflightAvailable | AgentPreflightUnavailable;
+
+export interface DeployFlags {
+  full: boolean;
+  dryRun: boolean;
+  noSync: boolean;
+  stage: number | null;
+}
+
+export interface DeployRequest {
+  ns: string;
+  services: string[];
+  images: Record<string, string>;
+  flags: DeployFlags;
+}
+
+export interface JobCreateResponse {
+  jobId: string;
+  opId: string;
+}
+
+export interface JobRead {
+  jobId: string;
+  opId: string;
+  status: JobStatus;
+  argv: string[];
+  exitCode: number | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface JobLogEvent {
+  type: "line";
+  line: string;
+}
+
+export interface JobTerminalEvent {
+  type: "terminal";
+  status: JobStatus;
+  exitCode: number | null;
+}
+
+export interface JobLogStreamMessage {
+  event: Extract<JobStreamEvent, "log">;
+  data: JobLogEvent;
+}
+
+export interface JobTerminalStreamMessage {
+  event: Extract<JobStreamEvent, "terminal">;
+  data: JobTerminalEvent;
+}
+
+export type JobStreamMessage = JobLogStreamMessage | JobTerminalStreamMessage;
+
+export interface OperationRecipe {
+  product?: Product | null;
+  services: string[];
+  images: Record<string, string>;
+  suites: string[];
+  flags: Record<string, unknown>;
+}
+
+export interface OperationSummary {
+  id: string;
+  user_id: number;
+  type: OperationType;
+  ns: string | null;
+  recipe: OperationRecipe;
+  status: OperationStatus;
+  started_at: string;
+  finished_at: string | null;
+  exit_code: number | null;
+  agent_host: string | null;
+  agent_version: string | null;
+  stagings_sha: string | null;
+  created_at: string;
+}
+
+export interface OperationRead extends OperationSummary {
+  log: string | null;
+}
+
+export interface OperationReplay {
+  id: string;
+  type: OperationType;
+  ns: string | null;
+  recipe: OperationRecipe;
+}
+
+export interface OperationListResponse {
+  items: OperationSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+}
 
 export interface WorkspaceTabDefinition {
   id: TabId;
