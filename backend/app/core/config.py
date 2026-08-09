@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 from functools import lru_cache
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from app.core.constants import EnvFile, EnvKey
 
@@ -28,7 +28,10 @@ class Settings(BaseSettings):
     )
     jwt_secret: str = Field(default="dev-secret-change-me", alias=EnvKey.JWT_SECRET.value)
     jwt_expire_minutes: int = Field(default=720, alias=EnvKey.JWT_EXPIRE_MINUTES.value)
-    cors_origins: list[str] = Field(default_factory=list, alias=EnvKey.CORS_ORIGINS.value)
+    cors_origins: Annotated[list[str], NoDecode] = Field(
+        default_factory=list,
+        alias=EnvKey.CORS_ORIGINS.value,
+    )
 
     @field_validator("cors_origins", mode="before")
     @classmethod

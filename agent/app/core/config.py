@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 from functools import lru_cache
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from app.core.constants import (
     DEFAULT_AGENT_HOST,
@@ -31,7 +31,7 @@ class Settings(BaseSettings):
 
     host: str = Field(default=DEFAULT_AGENT_HOST, alias=EnvKey.HOST.value)
     port: int = Field(default=DEFAULT_AGENT_PORT, alias=EnvKey.PORT.value)
-    cors_origins: list[str] = Field(
+    cors_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: list(DEFAULT_CORS_ORIGINS),
         alias=EnvKey.CORS_ORIGINS.value,
     )
@@ -76,4 +76,3 @@ def get_settings() -> Settings:
     """Return cached settings."""
 
     return Settings()
-
