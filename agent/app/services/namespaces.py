@@ -8,7 +8,7 @@ import os
 import re
 import signal
 from collections.abc import AsyncIterator, Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from re import Pattern
@@ -25,6 +25,8 @@ from app.services.staging import (
 
 
 class NamespaceCommand(StrEnum):
+    """Supported staging namespace subcommands."""
+
     LIST = "list"
     STATUS = "status"
     CREDS = "creds"
@@ -39,22 +41,45 @@ class PlainTextCommandResult:
     exit_code: int
 
 
-NAMESPACE_NAME_PATTERN: Pattern[str] = re.compile(r"^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$")
-NAMESPACE_SKIP_TOKENS = frozenset(
-    {
-        "dir",
-        "dirs",
-        "name",
-        "names",
-        "namespace",
-        "namespaces",
-        "ns",
-        "overlay",
-        "overlays",
-        "path",
-        "root",
-        "staging",
-    }
+@dataclass(slots=True)
+class ClusterNamespaceRow:
+    """Best-effort parsed cluster namespace row."""
+
+    name: str
+    status: str
+    created_at: str | None = None
+
+
+@dataclass(slots=True)
+class LocalOverlayRow:
+    """Best-effort parsed local overlay row."""
+
+    name: str
+
+
+@dataclass(slots=True)
+class ParsedNamespaceList:
+    """Structured `staging list` parse result."""
+
+    cluster_namespaces: list[ClusterNamespaceRow] = field(default_factory=list)
+    local_overlays: list[LocalOverlayRow] = field(default_factory=list)
+
+
+class NamespaceListSection(StrEnum):
+    """Active parser section for `staging list`."""
+
+    CLUSTER = "cluster"
+    LOCAL = "local"
+
+
+ANSI_ESCAPE_PATTERN: Pattern[str] = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
+CLUSTER_SECTION_PATTERN: Pattern[str] = re.compile(
+    r"provisioned\s+namespaces.*cluster:",
+    re.IGNORECASE,
+)
+LOCAL_SECTION_PATTERN: Pattern[str] = re.compile(
+    r"local\s+overlay\s+directories:",
+    re.IGNORECASE,
 )
 LOG_READ_POLL_SECONDS = 0.25
 
@@ -93,12 +118,12 @@ def build_namespace_logs_argv(
     return _build_namespace_argv(settings, NamespaceCommand.LOGS, namespace, deploy)
 
 
-async def list_namespaces(settings: Settings) -> tuple[PlainTextCommandResult, list[str]]:
-    """Run `staging list` and best-effort parse namespace names from the raw output."""
+async def list_namespaces(settings: Settings) -> tuple[PlainTextCommandResult, ParsedNamespaceList]:
+    """Run `staging list` and parse the labeled cluster/local sections."""
 
     argv, installation = build_namespace_list_argv(settings)
     result = await run_plain_text_command(argv, installation.repo_root)
-    return result, parse_namespace_names(result.raw)
+    return result, parse_namespace_list(result.raw)
 
 
 async def read_namespace_status(settings: Settings, namespace: str) -> PlainTextCommandResult:
@@ -220,34 +245,61 @@ async def spawn_namespaces_process(
     )
 
 
-def parse_namespace_names(raw_output: str) -> list[str]:
-    """Extract plausible namespace names without relying on a rigid table format."""
+def parse_namespace_list(raw_output: str) -> ParsedNamespaceList:
+    """Split `staging list` output into cluster namespaces and local overlays."""
 
-    parsed: list[str] = []
-    seen: set[str] = set()
+    parsed = ParsedNamespaceList()
+    section: NamespaceListSection | None = None
 
-    for raw_line in raw_output.splitlines():
+    for raw_line in strip_ansi(raw_output).splitlines():
         line = raw_line.strip()
         if not line:
             continue
-        if any(
-            box_char in line
-            for box_char in ("═", "║", "╚", "╔", "╟", "╢", "╤", "╧", "┌", "└", "│")
-        ):
-            continue
 
-        candidate = line.split(maxsplit=1)[0].strip(":").lower()
-        if candidate in NAMESPACE_SKIP_TOKENS:
+        if CLUSTER_SECTION_PATTERN.search(line):
+            section = NamespaceListSection.CLUSTER
             continue
-        if not NAMESPACE_NAME_PATTERN.fullmatch(candidate):
+        if LOCAL_SECTION_PATTERN.search(line):
+            section = NamespaceListSection.LOCAL
             continue
-        if candidate in seen:
+        if section is NamespaceListSection.CLUSTER:
+            cluster_row = parse_cluster_namespace_row(line)
+            if cluster_row is not None:
+                parsed.cluster_namespaces.append(cluster_row)
             continue
-
-        seen.add(candidate)
-        parsed.append(candidate)
+        if section is NamespaceListSection.LOCAL:
+            local_row = parse_local_overlay_row(line)
+            if local_row is not None:
+                parsed.local_overlays.append(local_row)
 
     return parsed
+
+
+def parse_cluster_namespace_row(line: str) -> ClusterNamespaceRow | None:
+    """Parse a single cluster namespace row."""
+
+    parts = line.split()
+    if len(parts) < 2:
+        return None
+    name = parts[0]
+    status = parts[1]
+    created_at = parts[2] if len(parts) >= 3 else None
+    return ClusterNamespaceRow(name=name, status=status, created_at=created_at)
+
+
+def parse_local_overlay_row(line: str) -> LocalOverlayRow | None:
+    """Parse a single local overlay row."""
+
+    parts = line.split()
+    if not parts:
+        return None
+    return LocalOverlayRow(name=parts[0])
+
+
+def strip_ansi(raw_output: str) -> str:
+    """Remove ANSI escapes for parser stability while preserving raw output separately."""
+
+    return ANSI_ESCAPE_PATTERN.sub("", raw_output)
 
 
 async def terminate_process(process: asyncio.subprocess.Process) -> None:

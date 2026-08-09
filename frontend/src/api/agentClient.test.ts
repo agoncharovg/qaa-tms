@@ -1,15 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
+  AdoptRequest,
   DeployRequest,
+  DestroyRequest,
   JobCreateResponse,
   NamespaceCreds,
   NamespaceList,
   NamespaceStatus,
+  SyncRequest,
 } from "@/api/types";
 import { agentClient } from "@/api/agentClient";
 
-describe("agentClient.deploy", () => {
+describe("agentClient job creation requests", () => {
   const fetchMock = vi.fn<typeof fetch>();
 
   beforeEach(() => {
@@ -62,6 +65,54 @@ describe("agentClient.deploy", () => {
     expect(headers.get("X-QAA-TMS")).toBe("1");
     expect(init?.body).toBe(JSON.stringify(payload));
   });
+
+  it("sends the exact destroy, adopt, and sync payloads with bearer auth", async () => {
+    const response: JobCreateResponse = {
+      jobId: "job-456",
+      opId: "00000000-0000-0000-0000-000000000456",
+    };
+    const destroyPayload: DestroyRequest = { ns: "qa-demo" };
+    const adoptPayload: AdoptRequest = { ns: "qa-demo" };
+    const syncPayload: SyncRequest = {
+      flags: {
+        apply: true,
+        pull: false,
+        service: "iam-api",
+        verbose: true,
+      },
+    };
+
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify(response), { status: 202 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(response), { status: 202 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(response), { status: 202 }));
+
+    await agentClient.destroy(47600, "token-123", destroyPayload);
+    await agentClient.adopt(47600, "token-123", adoptPayload);
+    await agentClient.sync(47600, "token-123", syncPayload);
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    const [destroyUrl, destroyInit] = fetchMock.mock.calls[0] ?? [];
+    const [adoptUrl, adoptInit] = fetchMock.mock.calls[1] ?? [];
+    const [syncUrl, syncInit] = fetchMock.mock.calls[2] ?? [];
+
+    expect(destroyUrl).toBe("http://127.0.0.1:47600/destroy");
+    expect(adoptUrl).toBe("http://127.0.0.1:47600/adopt");
+    expect(syncUrl).toBe("http://127.0.0.1:47600/sync");
+    expect(destroyInit?.body).toBe(JSON.stringify(destroyPayload));
+    expect(adoptInit?.body).toBe(JSON.stringify(adoptPayload));
+    expect(syncInit?.body).toBe(JSON.stringify(syncPayload));
+
+    for (const init of [destroyInit, adoptInit, syncInit]) {
+      const headers = new Headers(init?.headers);
+      expect(init?.method).toBe("POST");
+      expect(headers.get("Authorization")).toBe("Bearer token-123");
+      expect(headers.get("Content-Type")).toBe("application/json");
+      expect(headers.get("Accept")).toBe("application/json");
+      expect(headers.get("X-QAA-TMS")).toBe("1");
+    }
+  });
 });
 
 describe("agentClient namespace reads", () => {
@@ -74,9 +125,16 @@ describe("agentClient namespace reads", () => {
 
   it("parses the list, status, and credentials responses with bearer auth", async () => {
     const list: NamespaceList = {
+      clusterNamespaces: [
+        {
+          createdAt: "2026-08-07T15:17:19Z",
+          name: "qa-demo",
+          status: "Active",
+        },
+      ],
       exitCode: 0,
-      namespaces: ["qa-demo", "qa-other"],
-      raw: "qa-demo\nqa-other\n",
+      localOverlays: [{ name: "qa-iam" }],
+      raw: "cluster\nlocal\n",
     };
     const status: NamespaceStatus = {
       exitCode: 3,

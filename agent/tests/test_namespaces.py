@@ -38,23 +38,27 @@ class FakeProcess:
         return self.returncode
 
 
-async def test_list_namespaces_returns_raw_and_best_effort_parse(
+async def test_list_namespaces_returns_structured_cluster_and_overlay_sections(
     client: httpx.AsyncClient,
     auth_headers: dict[str, str],
     backend_recorder: BackendRecorder,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    raw_output = (
+        "\x1b[32m[OK]\x1b[0m    Prerequisites OK\n"
+        "\x1b[36m[INFO]\x1b[0m  Provisioned namespaces on frn-stg cluster:\n"
+        "calico-system     Active   2026-02-11T11:49:58Z\n"
+        "qaa-demo          Active   2026-08-07T15:17:19Z\n"
+        "qaa-no-time       Pending\n"
+        "\x1b[36m[INFO]\x1b[0m  Local overlay directories:\n"
+        "  qaa-iam      (local only -- not on cluster)\n"
+        "  qaa-billing  (local only -- not on cluster)\n"
+    )
+
     async def fake_run(argv: list[str], repo_root: Path | None) -> PlainTextCommandResult:
         assert argv[-1] == "list"
         assert repo_root is not None
-        return PlainTextCommandResult(
-            raw=(
-                "Namespace\tOverlay\n"
-                "qa-demo\t~/Projects/qaa-stagings/overlays/qa-demo\n"
-                "qa-other\t~/Projects/qaa-stagings/overlays/qa-other\n"
-            ),
-            exit_code=0,
-        )
+        return PlainTextCommandResult(raw=raw_output, exit_code=0)
 
     monkeypatch.setattr(namespaces_service, "run_plain_text_command", fake_run)
 
@@ -65,14 +69,19 @@ async def test_list_namespaces_returns_raw_and_best_effort_parse(
 
     assert response.status_code == 200
     assert response.json() == {
-        "raw": (
-            "Namespace\tOverlay\n"
-            "qa-demo\t~/Projects/qaa-stagings/overlays/qa-demo\n"
-            "qa-other\t~/Projects/qaa-stagings/overlays/qa-other\n"
-        ),
-        "namespaces": ["qa-demo", "qa-other"],
+        "raw": raw_output,
+        "clusterNamespaces": [
+            {"name": "calico-system", "status": "Active", "createdAt": "2026-02-11T11:49:58Z"},
+            {"name": "qaa-demo", "status": "Active", "createdAt": "2026-08-07T15:17:19Z"},
+            {"name": "qaa-no-time", "status": "Pending", "createdAt": None},
+        ],
+        "localOverlays": [
+            {"name": "qaa-iam"},
+            {"name": "qaa-billing"},
+        ],
         "exitCode": 0,
     }
+    assert all(row["name"] != "qaa-iam" for row in response.json()["clusterNamespaces"])
     assert backend_recorder.operations == []
 
 

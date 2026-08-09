@@ -36,7 +36,32 @@ import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
 import { resetStagingsStoreState } from "@/store/stagingsStore";
 import { resetUiStoreState, useUiStore } from "@/store/uiStore";
 
-describe("History replay flow", () => {
+function seedAuthAndTabs(): void {
+  useAuthStore.setState({
+    currentUser: {
+      auto_login: false,
+      created_at: "2026-08-09T00:00:00Z",
+      display_name: "Test User",
+      id: 2,
+      is_admin: false,
+      updated_at: "2026-08-09T00:00:00Z",
+      username: "test",
+    },
+    token: "token-123",
+  });
+  useUiStore.setState((state) => ({
+    ...state,
+    tabsBySection: {
+      ...state.tabsBySection,
+      [SectionKey.STAGINGS]: {
+        activeTabId: TabId.STAGINGS_HISTORY,
+        tabIds: [TabId.STAGINGS_HISTORY, TabId.STAGINGS_DEPLOY],
+      },
+    },
+  }));
+}
+
+describe("History panel", () => {
   beforeEach(() => {
     backendClientMock.getCurrentUser.mockReset();
     backendClientMock.getOperation.mockReset();
@@ -52,29 +77,20 @@ describe("History replay flow", () => {
     resetAuthStoreState();
     resetStagingsStoreState();
     resetUiStoreState();
+    seedAuthAndTabs();
 
-    useAuthStore.setState({
-      currentUser: {
-        auto_login: false,
-        created_at: "2026-08-09T00:00:00Z",
-        display_name: "Test User",
-        id: 2,
-        is_admin: false,
-        updated_at: "2026-08-09T00:00:00Z",
-        username: "test",
+    getPreflightMock.mockResolvedValue({
+      agent: {
+        app: "qaa-tms-agent",
+        os: "linux",
+        stagingsInstalled: true,
+        stagingsSha: "abc123",
+        version: "0.1.0",
       },
-      token: "token-123",
+      checklist: [],
+      detected: true,
+      port: 47600,
     });
-    useUiStore.setState((state) => ({
-      ...state,
-      tabsBySection: {
-        ...state.tabsBySection,
-        [SectionKey.STAGINGS]: {
-          activeTabId: TabId.STAGINGS_HISTORY,
-          tabIds: [TabId.STAGINGS_HISTORY, TabId.STAGINGS_DEPLOY],
-        },
-      },
-    }));
   });
 
   it("renders history rows and prefills the deploy form from replay", async () => {
@@ -163,18 +179,6 @@ describe("History replay flow", () => {
       },
       type: "deploy",
     });
-    getPreflightMock.mockResolvedValue({
-      agent: {
-        app: "qaa-tms-agent",
-        os: "linux",
-        stagingsInstalled: true,
-        stagingsSha: "abc123",
-        version: "0.1.0",
-      },
-      checklist: [],
-      detected: true,
-      port: 47600,
-    });
 
     renderWithProviders(
       <AppShell>
@@ -195,6 +199,84 @@ describe("History replay flow", () => {
       expect(screen.getByRole("textbox", { name: /Services/i })).toHaveValue("iam-api, billing-api");
       expect(screen.getByRole("textbox", { name: /^Service$/i })).toHaveValue("iam-api");
       expect(screen.getByRole("textbox", { name: /Tag/i })).toHaveValue("sha-777");
+    });
+  });
+
+  it("hides Replay for non-deploy operations", async () => {
+    const user = userEvent.setup();
+
+    backendClientMock.listOperations.mockResolvedValue({
+      items: [
+        {
+          agent_host: "laptop",
+          agent_version: "0.1.0",
+          created_at: "2026-08-09T10:00:00Z",
+          exit_code: 0,
+          finished_at: "2026-08-09T10:05:00Z",
+          id: "00000000-0000-0000-0000-000000000002",
+          ns: null,
+          recipe: {
+            flags: {
+              apply: false,
+              pull: true,
+              service: "iam-api",
+              verbose: true,
+            },
+            images: {},
+            product: null,
+            services: [],
+            suites: [],
+          },
+          stagings_sha: "abc123",
+          started_at: "2026-08-09T10:00:00Z",
+          status: "success",
+          type: "sync",
+          user_id: 2,
+        },
+      ],
+      limit: 20,
+      offset: 0,
+      total: 1,
+    });
+    backendClientMock.getOperation.mockResolvedValue({
+      agent_host: "laptop",
+      agent_version: "0.1.0",
+      created_at: "2026-08-09T10:00:00Z",
+      exit_code: 0,
+      finished_at: "2026-08-09T10:05:00Z",
+      id: "00000000-0000-0000-0000-000000000002",
+      log: "sync log",
+      ns: null,
+      recipe: {
+        flags: {
+          apply: false,
+          pull: true,
+          service: "iam-api",
+          verbose: true,
+        },
+        images: {},
+        product: null,
+        services: [],
+        suites: [],
+      },
+      stagings_sha: "abc123",
+      started_at: "2026-08-09T10:00:00Z",
+      status: "success",
+      type: "sync",
+      user_id: 2,
+    });
+
+    renderWithProviders(
+      <AppShell>
+        <Workspace activeSection={SectionKey.STAGINGS} />
+      </AppShell>
+    );
+
+    expect(await screen.findByText("Sync")).toBeInTheDocument();
+    await user.click(screen.getByText("Sync"));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Replay" })).not.toBeInTheDocument();
     });
   });
 });

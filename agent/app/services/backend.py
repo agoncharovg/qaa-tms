@@ -17,7 +17,6 @@ from app.core.constants import (
     OperationStatus,
     OperationType,
 )
-from app.schemas import DeployRequest
 from app.services.staging import get_agent_host_name, get_agent_version
 
 logger = logging.getLogger(__name__)
@@ -26,7 +25,9 @@ logger = logging.getLogger(__name__)
 def build_operation_payload(
     *,
     op_id: UUID,
-    request: DeployRequest,
+    type: OperationType,
+    ns: str | None,
+    recipe: Mapping[str, Any],
     status: OperationStatus,
     started_at: datetime,
     finished_at: datetime | None,
@@ -38,14 +39,9 @@ def build_operation_payload(
 
     payload: dict[str, Any] = {
         "id": str(op_id),
-        "type": OperationType.DEPLOY.value,
-        "ns": request.ns,
-        "recipe": {
-            "services": request.services,
-            "images": request.images,
-            "suites": [],
-            "flags": request.flags.to_recipe(),
-        },
+        "type": type.value,
+        "ns": ns,
+        "recipe": dict(recipe),
         "status": status.value,
         "started_at": started_at.isoformat(),
         "agent_host": get_agent_host_name(),

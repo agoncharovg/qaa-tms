@@ -66,6 +66,51 @@ class DeployRequest(BaseModel):
     flags: DeployFlags = Field(default_factory=DeployFlags)
 
 
+class DestroyRequest(BaseModel):
+    """Destroy request body."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ns: str = Field(min_length=1)
+
+
+class AdoptRequest(BaseModel):
+    """Adopt request body."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ns: str = Field(min_length=1)
+
+
+class SyncFlags(BaseModel):
+    """Sync flags from the frontend wire contract."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    service: str | None = None
+    verbose: bool = False
+    pull: bool = False
+    apply: bool = False
+
+    def to_recipe(self) -> dict[str, str | bool | None]:
+        """Return sync flags in the backend audit shape."""
+
+        return {
+            "service": self.service,
+            "verbose": self.verbose,
+            "pull": self.pull,
+            "apply": self.apply,
+        }
+
+
+class SyncRequest(BaseModel):
+    """Sync request body."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    flags: SyncFlags = Field(default_factory=SyncFlags)
+
+
 class JobCreateResponse(BaseModel):
     """Response for job-creating endpoints."""
 
@@ -109,13 +154,32 @@ class JobTerminalEvent(BaseModel):
     exit_code: int | None = Field(alias="exitCode")
 
 
+class ClusterNamespaceEntry(BaseModel):
+    """Best-effort parsed cluster namespace row."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    name: str
+    status: str
+    created_at: str | None = Field(default=None, alias="createdAt")
+
+
+class LocalOverlayEntry(BaseModel):
+    """Best-effort parsed local overlay row."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+
+
 class NamespaceListResponse(BaseModel):
     """`/namespaces` response shape."""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     raw: str
-    namespaces: list[str]
+    cluster_namespaces: list[ClusterNamespaceEntry] = Field(alias="clusterNamespaces")
+    local_overlays: list[LocalOverlayEntry] = Field(alias="localOverlays")
     exit_code: int = Field(alias="exitCode")
 
 

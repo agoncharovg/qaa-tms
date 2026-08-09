@@ -85,20 +85,26 @@ def fake_staging_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[s
 
             def main() -> int:
                 args = sys.argv[1:]
-                if len(args) < 2 or args[0] != "deploy":
+                if not args:
                     print("unsupported invocation", file=sys.stderr, flush=True)
                     return 2
+
+                command = args[0]
+                if command not in {"deploy", "destroy", "adopt", "sync"}:
+                    print("unsupported invocation", file=sys.stderr, flush=True)
+                    return 2
+
                 mode = os.environ.get("FAKE_STAGING_MODE", "success")
-                print("starting deploy", flush=True)
+                print(f"starting {command}", flush=True)
                 print("argv: " + " ".join(args), flush=True)
                 print("stderr: merged output", file=sys.stderr, flush=True)
                 if mode == "sleep":
                     time.sleep(30)
                     return 0
                 if mode == "fail":
-                    print("deploy failed", flush=True)
+                    print(f"{command} failed", flush=True)
                     return 7
-                print("deploy complete", flush=True)
+                print(f"{command} complete", flush=True)
                 return 0
 
             raise SystemExit(main())

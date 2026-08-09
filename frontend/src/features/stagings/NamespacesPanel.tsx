@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 import {
   Alert,
   Badge,
@@ -20,23 +20,30 @@ import {
   IconEye,
   IconEyeOff,
   IconKey,
-  IconLayoutKanban,
   IconPlayerPlay,
   IconPlayerStop,
   IconPlugConnectedX,
   IconRotateClockwise,
 } from "@tabler/icons-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { agentClient, getPreflight } from "@/api/agentClient";
-import type { JobTerminalEvent, NamespaceLogsState } from "@/api/types";
+import type { JobTerminalEvent, NamespaceListEntry, NamespaceLogsState } from "@/api/types";
 import {
   NamespaceLogStatus,
   NamespaceLogStatusLabel,
+  NamespaceOrigin,
+  NamespaceOriginLabel,
   QueryKey,
+  SectionKey,
+  TabId,
   type NamespaceLogStatus as NamespaceLogStatusType,
 } from "@/constants";
+import { LiveJobPanel } from "@/features/stagings/LiveJobPanel";
+import { useTransientLiveJob } from "@/features/stagings/useTransientLiveJob";
 import { useAuthStore } from "@/store/authStore";
+import { useStagingsStore } from "@/store/stagingsStore";
+import { useUiStore } from "@/store/uiStore";
 
 type NamespaceLogsAction =
   | { type: "append-line"; line: string }
@@ -105,7 +112,7 @@ function reduceNamespaceLogsState(
   }
 }
 
-function getStatusColor(status: NamespaceLogStatusType): string {
+function getNamespaceLogStatusColor(status: NamespaceLogStatusType): string {
   switch (status) {
     case NamespaceLogStatus.SUCCESS:
       return "teal";
@@ -120,23 +127,61 @@ function getStatusColor(status: NamespaceLogStatusType): string {
   }
 }
 
+function getClusterStatusColor(status: string): string {
+  const normalized = status.trim().toLowerCase();
+  if (normalized === "active" || normalized === "running") {
+    return "teal";
+  }
+  if (normalized === "pending") {
+    return "yellow";
+  }
+  if (normalized === "failed" || normalized === "error") {
+    return "red";
+  }
+  return "gray";
+}
+
 function maskSensitiveText(raw: string): string {
   return raw.replace(/[^\s]/g, "*");
+}
+
+function mapClusterEntries(entries: { name: string; status: string; createdAt: string | null }[]): NamespaceListEntry[] {
+  return entries.map((entry) => ({
+    createdAt: entry.createdAt,
+    name: entry.name,
+    origin: NamespaceOrigin.CLUSTER,
+    statusLabel: entry.status,
+  }));
+}
+
+function mapLocalOverlayEntries(entries: { name: string }[]): NamespaceListEntry[] {
+  return entries.map((entry) => ({
+    name: entry.name,
+    origin: NamespaceOrigin.LOCAL,
+    statusLabel: NamespaceOriginLabel[NamespaceOrigin.LOCAL],
+  }));
 }
 
 export function NamespacesPanel() {
   const queryClient = useQueryClient();
   const token = useAuthStore((state) => state.token);
+  const setSelectedOperationId = useStagingsStore((state) => state.setSelectedOperationId);
+  const openTab = useUiStore((state) => state.openTab);
+  const switchTab = useUiStore((state) => state.switchTab);
+  const historyOpen = useUiStore((state) =>
+    state.tabsBySection[SectionKey.STAGINGS].tabIds.includes(TabId.STAGINGS_HISTORY)
+  );
   const [selectedNamespace, setSelectedNamespace] = useState<string | null>(null);
+  const [selectedOrigin, setSelectedOrigin] = useState<NamespaceListEntry["origin"] | null>(null);
   const [credsVisible, setCredsVisible] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  const [destroyConfirmation, setDestroyConfirmation] = useState("");
   const [logsState, dispatchLogs] = useReducer(
     reduceNamespaceLogsState,
     undefined,
     createNamespaceLogsState
   );
-  const streamAbortControllerRef = useRef<AbortController | null>(null);
-  const logViewportRef = useRef<HTMLDivElement | null>(null);
+  const [logsAbortController, setLogsAbortController] = useState<AbortController | null>(null);
 
   const preflightQuery = useQuery({
     enabled: Boolean(token),
@@ -151,6 +196,7 @@ export function NamespacesPanel() {
     preflightQuery.data && !preflightQuery.data.detected ? preflightQuery.data.ports.join(", ") : "";
   const companionUnavailable = !preflightQuery.data?.detected;
   const logsRunning = logsState.status === NamespaceLogStatus.RUNNING;
+  const transientJob = useTransientLiveJob(agentPort, token);
 
   const namespacesQuery = useQuery({
     enabled: Boolean(token && agentPort !== null),
@@ -184,25 +230,46 @@ export function NamespacesPanel() {
     retry: false,
   });
 
-  const parsedNamespaces = namespacesQuery.data?.namespaces ?? [];
+  const destroyMutation = useMutation({
+    mutationFn: async () => {
+      if (!token || agentPort === null || !selectedNamespace) {
+        throw new Error("No namespace is selected.");
+      }
+
+      return agentClient.destroy(agentPort, token, { ns: selectedNamespace });
+    },
+    onSuccess: (response) => {
+      transientJob.startLiveJob(response.jobId, response.opId);
+      setSelectedOperationId(null);
+      setDestroyConfirmation("");
+    },
+  });
+
+  const adoptMutation = useMutation({
+    mutationFn: async () => {
+      if (!token || agentPort === null || !selectedNamespace) {
+        throw new Error("No namespace is selected.");
+      }
+
+      return agentClient.adopt(agentPort, token, { ns: selectedNamespace });
+    },
+    onSuccess: (response) => {
+      transientJob.startLiveJob(response.jobId, response.opId);
+      setSelectedOperationId(null);
+    },
+  });
+
+  const clusterEntries = mapClusterEntries(namespacesQuery.data?.clusterNamespaces ?? []);
+  const localEntries = mapLocalOverlayEntries(namespacesQuery.data?.localOverlays ?? []);
   const listRaw = namespacesQuery.data?.raw ?? "";
   const listExitCode = namespacesQuery.data?.exitCode ?? null;
-  const maskedCreds = useMemo(
-    () => (credsQuery.data ? maskSensitiveText(credsQuery.data.raw) : ""),
-    [credsQuery.data]
-  );
-
-  useEffect(() => {
-    if (logViewportRef.current) {
-      logViewportRef.current.scrollTop = logViewportRef.current.scrollHeight;
-    }
-  }, [logsState.lines.length]);
+  const maskedCreds = credsQuery.data ? maskSensitiveText(credsQuery.data.raw) : "";
 
   useEffect(() => {
     return () => {
-      streamAbortControllerRef.current?.abort();
+      logsAbortController?.abort();
     };
-  }, []);
+  }, [logsAbortController]);
 
   function clearSensitiveState(namespaceToClear: string | null): void {
     if (!namespaceToClear) {
@@ -215,29 +282,34 @@ export function NamespacesPanel() {
   }
 
   function stopLogs(markAborted: boolean): void {
-    const controller = streamAbortControllerRef.current;
-    streamAbortControllerRef.current = null;
-    controller?.abort();
+    logsAbortController?.abort();
+    setLogsAbortController(null);
     if (markAborted && logsRunning) {
       dispatchLogs({ type: "set-aborted" });
     }
   }
 
-  function selectNamespace(namespace: string): void {
+  function selectNamespace(entry: NamespaceListEntry): void {
     stopLogs(true);
     clearSensitiveState(selectedNamespace);
-    setSelectedNamespace(namespace);
+    transientJob.clearLiveJob();
+    setSelectedNamespace(entry.name);
+    setSelectedOrigin(entry.origin);
     setCredsVisible(false);
     setCopyFeedback(null);
+    setDestroyConfirmation("");
     dispatchLogs({ type: "reset" });
   }
 
   function closeNamespaceDrawer(): void {
     stopLogs(true);
     clearSensitiveState(selectedNamespace);
+    transientJob.clearLiveJob();
     setSelectedNamespace(null);
+    setSelectedOrigin(null);
     setCredsVisible(false);
     setCopyFeedback(null);
+    setDestroyConfirmation("");
     dispatchLogs({ type: "reset" });
   }
 
@@ -264,7 +336,7 @@ export function NamespacesPanel() {
     dispatchLogs({ type: "start" });
 
     const controller = new AbortController();
-    streamAbortControllerRef.current = controller;
+    setLogsAbortController(controller);
 
     void agentClient
       .streamNamespaceLogs(
@@ -299,10 +371,24 @@ export function NamespacesPanel() {
         });
       })
       .finally(() => {
-        if (streamAbortControllerRef.current === controller) {
-          streamAbortControllerRef.current = null;
-        }
+        setLogsAbortController((currentController) =>
+          currentController === controller ? null : currentController
+        );
       });
+  }
+
+  function openHistoryForLiveJob(): void {
+    if (!transientJob.liveJob) {
+      return;
+    }
+
+    setSelectedOperationId(transientJob.liveJob.opId);
+    if (historyOpen) {
+      switchTab(SectionKey.STAGINGS, TabId.STAGINGS_HISTORY);
+      return;
+    }
+
+    openTab(SectionKey.STAGINGS, TabId.STAGINGS_HISTORY);
   }
 
   if (preflightQuery.isLoading) {
@@ -340,8 +426,7 @@ export function NamespacesPanel() {
           <div>
             <Title order={3}>Namespaces</Title>
             <Text c="dimmed" size="sm">
-              Read-only namespace details from the local `staging` CLI. The parsed list is best effort;
-              the raw CLI output below stays the source of truth.
+              The parsed view now keeps cluster namespaces and local overlay directories separate. The raw CLI output remains the source of truth.
             </Text>
           </div>
           <Button
@@ -355,15 +440,9 @@ export function NamespacesPanel() {
         </Group>
 
         {companionUnavailable ? (
-          <Alert
-            color="yellow"
-            icon={<IconPlugConnectedX size={18} />}
-            title="Companion app is not running"
-          >
+          <Alert color="yellow" icon={<IconPlugConnectedX size={18} />} title="Companion app is not running">
             <Stack gap="sm">
-              <Text>
-                Start the local companion app, then retry discovery before opening namespace details.
-              </Text>
+              <Text>Start the local companion app, then retry discovery before opening namespace details.</Text>
               <Text c="dimmed" size="sm">
                 Probed ports: {probedPorts}
               </Text>
@@ -392,93 +471,118 @@ export function NamespacesPanel() {
                   : "Unable to load the namespace list."}
               </Text>
               <Group>
-                <Button
-                  leftSection={<IconRotateClockwise size={16} />}
-                  onClick={() => void namespacesQuery.refetch()}
-                >
+                <Button leftSection={<IconRotateClockwise size={16} />} onClick={() => void namespacesQuery.refetch()}>
                   Retry
                 </Button>
               </Group>
             </Stack>
           </Alert>
         ) : (
-          <>
-            <SimpleGrid cols={{ base: 1, md: 2 }}>
-              <Card padding="lg" radius="lg" withBorder>
-                <Stack gap="md">
-                  <Group justify="space-between">
-                    <div>
-                      <Text fw={600}>Parsed namespaces</Text>
-                      <Text c="dimmed" size="sm">
-                        Click a namespace to inspect status, credentials, and live logs.
-                      </Text>
-                    </div>
-                    <Badge color={listExitCode === 0 ? "teal" : "yellow"} variant="light">
-                      Exit code: {listExitCode ?? "n/a"}
-                    </Badge>
-                  </Group>
+          <SimpleGrid cols={{ base: 1, md: 3 }}>
+            <Card padding="lg" radius="lg" withBorder>
+              <Stack gap="md">
+                <Group justify="space-between">
+                  <div>
+                    <Text fw={600}>Cluster namespaces</Text>
+                    <Text c="dimmed" size="sm">
+                      Provisioned namespaces returned from the cluster section of `staging list`.
+                    </Text>
+                  </div>
+                  <Badge color={listExitCode === 0 ? "teal" : "yellow"} variant="light">
+                    Exit code: {listExitCode ?? "n/a"}
+                  </Badge>
+                </Group>
 
-                  {parsedNamespaces.length === 0 ? (
-                    <Paper p="lg" radius="md" withBorder>
-                      <Stack align="center" gap="sm">
-                        <IconLayoutKanban size={20} />
-                        <Text fw={600}>No namespaces were parsed.</Text>
-                        <Text c="dimmed" size="sm" ta="center">
-                          The raw `staging list` output is still available below, even when the parser
-                          cannot identify namespace names.
-                        </Text>
-                      </Stack>
-                    </Paper>
-                  ) : (
-                    <Stack gap="sm">
-                      {parsedNamespaces.map((namespace) => (
-                        <Button
-                          fullWidth
-                          justify="space-between"
-                          key={namespace}
-                          onClick={() => selectNamespace(namespace)}
-                          rightSection={<IconLayoutKanban size={16} />}
-                          variant="light"
-                        >
-                          {namespace}
-                        </Button>
-                      ))}
-                    </Stack>
-                  )}
-                </Stack>
-              </Card>
+                {clusterEntries.length === 0 ? (
+                  <Paper p="lg" radius="md" withBorder>
+                    <Text c="dimmed" ta="center">
+                      No cluster namespaces were parsed.
+                    </Text>
+                  </Paper>
+                ) : (
+                  <Stack gap="sm">
+                    {clusterEntries.map((entry) => (
+                      <Button fullWidth key={entry.name} onClick={() => selectNamespace(entry)} variant="light">
+                        <Group justify="space-between" w="100%" wrap="nowrap">
+                          <div>
+                            <Text fw={600}>{entry.name}</Text>
+                            <Text c="dimmed" size="xs">
+                              {entry.createdAt ?? "No creation timestamp returned"}
+                            </Text>
+                          </div>
+                          <Badge color={getClusterStatusColor(entry.statusLabel)} variant="light">
+                            {entry.statusLabel}
+                          </Badge>
+                        </Group>
+                      </Button>
+                    ))}
+                  </Stack>
+                )}
+              </Stack>
+            </Card>
 
-              <Card padding="lg" radius="lg" withBorder>
-                <Stack gap="md">
-                  <Group justify="space-between">
-                    <div>
-                      <Text fw={600}>CLI output</Text>
-                      <Text c="dimmed" size="sm">
-                        Plain-text output returned verbatim from `staging list`.
-                      </Text>
-                    </div>
-                    <Badge color={listExitCode === 0 ? "teal" : "yellow"} variant="light">
-                      Exit code: {listExitCode ?? "n/a"}
-                    </Badge>
-                  </Group>
-                  <Box
-                    bg="rgba(2, 6, 12, 0.95)"
-                    c="gray.1"
-                    h={280}
-                    p="sm"
-                    style={{
-                      borderRadius: "12px",
-                      fontFamily: "monospace",
-                      overflowY: "auto",
-                      whiteSpace: "pre-wrap",
-                    }}
-                  >
-                    {listRaw || "No output returned."}
-                  </Box>
-                </Stack>
-              </Card>
-            </SimpleGrid>
-          </>
+            <Card padding="lg" radius="lg" withBorder>
+              <Stack gap="md">
+                <div>
+                  <Text fw={600}>Local overlays</Text>
+                  <Text c="dimmed" size="sm">
+                    Overlay directories that exist locally but are not listed as provisioned namespaces.
+                  </Text>
+                </div>
+
+                {localEntries.length === 0 ? (
+                  <Paper p="lg" radius="md" withBorder>
+                    <Text c="dimmed" ta="center">
+                      No local overlays were parsed.
+                    </Text>
+                  </Paper>
+                ) : (
+                  <Stack gap="sm">
+                    {localEntries.map((entry) => (
+                      <Button fullWidth key={entry.name} onClick={() => selectNamespace(entry)} variant="light">
+                        <Group justify="space-between" w="100%" wrap="nowrap">
+                          <Text fw={600}>{entry.name}</Text>
+                          <Badge color="grape" variant="light">
+                            {entry.statusLabel}
+                          </Badge>
+                        </Group>
+                      </Button>
+                    ))}
+                  </Stack>
+                )}
+              </Stack>
+            </Card>
+
+            <Card padding="lg" radius="lg" withBorder>
+              <Stack gap="md">
+                <Group justify="space-between">
+                  <div>
+                    <Text fw={600}>CLI output</Text>
+                    <Text c="dimmed" size="sm">
+                      Plain-text output returned verbatim from `staging list`.
+                    </Text>
+                  </div>
+                  <Badge color={listExitCode === 0 ? "teal" : "yellow"} variant="light">
+                    Exit code: {listExitCode ?? "n/a"}
+                  </Badge>
+                </Group>
+                <Box
+                  bg="rgba(2, 6, 12, 0.95)"
+                  c="gray.1"
+                  h={280}
+                  p="sm"
+                  style={{
+                    borderRadius: "12px",
+                    fontFamily: "monospace",
+                    overflowY: "auto",
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  {listRaw || "No output returned."}
+                </Box>
+              </Stack>
+            </Card>
+          </SimpleGrid>
         )}
       </Stack>
 
@@ -491,6 +595,92 @@ export function NamespacesPanel() {
         title={selectedNamespace ? `Namespace ${selectedNamespace}` : "Namespace"}
       >
         <Stack gap="lg">
+          <Group justify="space-between">
+            <div>
+              <Title order={4}>{selectedNamespace}</Title>
+              <Text c="dimmed" size="sm">
+                Origin and actions are shown explicitly so local overlays are never confused with live cluster namespaces.
+              </Text>
+            </div>
+            {selectedOrigin ? (
+              <Badge color={selectedOrigin === NamespaceOrigin.CLUSTER ? "teal" : "grape"} variant="light">
+                {NamespaceOriginLabel[selectedOrigin]}
+              </Badge>
+            ) : null}
+          </Group>
+
+          <Card padding="lg" radius="lg" withBorder>
+            <Stack gap="md">
+              <div>
+                <Text fw={600}>Actions</Text>
+                <Text c="dimmed" size="sm">
+                  `adopt` and `destroy` run as agent jobs, stream live output over SSE, and are recorded in History.
+                </Text>
+              </div>
+
+              <Group align="flex-end">
+                <Button
+                  disabled={!selectedNamespace || transientJob.isJobRunning}
+                  loading={adoptMutation.isPending}
+                  onClick={() => void adoptMutation.mutateAsync()}
+                  variant="light"
+                >
+                  Adopt namespace
+                </Button>
+                <TextInput
+                  description="Required before destroy"
+                  label="Type namespace to confirm destroy"
+                  onChange={(event) => setDestroyConfirmation(event.currentTarget.value)}
+                  placeholder={selectedNamespace ?? "namespace"}
+                  value={destroyConfirmation}
+                />
+                <Button
+                  color="red"
+                  disabled={
+                    !selectedNamespace ||
+                    transientJob.isJobRunning ||
+                    destroyConfirmation.trim() !== selectedNamespace
+                  }
+                  loading={destroyMutation.isPending}
+                  onClick={() => void destroyMutation.mutateAsync()}
+                >
+                  Destroy namespace
+                </Button>
+              </Group>
+
+              {adoptMutation.isError ? (
+                <Alert color="red" icon={<IconAlertCircle size={18} />} title="Adopt request failed">
+                  <Text>
+                    {adoptMutation.error instanceof Error
+                      ? adoptMutation.error.message
+                      : "Unable to start the adopt job."}
+                  </Text>
+                </Alert>
+              ) : null}
+
+              {destroyMutation.isError ? (
+                <Alert color="red" icon={<IconAlertCircle size={18} />} title="Destroy request failed">
+                  <Text>
+                    {destroyMutation.error instanceof Error
+                      ? destroyMutation.error.message
+                      : "Unable to start the destroy job."}
+                  </Text>
+                </Alert>
+              ) : null}
+            </Stack>
+          </Card>
+
+          <Card padding="lg" radius="lg" withBorder>
+            <LiveJobPanel
+              cancelPending={transientJob.cancelMutation.isPending}
+              emptyMessage="Run adopt or destroy to reveal the live log stream and cancellation controls."
+              liveJob={transientJob.liveJob}
+              logViewportRef={transientJob.logViewportRef}
+              onCancel={() => void transientJob.cancelMutation.mutateAsync()}
+              onViewHistory={transientJob.liveJob ? openHistoryForLiveJob : undefined}
+            />
+          </Card>
+
           <Card padding="lg" radius="lg" withBorder>
             <Stack gap="md">
               <Group justify="space-between">
@@ -501,10 +691,7 @@ export function NamespacesPanel() {
                   </Text>
                 </div>
                 {statusQuery.data ? (
-                  <Badge
-                    color={statusQuery.data.exitCode === 0 ? "teal" : "yellow"}
-                    variant="light"
-                  >
+                  <Badge color={statusQuery.data.exitCode === 0 ? "teal" : "yellow"} variant="light">
                     Exit code: {statusQuery.data.exitCode}
                   </Badge>
                 ) : null}
@@ -550,8 +737,7 @@ export function NamespacesPanel() {
               <div>
                 <Text fw={600}>Credentials</Text>
                 <Text c="dimmed" size="sm">
-                  Sensitive output stays local in this browser session, is never recorded, and is
-                  never sent to the backend.
+                  Sensitive output stays local in this browser session, is never recorded, and is never sent to the backend.
                 </Text>
               </div>
 
@@ -572,11 +758,7 @@ export function NamespacesPanel() {
                 >
                   {credsVisible ? "Hide" : "Reveal"}
                 </Button>
-                <Button
-                  disabled={!credsQuery.data}
-                  onClick={() => void copyCreds(credsQuery.data?.raw ?? "")}
-                  variant="light"
-                >
+                <Button disabled={!credsQuery.data} onClick={() => void copyCreds(credsQuery.data?.raw ?? "")} variant="light">
                   Copy
                 </Button>
               </Group>
@@ -621,11 +803,10 @@ export function NamespacesPanel() {
                 <div>
                   <Text fw={600}>Live logs</Text>
                   <Text c="dimmed" size="sm">
-                    Tail deployment logs from `staging logs` with the same SSE frame format used by
-                    job streams.
+                    Tail deployment logs from `staging logs` with the same SSE frame format used by job streams.
                   </Text>
                 </div>
-                <Badge color={getStatusColor(logsState.status)} variant="light">
+                <Badge color={getNamespaceLogStatusColor(logsState.status)} variant="light">
                   {NamespaceLogStatusLabel[logsState.status]}
                   {logsState.exitCode !== null ? ` • exit ${logsState.exitCode}` : ""}
                 </Badge>
@@ -651,12 +832,7 @@ export function NamespacesPanel() {
                 >
                   Start
                 </Button>
-                <Button
-                  disabled={!logsRunning}
-                  leftSection={<IconPlayerStop size={16} />}
-                  onClick={() => stopLogs(true)}
-                  variant="light"
-                >
+                <Button disabled={!logsRunning} leftSection={<IconPlayerStop size={16} />} onClick={() => stopLogs(true)} variant="light">
                   Stop
                 </Button>
               </Group>
@@ -673,7 +849,6 @@ export function NamespacesPanel() {
                 c="gray.1"
                 h={280}
                 p="sm"
-                ref={logViewportRef}
                 style={{
                   borderRadius: "12px",
                   fontFamily: "monospace",

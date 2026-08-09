@@ -22,6 +22,7 @@ import {
   DEFAULT_OPERATIONS_PAGE_SIZE,
   OperationStatus,
   OperationStatusLabel,
+  OperationType,
   OperationTypeLabel,
   QueryKey,
   SectionKey,
@@ -70,8 +71,7 @@ export function HistoryPanel() {
     }
 
     const replay = await queryClient.fetchQuery({
-      queryFn: ({ signal }) =>
-        backendClient.getOperationReplay(token, selectedOperationId, signal),
+      queryFn: ({ signal }) => backendClient.getOperationReplay(token, selectedOperationId, signal),
       queryKey: [QueryKey.OPERATION_REPLAY, token, selectedOperationId],
     });
 
@@ -100,8 +100,7 @@ export function HistoryPanel() {
 
   const detailQuery = useQuery({
     enabled: Boolean(token && selectedOperationId),
-    queryFn: ({ signal }) =>
-      backendClient.getOperation(token ?? "", selectedOperationId ?? "", signal),
+    queryFn: ({ signal }) => backendClient.getOperation(token ?? "", selectedOperationId ?? "", signal),
     queryKey: [QueryKey.OPERATION_DETAIL, token, selectedOperationId],
   });
 
@@ -116,6 +115,7 @@ export function HistoryPanel() {
     return `${start}-${end} of ${total}`;
   }, [listQuery.data?.total, offset]);
   const operations = listQuery.data?.items ?? [];
+  const replayAllowed = detailQuery.data?.type === OperationType.DEPLOY;
 
   if (listQuery.isLoading) {
     return (
@@ -174,7 +174,7 @@ export function HistoryPanel() {
             <Stack align="center" gap="sm">
               <Text fw={600}>No operations recorded yet.</Text>
               <Text c="dimmed" ta="center">
-                Submit a deploy from the Deploy tab and it will appear here after the job finishes.
+                Submit a staging operation and it will appear here after the job finishes.
               </Text>
             </Stack>
           </Paper>
@@ -250,15 +250,11 @@ export function HistoryPanel() {
                   {detailQuery.data.ns ?? "No namespace"} • {formatOperationTimestamp(detailQuery.data)}
                 </Text>
               </div>
-              <Button
-                leftSection={<IconHistory size={16} />}
-                onClick={() => {
-                  void replayOperation();
-                }}
-                variant="light"
-              >
-                Replay
-              </Button>
+              {replayAllowed ? (
+                <Button leftSection={<IconHistory size={16} />} onClick={() => void replayOperation()} variant="light">
+                  Replay
+                </Button>
+              ) : null}
             </Group>
 
             <Group>

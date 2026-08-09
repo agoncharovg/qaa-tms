@@ -14,9 +14,11 @@ import {
   JobStreamEvent,
 } from "@/constants";
 import type {
+  AdoptRequest,
   AgentPingResponse,
   AgentPreflightState,
   DeployRequest,
+  DestroyRequest,
   JobCreateResponse,
   JobLogEvent,
   JobRead,
@@ -26,6 +28,7 @@ import type {
   NamespaceList,
   NamespaceStatus,
   PreflightItem,
+  SyncRequest,
 } from "@/api/types";
 import { parseSseStream } from "@/api/sse";
 
@@ -110,6 +113,16 @@ async function probeAgentPort(port: number, signal?: AbortSignal): Promise<Agent
   } catch {
     return null;
   }
+}
+
+function createJsonBody(body: unknown): Pick<RequestInit, "body" | "headers" | "method"> {
+  return {
+    body: JSON.stringify(body),
+    headers: {
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  };
 }
 
 export function getConfiguredAgentPorts(): number[] {
@@ -203,6 +216,15 @@ async function streamAgentCommand(
 }
 
 export const agentClient = {
+  adopt(
+    port: number,
+    token: string,
+    payload: AdoptRequest,
+    signal?: AbortSignal
+  ): Promise<JobCreateResponse> {
+    return readAgentJson<JobCreateResponse>(port, AgentPath.ADOPT, createJsonBody(payload), token, signal);
+  },
+
   cancelJob(port: number, token: string, jobId: string, signal?: AbortSignal): Promise<JobRead> {
     return readAgentJson<JobRead>(
       port,
@@ -219,19 +241,16 @@ export const agentClient = {
     payload: DeployRequest,
     signal?: AbortSignal
   ): Promise<JobCreateResponse> {
-    return readAgentJson<JobCreateResponse>(
-      port,
-      AgentPath.DEPLOY,
-      {
-        body: JSON.stringify(payload),
-        headers: {
-          "Content-Type": "application/json",
-        },
-        method: "POST",
-      },
-      token,
-      signal
-    );
+    return readAgentJson<JobCreateResponse>(port, AgentPath.DEPLOY, createJsonBody(payload), token, signal);
+  },
+
+  destroy(
+    port: number,
+    token: string,
+    payload: DestroyRequest,
+    signal?: AbortSignal
+  ): Promise<JobCreateResponse> {
+    return readAgentJson<JobCreateResponse>(port, AgentPath.DESTROY, createJsonBody(payload), token, signal);
   },
 
   getJob(port: number, token: string, jobId: string, signal?: AbortSignal): Promise<JobRead> {
@@ -275,13 +294,7 @@ export const agentClient = {
   },
 
   listNamespaces(port: number, token: string, signal?: AbortSignal): Promise<NamespaceList> {
-    return readAgentJson<NamespaceList>(
-      port,
-      AgentPath.NAMESPACES,
-      { method: "GET" },
-      token,
-      signal
-    );
+    return readAgentJson<NamespaceList>(port, AgentPath.NAMESPACES, { method: "GET" }, token, signal);
   },
 
   async streamJob(
@@ -309,5 +322,14 @@ export const agentClient = {
       onMessage,
       signal
     );
+  },
+
+  sync(
+    port: number,
+    token: string,
+    payload: SyncRequest,
+    signal?: AbortSignal
+  ): Promise<JobCreateResponse> {
+    return readAgentJson<JobCreateResponse>(port, AgentPath.SYNC, createJsonBody(payload), token, signal);
   },
 };

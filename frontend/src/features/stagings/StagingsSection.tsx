@@ -1,10 +1,11 @@
 import { Button, Group, Stack, Text, Title } from "@mantine/core";
-import { IconHistory, IconPlaylistAdd, IconRocket } from "@tabler/icons-react";
+import { IconHistory, IconPlaylistAdd, IconRefresh, IconRocket } from "@tabler/icons-react";
 
 import { DeployPanel } from "@/features/stagings/DeployPanel";
 import { HistoryPanel } from "@/features/stagings/HistoryPanel";
 import { NamespacesPanel } from "@/features/stagings/NamespacesPanel";
 import { PreflightPanel } from "@/features/stagings/PreflightPanel";
+import { SyncPanel } from "@/features/stagings/SyncPanel";
 import { SectionKey, TabId, ViewKey, type ViewKey as ViewKeyType } from "@/constants";
 import { useUiStore } from "@/store/uiStore";
 
@@ -15,6 +16,7 @@ interface StagingsSectionProps {
     | typeof ViewKey.STAGINGS_DEPLOY
     | typeof ViewKey.STAGINGS_HISTORY
     | typeof ViewKey.STAGINGS_NAMESPACES
+    | typeof ViewKey.STAGINGS_SYNC
   >;
 }
 
@@ -25,6 +27,7 @@ export function StagingsSection({ mode }: StagingsSectionProps) {
   const deployOpen = sectionTabs.tabIds.includes(TabId.STAGINGS_DEPLOY);
   const historyOpen = sectionTabs.tabIds.includes(TabId.STAGINGS_HISTORY);
   const namespacesOpen = sectionTabs.tabIds.includes(TabId.STAGINGS_NAMESPACES);
+  const syncOpen = sectionTabs.tabIds.includes(TabId.STAGINGS_SYNC);
 
   const activateTab = (tabId: typeof TabId[keyof typeof TabId]) => {
     if (sectionTabs.tabIds.includes(tabId)) {
@@ -47,28 +50,24 @@ export function StagingsSection({ mode }: StagingsSectionProps) {
     return <NamespacesPanel />;
   }
 
+  if (mode === ViewKey.STAGINGS_SYNC) {
+    return <SyncPanel />;
+  }
+
   return (
     <Stack gap="lg">
       <Group justify="space-between">
         <div>
           <Title order={2}>Stagings preflight</Title>
           <Text c="dimmed">
-            Validate the local staging toolchain before deploy, destroy, or test actions are added.
+            Validate the local staging toolchain before deploy, destroy, adopt, or sync actions.
           </Text>
         </div>
         <Group>
-          <Button
-            leftSection={<IconRocket size={16} />}
-            onClick={() => activateTab(TabId.STAGINGS_DEPLOY)}
-            variant="light"
-          >
+          <Button leftSection={<IconRocket size={16} />} onClick={() => activateTab(TabId.STAGINGS_DEPLOY)} variant="light">
             {deployOpen ? "Switch to Deploy" : "Open Deploy tab"}
           </Button>
-          <Button
-            leftSection={<IconHistory size={16} />}
-            onClick={() => activateTab(TabId.STAGINGS_HISTORY)}
-            variant="light"
-          >
+          <Button leftSection={<IconHistory size={16} />} onClick={() => activateTab(TabId.STAGINGS_HISTORY)} variant="light">
             {historyOpen ? "Switch to History" : "Open History tab"}
           </Button>
           <Button
@@ -77,6 +76,9 @@ export function StagingsSection({ mode }: StagingsSectionProps) {
             variant="light"
           >
             {namespacesOpen ? "Switch to Namespaces" : "Open Namespaces tab"}
+          </Button>
+          <Button leftSection={<IconRefresh size={16} />} onClick={() => activateTab(TabId.STAGINGS_SYNC)} variant="light">
+            {syncOpen ? "Switch to Sync" : "Open Sync tab"}
           </Button>
         </Group>
       </Group>

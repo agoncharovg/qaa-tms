@@ -52,8 +52,8 @@ See [.env.example](/home/andreigoncharov/Projects/qaa-tms/agent/.env.example).
 
 Production and normal local use run the real `staging` binary. Tests inject a
 fake executable via `AGENT_STAGING_BIN` and point `AGENT_STAGINGS_REPO` at a
-temporary git repo. The app code never fakes deploy behavior internally; the
-binary seam exists only so tests can exercise the full job and SSE lifecycle.
+temporary git repo. The app code never fakes staging job behavior internally;
+the binary seam exists only so tests can exercise the full job and SSE lifecycle.
 
 ## API Surface
 
@@ -66,21 +66,33 @@ Implemented in this slice:
 - `GET /namespaces/{ns}/creds`
 - `GET /namespaces/{ns}/logs?deploy=...`
 - `POST /deploy`
+- `POST /destroy`
+- `POST /adopt`
+- `POST /sync`
 - `GET /jobs/{id}`
 - `GET /jobs/{id}/stream`
 - `POST /jobs/{id}/cancel`
 
-The namespace endpoints are read-only wrappers around the local `staging` CLI.
-They are not jobs, do not create `jobId` or `opId` values, and do not write to
-the backend operations journal. The `creds` response is sensitive and is meant
-only for the authenticated localhost browser flow.
+`GET /namespaces` now returns the raw `staging list` output plus a structured
+split between `clusterNamespaces` and `localOverlays`, so local-only overlay
+directories are not conflated with provisioned cluster namespaces.
+
+The namespace read endpoints remain read-only wrappers around the local
+`staging` CLI. They are not jobs, do not create `jobId` or `opId` values, and
+do not write to the backend operations journal. The `creds` response is
+sensitive and is meant only for the authenticated localhost browser flow.
+
+`POST /deploy`, `POST /destroy`, `POST /adopt`, and `POST /sync` are all job-
+creating endpoints. They share the same job lifecycle: create `{ jobId, opId }`,
+stream live output over `GET /jobs/{id}/stream`, support `POST /jobs/{id}/cancel`,
+and push operation records to the backend journal.
 
 Not implemented here:
 
 - `/setup`
-- destroy, adopt, sync, grafana, and e2e endpoints
+- grafana and e2e endpoints
 
-No new agent environment variables were added for the Namespaces slice.
+No new agent environment variables were added for the destroy/adopt/sync slice.
 
 ## Companion App Scope
 

@@ -12,14 +12,17 @@ from app.api.deps import AuthContext, get_job_manager, get_settings, require_aut
 from app.core.config import Settings
 from app.core.constants import AgentPath, HeaderName
 from app.schemas import (
+    AdoptRequest,
     AgentPingResponse,
     DeployRequest,
+    DestroyRequest,
     JobCreateResponse,
     JobReadResponse,
     NamespaceCredsResponse,
     NamespaceListResponse,
     NamespaceStatusResponse,
     PreflightItem,
+    SyncRequest,
 )
 from app.services.jobs import JobManager, JobNotFoundError
 from app.services.namespaces import (
@@ -66,6 +69,63 @@ async def deploy(
         ) from exc
 
 
+@router.post(
+    AgentPath.DESTROY.value,
+    response_model=JobCreateResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def destroy(
+    request_body: DestroyRequest,
+    auth: AuthDep,
+    job_manager: JobManagerDep,
+) -> JobCreateResponse:
+    try:
+        return await job_manager.create_destroy_job(request_body.ns, auth.token)
+    except StagingNotInstalledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+
+@router.post(
+    AgentPath.ADOPT.value,
+    response_model=JobCreateResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def adopt(
+    request_body: AdoptRequest,
+    auth: AuthDep,
+    job_manager: JobManagerDep,
+) -> JobCreateResponse:
+    try:
+        return await job_manager.create_adopt_job(request_body.ns, auth.token)
+    except StagingNotInstalledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+
+@router.post(
+    AgentPath.SYNC.value,
+    response_model=JobCreateResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def sync(
+    request_body: SyncRequest,
+    auth: AuthDep,
+    job_manager: JobManagerDep,
+) -> JobCreateResponse:
+    try:
+        return await job_manager.create_sync_job(request_body, auth.token)
+    except StagingNotInstalledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+
 @router.get(f"{AgentPath.JOBS.value}/{{job_id}}", response_model=JobReadResponse)
 async def read_job(
     job_id: str,
@@ -84,7 +144,7 @@ async def get_namespaces(
     settings: SettingsDep,
 ) -> NamespaceListResponse:
     try:
-        result, namespaces = await list_namespaces(settings)
+        result, parsed = await list_namespaces(settings)
     except StagingNotInstalledError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -92,7 +152,15 @@ async def get_namespaces(
         ) from exc
     return NamespaceListResponse(
         raw=result.raw,
-        namespaces=namespaces,
+        cluster_namespaces=[
+            {
+                "name": entry.name,
+                "status": entry.status,
+                "created_at": entry.created_at,
+            }
+            for entry in parsed.cluster_namespaces
+        ],
+        local_overlays=[{"name": entry.name} for entry in parsed.local_overlays],
         exit_code=result.exit_code,
     )
 

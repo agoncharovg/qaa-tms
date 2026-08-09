@@ -12,7 +12,7 @@ from pathlib import Path
 
 from app.core.config import Settings
 from app.core.constants import AGENT_APP_NAME, DEFAULT_AGENT_VERSION, PACKAGE_NAME
-from app.schemas import AgentPingResponse, DeployRequest
+from app.schemas import AgentPingResponse, DeployRequest, SyncFlags
 
 
 @dataclass(slots=True)
@@ -75,11 +75,7 @@ def build_deploy_argv(
 ) -> tuple[list[str], StagingInstallation]:
     """Translate the frontend deploy request into the real CLI argv."""
 
-    installation = resolve_staging_installation(settings)
-    if installation.bin_path is None:
-        raise StagingNotInstalledError("The staging binary is not installed.")
-
-    argv = [str(installation.bin_path), "deploy", request.ns]
+    argv, installation = _build_base_argv(settings, "deploy", request.ns)
     if request.services:
         argv.extend(["--services", ",".join(request.services)])
     for service, tag in request.images.items():
@@ -92,6 +88,33 @@ def build_deploy_argv(
         argv.append("--no-sync")
     if request.flags.stage is not None:
         argv.extend(["--stage", str(request.flags.stage)])
+    return argv, installation
+
+
+def build_destroy_argv(settings: Settings, namespace: str) -> tuple[list[str], StagingInstallation]:
+    """Translate a destroy request into the real CLI argv."""
+
+    return _build_base_argv(settings, "destroy", namespace)
+
+
+def build_adopt_argv(settings: Settings, namespace: str) -> tuple[list[str], StagingInstallation]:
+    """Translate an adopt request into the real CLI argv."""
+
+    return _build_base_argv(settings, "adopt", namespace)
+
+
+def build_sync_argv(settings: Settings, flags: SyncFlags) -> tuple[list[str], StagingInstallation]:
+    """Translate a sync request into the real CLI argv."""
+
+    argv, installation = _build_base_argv(settings, "sync")
+    if flags.service:
+        argv.extend(["--service", flags.service])
+    if flags.verbose:
+        argv.append("--verbose")
+    if flags.pull:
+        argv.append("--pull")
+    if flags.apply:
+        argv.append("--apply")
     return argv, installation
 
 
@@ -130,3 +153,15 @@ def _resolve_git_sha(repo_root: Path | None) -> str | None:
         return None
     sha = result.stdout.strip()
     return sha or None
+
+
+def _build_base_argv(
+    settings: Settings,
+    command: str,
+    *args: str,
+) -> tuple[list[str], StagingInstallation]:
+    installation = resolve_staging_installation(settings)
+    if installation.bin_path is None:
+        raise StagingNotInstalledError("The staging binary is not installed.")
+
+    return [str(installation.bin_path), command, *args], installation

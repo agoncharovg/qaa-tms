@@ -3,6 +3,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const getPreflightMock = vi.hoisted(() => vi.fn());
+const useTransientLiveJobMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/api/agentClient", async () => {
   const actual = await vi.importActual<typeof import("@/api/agentClient")>("@/api/agentClient");
@@ -12,22 +13,13 @@ vi.mock("@/api/agentClient", async () => {
   };
 });
 
+vi.mock("@/features/stagings/useTransientLiveJob", () => ({
+  useTransientLiveJob: useTransientLiveJobMock,
+}));
+
 import { NamespacesPanel } from "@/features/stagings/NamespacesPanel";
 import { renderWithProviders } from "@/test/render";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
-
-function createChunkedStream(chunks: string[]): ReadableStream<Uint8Array> {
-  const encoder = new TextEncoder();
-
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      for (const chunk of chunks) {
-        controller.enqueue(encoder.encode(chunk));
-      }
-      controller.close();
-    },
-  });
-}
 
 function readRequestUrl(input: Parameters<typeof fetch>[0]): string {
   if (typeof input === "string") {
@@ -47,6 +39,7 @@ describe("NamespacesPanel", () => {
   beforeEach(() => {
     fetchMock.mockReset();
     getPreflightMock.mockReset();
+    useTransientLiveJobMock.mockReset();
     vi.stubGlobal("fetch", fetchMock);
     localStorage.clear();
     resetAuthStoreState();
@@ -64,6 +57,15 @@ describe("NamespacesPanel", () => {
       token: "token-123",
     });
 
+    useTransientLiveJobMock.mockReturnValue({
+      cancelMutation: { isPending: false, mutateAsync: vi.fn() },
+      clearLiveJob: vi.fn(),
+      isJobRunning: false,
+      liveJob: null,
+      logViewportRef: { current: null },
+      startLiveJob: vi.fn(),
+    });
+
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: {
@@ -72,7 +74,7 @@ describe("NamespacesPanel", () => {
     });
   });
 
-  it("renders namespace rows and the empty parsed-list state", async () => {
+  it("renders separate cluster and local overlay groups with the correct badges", async () => {
     getPreflightMock.mockResolvedValue({
       agent: {
         app: "qaa-tms-agent",
@@ -86,45 +88,36 @@ describe("NamespacesPanel", () => {
       port: 47600,
     });
 
-    fetchMock
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            exitCode: 0,
-            namespaces: ["qa-demo", "qa-other"],
-            raw: "qa-demo\nqa-other\n",
-          }),
-          {
-            headers: {
-              "Content-Type": "application/json",
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          clusterNamespaces: [
+            {
+              createdAt: "2026-08-07T15:17:19Z",
+              name: "qa-demo",
+              status: "Active",
             },
-          }
-        )
+          ],
+          exitCode: 0,
+          localOverlays: [{ name: "qa-iam" }],
+          raw: "raw output",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
       )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            exitCode: 0,
-            namespaces: [],
-            raw: "No active namespaces.\n",
-          }),
-          {
-            headers: {
-              "Content-Type": "application/json",
-            },
-          }
-        )
-      );
+    );
 
-    const firstRender = renderWithProviders(<NamespacesPanel />);
-
-    expect(await screen.findByRole("button", { name: "qa-demo" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "qa-other" })).toBeInTheDocument();
-
-    firstRender.unmount();
     renderWithProviders(<NamespacesPanel />);
 
-    expect(await screen.findByText("No namespaces were parsed.")).toBeInTheDocument();
+    expect(await screen.findByText("Cluster namespaces")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /qa-demo/i })).toBeInTheDocument();
+    expect(screen.getByText("Active")).toBeInTheDocument();
+    expect(screen.getByText("Local overlays")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /qa-iam/i })).toBeInTheDocument();
+    expect(screen.getByText("Local only - not on cluster")).toBeInTheDocument();
   });
 
   it("keeps credentials masked until reveal is clicked", async () => {
@@ -150,8 +143,9 @@ describe("NamespacesPanel", () => {
         return Promise.resolve(
           new Response(
             JSON.stringify({
+              clusterNamespaces: [{ createdAt: null, name: "qa-demo", status: "Active" }],
               exitCode: 0,
-              namespaces: ["qa-demo"],
+              localOverlays: [],
               raw: "qa-demo\n",
             }),
             {
@@ -202,7 +196,7 @@ describe("NamespacesPanel", () => {
 
     renderWithProviders(<NamespacesPanel />);
 
-    await user.click(await screen.findByRole("button", { name: "qa-demo" }));
+    await user.click(await screen.findByRole("button", { name: /qa-demo/i }));
     expect(await screen.findByText("pod/iam-api Running")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Load credentials" }));
@@ -220,7 +214,7 @@ describe("NamespacesPanel", () => {
     expect(screen.getByRole("button", { name: "Copy" })).toBeEnabled();
   });
 
-  it("streams live logs from a synthetic SSE body and updates the badge", async () => {
+  it("requires explicit destroy confirmation before calling the agent", async () => {
     const user = userEvent.setup();
 
     getPreflightMock.mockResolvedValue({
@@ -243,8 +237,9 @@ describe("NamespacesPanel", () => {
         return Promise.resolve(
           new Response(
             JSON.stringify({
+              clusterNamespaces: [{ createdAt: null, name: "qa-demo", status: "Active" }],
               exitCode: 0,
-              namespaces: ["qa-demo"],
+              localOverlays: [],
               raw: "qa-demo\n",
             }),
             {
@@ -273,18 +268,18 @@ describe("NamespacesPanel", () => {
         );
       }
 
-      if (url.includes("/namespaces/qa-demo/logs?deploy=iam-api")) {
+      if (url.endsWith("/destroy")) {
         return Promise.resolve(
           new Response(
-            createChunkedStream([
-              'event: log\ndata: {"type":"line","line":"line one"}\n\n',
-              'event: log\ndata: {"type":"line","line":"line two"}\n\n',
-              'event: terminal\ndata: {"type":"terminal","status":"success","exitCode":0}\n\n',
-            ]),
+            JSON.stringify({
+              jobId: "job-123",
+              opId: "00000000-0000-0000-0000-000000000123",
+            }),
             {
               headers: {
-                "Content-Type": "text/event-stream",
+                "Content-Type": "application/json",
               },
+              status: 202,
             }
           )
         );
@@ -295,15 +290,21 @@ describe("NamespacesPanel", () => {
 
     renderWithProviders(<NamespacesPanel />);
 
-    await user.click(await screen.findByRole("button", { name: "qa-demo" }));
-    await user.type(await screen.findByLabelText("Deployment"), "iam-api");
-    await user.click(screen.getByRole("button", { name: "Start" }));
+    await user.click(await screen.findByRole("button", { name: /qa-demo/i }));
+    await screen.findByText("pod/iam-api Running");
+
+    const destroyButton = screen.getByRole("button", { name: "Destroy namespace" });
+    expect(destroyButton).toBeDisabled();
+    expect(fetchMock.mock.calls.some(([input]) => readRequestUrl(input).endsWith("/destroy"))).toBe(false);
+
+    await user.type(screen.getByLabelText("Type namespace to confirm destroy"), "qa-demo");
+    expect(destroyButton).toBeEnabled();
+
+    await user.click(destroyButton);
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Live log output")).toHaveTextContent("line one");
-      expect(screen.getByLabelText("Live log output")).toHaveTextContent("line two");
+      expect(fetchMock.mock.calls.some(([input]) => readRequestUrl(input).endsWith("/destroy"))).toBe(true);
     });
-    expect(await screen.findByText("Success • exit 0")).toBeInTheDocument();
   });
 
   it("shows the companion-app absent state and disables refresh", async () => {

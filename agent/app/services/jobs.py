@@ -21,6 +21,7 @@ from app.core.constants import (
     DEFAULT_CANCEL_WAIT_SECONDS,
     JobStatus,
     OperationStatus,
+    OperationType,
     SseEvent,
 )
 from app.schemas import (
@@ -29,10 +30,17 @@ from app.schemas import (
     JobLogEvent,
     JobReadResponse,
     JobTerminalEvent,
+    SyncRequest,
 )
 from app.services.backend import build_operation_payload, push_operation
 from app.services.sse import encode_sse
-from app.services.staging import StagingInstallation, build_deploy_argv
+from app.services.staging import (
+    StagingInstallation,
+    build_adopt_argv,
+    build_deploy_argv,
+    build_destroy_argv,
+    build_sync_argv,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +63,9 @@ class Job:
 
     job_id: str
     op_id: UUID
-    request: DeployRequest
+    operation_type: OperationType
+    ns: str | None
+    recipe: dict[str, Any]
     argv: list[str]
     repo_root: Path | None
     stagings_sha: str | None
@@ -98,20 +108,52 @@ class JobManager:
 
     async def create_deploy_job(self, request: DeployRequest, token: str) -> JobCreateResponse:
         argv, installation = build_deploy_argv(self._settings, request)
-        job_id = uuid4().hex
-        op_id = uuid4()
-        job = Job(
-            job_id=job_id,
-            op_id=op_id,
-            request=request,
+        return await self._create_job(
             argv=argv,
-            repo_root=installation.repo_root,
-            stagings_sha=installation.git_sha,
+            installation=installation,
+            operation_type=OperationType.DEPLOY,
+            ns=request.ns,
+            recipe={
+                "services": request.services,
+                "images": request.images,
+                "suites": [],
+                "flags": request.flags.to_recipe(),
+            },
+            token=token,
         )
-        async with self._lock:
-            self._jobs[job_id] = job
-        asyncio.create_task(self._run_deploy_job(job, token, installation))
-        return JobCreateResponse(job_id=job_id, op_id=op_id)
+
+    async def create_destroy_job(self, namespace: str, token: str) -> JobCreateResponse:
+        argv, installation = build_destroy_argv(self._settings, namespace)
+        return await self._create_job(
+            argv=argv,
+            installation=installation,
+            operation_type=OperationType.DESTROY,
+            ns=namespace,
+            recipe={},
+            token=token,
+        )
+
+    async def create_adopt_job(self, namespace: str, token: str) -> JobCreateResponse:
+        argv, installation = build_adopt_argv(self._settings, namespace)
+        return await self._create_job(
+            argv=argv,
+            installation=installation,
+            operation_type=OperationType.ADOPT,
+            ns=namespace,
+            recipe={},
+            token=token,
+        )
+
+    async def create_sync_job(self, request: SyncRequest, token: str) -> JobCreateResponse:
+        argv, installation = build_sync_argv(self._settings, request.flags)
+        return await self._create_job(
+            argv=argv,
+            installation=installation,
+            operation_type=OperationType.SYNC,
+            ns=None,
+            recipe={"flags": request.flags.to_recipe()},
+            token=token,
+        )
 
     async def get_job(self, job_id: str) -> Job:
         async with self._lock:
@@ -169,15 +211,37 @@ class JobManager:
             await asyncio.wait_for(job.done_event.wait(), timeout=DEFAULT_CANCEL_WAIT_SECONDS)
         return job.to_read_response()
 
-    async def _run_deploy_job(
+    async def _create_job(
         self,
-        job: Job,
-        token: str,
+        *,
+        argv: list[str],
         installation: StagingInstallation,
-    ) -> None:
+        operation_type: OperationType,
+        ns: str | None,
+        recipe: dict[str, Any],
+        token: str,
+    ) -> JobCreateResponse:
+        job_id = uuid4().hex
+        op_id = uuid4()
+        job = Job(
+            job_id=job_id,
+            op_id=op_id,
+            operation_type=operation_type,
+            ns=ns,
+            recipe=recipe,
+            argv=argv,
+            repo_root=installation.repo_root,
+            stagings_sha=installation.git_sha,
+        )
+        async with self._lock:
+            self._jobs[job_id] = job
+        asyncio.create_task(self._run_job(job, token))
+        return JobCreateResponse(job_id=job_id, op_id=op_id)
+
+    async def _run_job(self, job: Job, token: str) -> None:
         job.status = JobStatus.RUNNING
         job.started_at = datetime.now(tz=UTC)
-        await self._push_running(job, token, installation)
+        await self._push_running(job, token)
 
         if job.cancel_requested:
             await self._finish_job(job, token, exit_code=None)
@@ -205,22 +269,19 @@ class JobManager:
             job.exit_code = None
         await self._finish_job(job, token, exit_code=job.exit_code)
 
-    async def _push_running(
-        self,
-        job: Job,
-        token: str,
-        installation: StagingInstallation,
-    ) -> None:
+    async def _push_running(self, job: Job, token: str) -> None:
         assert job.started_at is not None
         payload = build_operation_payload(
             op_id=job.op_id,
-            request=job.request,
+            type=job.operation_type,
+            ns=job.ns,
+            recipe=job.recipe,
             status=OperationStatus.RUNNING,
             started_at=job.started_at,
             finished_at=None,
             log=None,
             exit_code=None,
-            stagings_sha=installation.git_sha,
+            stagings_sha=job.stagings_sha,
         )
         await push_operation(client=self._backend_client, token=token, payload=payload)
 
@@ -229,7 +290,9 @@ class JobManager:
         job.status = _final_status(exit_code, job.cancel_requested)
         payload = build_operation_payload(
             op_id=job.op_id,
-            request=job.request,
+            type=job.operation_type,
+            ns=job.ns,
+            recipe=job.recipe,
             status=OperationStatus(job.status.value),
             started_at=job.started_at or job.created_at,
             finished_at=job.finished_at,

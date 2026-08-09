@@ -1,15 +1,11 @@
 import { useEffect, useRef } from "react";
 import {
   Alert,
-  Badge,
-  Box,
   Button,
   Card,
   Checkbox,
-  Divider,
   Group,
   Loader,
-  Paper,
   SimpleGrid,
   Stack,
   Text,
@@ -18,8 +14,6 @@ import {
 } from "@mantine/core";
 import {
   IconAlertCircle,
-  IconHistory,
-  IconPlayerStop,
   IconPlugConnectedX,
   IconPlus,
   IconRotateClockwise,
@@ -28,34 +22,13 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { agentClient, getPreflight } from "@/api/agentClient";
-import {
-  OperationStatus,
-  OperationStatusLabel,
-  QueryKey,
-  SectionKey,
-  TabId,
-  type OperationStatus as OperationStatusType,
-} from "@/constants";
+import { QueryKey, SectionKey, TabId } from "@/constants";
 import { buildDeployRequestFromDraft } from "@/features/stagings/deployDraft";
+import { LiveJobPanel } from "@/features/stagings/LiveJobPanel";
 import { isTerminalJobStatus } from "@/features/stagings/liveJobState";
 import { useAuthStore } from "@/store/authStore";
 import { useStagingsStore } from "@/store/stagingsStore";
 import { useUiStore } from "@/store/uiStore";
-
-function getStatusColor(status: OperationStatusType): string {
-  switch (status) {
-    case OperationStatus.SUCCESS:
-      return "teal";
-    case OperationStatus.FAILED:
-      return "red";
-    case OperationStatus.ABORTED:
-      return "yellow";
-    case OperationStatus.RUNNING:
-      return "blue";
-    default:
-      return "gray";
-  }
-}
 
 export function DeployPanel() {
   const queryClient = useQueryClient();
@@ -188,11 +161,7 @@ export function DeployPanel() {
         throw new Error("Companion app is not running.");
       }
 
-      return agentClient.deploy(
-        agentPort,
-        token,
-        buildDeployRequestFromDraft(deployDraft)
-      );
+      return agentClient.deploy(agentPort, token, buildDeployRequestFromDraft(deployDraft));
     },
     onSuccess: (response) => {
       startLiveJob(response.jobId, response.opId);
@@ -265,11 +234,7 @@ export function DeployPanel() {
             </div>
 
             {companionUnavailable ? (
-              <Alert
-                color="yellow"
-                icon={<IconPlugConnectedX size={18} />}
-                title="Companion app is not running"
-              >
+              <Alert color="yellow" icon={<IconPlugConnectedX size={18} />} title="Companion app is not running">
                 <Stack gap="sm">
                   <Text>
                     Start the local companion app, then retry discovery before submitting a deploy.
@@ -477,11 +442,7 @@ export function DeployPanel() {
                   <Text c="dimmed" size="sm">
                     The form sends the exact agent deploy recipe with camelCase flags.
                   </Text>
-                  <Button
-                    disabled={companionUnavailable || isJobRunning}
-                    loading={deployMutation.isPending}
-                    type="submit"
-                  >
+                  <Button disabled={companionUnavailable || isJobRunning} loading={deployMutation.isPending} type="submit">
                     Deploy
                   </Button>
                 </Group>
@@ -491,112 +452,26 @@ export function DeployPanel() {
         </Card>
 
         <Card padding="lg" radius="lg" withBorder>
-          <Stack gap="md" h="100%">
-            <Group justify="space-between">
-              <div>
-                <Title order={3}>Live job log</Title>
-                <Text c="dimmed" size="sm">
-                  Live output stays in memory for this browser session only.
-                </Text>
-              </div>
+          <LiveJobPanel
+            cancelPending={cancelMutation.isPending}
+            emptyMessage="Start a deploy to reveal the live log stream and cancellation controls."
+            liveJob={liveJob}
+            logViewportRef={logViewportRef}
+            onCancel={() => void cancelMutation.mutateAsync()}
+            onViewHistory={
+              liveJob
+                ? () => {
+                    setSelectedOperationId(liveJob.opId);
+                    if (historyOpen) {
+                      switchTab(SectionKey.STAGINGS, TabId.STAGINGS_HISTORY);
+                      return;
+                    }
 
-              {liveJob ? (
-                <Badge color={getStatusColor(liveJob.status)} size="lg" variant="light">
-                  {OperationStatusLabel[liveJob.status]}
-                </Badge>
-              ) : null}
-            </Group>
-
-            {!liveJob ? (
-              <Stack align="center" gap="sm" justify="center" py="xl">
-                <Text c="dimmed">Start a deploy to reveal the live log stream and cancellation controls.</Text>
-              </Stack>
-            ) : (
-              <>
-                <SimpleGrid cols={{ base: 1, sm: 2 }}>
-                  <Paper p="md" radius="md" withBorder>
-                    <Text c="dimmed" size="sm">
-                      Job ID
-                    </Text>
-                    <Text ff="monospace" size="sm">
-                      {liveJob.jobId}
-                    </Text>
-                  </Paper>
-                  <Paper p="md" radius="md" withBorder>
-                    <Text c="dimmed" size="sm">
-                      Operation ID
-                    </Text>
-                    <Text ff="monospace" size="sm">
-                      {liveJob.opId}
-                    </Text>
-                  </Paper>
-                </SimpleGrid>
-
-                <Group justify="space-between">
-                  <Text c="dimmed" size="sm">
-                    Exit code: {liveJob.exitCode ?? "pending"}
-                  </Text>
-                  <Group>
-                    {isJobRunning ? (
-                      <Button
-                        color="yellow"
-                        leftSection={<IconPlayerStop size={16} />}
-                        loading={cancelMutation.isPending}
-                        onClick={() => void cancelMutation.mutateAsync()}
-                        variant="light"
-                      >
-                        Cancel
-                      </Button>
-                    ) : (
-                      <Button
-                        leftSection={<IconHistory size={16} />}
-                        onClick={() => {
-                          setSelectedOperationId(liveJob.opId);
-                          if (historyOpen) {
-                            switchTab(SectionKey.STAGINGS, TabId.STAGINGS_HISTORY);
-                            return;
-                          }
-
-                          openTab(SectionKey.STAGINGS, TabId.STAGINGS_HISTORY);
-                        }}
-                        variant="light"
-                      >
-                        View in history
-                      </Button>
-                    )}
-                  </Group>
-                </Group>
-
-                {liveJob.streamError ? (
-                  <Alert color="yellow" icon={<IconAlertCircle size={18} />} title="Live stream interrupted">
-                    <Text>{liveJob.streamError}</Text>
-                    <Text c="dimmed" size="sm">
-                      Job polling continues in the background until the terminal status arrives.
-                    </Text>
-                  </Alert>
-                ) : null}
-
-                <Divider />
-
-                <Box
-                  bg="rgba(2, 6, 12, 0.95)"
-                  c="gray.1"
-                  h={360}
-                  p="md"
-                  ref={logViewportRef}
-                  style={{
-                    border: "1px solid rgba(255, 255, 255, 0.08)",
-                    borderRadius: "12px",
-                    fontFamily: "monospace",
-                    overflowY: "auto",
-                    whiteSpace: "pre-wrap",
-                  }}
-                >
-                  {liveJob.lines.length > 0 ? liveJob.lines.join("\n") : "Waiting for agent output..."}
-                </Box>
-              </>
-            )}
-          </Stack>
+                    openTab(SectionKey.STAGINGS, TabId.STAGINGS_HISTORY);
+                  }
+                : undefined
+            }
+          />
         </Card>
       </SimpleGrid>
     </Stack>

@@ -200,6 +200,18 @@ export const NamespaceLogStatusLabel: Record<NamespaceLogStatus, string> = {
   [NamespaceLogStatus.ABORTED]: "Aborted",
 };
 
+export const NamespaceOrigin = {
+  CLUSTER: "cluster",
+  LOCAL: "local",
+} as const;
+
+export type NamespaceOrigin = (typeof NamespaceOrigin)[keyof typeof NamespaceOrigin];
+
+export const NamespaceOriginLabel: Record<NamespaceOrigin, string> = {
+  [NamespaceOrigin.CLUSTER]: "Cluster namespace",
+  [NamespaceOrigin.LOCAL]: "Local only - not on cluster",
+};
+
 export const OperationStatusLabel: Record<OperationStatus, string> = {
   [OperationStatus.QUEUED]: "Queued",
   [OperationStatus.RUNNING]: "Running",
@@ -226,6 +238,7 @@ export const ViewKey = {
   STAGINGS_DEPLOY: "stagings-deploy",
   STAGINGS_HISTORY: "stagings-history",
   STAGINGS_NAMESPACES: "stagings-namespaces",
+  STAGINGS_SYNC: "stagings-sync",
   ADMIN_USERS: "admin-users",
 } as const;
 
@@ -236,6 +249,7 @@ export const TabId = {
   STAGINGS_DEPLOY: "tab-stagings-deploy",
   STAGINGS_HISTORY: "tab-stagings-history",
   STAGINGS_NAMESPACES: "tab-stagings-namespaces",
+  STAGINGS_SYNC: "tab-stagings-sync",
   ADMIN_USERS: "tab-admin-users",
 } as const;
 
@@ -246,6 +260,7 @@ export const TabTitle: Record<TabId, string> = {
   [TabId.STAGINGS_DEPLOY]: "Deploy",
   [TabId.STAGINGS_HISTORY]: "History",
   [TabId.STAGINGS_NAMESPACES]: "Namespaces",
+  [TabId.STAGINGS_SYNC]: "Sync",
   [TabId.ADMIN_USERS]: "Users",
 };
 

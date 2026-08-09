@@ -3,6 +3,7 @@ import type {
   JobStatus,
   JobStreamEvent,
   NamespaceLogStatus,
+  NamespaceOrigin,
   OperationStatus,
   OperationType,
   PreflightKey,
@@ -76,6 +77,25 @@ export interface DeployRequest {
   flags: DeployFlags;
 }
 
+export interface DestroyRequest {
+  ns: string;
+}
+
+export interface AdoptRequest {
+  ns: string;
+}
+
+export interface SyncFlags {
+  service?: string;
+  verbose?: boolean;
+  pull?: boolean;
+  apply?: boolean;
+}
+
+export interface SyncRequest {
+  flags: SyncFlags;
+}
+
 export interface JobCreateResponse {
   jobId: string;
   opId: string;
@@ -92,9 +112,20 @@ export interface JobRead {
   finishedAt: string | null;
 }
 
+export interface ClusterNamespace {
+  name: string;
+  status: string;
+  createdAt: string | null;
+}
+
+export interface LocalOverlay {
+  name: string;
+}
+
 export interface NamespaceList {
   raw: string;
-  namespaces: string[];
+  clusterNamespaces: ClusterNamespace[];
+  localOverlays: LocalOverlay[];
   exitCode: number;
 }
 
@@ -139,6 +170,13 @@ export interface NamespaceLogsState {
   lines: string[];
   status: NamespaceLogStatus;
   streamError: string | null;
+}
+
+export interface NamespaceListEntry {
+  name: string;
+  statusLabel: string;
+  origin: NamespaceOrigin;
+  createdAt?: string | null;
 }
 
 export interface OperationRecipe {
