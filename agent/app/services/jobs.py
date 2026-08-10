@@ -26,6 +26,7 @@ from app.core.constants import (
 )
 from app.schemas import (
     DeployRequest,
+    E2eRunRequest,
     JobCreateResponse,
     JobLogEvent,
     JobReadResponse,
@@ -39,6 +40,7 @@ from app.services.staging import (
     build_adopt_argv,
     build_deploy_argv,
     build_destroy_argv,
+    build_e2e_run_argv,
     build_sync_argv,
 )
 
@@ -152,6 +154,27 @@ class JobManager:
             operation_type=OperationType.SYNC,
             ns=None,
             recipe={"flags": request.flags.to_recipe()},
+            token=token,
+        )
+
+    async def create_e2e_run_job(self, request: E2eRunRequest, token: str) -> JobCreateResponse:
+        argv, installation = build_e2e_run_argv(
+            self._settings,
+            request.ns,
+            request.product,
+            request.suites,
+            request.threads,
+        )
+        return await self._create_job(
+            argv=argv,
+            installation=installation,
+            operation_type=OperationType.E2E_RUN,
+            ns=request.ns,
+            recipe={
+                "product": request.product.value,
+                "suites": request.suites,
+                "flags": {"threads": request.threads},
+            },
             token=token,
         )
 

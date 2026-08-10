@@ -14,13 +14,14 @@ The SPA serves on `http://localhost:3000` and expects the backend on
 
 ## Stagings workflow
 
-The Stagings section now includes five tabs:
+The Stagings section now includes six tabs:
 
 - `Preflight`: probe the local companion app and inspect the staging prerequisite checklist.
 - `Deploy`: submit a deploy recipe to the local agent, stream the live job log over authenticated fetch-SSE, and cancel a running job.
 - `History`: browse recorded backend operations, inspect the stored recipe and full log, and replay only deploy operations by prefilling the Deploy tab.
 - `Namespaces`: render cluster namespaces and local overlays as separate groups, inspect namespace status, load masked credentials on demand, tail live deployment logs, and start namespace-scoped `adopt` / `destroy` jobs from the detail drawer.
 - `Sync`: submit the global `staging sync` flags form and watch the shared live job log panel used by deploy, destroy, adopt, and sync.
+- `E2E`: choose a product, load its named suite registry from the agent, select suites, submit `{ ns, product, suites[], threads? }`, and watch the shared live job log panel for the `staging e2e-run` job.
 
 The Deploy and Sync tabs require the local companion app to be running on a
 probed localhost port, because authenticated agent requests use the same Bearer
@@ -32,8 +33,10 @@ and local-only overlays. Credentials stay local to the browser session: they
 are fetched directly from the localhost agent, shown masked until revealed, and
 are never persisted to localStorage or sent to the backend.
 
-Every completed deploy, destroy, adopt, or sync job invalidates the History
-query so the recorded backend operations refresh automatically.
+Every completed deploy, destroy, adopt, sync, or E2E job invalidates the History
+query so the recorded backend operations refresh automatically. Cancelling an E2E
+job stops the local watcher only; the already-triggered remote Jenkins build keeps
+running.
 
 ## Docker Compose
 
@@ -53,4 +56,4 @@ local development.
 - `VITE_AGENT_PORTS`: local companion-app probe range. Default:
   `47600-47605`
 
-No new frontend environment variables were added for the destroy/adopt/sync slice.
+No new frontend environment variables were added for the E2E slice.

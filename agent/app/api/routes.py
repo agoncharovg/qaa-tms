@@ -10,12 +10,15 @@ from fastapi.responses import StreamingResponse
 
 from app.api.deps import AuthContext, get_job_manager, get_settings, require_auth
 from app.core.config import Settings
-from app.core.constants import AgentPath, HeaderName
+from app.core.constants import AgentPath, HeaderName, Product
 from app.schemas import (
     AdoptRequest,
     AgentPingResponse,
     DeployRequest,
     DestroyRequest,
+    E2eRunRequest,
+    E2eSuite,
+    E2eSuitesResponse,
     JobCreateResponse,
     JobReadResponse,
     NamespaceCredsResponse,
@@ -24,6 +27,7 @@ from app.schemas import (
     PreflightItem,
     SyncRequest,
 )
+from app.services.e2e import list_e2e_suites
 from app.services.jobs import JobManager, JobNotFoundError
 from app.services.namespaces import (
     list_namespaces,
@@ -119,6 +123,51 @@ async def sync(
 ) -> JobCreateResponse:
     try:
         return await job_manager.create_sync_job(request_body, auth.token)
+    except StagingNotInstalledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+
+@router.get(AgentPath.E2E_SUITES.value, response_model=E2eSuitesResponse)
+async def get_e2e_suites(
+    _: AuthDep,
+    settings: SettingsDep,
+    product: Annotated[Product, Query()],
+) -> E2eSuitesResponse:
+    try:
+        result, parsed = await list_e2e_suites(settings, product)
+    except StagingNotInstalledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    return E2eSuitesResponse(
+        product=parsed.product,
+        suites=[
+            E2eSuite(
+                name=suite.name,
+                marks=suite.marks,
+            )
+            for suite in parsed.suites
+        ],
+        exit_code=result.exit_code,
+    )
+
+
+@router.post(
+    AgentPath.E2E_RUN.value,
+    response_model=JobCreateResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def e2e_run(
+    request_body: E2eRunRequest,
+    auth: AuthDep,
+    job_manager: JobManagerDep,
+) -> JobCreateResponse:
+    try:
+        return await job_manager.create_e2e_run_job(request_body, auth.token)
     except StagingNotInstalledError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

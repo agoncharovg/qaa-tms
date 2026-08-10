@@ -70,6 +70,14 @@ export const TAB_DEFINITIONS: Record<TabIdType, WorkspaceTabDefinition> = {
     title: TabTitle[TabId.STAGINGS_SYNC],
     viewKey: ViewKey.STAGINGS_SYNC,
   },
+  [TabId.STAGINGS_E2E]: {
+    closeable: true,
+    contentType: ContentType.REACT_VIEW,
+    id: TabId.STAGINGS_E2E,
+    section: SectionKey.STAGINGS,
+    title: TabTitle[TabId.STAGINGS_E2E],
+    viewKey: ViewKey.STAGINGS_E2E,
+  },
   [TabId.ADMIN_USERS]: {
     closeable: true,
     contentType: ContentType.REACT_VIEW,
@@ -87,6 +95,7 @@ export const SECTION_TAB_CATALOG: Record<SectionKeyType, TabIdType[]> = {
     TabId.STAGINGS_HISTORY,
     TabId.STAGINGS_NAMESPACES,
     TabId.STAGINGS_SYNC,
+    TabId.STAGINGS_E2E,
   ],
   [SectionKey.ADMIN]: [TabId.ADMIN_USERS],
 };

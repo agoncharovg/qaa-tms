@@ -4,6 +4,8 @@ import type {
   AdoptRequest,
   DeployRequest,
   DestroyRequest,
+  E2eRunRequest,
+  E2eSuitesResponse,
   JobCreateResponse,
   NamespaceCreds,
   NamespaceList,
@@ -66,7 +68,7 @@ describe("agentClient job creation requests", () => {
     expect(init?.body).toBe(JSON.stringify(payload));
   });
 
-  it("sends the exact destroy, adopt, and sync payloads with bearer auth", async () => {
+  it("sends the exact destroy, adopt, sync, and e2e payloads with bearer auth", async () => {
     const response: JobCreateResponse = {
       jobId: "job-456",
       opId: "00000000-0000-0000-0000-000000000456",
@@ -81,8 +83,15 @@ describe("agentClient job creation requests", () => {
         verbose: true,
       },
     };
+    const e2ePayload: E2eRunRequest = {
+      ns: "qa-demo",
+      product: "IAM",
+      suites: ["smoke", "full"],
+      threads: 7,
+    };
 
     fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify(response), { status: 202 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(response), { status: 202 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(response), { status: 202 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(response), { status: 202 }));
@@ -90,21 +99,25 @@ describe("agentClient job creation requests", () => {
     await agentClient.destroy(47600, "token-123", destroyPayload);
     await agentClient.adopt(47600, "token-123", adoptPayload);
     await agentClient.sync(47600, "token-123", syncPayload);
+    await agentClient.e2eRun(47600, "token-123", e2ePayload);
 
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
 
     const [destroyUrl, destroyInit] = fetchMock.mock.calls[0] ?? [];
     const [adoptUrl, adoptInit] = fetchMock.mock.calls[1] ?? [];
     const [syncUrl, syncInit] = fetchMock.mock.calls[2] ?? [];
+    const [e2eUrl, e2eInit] = fetchMock.mock.calls[3] ?? [];
 
     expect(destroyUrl).toBe("http://127.0.0.1:47600/destroy");
     expect(adoptUrl).toBe("http://127.0.0.1:47600/adopt");
     expect(syncUrl).toBe("http://127.0.0.1:47600/sync");
+    expect(e2eUrl).toBe("http://127.0.0.1:47600/e2e-run");
     expect(destroyInit?.body).toBe(JSON.stringify(destroyPayload));
     expect(adoptInit?.body).toBe(JSON.stringify(adoptPayload));
     expect(syncInit?.body).toBe(JSON.stringify(syncPayload));
+    expect(e2eInit?.body).toBe(JSON.stringify(e2ePayload));
 
-    for (const init of [destroyInit, adoptInit, syncInit]) {
+    for (const init of [destroyInit, adoptInit, syncInit, e2eInit]) {
       const headers = new Headers(init?.headers);
       expect(init?.method).toBe("POST");
       expect(headers.get("Authorization")).toBe("Bearer token-123");
@@ -189,5 +202,40 @@ describe("agentClient namespace reads", () => {
     expect(firstHeaders.get("Authorization")).toBe("Bearer token-123");
     expect(secondHeaders.get("Authorization")).toBe("Bearer token-123");
     expect(thirdHeaders.get("Authorization")).toBe("Bearer token-123");
+  });
+
+  it("parses the e2e suite registry response with bearer auth", async () => {
+    const suites: E2eSuitesResponse = {
+      product: "IAM",
+      suites: [
+        {
+          name: "smoke",
+          marks: "product_iam and smoke and not long_term",
+        },
+      ],
+      exitCode: 0,
+    };
+
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify(suites), {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+    );
+
+    const result = await agentClient.getE2eSuites(47600, "token-123", "IAM");
+
+    expect(result).toEqual(suites);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    const headers = new Headers(init?.headers);
+
+    expect(url).toBe("http://127.0.0.1:47600/e2e/suites?product=IAM");
+    expect(init?.method).toBe("GET");
+    expect(headers.get("Authorization")).toBe("Bearer token-123");
+    expect(headers.get("Accept")).toBe("application/json");
+    expect(headers.get("X-QAA-TMS")).toBe("1");
   });
 });

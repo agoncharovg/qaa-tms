@@ -11,7 +11,7 @@ from importlib import metadata
 from pathlib import Path
 
 from app.core.config import Settings
-from app.core.constants import AGENT_APP_NAME, DEFAULT_AGENT_VERSION, PACKAGE_NAME
+from app.core.constants import AGENT_APP_NAME, DEFAULT_AGENT_VERSION, PACKAGE_NAME, Product
 from app.schemas import AgentPingResponse, DeployRequest, SyncFlags
 
 
@@ -115,6 +115,29 @@ def build_sync_argv(settings: Settings, flags: SyncFlags) -> tuple[list[str], St
         argv.append("--pull")
     if flags.apply:
         argv.append("--apply")
+    return argv, installation
+
+
+def build_e2e_run_argv(
+    settings: Settings,
+    namespace: str,
+    product: Product,
+    suites: list[str],
+    threads: int | None,
+) -> tuple[list[str], StagingInstallation]:
+    """Translate an E2E run request into the real CLI argv."""
+
+    argv, installation = _build_base_argv(
+        settings,
+        "e2e-run",
+        namespace,
+        "--product",
+        product.value,
+    )
+    if suites:
+        argv.extend(["--suite", ",".join(suites)])
+    if threads is not None:
+        argv.extend(["--threads", str(threads)])
     return argv, installation
 
 

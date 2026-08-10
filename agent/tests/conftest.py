@@ -90,7 +90,17 @@ def fake_staging_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[s
                     return 2
 
                 command = args[0]
-                if command not in {"deploy", "destroy", "adopt", "sync"}:
+                if command == "e2e-run" and "--list-suites" in args:
+                    product = args[args.index("--product") + 1]
+                    print(f"Suites for {product}:", flush=True)
+                    print("  smoke             product_iam and smoke and not long_term", flush=True)
+                    print(
+                        "  full              backend_test and product_iam and not long_term",
+                        flush=True,
+                    )
+                    return 0
+
+                if command not in {"deploy", "destroy", "adopt", "sync", "e2e-run"}:
                     print("unsupported invocation", file=sys.stderr, flush=True)
                     return 2
 

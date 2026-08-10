@@ -4,6 +4,7 @@ import {
   AGENT_REQUEST_HEADER,
   AGENT_REQUEST_HEADER_VALUE,
   AgentPath,
+  buildAgentE2eSuitesPath,
   buildAgentJobCancelPath,
   buildAgentJobPath,
   buildAgentJobStreamPath,
@@ -12,6 +13,7 @@ import {
   buildAgentNamespaceStatusPath,
   DEFAULT_AGENT_PORT_RANGE,
   JobStreamEvent,
+  type Product,
 } from "@/constants";
 import type {
   AdoptRequest,
@@ -19,6 +21,8 @@ import type {
   AgentPreflightState,
   DeployRequest,
   DestroyRequest,
+  E2eRunRequest,
+  E2eSuitesResponse,
   JobCreateResponse,
   JobLogEvent,
   JobRead,
@@ -251,6 +255,30 @@ export const agentClient = {
     signal?: AbortSignal
   ): Promise<JobCreateResponse> {
     return readAgentJson<JobCreateResponse>(port, AgentPath.DESTROY, createJsonBody(payload), token, signal);
+  },
+
+  e2eRun(
+    port: number,
+    token: string,
+    payload: E2eRunRequest,
+    signal?: AbortSignal
+  ): Promise<JobCreateResponse> {
+    return readAgentJson<JobCreateResponse>(port, AgentPath.E2E_RUN, createJsonBody(payload), token, signal);
+  },
+
+  getE2eSuites(
+    port: number,
+    token: string,
+    product: Product,
+    signal?: AbortSignal
+  ): Promise<E2eSuitesResponse> {
+    return readAgentJson<E2eSuitesResponse>(
+      port,
+      buildAgentE2eSuitesPath(product),
+      { method: "GET" },
+      token,
+      signal
+    );
   },
 
   getJob(port: number, token: string, jobId: string, signal?: AbortSignal): Promise<JobRead> {

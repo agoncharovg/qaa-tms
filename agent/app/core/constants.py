@@ -55,6 +55,14 @@ class OperationType(StrEnum):
     SETUP = "setup"
 
 
+class Product(StrEnum):
+    IAM = "IAM"
+    BILLING = "Billing"
+    CDN = "CDN"
+    DNS = "DNS"
+    NOTIFICATIONS = "Notifications"
+
+
 class OperationStatus(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"

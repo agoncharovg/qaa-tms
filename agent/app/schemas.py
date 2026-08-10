@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.constants import JobStatus, PreflightKey
+from app.core.constants import JobStatus, PreflightKey, Product
 
 
 class AgentPingResponse(BaseModel):
@@ -109,6 +109,36 @@ class SyncRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     flags: SyncFlags = Field(default_factory=SyncFlags)
+
+
+class E2eSuite(BaseModel):
+    """Named suite from the static product registry."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    marks: str
+
+
+class E2eSuitesResponse(BaseModel):
+    """`/e2e/suites` response shape."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    product: Product
+    suites: list[E2eSuite] = Field(default_factory=list)
+    exit_code: int = Field(alias="exitCode")
+
+
+class E2eRunRequest(BaseModel):
+    """E2E run request body."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ns: str = Field(min_length=1)
+    product: Product
+    suites: list[str] = Field(default_factory=list)
+    threads: int | None = Field(default=None, ge=1)
 
 
 class JobCreateResponse(BaseModel):

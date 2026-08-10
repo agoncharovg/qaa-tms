@@ -13,6 +13,7 @@ const reactViewRegistry = {
   [ViewKey.STAGINGS_NAMESPACES]: <StagingsSection mode={ViewKey.STAGINGS_NAMESPACES} />,
   [ViewKey.STAGINGS_PREFLIGHT]: <StagingsSection mode={ViewKey.STAGINGS_PREFLIGHT} />,
   [ViewKey.STAGINGS_SYNC]: <StagingsSection mode={ViewKey.STAGINGS_SYNC} />,
+  [ViewKey.STAGINGS_E2E]: <StagingsSection mode={ViewKey.STAGINGS_E2E} />,
 } as const;
 
 interface WorkspaceContentProps {

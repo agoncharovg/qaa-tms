@@ -69,6 +69,8 @@ Implemented in this slice:
 - `POST /destroy`
 - `POST /adopt`
 - `POST /sync`
+- `GET /e2e/suites?product=...`
+- `POST /e2e-run`
 - `GET /jobs/{id}`
 - `GET /jobs/{id}/stream`
 - `POST /jobs/{id}/cancel`
@@ -82,17 +84,22 @@ The namespace read endpoints remain read-only wrappers around the local
 do not write to the backend operations journal. The `creds` response is
 sensitive and is meant only for the authenticated localhost browser flow.
 
-`POST /deploy`, `POST /destroy`, `POST /adopt`, and `POST /sync` are all job-
-creating endpoints. They share the same job lifecycle: create `{ jobId, opId }`,
+`POST /deploy`, `POST /destroy`, `POST /adopt`, `POST /sync`, and `POST /e2e-run` are all
+job-creating endpoints. They share the same job lifecycle: create `{ jobId, opId }`,
 stream live output over `GET /jobs/{id}/stream`, support `POST /jobs/{id}/cancel`,
-and push operation records to the backend journal.
+and push operation records to the backend journal. For `e2e-run`, cancel stops the
+local watcher process only; the already-triggered remote Jenkins build keeps running.
+
+`GET /e2e/suites?product=...` is a Bearer-guarded read endpoint that shells out to
+`staging e2e-run <placeholder> --product <P> --list-suites`, parses the named suite
+registry, and does not create backend audit records.
 
 Not implemented here:
 
 - `/setup`
-- grafana and e2e endpoints
+- grafana endpoints
 
-No new agent environment variables were added for the destroy/adopt/sync slice.
+No new agent environment variables were added for the E2E slice.
 
 ## Companion App Scope
 

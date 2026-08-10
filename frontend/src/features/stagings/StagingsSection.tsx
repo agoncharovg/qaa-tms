@@ -1,7 +1,8 @@
 import { Button, Group, Stack, Text, Title } from "@mantine/core";
-import { IconHistory, IconPlaylistAdd, IconRefresh, IconRocket } from "@tabler/icons-react";
+import { IconFlask, IconHistory, IconPlaylistAdd, IconRefresh, IconRocket } from "@tabler/icons-react";
 
 import { DeployPanel } from "@/features/stagings/DeployPanel";
+import { E2ePanel } from "@/features/stagings/E2ePanel";
 import { HistoryPanel } from "@/features/stagings/HistoryPanel";
 import { NamespacesPanel } from "@/features/stagings/NamespacesPanel";
 import { PreflightPanel } from "@/features/stagings/PreflightPanel";
@@ -17,6 +18,7 @@ interface StagingsSectionProps {
     | typeof ViewKey.STAGINGS_HISTORY
     | typeof ViewKey.STAGINGS_NAMESPACES
     | typeof ViewKey.STAGINGS_SYNC
+    | typeof ViewKey.STAGINGS_E2E
   >;
 }
 
@@ -28,6 +30,7 @@ export function StagingsSection({ mode }: StagingsSectionProps) {
   const historyOpen = sectionTabs.tabIds.includes(TabId.STAGINGS_HISTORY);
   const namespacesOpen = sectionTabs.tabIds.includes(TabId.STAGINGS_NAMESPACES);
   const syncOpen = sectionTabs.tabIds.includes(TabId.STAGINGS_SYNC);
+  const e2eOpen = sectionTabs.tabIds.includes(TabId.STAGINGS_E2E);
 
   const activateTab = (tabId: typeof TabId[keyof typeof TabId]) => {
     if (sectionTabs.tabIds.includes(tabId)) {
@@ -54,13 +57,17 @@ export function StagingsSection({ mode }: StagingsSectionProps) {
     return <SyncPanel />;
   }
 
+  if (mode === ViewKey.STAGINGS_E2E) {
+    return <E2ePanel />;
+  }
+
   return (
     <Stack gap="lg">
       <Group justify="space-between">
         <div>
           <Title order={2}>Stagings preflight</Title>
           <Text c="dimmed">
-            Validate the local staging toolchain before deploy, destroy, adopt, or sync actions.
+            Validate the local staging toolchain before deploy, destroy, adopt, sync, or E2E actions.
           </Text>
         </div>
         <Group>
@@ -79,6 +86,9 @@ export function StagingsSection({ mode }: StagingsSectionProps) {
           </Button>
           <Button leftSection={<IconRefresh size={16} />} onClick={() => activateTab(TabId.STAGINGS_SYNC)} variant="light">
             {syncOpen ? "Switch to Sync" : "Open Sync tab"}
+          </Button>
+          <Button leftSection={<IconFlask size={16} />} onClick={() => activateTab(TabId.STAGINGS_E2E)} variant="light">
+            {e2eOpen ? "Switch to E2E" : "Open E2E tab"}
           </Button>
         </Group>
       </Group>

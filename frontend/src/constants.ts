@@ -111,6 +111,13 @@ export function buildAgentNamespaceLogsPath(namespace: string, deploy: string): 
   return `${AgentPath.NAMESPACES}/${encodeURIComponent(namespace)}${AgentPath.LOGS}?${params.toString()}`;
 }
 
+export function buildAgentE2eSuitesPath(product: Product): string {
+  const params = new URLSearchParams({
+    product,
+  });
+  return `${AgentPath.E2E_SUITES}?${params.toString()}`;
+}
+
 export const PreflightKey = {
   TOOLS: "tools",
   CLUSTER_REACHABLE: "clusterReachable",
@@ -148,6 +155,14 @@ export const Product = {
 } as const;
 
 export type Product = (typeof Product)[keyof typeof Product];
+
+export const PRODUCT_OPTIONS = [
+  Product.BILLING,
+  Product.IAM,
+  Product.CDN,
+  Product.DNS,
+  Product.NOTIFICATIONS,
+] as const;
 
 export const OperationType = {
   DEPLOY: "deploy",
@@ -239,6 +254,7 @@ export const ViewKey = {
   STAGINGS_HISTORY: "stagings-history",
   STAGINGS_NAMESPACES: "stagings-namespaces",
   STAGINGS_SYNC: "stagings-sync",
+  STAGINGS_E2E: "stagings-e2e",
   ADMIN_USERS: "admin-users",
 } as const;
 
@@ -250,6 +266,7 @@ export const TabId = {
   STAGINGS_HISTORY: "tab-stagings-history",
   STAGINGS_NAMESPACES: "tab-stagings-namespaces",
   STAGINGS_SYNC: "tab-stagings-sync",
+  STAGINGS_E2E: "tab-stagings-e2e",
   ADMIN_USERS: "tab-admin-users",
 } as const;
 
@@ -261,6 +278,7 @@ export const TabTitle: Record<TabId, string> = {
   [TabId.STAGINGS_HISTORY]: "History",
   [TabId.STAGINGS_NAMESPACES]: "Namespaces",
   [TabId.STAGINGS_SYNC]: "Sync",
+  [TabId.STAGINGS_E2E]: "E2E",
   [TabId.ADMIN_USERS]: "Users",
 };
 
@@ -270,6 +288,7 @@ export const QueryKey = {
   AGENT_NAMESPACES: "agent-namespaces",
   AGENT_NAMESPACE_STATUS: "agent-namespace-status",
   AGENT_NAMESPACE_CREDS: "agent-namespace-creds",
+  AGENT_E2E_SUITES: "agent-e2e-suites",
   OPERATIONS: "operations",
   OPERATION_DETAIL: "operation-detail",
   OPERATION_REPLAY: "operation-replay",

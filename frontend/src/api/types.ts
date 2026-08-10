@@ -96,6 +96,24 @@ export interface SyncRequest {
   flags: SyncFlags;
 }
 
+export interface E2eSuite {
+  name: string;
+  marks: string;
+}
+
+export interface E2eSuitesResponse {
+  product: Product;
+  suites: E2eSuite[];
+  exitCode: number;
+}
+
+export interface E2eRunRequest {
+  ns: string;
+  product: Product;
+  suites: string[];
+  threads?: number;
+}
+
 export interface JobCreateResponse {
   jobId: string;
   opId: string;
