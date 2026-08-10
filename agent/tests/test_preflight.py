@@ -28,4 +28,3 @@ async def test_preflight_returns_all_expected_keys(
         assert isinstance(item["ok"], bool)
         assert isinstance(item["detail"], str)
         assert isinstance(item["howTo"], str)
-

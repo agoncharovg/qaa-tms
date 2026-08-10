@@ -13,6 +13,7 @@ from app.core.config import Settings
 from app.core.constants import (
     DEFAULT_AUTH_CACHE_TTL_SECONDS,
     BackendPath,
+    ErrorMessage,
     HeaderName,
     HeaderValue,
 )
@@ -60,15 +61,21 @@ async def require_auth(request: Request) -> AuthContext:
     except httpx.HTTPError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unauthorized.",
+            detail=ErrorMessage.UNAUTHORIZED.value,
         ) from exc
 
     if response.status_code != status.HTTP_200_OK:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=ErrorMessage.UNAUTHORIZED.value,
+        )
 
     identity = response.json()
     if not isinstance(identity, dict):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=ErrorMessage.UNAUTHORIZED.value,
+        )
 
     _write_cached_identity(request, token, identity)
     return AuthContext(token=token, identity=identity)
@@ -80,7 +87,7 @@ def _extract_bearer_token(request: Request) -> str:
     if scheme != HeaderValue.BEARER.value or not token.strip():
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unauthorized.",
+            detail=ErrorMessage.UNAUTHORIZED.value,
         )
     return token.strip()
 

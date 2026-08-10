@@ -19,6 +19,7 @@ import httpx
 from app.core.config import Settings
 from app.core.constants import (
     DEFAULT_CANCEL_WAIT_SECONDS,
+    JobEventType,
     JobStatus,
     OperationStatus,
     OperationType,
@@ -333,7 +334,7 @@ class JobManager:
             job,
             StoredEvent(
                 event=SseEvent.LOG,
-                payload=JobLogEvent(type="line", line=line).model_dump(),
+                payload=JobLogEvent(type=JobEventType.LINE.value, line=line).model_dump(),
             ),
         )
 
@@ -343,7 +344,7 @@ class JobManager:
             StoredEvent(
                 event=SseEvent.TERMINAL,
                 payload=JobTerminalEvent(
-                    type="terminal",
+                    type=JobEventType.TERMINAL.value,
                     status=job.status,
                     exit_code=job.exit_code,
                 ).model_dump(by_alias=True),

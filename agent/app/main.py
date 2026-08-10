@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router
 from app.core.config import Settings, get_settings
-from app.core.constants import HeaderName
+from app.core.constants import DEFAULT_BACKEND_TIMEOUT_SECONDS, HeaderName
 from app.services.jobs import JobManager
 
 
@@ -30,7 +30,7 @@ def create_app(
         async with httpx.AsyncClient(
             base_url=resolved_settings.backend_url,
             transport=backend_transport,
-            timeout=10.0,
+            timeout=DEFAULT_BACKEND_TIMEOUT_SECONDS,
         ) as backend_client:
             app.state.settings = resolved_settings
             app.state.backend_client = backend_client

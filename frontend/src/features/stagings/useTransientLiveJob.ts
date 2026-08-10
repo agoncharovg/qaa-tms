@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { agentClient } from "@/api/agentClient";
-import { QueryKey } from "@/constants";
+import { DEFAULT_JOB_POLL_INTERVAL_MS, JobStreamEvent, QueryKey } from "@/constants";
 import {
   createLiveJobState,
   isTerminalJobStatus,
@@ -39,7 +39,7 @@ export function useTransientLiveJob(agentPort: number | null, token: string | nu
     queryKey: [QueryKey.AGENT_JOB, agentPort, liveJob?.jobId],
     refetchInterval: (query) => {
       const status = query.state.data?.status ?? liveJob?.status;
-      return status && isTerminalJobStatus(status) ? false : 2000;
+      return status && isTerminalJobStatus(status) ? false : DEFAULT_JOB_POLL_INTERVAL_MS;
     },
   });
 
@@ -79,7 +79,7 @@ export function useTransientLiveJob(agentPort: number | null, token: string | nu
         token,
         jobId,
         (message) => {
-          if (message.event === "log") {
+          if (message.event === JobStreamEvent.LOG) {
             reduceLiveJob({
               line: message.data.line,
               type: "append-line",

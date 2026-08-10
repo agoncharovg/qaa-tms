@@ -88,6 +88,8 @@ class EnvFile(StrEnum):
 class HeaderName(StrEnum):
     ACCEPT = "Accept"
     AUTHORIZATION = "Authorization"
+    CACHE_CONTROL = "Cache-Control"
+    CONNECTION = "Connection"
     CONTENT_TYPE = "Content-Type"
     X_QAA_TMS = "X-QAA-TMS"
 
@@ -95,6 +97,10 @@ class HeaderName(StrEnum):
 class HeaderValue(StrEnum):
     APPLICATION_JSON = "application/json"
     BEARER = "Bearer"
+    EVENT_STREAM = "text/event-stream"
+    EVENT_STREAM_UTF8 = "text/event-stream; charset=utf-8"
+    KEEP_ALIVE = "keep-alive"
+    NO_CACHE = "no-cache"
     X_QAA_TMS_ENABLED = "1"
 
 
@@ -129,6 +135,43 @@ class SseEvent(StrEnum):
     TERMINAL = "terminal"
 
 
+class StagingCommand(StrEnum):
+    DEPLOY = "deploy"
+    DESTROY = "destroy"
+    ADOPT = "adopt"
+    SYNC = "sync"
+    E2E_RUN = "e2e-run"
+
+
+class StagingFlag(StrEnum):
+    SERVICES = "--services"
+    IMAGE = "--image"
+    CLEAN = "--clean"
+    FULL = "--full"
+    DRY_RUN = "--dry-run"
+    NO_SYNC = "--no-sync"
+    STAGE = "--stage"
+    SERVICE = "--service"
+    VERBOSE = "--verbose"
+    PULL = "--pull"
+    APPLY = "--apply"
+    PRODUCT = "--product"
+    SUITE = "--suite"
+    THREADS = "--threads"
+    LIST_SUITES = "--list-suites"
+
+
+class JobEventType(StrEnum):
+    LINE = "line"
+    TERMINAL = "terminal"
+
+
+class ErrorMessage(StrEnum):
+    JOB_NOT_FOUND = "Job not found."
+    STAGING_BINARY_NOT_INSTALLED = "The staging binary is not installed."
+    UNAUTHORIZED = "Unauthorized."
+
+
 AGENT_APP_NAME = "qaa-tms-agent"
 DEFAULT_AGENT_VERSION = "0.1.0"
 DEFAULT_AGENT_HOST = "127.0.0.1"
@@ -140,7 +183,12 @@ DEFAULT_CORS_ORIGINS = (
 )
 DEFAULT_STAGING_KUBECONFIG = "~/.kube/ai-staging.yaml"
 DEFAULT_AUTH_CACHE_TTL_SECONDS = 30
+DEFAULT_BACKEND_TIMEOUT_SECONDS = 10.0
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 5.0
 DEFAULT_CANCEL_WAIT_SECONDS = 5.0
 DEFAULT_KUBECONFIG_FRESHNESS_SECONDS = 12 * 60 * 60
+DEFAULT_STAGING_BINARY_NAME = "staging"
+HTTPS_PORT = 443
+MIN_STAGE = 0
+MAX_STAGE = 7
 PACKAGE_NAME = "qaa-tms-agent"

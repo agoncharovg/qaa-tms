@@ -15,4 +15,3 @@ async def test_protected_routes_require_valid_bearer_token(
     assert missing.status_code == 401
     assert invalid.status_code == 401
     assert valid.status_code == 200
-

@@ -1,6 +1,11 @@
 import {
+  AUTH_SCHEME_BEARER,
   BackendPath,
   DEFAULT_API_BASE_URL,
+  HttpHeader,
+  HttpMethod,
+  HttpStatus,
+  MediaType,
   buildBackendOperationPath,
   buildBackendOperationReplayPath,
   buildBackendUserPath,
@@ -60,14 +65,14 @@ async function request<T>(
   signal?: AbortSignal
 ): Promise<T> {
   const headers = new Headers(init.headers);
-  headers.set("Accept", "application/json");
+  headers.set(HttpHeader.ACCEPT, MediaType.JSON);
 
-  if (init.body !== undefined && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
+  if (init.body !== undefined && !headers.has(HttpHeader.CONTENT_TYPE)) {
+    headers.set(HttpHeader.CONTENT_TYPE, MediaType.JSON);
   }
 
   if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
+    headers.set(HttpHeader.AUTHORIZATION, `${AUTH_SCHEME_BEARER} ${token}`);
   }
 
   const url = buildBackendUrl(path);
@@ -88,7 +93,7 @@ async function request<T>(
     throw toHttpError(response, payload);
   }
 
-  if (response.status === 204) {
+  if (response.status === HttpStatus.NO_CONTENT) {
     return undefined as T;
   }
 
@@ -127,11 +132,11 @@ function buildOperationsListPath(params: ListOperationsParams): string {
 
 export const backendClient = {
   getCurrentUser(token: string, signal?: AbortSignal): Promise<User> {
-    return request<User>(BackendPath.ME, { method: "GET" }, token, signal);
+    return request<User>(BackendPath.ME, { method: HttpMethod.GET }, token, signal);
   },
 
   listUsers(token: string, signal?: AbortSignal): Promise<UserListResponse> {
-    return request<UserListResponse>(BackendPath.USERS, { method: "GET" }, token, signal);
+    return request<UserListResponse>(BackendPath.USERS, { method: HttpMethod.GET }, token, signal);
   },
 
   createUser(token: string, payload: UserCreateRequest, signal?: AbortSignal): Promise<User> {
@@ -139,7 +144,7 @@ export const backendClient = {
       BackendPath.USERS,
       {
         body: JSON.stringify(payload),
-        method: "POST",
+        method: HttpMethod.POST,
       },
       token,
       signal
@@ -147,7 +152,7 @@ export const backendClient = {
   },
 
   getUser(token: string, userId: number, signal?: AbortSignal): Promise<User> {
-    return request<User>(buildBackendUserPath(userId), { method: "GET" }, token, signal);
+    return request<User>(buildBackendUserPath(userId), { method: HttpMethod.GET }, token, signal);
   },
 
   updateUser(
@@ -160,7 +165,7 @@ export const backendClient = {
       buildBackendUserPath(userId),
       {
         body: JSON.stringify(payload),
-        method: "PATCH",
+        method: HttpMethod.PATCH,
       },
       token,
       signal
@@ -168,13 +173,13 @@ export const backendClient = {
   },
 
   deleteUser(token: string, userId: number, signal?: AbortSignal): Promise<void> {
-    return request<void>(buildBackendUserPath(userId), { method: "DELETE" }, token, signal);
+    return request<void>(buildBackendUserPath(userId), { method: HttpMethod.DELETE }, token, signal);
   },
 
   getOperation(token: string, operationId: string, signal?: AbortSignal): Promise<OperationRead> {
     return request<OperationRead>(
       buildBackendOperationPath(operationId),
-      { method: "GET" },
+      { method: HttpMethod.GET },
       token,
       signal
     );
@@ -187,7 +192,7 @@ export const backendClient = {
   ): Promise<OperationReplay> {
     return request<OperationReplay>(
       buildBackendOperationReplayPath(operationId),
-      { method: "GET" },
+      { method: HttpMethod.GET },
       token,
       signal
     );
@@ -200,7 +205,7 @@ export const backendClient = {
   ): Promise<OperationListResponse> {
     return request<OperationListResponse>(
       buildOperationsListPath(params),
-      { method: "GET" },
+      { method: HttpMethod.GET },
       token,
       signal
     );
@@ -211,7 +216,7 @@ export const backendClient = {
       BackendPath.AUTH_LOGIN,
       {
         body: JSON.stringify(payload),
-        method: "POST",
+        method: HttpMethod.POST,
       },
       undefined,
       signal

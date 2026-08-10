@@ -25,7 +25,16 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { agentClient, getPreflight } from "@/api/agentClient";
-import { QueryKey, SectionKey, TabId } from "@/constants";
+import {
+  DEFAULT_IMAGE_TAG,
+  DEFAULT_JOB_POLL_INTERVAL_MS,
+  JobStreamEvent,
+  MAX_DEPLOY_STAGE,
+  MIN_DEPLOY_STAGE,
+  QueryKey,
+  SectionKey,
+  TabId,
+} from "@/constants";
 import {
   buildDeployRequestFromDraft,
   DeployMode,
@@ -63,10 +72,10 @@ const SHORTCUT_DESCRIPTIONS: Record<ShortcutDeployMode, string> = {
 function normalizeShortcutTag(mode: ShortcutDeployMode, service: string, currentTag: string): string {
   const trimmedTag = currentTag.trim();
   if (requiresExplicitSemver(mode, service)) {
-    return trimmedTag === "latest" ? "" : currentTag;
+    return trimmedTag === DEFAULT_IMAGE_TAG ? "" : currentTag;
   }
 
-  return trimmedTag.length === 0 ? "latest" : currentTag;
+  return trimmedTag.length === 0 ? DEFAULT_IMAGE_TAG : currentTag;
 }
 
 export function DeployPanel() {
@@ -167,7 +176,7 @@ export function DeployPanel() {
     queryKey: [QueryKey.AGENT_JOB, agentPort, liveJob?.jobId],
     refetchInterval: (query) => {
       const status = query.state.data?.status ?? liveJob?.status;
-      return status && isTerminalJobStatus(status) ? false : 2000;
+      return status && isTerminalJobStatus(status) ? false : DEFAULT_JOB_POLL_INTERVAL_MS;
     },
   });
 
@@ -207,7 +216,7 @@ export function DeployPanel() {
         token,
         jobId,
         (message) => {
-          if (message.event === "log") {
+          if (message.event === JobStreamEvent.LOG) {
             reduceLiveJob({
               line: message.data.line,
               type: "append-line",
@@ -511,7 +520,7 @@ export function DeployPanel() {
                           },
                         })
                       }
-                      placeholder={shortcutNeedsExplicitSemver ? "1.108.0" : "latest"}
+                      placeholder={shortcutNeedsExplicitSemver ? "1.108.0" : DEFAULT_IMAGE_TAG}
                       required
                       value={deployDraft.shortcut.tag}
                     />
@@ -633,7 +642,7 @@ export function DeployPanel() {
                                 imageRows: nextRows,
                               });
                             }}
-                            placeholder="latest"
+                            placeholder={DEFAULT_IMAGE_TAG}
                             value={row.tag}
                           />
                           <Button
@@ -714,8 +723,6 @@ export function DeployPanel() {
                       <TextInput
                         disabled={companionUnavailable || isJobRunning}
                         label="Stage"
-                        max={7}
-                        min={0}
                         onChange={(event) =>
                           setDeployDraft({
                             ...deployDraft,
@@ -725,9 +732,11 @@ export function DeployPanel() {
                             },
                           })
                         }
-                        placeholder="0-7"
+                        placeholder={`${MIN_DEPLOY_STAGE}-${MAX_DEPLOY_STAGE}`}
                         type="number"
                         value={deployDraft.flags.stageText}
+                        max={MAX_DEPLOY_STAGE}
+                        min={MIN_DEPLOY_STAGE}
                       />
                     </SimpleGrid>
                   </>

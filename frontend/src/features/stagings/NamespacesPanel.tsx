@@ -31,10 +31,12 @@ import { agentClient, getPreflight } from "@/api/agentClient";
 import { backendClient } from "@/api/backendClient";
 import type { JobTerminalEvent, NamespaceListEntry, NamespaceLogsState, OperationSummary } from "@/api/types";
 import {
+  JobStreamEvent,
   NamespaceLogStatus,
   NamespaceLogStatusLabel,
   NamespaceOrigin,
   NamespaceOriginLabel,
+  OperationStatusColor,
   OperationType,
   QueryKey,
   SectionKey,
@@ -116,18 +118,11 @@ function reduceNamespaceLogsState(
 }
 
 function getNamespaceLogStatusColor(status: NamespaceLogStatusType): string {
-  switch (status) {
-    case NamespaceLogStatus.SUCCESS:
-      return "teal";
-    case NamespaceLogStatus.FAILED:
-      return "red";
-    case NamespaceLogStatus.ABORTED:
-      return "yellow";
-    case NamespaceLogStatus.RUNNING:
-      return "blue";
-    default:
-      return "gray";
+  if (status === NamespaceLogStatus.IDLE) {
+    return "gray";
   }
+
+  return OperationStatusColor[status];
 }
 
 function getClusterStatusColor(status: string): string {
@@ -488,7 +483,7 @@ export function NamespacesPanel() {
         selectedNamespace,
         deploy,
         (message) => {
-          if (message.event === "log") {
+          if (message.event === JobStreamEvent.LOG) {
             dispatchLogs({
               line: message.data.line,
               type: "append-line",

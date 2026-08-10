@@ -2,7 +2,11 @@ import type { MutableRefObject } from "react";
 import { Alert, Badge, Box, Button, Divider, Group, Paper, SimpleGrid, Stack, Text, Title } from "@mantine/core";
 import { IconAlertCircle, IconHistory, IconPlayerStop } from "@tabler/icons-react";
 
-import { OperationStatus, OperationStatusLabel, type OperationStatus as OperationStatusType } from "@/constants";
+import {
+  OperationStatusColor,
+  OperationStatusLabel,
+  type OperationStatus as OperationStatusType,
+} from "@/constants";
 import { isTerminalJobStatus, type LiveJobState } from "@/features/stagings/liveJobState";
 
 interface LiveJobPanelProps {
@@ -16,18 +20,7 @@ interface LiveJobPanelProps {
 }
 
 function getStatusColor(status: OperationStatusType): string {
-  switch (status) {
-    case OperationStatus.SUCCESS:
-      return "teal";
-    case OperationStatus.FAILED:
-      return "red";
-    case OperationStatus.ABORTED:
-      return "yellow";
-    case OperationStatus.RUNNING:
-      return "blue";
-    default:
-      return "gray";
-  }
+  return OperationStatusColor[status];
 }
 
 export function LiveJobPanel({

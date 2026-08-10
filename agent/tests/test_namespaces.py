@@ -74,9 +74,24 @@ async def test_list_namespaces_returns_structured_cluster_and_overlay_sections(
     assert response.json() == {
         "raw": raw_output,
         "clusterNamespaces": [
-            {"name": "calico-system", "status": "Active", "createdAt": "2026-02-11T11:49:58Z", "hasLocalOverlay": False},
-            {"name": "qaa-demo", "status": "Active", "createdAt": "2026-08-07T15:17:19Z", "hasLocalOverlay": True},
-            {"name": "qaa-no-time", "status": "Pending", "createdAt": None, "hasLocalOverlay": False},
+            {
+                "name": "calico-system",
+                "status": "Active",
+                "createdAt": "2026-02-11T11:49:58Z",
+                "hasLocalOverlay": False,
+            },
+            {
+                "name": "qaa-demo",
+                "status": "Active",
+                "createdAt": "2026-08-07T15:17:19Z",
+                "hasLocalOverlay": True,
+            },
+            {
+                "name": "qaa-no-time",
+                "status": "Pending",
+                "createdAt": None,
+                "hasLocalOverlay": False,
+            },
         ],
         "localOverlays": [
             {"name": "qaa-iam"},
@@ -187,11 +202,18 @@ async def test_namespace_deploy_recipe_reads_latest_supported_overlay_log(
     overlay_dir = fake_staging_repo["repo_root"] / "overlays" / "qaa-iam"
     overlay_dir.mkdir(parents=True, exist_ok=True)
     (overlay_dir / "deploy-20260810-120000.log").write_text(
-        "Command: /tmp/qaa-stagings/scripts/deploy.py qaa-iam --services iam-api --step add_sellers\n",
+        (
+            "Command: /tmp/qaa-stagings/scripts/deploy.py "
+            "qaa-iam --services iam-api --step add_sellers\n"
+        ),
         encoding="utf-8",
     )
     (overlay_dir / "deploy-20260809-110000.log").write_text(
-        "Command: /tmp/qaa-stagings/scripts/deploy.py qaa-iam --services iam-api,billing --image iam-api=sha-local --image billing=sha-billing --clean --full --no-sync --stage 3\n",
+        (
+            "Command: /tmp/qaa-stagings/scripts/deploy.py "
+            "qaa-iam --services iam-api,billing --image iam-api=sha-local "
+            "--image billing=sha-billing --clean --full --no-sync --stage 3\n"
+        ),
         encoding="utf-8",
     )
 

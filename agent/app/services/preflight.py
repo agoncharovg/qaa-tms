@@ -17,6 +17,7 @@ from app.core.constants import (
     DEFAULT_COMMAND_TIMEOUT_SECONDS,
     DEFAULT_KUBECONFIG_FRESHNESS_SECONDS,
     DEFAULT_STAGING_KUBECONFIG,
+    HTTPS_PORT,
     DockerRegistry,
     PreflightKey,
     RequiredTool,
@@ -141,7 +142,7 @@ async def _check_cluster_reachable(kubeconfig_path: Path) -> PreflightItem:
 async def _check_vpn() -> PreflightItem:
     try:
         reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(VpnProbeHost.FULL_VPN_ONLY.value, 443),
+            asyncio.open_connection(VpnProbeHost.FULL_VPN_ONLY.value, HTTPS_PORT),
             timeout=DEFAULT_COMMAND_TIMEOUT_SECONDS,
         )
         del reader
@@ -176,12 +177,13 @@ async def _check_kubeconfig() -> PreflightItem:
     modified_at = datetime.fromtimestamp(kubeconfig_path.stat().st_mtime, tz=UTC)
     age_seconds = (datetime.now(tz=UTC) - modified_at).total_seconds()
     ok = age_seconds <= DEFAULT_KUBECONFIG_FRESHNESS_SECONDS
+    freshness_hours = DEFAULT_KUBECONFIG_FRESHNESS_SECONDS // 3600
     detail = (
         f"Kubeconfig was refreshed at {modified_at.isoformat()}."
         if ok
         else (
             f"Kubeconfig was last refreshed at {modified_at.isoformat()} "
-            "and is older than 12 hours."
+            f"and is older than {freshness_hours} hours."
         )
     )
     return PreflightItem(
@@ -280,11 +282,7 @@ async def _check_submodules(installation: StagingInstallation) -> PreflightItem:
 async def _check_venv(installation: StagingInstallation) -> PreflightItem:
     venv_path = installation.repo_root / "scripts" / ".venv" if installation.repo_root else None
     ok = venv_path is not None and venv_path.exists()
-    detail = (
-        f"Virtualenv exists at {venv_path}."
-        if ok
-        else "scripts/.venv is missing."
-    )
+    detail = f"Virtualenv exists at {venv_path}." if ok else "scripts/.venv is missing."
     return PreflightItem(
         key=PreflightKey.VENV,
         ok=ok,

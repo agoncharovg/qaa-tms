@@ -55,6 +55,14 @@ class TokenType(StrEnum):
     BEARER = "bearer"
 
 
+class AuthScheme(StrEnum):
+    BEARER = "Bearer"
+
+
+class HttpHeader(StrEnum):
+    WWW_AUTHENTICATE = "WWW-Authenticate"
+
+
 class JwtAlgorithm(StrEnum):
     HS256 = "HS256"
 
@@ -84,6 +92,21 @@ class PasswordHashScheme(StrEnum):
     SHA256 = "sha256$"
 
 
+class HealthStatus(StrEnum):
+    OK = "ok"
+    READY = "ready"
+
+
+class HealthFieldName(StrEnum):
+    STATUS = "status"
+
+
+class ErrorMessage(StrEnum):
+    INVALID_AUTHENTICATION_CREDENTIALS = "Invalid authentication credentials."
+    OPERATION_NOT_FOUND = "Operation not found."
+    USER_NOT_FOUND = "User not found."
+
+
 class DevUsername(StrEnum):
     TEST = "test"
     ADMIN = "admin"
@@ -97,3 +120,10 @@ class DevDisplayName(StrEnum):
 class DevPassword(StrEnum):
     EMPTY = ""
     ADMIN = "admin"
+
+
+DEFAULT_STRING_LENGTH = 255
+OPERATIONS_MIN_LIMIT = 1
+OPERATIONS_MAX_LIMIT = 100
+OPERATIONS_DEFAULT_LIMIT = 20
+DEFAULT_OFFSET = 0

@@ -12,4 +12,3 @@ async def test_ping_matches_frontend_shape(client: httpx.AsyncClient) -> None:
     assert body["app"] == "qaa-tms-agent"
     assert body["stagingsInstalled"] is True
     assert isinstance(body["stagingsSha"], str)
-

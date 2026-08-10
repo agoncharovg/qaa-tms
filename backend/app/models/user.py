@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import Boolean, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.constants import DEFAULT_STRING_LENGTH
 from app.db.base import Base
 
 if TYPE_CHECKING:
@@ -22,9 +23,9 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    username: Mapped[str] = mapped_column(String(255), unique=True, index=True)
-    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    display_name: Mapped[str] = mapped_column(String(255))
+    username: Mapped[str] = mapped_column(String(DEFAULT_STRING_LENGTH), unique=True, index=True)
+    password_hash: Mapped[str | None] = mapped_column(String(DEFAULT_STRING_LENGTH), nullable=True)
+    display_name: Mapped[str] = mapped_column(String(DEFAULT_STRING_LENGTH))
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     auto_login: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

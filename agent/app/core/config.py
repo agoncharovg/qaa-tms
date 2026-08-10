@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     @classmethod
     def validate_host(cls, value: str) -> str:
         if value != DEFAULT_AGENT_HOST:
-            raise ValueError("AGENT_HOST must stay 127.0.0.1.")
+            raise ValueError(f"AGENT_HOST must stay {DEFAULT_AGENT_HOST}.")
         return value
 
     @field_validator("backend_url")

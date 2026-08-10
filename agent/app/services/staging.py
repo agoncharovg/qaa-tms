@@ -11,7 +11,16 @@ from importlib import metadata
 from pathlib import Path
 
 from app.core.config import Settings
-from app.core.constants import AGENT_APP_NAME, DEFAULT_AGENT_VERSION, PACKAGE_NAME, Product
+from app.core.constants import (
+    AGENT_APP_NAME,
+    DEFAULT_AGENT_VERSION,
+    DEFAULT_STAGING_BINARY_NAME,
+    PACKAGE_NAME,
+    ErrorMessage,
+    Product,
+    StagingCommand,
+    StagingFlag,
+)
 from app.schemas import AgentPingResponse, DeployRequest, SyncFlags
 
 
@@ -75,48 +84,48 @@ def build_deploy_argv(
 ) -> tuple[list[str], StagingInstallation]:
     """Translate the frontend deploy request into the real CLI argv."""
 
-    argv, installation = _build_base_argv(settings, "deploy", request.ns)
+    argv, installation = _build_base_argv(settings, StagingCommand.DEPLOY, request.ns)
     if request.services:
-        argv.extend(["--services", ",".join(request.services)])
+        argv.extend([StagingFlag.SERVICES.value, ",".join(request.services)])
     for service, tag in request.images.items():
-        argv.extend(["--image", f"{service}={tag}"])
+        argv.extend([StagingFlag.IMAGE.value, f"{service}={tag}"])
     if request.flags.clean:
-        argv.append("--clean")
+        argv.append(StagingFlag.CLEAN.value)
     if request.flags.full:
-        argv.append("--full")
+        argv.append(StagingFlag.FULL.value)
     if request.flags.dry_run:
-        argv.append("--dry-run")
+        argv.append(StagingFlag.DRY_RUN.value)
     if request.flags.no_sync:
-        argv.append("--no-sync")
+        argv.append(StagingFlag.NO_SYNC.value)
     if request.flags.stage is not None:
-        argv.extend(["--stage", str(request.flags.stage)])
+        argv.extend([StagingFlag.STAGE.value, str(request.flags.stage)])
     return argv, installation
 
 
 def build_destroy_argv(settings: Settings, namespace: str) -> tuple[list[str], StagingInstallation]:
     """Translate a destroy request into the real CLI argv."""
 
-    return _build_base_argv(settings, "destroy", namespace)
+    return _build_base_argv(settings, StagingCommand.DESTROY, namespace)
 
 
 def build_adopt_argv(settings: Settings, namespace: str) -> tuple[list[str], StagingInstallation]:
     """Translate an adopt request into the real CLI argv."""
 
-    return _build_base_argv(settings, "adopt", namespace)
+    return _build_base_argv(settings, StagingCommand.ADOPT, namespace)
 
 
 def build_sync_argv(settings: Settings, flags: SyncFlags) -> tuple[list[str], StagingInstallation]:
     """Translate a sync request into the real CLI argv."""
 
-    argv, installation = _build_base_argv(settings, "sync")
+    argv, installation = _build_base_argv(settings, StagingCommand.SYNC)
     if flags.service:
-        argv.extend(["--service", flags.service])
+        argv.extend([StagingFlag.SERVICE.value, flags.service])
     if flags.verbose:
-        argv.append("--verbose")
+        argv.append(StagingFlag.VERBOSE.value)
     if flags.pull:
-        argv.append("--pull")
+        argv.append(StagingFlag.PULL.value)
     if flags.apply:
-        argv.append("--apply")
+        argv.append(StagingFlag.APPLY.value)
     return argv, installation
 
 
@@ -131,20 +140,20 @@ def build_e2e_run_argv(
 
     argv, installation = _build_base_argv(
         settings,
-        "e2e-run",
+        StagingCommand.E2E_RUN,
         namespace,
-        "--product",
+        StagingFlag.PRODUCT.value,
         product.value,
     )
     if suites:
-        argv.extend(["--suite", ",".join(suites)])
+        argv.extend([StagingFlag.SUITE.value, ",".join(suites)])
     if threads is not None:
-        argv.extend(["--threads", str(threads)])
+        argv.extend([StagingFlag.THREADS.value, str(threads)])
     return argv, installation
 
 
 def _resolve_binary_path(settings: Settings) -> Path | None:
-    raw_path = settings.staging_bin or shutil.which("staging")
+    raw_path = settings.staging_bin or shutil.which(DEFAULT_STAGING_BINARY_NAME)
     if not raw_path:
         return None
     path = Path(raw_path).expanduser()
@@ -182,11 +191,11 @@ def _resolve_git_sha(repo_root: Path | None) -> str | None:
 
 def _build_base_argv(
     settings: Settings,
-    command: str,
+    command: StagingCommand,
     *args: str,
 ) -> tuple[list[str], StagingInstallation]:
     installation = resolve_staging_installation(settings)
     if installation.bin_path is None:
-        raise StagingNotInstalledError("The staging binary is not installed.")
+        raise StagingNotInstalledError(ErrorMessage.STAGING_BINARY_NOT_INSTALLED.value)
 
-    return [str(installation.bin_path), command, *args], installation
+    return [str(installation.bin_path), command.value, *args], installation

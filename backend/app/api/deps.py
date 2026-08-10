@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
-from app.core.constants import JwtClaim, TokenType
+from app.core.constants import AuthScheme, ErrorMessage, HttpHeader, JwtClaim, TokenType
 from app.core.security import decode_access_token
 from app.models.user import User
 
@@ -34,7 +34,7 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated.",
-            headers={"WWW-Authenticate": TokenType.BEARER.value.capitalize()},
+            headers={HttpHeader.WWW_AUTHENTICATE.value: AuthScheme.BEARER.value},
         )
 
     settings = cast(Settings, request.app.state.settings)
@@ -44,24 +44,24 @@ async def get_current_user(
     except jwt.InvalidTokenError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials.",
-            headers={"WWW-Authenticate": TokenType.BEARER.value.capitalize()},
+            detail=ErrorMessage.INVALID_AUTHENTICATION_CREDENTIALS.value,
+            headers={HttpHeader.WWW_AUTHENTICATE.value: AuthScheme.BEARER.value},
         ) from exc
 
     username = payload.get(JwtClaim.SUBJECT.value)
     if not isinstance(username, str):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials.",
-            headers={"WWW-Authenticate": TokenType.BEARER.value.capitalize()},
+            detail=ErrorMessage.INVALID_AUTHENTICATION_CREDENTIALS.value,
+            headers={HttpHeader.WWW_AUTHENTICATE.value: AuthScheme.BEARER.value},
         )
 
     user = await db.scalar(select(User).where(User.username == username))
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found.",
-            headers={"WWW-Authenticate": TokenType.BEARER.value.capitalize()},
+            detail=ErrorMessage.USER_NOT_FOUND.value,
+            headers={HttpHeader.WWW_AUTHENTICATE.value: AuthScheme.BEARER.value},
         )
     return user
 

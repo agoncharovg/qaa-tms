@@ -20,7 +20,7 @@ import type { OperationRead } from "@/api/types";
 import { backendClient } from "@/api/backendClient";
 import {
   DEFAULT_OPERATIONS_PAGE_SIZE,
-  OperationStatus,
+  OperationStatusColor,
   OperationStatusLabel,
   OperationType,
   OperationTypeLabel,
@@ -34,18 +34,7 @@ import { useStagingsStore } from "@/store/stagingsStore";
 import { useUiStore } from "@/store/uiStore";
 
 function getStatusColor(status: OperationStatusType): string {
-  switch (status) {
-    case OperationStatus.SUCCESS:
-      return "teal";
-    case OperationStatus.FAILED:
-      return "red";
-    case OperationStatus.ABORTED:
-      return "yellow";
-    case OperationStatus.RUNNING:
-      return "blue";
-    default:
-      return "gray";
-  }
+  return OperationStatusColor[status];
 }
 
 function formatOperationTimestamp(operation: Pick<OperationRead, "created_at" | "started_at">): string {

@@ -1,5 +1,5 @@
 import type { DeployFlags, DeployRequest, OperationReplay } from "@/api/types";
-import { MAX_DEPLOY_STAGE, MIN_DEPLOY_STAGE } from "@/constants";
+import { DEFAULT_IMAGE_TAG, MAX_DEPLOY_STAGE, MIN_DEPLOY_STAGE } from "@/constants";
 
 export const DeployMode = {
   RAW: "raw",
@@ -129,7 +129,7 @@ function createDefaultShortcutDraft(mode: ShortcutDeployMode): ShortcutDeployDra
     clean: false,
     includeFrontend: false,
     pinnedService: SHORTCUT_CONFIGS[mode].pinnedServices[0],
-    tag: "latest",
+    tag: DEFAULT_IMAGE_TAG,
   };
 }
 
@@ -144,7 +144,7 @@ function buildShortcutRequest(draft: DeployDraft, mode: ShortcutDeployMode, name
   if (tag.length === 0) {
     throw new Error("Shortcut deploys require an image tag.");
   }
-  if (requiresExplicitSemver(mode, pinnedService) && tag === "latest") {
+  if (requiresExplicitSemver(mode, pinnedService) && tag === DEFAULT_IMAGE_TAG) {
     throw new Error(`${pinnedService} needs an explicit semver tag.`);
   }
 

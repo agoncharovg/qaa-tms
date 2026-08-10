@@ -10,12 +10,12 @@ from fastapi.responses import StreamingResponse
 
 from app.api.deps import AuthContext, get_job_manager, get_settings, require_auth
 from app.core.config import Settings
-from app.core.constants import AgentPath, HeaderName, Product
+from app.core.constants import AgentPath, ErrorMessage, HeaderName, HeaderValue, Product
 from app.schemas import (
     AdoptRequest,
     AgentPingResponse,
-    DeployRecipePayload,
     DeployFlags,
+    DeployRecipePayload,
     DeployRequest,
     DestroyRequest,
     E2eRunRequest,
@@ -188,7 +188,10 @@ async def read_job(
     try:
         return await job_manager.get_job_response(job_id)
     except JobNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.") from exc
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ErrorMessage.JOB_NOT_FOUND.value,
+        ) from exc
 
 
 @router.get(AgentPath.NAMESPACES.value, response_model=NamespaceListResponse)
@@ -314,7 +317,10 @@ async def stream_job(
         await job_manager.get_job(job_id)
         stream = job_manager.stream_job(job_id)
     except JobNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.") from exc
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ErrorMessage.JOB_NOT_FOUND.value,
+        ) from exc
     return _build_sse_response(stream)
 
 
@@ -359,16 +365,19 @@ async def cancel_job(
     try:
         return await job_manager.cancel_job(job_id)
     except JobNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.") from exc
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ErrorMessage.JOB_NOT_FOUND.value,
+        ) from exc
 
 
 def _build_sse_response(stream: AsyncIterator[str]) -> StreamingResponse:
     return StreamingResponse(
         stream,
-        media_type="text/event-stream",
+        media_type=HeaderValue.EVENT_STREAM.value,
         headers={
-            HeaderName.CONTENT_TYPE.value: "text/event-stream; charset=utf-8",
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
+            HeaderName.CONTENT_TYPE.value: HeaderValue.EVENT_STREAM_UTF8.value,
+            HeaderName.CACHE_CONTROL.value: HeaderValue.NO_CACHE.value,
+            HeaderName.CONNECTION.value: HeaderValue.KEEP_ALIVE.value,
         },
     )

@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AdminUser, CurrentUser, get_db
-from app.core.constants import ApiTag, RoutePath
+from app.core.constants import ApiTag, ErrorMessage, RoutePath
 from app.core.security import hash_password
 from app.models.operation import Operation
 from app.models.user import User
@@ -23,7 +23,7 @@ async def get_user_or_404(db: AsyncSession, user_id: int) -> User:
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found.",
+            detail=ErrorMessage.USER_NOT_FOUND.value,
         )
     return user
 

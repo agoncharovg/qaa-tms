@@ -204,6 +204,14 @@ export const OperationStatus = {
 
 export type OperationStatus = (typeof OperationStatus)[keyof typeof OperationStatus];
 
+export const OperationStatusColor = {
+  [OperationStatus.QUEUED]: "gray",
+  [OperationStatus.RUNNING]: "blue",
+  [OperationStatus.SUCCESS]: "teal",
+  [OperationStatus.FAILED]: "red",
+  [OperationStatus.ABORTED]: "yellow",
+} as const satisfies Record<OperationStatus, string>;
+
 export const JobStatus = OperationStatus;
 export type JobStatus = OperationStatus;
 
@@ -257,6 +265,35 @@ export const JobStreamEvent = {
 } as const;
 
 export type JobStreamEvent = (typeof JobStreamEvent)[keyof typeof JobStreamEvent];
+
+export const HttpMethod = {
+  GET: "GET",
+  POST: "POST",
+  PATCH: "PATCH",
+  DELETE: "DELETE",
+} as const;
+
+export type HttpMethod = (typeof HttpMethod)[keyof typeof HttpMethod];
+
+export const HttpHeader = {
+  ACCEPT: "Accept",
+  AUTHORIZATION: "Authorization",
+  CONTENT_TYPE: "Content-Type",
+} as const;
+
+export type HttpHeader = (typeof HttpHeader)[keyof typeof HttpHeader];
+
+export const MediaType = {
+  JSON: "application/json",
+} as const;
+
+export type MediaType = (typeof MediaType)[keyof typeof MediaType];
+
+export const HttpStatus = {
+  NO_CONTENT: 204,
+} as const;
+
+export type HttpStatus = (typeof HttpStatus)[keyof typeof HttpStatus];
 
 export const ViewKey = {
   STAGINGS_PREFLIGHT: "stagings-preflight",
@@ -313,6 +350,9 @@ export const DEFAULT_API_BASE_URL = "http://localhost:8000" as const;
 export const AGENT_APP_NAME = "qaa-tms-agent" as const;
 export const AGENT_REQUEST_HEADER = "X-QAA-TMS" as const;
 export const AGENT_REQUEST_HEADER_VALUE = "1" as const;
+export const AUTH_SCHEME_BEARER = "Bearer" as const;
 export const DEFAULT_OPERATIONS_PAGE_SIZE = 20 as const;
+export const DEFAULT_JOB_POLL_INTERVAL_MS = 2000 as const;
+export const DEFAULT_IMAGE_TAG = "latest" as const;
 export const MIN_DEPLOY_STAGE = 0 as const;
 export const MAX_DEPLOY_STAGE = 7 as const;

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from re import Pattern
 
 from app.core.config import Settings
-from app.core.constants import Product
+from app.core.constants import ErrorMessage, Product, StagingCommand, StagingFlag
 from app.services.namespaces import PlainTextCommandResult, run_plain_text_command, strip_ansi
 from app.services.staging import (
     StagingInstallation,
@@ -43,16 +43,16 @@ def build_e2e_suites_argv(
 
     installation = resolve_staging_installation(settings)
     if installation.bin_path is None:
-        raise StagingNotInstalledError("The staging binary is not installed.")
+        raise StagingNotInstalledError(ErrorMessage.STAGING_BINARY_NOT_INSTALLED.value)
 
     return (
         [
             str(installation.bin_path),
-            "e2e-run",
+            StagingCommand.E2E_RUN.value,
             E2E_SUITES_PLACEHOLDER_NAMESPACE,
-            "--product",
+            StagingFlag.PRODUCT.value,
             product.value,
-            "--list-suites",
+            StagingFlag.LIST_SUITES.value,
         ],
         installation,
     )

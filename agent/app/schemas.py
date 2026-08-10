@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.constants import JobStatus, PreflightKey, Product
+from app.core.constants import MAX_STAGE, MIN_STAGE, JobStatus, PreflightKey, Product
 
 
 class AgentPingResponse(BaseModel):
@@ -43,7 +43,7 @@ class DeployFlags(BaseModel):
     full: bool = False
     dry_run: bool = Field(default=False, alias="dryRun")
     no_sync: bool = Field(default=False, alias="noSync")
-    stage: int | None = Field(default=None, ge=0, le=7)
+    stage: int | None = Field(default=None, ge=MIN_STAGE, le=MAX_STAGE)
 
     def to_recipe(self) -> dict[str, bool | int | None]:
         """Return replay-safe camelCase flags for backend audit storage."""

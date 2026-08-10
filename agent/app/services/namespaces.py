@@ -15,7 +15,16 @@ from pathlib import Path
 from re import Pattern
 
 from app.core.config import Settings
-from app.core.constants import DEFAULT_CANCEL_WAIT_SECONDS, JobStatus, SseEvent
+from app.core.constants import (
+    DEFAULT_CANCEL_WAIT_SECONDS,
+    MAX_STAGE,
+    MIN_STAGE,
+    ErrorMessage,
+    JobEventType,
+    JobStatus,
+    SseEvent,
+    StagingFlag,
+)
 from app.schemas import JobLogEvent, JobTerminalEvent
 from app.services.sse import encode_sse
 from app.services.staging import (
@@ -163,7 +172,7 @@ async def read_namespace_deploy_recipe(settings: Settings, namespace: str) -> Re
 
     installation = resolve_staging_installation(settings)
     if installation.bin_path is None:
-        raise StagingNotInstalledError("The staging binary is not installed.")
+        raise StagingNotInstalledError(ErrorMessage.STAGING_BINARY_NOT_INSTALLED.value)
     if installation.repo_root is None:
         raise StagingNotInstalledError("The staging repository is not installed.")
 
@@ -235,7 +244,7 @@ def stream_namespace_logs(
                     line = raw_line.decode("utf-8", errors="replace").rstrip("\r\n")
                     yield encode_sse(
                         SseEvent.LOG,
-                        JobLogEvent(type="line", line=line).model_dump(),
+                        JobLogEvent(type=JobEventType.LINE.value, line=line).model_dump(),
                     )
                     continue
 
@@ -254,7 +263,7 @@ def stream_namespace_logs(
             yield encode_sse(
                 SseEvent.TERMINAL,
                 JobTerminalEvent(
-                    type="terminal",
+                    type=JobEventType.TERMINAL.value,
                     status=status,
                     exit_code=exit_code,
                 ).model_dump(by_alias=True),
@@ -351,7 +360,10 @@ def parse_recorded_deploy_recipe(log_path: Path, namespace: str) -> RecordedDepl
     return None
 
 
-def parse_recorded_deploy_command(command: str, expected_namespace: str) -> RecordedDeployRecipe | None:
+def parse_recorded_deploy_command(
+    command: str,
+    expected_namespace: str,
+) -> RecordedDeployRecipe | None:
     """Parse a `deploy.py` command line captured in a deploy log header."""
 
     try:
@@ -371,17 +383,15 @@ def parse_recorded_deploy_command(command: str, expected_namespace: str) -> Reco
     index = 1
     while index < len(args):
         token = args[index]
-        if token == "--services":
+        if token == StagingFlag.SERVICES:
             if index + 1 >= len(args):
                 return None
             recipe.services = [
-                service.strip()
-                for service in args[index + 1].split(",")
-                if service.strip()
+                service.strip() for service in args[index + 1].split(",") if service.strip()
             ]
             index += 2
             continue
-        if token == "--image":
+        if token == StagingFlag.IMAGE:
             if index + 1 >= len(args):
                 return None
             image_spec = args[index + 1]
@@ -395,30 +405,30 @@ def parse_recorded_deploy_command(command: str, expected_namespace: str) -> Reco
             recipe.images[service] = tag
             index += 2
             continue
-        if token == "--clean":
+        if token == StagingFlag.CLEAN:
             recipe.clean = True
             index += 1
             continue
-        if token == "--full":
+        if token == StagingFlag.FULL:
             recipe.full = True
             index += 1
             continue
-        if token == "--dry-run":
+        if token == StagingFlag.DRY_RUN:
             recipe.dry_run = True
             index += 1
             continue
-        if token == "--no-sync":
+        if token == StagingFlag.NO_SYNC:
             recipe.no_sync = True
             index += 1
             continue
-        if token == "--stage":
+        if token == StagingFlag.STAGE:
             if index + 1 >= len(args):
                 return None
             try:
                 stage = int(args[index + 1])
             except ValueError:
                 return None
-            if stage < 0 or stage > 7:
+            if stage < MIN_STAGE or stage > MAX_STAGE:
                 return None
             recipe.stage = stage
             index += 2
@@ -498,6 +508,6 @@ def _build_namespace_argv(
 ) -> tuple[list[str], StagingInstallation]:
     installation = resolve_staging_installation(settings)
     if installation.bin_path is None:
-        raise StagingNotInstalledError("The staging binary is not installed.")
+        raise StagingNotInstalledError(ErrorMessage.STAGING_BINARY_NOT_INSTALLED.value)
 
     return [str(installation.bin_path), command.value, *args], installation

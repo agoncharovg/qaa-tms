@@ -12,7 +12,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.api.deps import CurrentUser, get_db
-from app.core.constants import ApiTag, OperationStatus, OperationType, RoutePath
+from app.core.constants import (
+    DEFAULT_OFFSET,
+    OPERATIONS_DEFAULT_LIMIT,
+    OPERATIONS_MAX_LIMIT,
+    OPERATIONS_MIN_LIMIT,
+    ApiTag,
+    ErrorMessage,
+    OperationStatus,
+    OperationType,
+    RoutePath,
+)
 from app.models.operation import Operation
 from app.models.user import User
 from app.schemas.operation import (
@@ -47,12 +57,12 @@ async def get_visible_operation(
     if operation is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Operation not found.",
+            detail=ErrorMessage.OPERATION_NOT_FOUND.value,
         )
     if not current_user.is_admin and operation.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Operation not found.",
+            detail=ErrorMessage.OPERATION_NOT_FOUND.value,
         )
     return operation
 
@@ -69,7 +79,7 @@ async def upsert_operation(
         if operation is not None and operation.user_id != current_user.id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Operation not found.",
+                detail=ErrorMessage.OPERATION_NOT_FOUND.value,
             )
 
     if operation is None:
@@ -125,8 +135,10 @@ async def list_operations(
     ns: str | None = None,
     type_: Annotated[OperationType | None, Query(alias="type")] = None,
     status_: Annotated[OperationStatus | None, Query(alias="status")] = None,
-    limit: Annotated[int, Query(ge=1, le=100)] = 20,
-    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=OPERATIONS_MIN_LIMIT, le=OPERATIONS_MAX_LIMIT)] = (
+        OPERATIONS_DEFAULT_LIMIT
+    ),
+    offset: Annotated[int, Query(ge=DEFAULT_OFFSET)] = DEFAULT_OFFSET,
 ) -> OperationListResponse:
     filters: list[ColumnElement[bool]] = []
     if current_user.is_admin:

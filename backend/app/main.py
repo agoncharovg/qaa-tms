@@ -11,7 +11,7 @@ from sqlalchemy import text
 
 from app.api.v1 import router as api_v1_router
 from app.core.config import Settings, get_settings
-from app.core.constants import ApiTag, RoutePath
+from app.core.constants import ApiTag, HealthFieldName, HealthStatus, RoutePath
 from app.db.seed import seed_dev_users
 from app.db.session import create_engine_and_session_maker
 
@@ -45,7 +45,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get(RoutePath.HEALTH.value, tags=[ApiTag.SYSTEM.value])
     async def health() -> dict[str, str]:
-        return {"status": "ok"}
+        return {HealthFieldName.STATUS.value: HealthStatus.OK.value}
 
     @app.get(RoutePath.READY.value, tags=[ApiTag.SYSTEM.value])
     async def ready() -> dict[str, str]:
@@ -57,7 +57,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Database is not ready.",
             ) from exc
-        return {"status": "ready"}
+        return {HealthFieldName.STATUS.value: HealthStatus.READY.value}
 
     return app
 

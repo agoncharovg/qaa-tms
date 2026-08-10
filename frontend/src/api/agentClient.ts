@@ -4,6 +4,7 @@ import {
   AGENT_REQUEST_HEADER,
   AGENT_REQUEST_HEADER_VALUE,
   AgentPath,
+  AUTH_SCHEME_BEARER,
   buildAgentE2eSuitesPath,
   buildAgentJobCancelPath,
   buildAgentJobPath,
@@ -13,7 +14,10 @@ import {
   buildAgentNamespaceLogsPath,
   buildAgentNamespaceStatusPath,
   DEFAULT_AGENT_PORT_RANGE,
+  HttpHeader,
+  HttpMethod,
   JobStreamEvent,
+  MediaType,
   type Product,
 } from "@/constants";
 import type {
@@ -75,11 +79,11 @@ function buildAgentUrl(port: number, path: string): string {
 
 function createAgentHeaders(token?: string, extraHeaders?: HeadersInit): Headers {
   const headers = new Headers(extraHeaders);
-  headers.set("Accept", "application/json");
+  headers.set(HttpHeader.ACCEPT, MediaType.JSON);
   headers.set(AGENT_REQUEST_HEADER, AGENT_REQUEST_HEADER_VALUE);
 
   if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
+    headers.set(HttpHeader.AUTHORIZATION, `${AUTH_SCHEME_BEARER} ${token}`);
   }
 
   return headers;
@@ -111,7 +115,7 @@ async function probeAgentPort(port: number, signal?: AbortSignal): Promise<Agent
     const agent = await readAgentJson<AgentPingResponse>(
       port,
       AgentPath.PING,
-      { method: "GET" },
+      { method: HttpMethod.GET },
       undefined,
       signal
     );
@@ -125,9 +129,9 @@ function createJsonBody(body: unknown): Pick<RequestInit, "body" | "headers" | "
   return {
     body: JSON.stringify(body),
     headers: {
-      "Content-Type": "application/json",
+      [HttpHeader.CONTENT_TYPE]: MediaType.JSON,
     },
-    method: "POST",
+    method: HttpMethod.POST,
   };
 }
 
@@ -160,7 +164,7 @@ export async function getPreflight(token: string, signal?: AbortSignal): Promise
   const checklist = await readAgentJson<PreflightItem[]>(
     discovery.port,
     AgentPath.PREFLIGHT,
-    { method: "GET" },
+    { method: HttpMethod.GET },
     token,
     signal
   );
@@ -200,7 +204,7 @@ async function streamAgentCommand(
 ): Promise<void> {
   const response = await fetch(buildAgentUrl(port, path), {
     headers: createAgentHeaders(token),
-    method: "GET",
+    method: HttpMethod.GET,
     signal,
   });
 
@@ -235,7 +239,7 @@ export const agentClient = {
     return readAgentJson<JobRead>(
       port,
       buildAgentJobCancelPath(jobId),
-      { method: "POST" },
+      { method: HttpMethod.POST },
       token,
       signal
     );
@@ -277,7 +281,7 @@ export const agentClient = {
     return readAgentJson<E2eSuitesResponse>(
       port,
       buildAgentE2eSuitesPath(product),
-      { method: "GET" },
+      { method: HttpMethod.GET },
       token,
       signal
     );
@@ -287,7 +291,7 @@ export const agentClient = {
     return readAgentJson<JobRead>(
       port,
       buildAgentJobPath(jobId),
-      { method: "GET" },
+      { method: HttpMethod.GET },
       token,
       signal
     );
@@ -302,7 +306,7 @@ export const agentClient = {
     return readAgentJson<NamespaceCreds>(
       port,
       buildAgentNamespaceCredsPath(namespace),
-      { method: "GET" },
+      { method: HttpMethod.GET },
       token,
       signal
     );
@@ -317,7 +321,7 @@ export const agentClient = {
     return readAgentJson<NamespaceStatus>(
       port,
       buildAgentNamespaceStatusPath(namespace),
-      { method: "GET" },
+      { method: HttpMethod.GET },
       token,
       signal
     );
@@ -332,14 +336,20 @@ export const agentClient = {
     return readAgentJson<NamespaceDeployRecipe>(
       port,
       buildAgentNamespaceDeployRecipePath(namespace),
-      { method: "GET" },
+      { method: HttpMethod.GET },
       token,
       signal
     );
   },
 
   listNamespaces(port: number, token: string, signal?: AbortSignal): Promise<NamespaceList> {
-    return readAgentJson<NamespaceList>(port, AgentPath.NAMESPACES, { method: "GET" }, token, signal);
+    return readAgentJson<NamespaceList>(
+      port,
+      AgentPath.NAMESPACES,
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
   },
 
   async streamJob(
