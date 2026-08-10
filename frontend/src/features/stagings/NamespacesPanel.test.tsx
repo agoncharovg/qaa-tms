@@ -156,9 +156,9 @@ describe("NamespacesPanel", () => {
         return Promise.resolve(
           new Response(
             JSON.stringify({
-              clusterNamespaces: [{ createdAt: null, name: "qa-demo", status: "Active" }],
+              clusterNamespaces: [],
               exitCode: 0,
-              localOverlays: [],
+              localOverlays: [{ name: "qa-demo" }],
               raw: "qa-demo\n",
             }),
             {
@@ -287,7 +287,7 @@ describe("NamespacesPanel", () => {
         return Promise.resolve(
           new Response(
             JSON.stringify({
-              clusterNamespaces: [{ createdAt: null, name: "qa-demo", status: "Active" }],
+              clusterNamespaces: [{ createdAt: null, hasLocalOverlay: false, name: "qa-demo", status: "Active" }],
               exitCode: 0,
               localOverlays: [],
               raw: "qa-demo\n",
@@ -325,7 +325,8 @@ describe("NamespacesPanel", () => {
 
     await user.click(await screen.findByRole("button", { name: /qa-demo/i }));
     await screen.findByText("pod/iam-api Running");
-    await user.click(screen.getByRole("button", { name: "Prepare bump redeploy" }));
+    expect(screen.queryByRole("button", { name: "Prepare namespace recreation" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Prepare in-place redeploy" }));
 
     await waitFor(() => {
       expect(backendClientMock.listOperations).toHaveBeenCalledWith("token-123", {
@@ -348,6 +349,112 @@ describe("NamespacesPanel", () => {
     });
 
     expect(useUiStore.getState().tabsBySection[SectionKey.STAGINGS].activeTabId).toBe(TabId.STAGINGS_DEPLOY);
+  });
+
+  it("clears the prepare deploy error when another namespace is selected", async () => {
+    const user = userEvent.setup();
+
+    getPreflightMock.mockResolvedValue({
+      agent: {
+        app: "qaa-tms-agent",
+        os: "linux",
+        stagingsInstalled: true,
+        stagingsSha: "abc123",
+        version: "0.1.0",
+      },
+      checklist: [],
+      detected: true,
+      port: 47600,
+    });
+
+    fetchMock.mockImplementation((input) => {
+      const url = readRequestUrl(input);
+
+      if (url.endsWith("/namespaces")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              clusterNamespaces: [],
+              exitCode: 0,
+              localOverlays: [{ name: "qa-missing" }, { name: "qa-ready" }],
+              raw: "qa-missing\nqa-ready\n",
+            }),
+            {
+              headers: {
+                "Content-Type": "application/json",
+              },
+            }
+          )
+        );
+      }
+
+      if (url.endsWith("/namespaces/qa-missing/status")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              exitCode: 0,
+              ns: "qa-missing",
+              raw: "not provisioned\n",
+            }),
+            {
+              headers: {
+                "Content-Type": "application/json",
+              },
+            }
+          )
+        );
+      }
+
+      if (url.endsWith("/namespaces/qa-ready/status")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              exitCode: 0,
+              ns: "qa-ready",
+              raw: "not provisioned\n",
+            }),
+            {
+              headers: {
+                "Content-Type": "application/json",
+              },
+            }
+          )
+        );
+      }
+
+      if (url.endsWith("/namespaces/qa-missing/deploy-recipe")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              detail: "No recorded deploy recipe was found for qa-missing.",
+            }),
+            {
+              headers: {
+                "Content-Type": "application/json",
+              },
+              status: 404,
+            }
+          )
+        );
+      }
+
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+
+    renderWithProviders(<NamespacesPanel />);
+
+    await user.click(await screen.findByRole("button", { name: /qa-missing/i }));
+    await screen.findByText("not provisioned");
+    await user.click(screen.getByRole("button", { name: "Repeat previous deploy" }));
+
+    expect(await screen.findByText("Prepare deploy draft failed")).toBeInTheDocument();
+    expect(screen.getByText("No recorded deploy recipe was found for qa-missing.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /qa-ready/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Prepare deploy draft failed")).not.toBeInTheDocument();
+    });
   });
 
   it("repeats the latest deploy recipe for local overlays", async () => {
@@ -481,9 +588,9 @@ describe("NamespacesPanel", () => {
         return Promise.resolve(
           new Response(
             JSON.stringify({
-              clusterNamespaces: [{ createdAt: null, name: "qa-demo", status: "Active" }],
+              clusterNamespaces: [],
               exitCode: 0,
-              localOverlays: [],
+              localOverlays: [{ name: "qa-demo" }],
               raw: "qa-demo\n",
             }),
             {
@@ -549,6 +656,74 @@ describe("NamespacesPanel", () => {
     await waitFor(() => {
       expect(fetchMock.mock.calls.some(([input]) => readRequestUrl(input).endsWith("/destroy"))).toBe(true);
     });
+  });
+
+  it("hides destroy controls for cluster namespaces even when a local overlay exists", async () => {
+    getPreflightMock.mockResolvedValue({
+      agent: {
+        app: "qaa-tms-agent",
+        os: "linux",
+        stagingsInstalled: true,
+        stagingsSha: "abc123",
+        version: "0.1.0",
+      },
+      checklist: [],
+      detected: true,
+      port: 47600,
+    });
+
+    fetchMock.mockImplementation((input) => {
+      const url = readRequestUrl(input);
+
+      if (url.endsWith("/namespaces")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              clusterNamespaces: [{ createdAt: null, hasLocalOverlay: true, name: "qa-demo", status: "Active" }],
+              exitCode: 0,
+              localOverlays: [],
+              raw: "qa-demo\n",
+            }),
+            {
+              headers: {
+                "Content-Type": "application/json",
+              },
+            }
+          )
+        );
+      }
+
+      if (url.endsWith("/namespaces/qa-demo/status")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              exitCode: 0,
+              ns: "qa-demo",
+              raw: "pod/iam-api Running\n",
+            }),
+            {
+              headers: {
+                "Content-Type": "application/json",
+              },
+            }
+          )
+        );
+      }
+
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+
+    renderWithProviders(<NamespacesPanel />);
+
+    await userEvent.setup().click(await screen.findByRole("button", { name: /qa-demo/i }));
+    await screen.findByText("pod/iam-api Running");
+
+    expect(
+      screen.getByText(/Destroy is available only when the namespace is selected from Local overlays\./)
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Type namespace to confirm destroy")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Destroy namespace" })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([input]) => readRequestUrl(input).endsWith("/destroy"))).toBe(false);
   });
 
   it("shows the companion-app absent state and disables refresh", async () => {

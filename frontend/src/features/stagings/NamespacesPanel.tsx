@@ -148,9 +148,12 @@ function maskSensitiveText(raw: string): string {
   return raw.replace(/[^\s]/g, "*");
 }
 
-function mapClusterEntries(entries: { name: string; status: string; createdAt: string | null }[]): NamespaceListEntry[] {
+function mapClusterEntries(
+  entries: { name: string; status: string; createdAt: string | null; hasLocalOverlay: boolean }[]
+): NamespaceListEntry[] {
   return entries.map((entry) => ({
     createdAt: entry.createdAt,
+    hasLocalOverlay: entry.hasLocalOverlay,
     name: entry.name,
     origin: NamespaceOrigin.CLUSTER,
     statusLabel: entry.status,
@@ -159,6 +162,7 @@ function mapClusterEntries(entries: { name: string; status: string; createdAt: s
 
 function mapLocalOverlayEntries(entries: { name: string }[]): NamespaceListEntry[] {
   return entries.map((entry) => ({
+    hasLocalOverlay: true,
     name: entry.name,
     origin: NamespaceOrigin.LOCAL,
     statusLabel: NamespaceOriginLabel[NamespaceOrigin.LOCAL],
@@ -166,9 +170,12 @@ function mapLocalOverlayEntries(entries: { name: string }[]): NamespaceListEntry
 }
 
 
-function createClusterRedeployDraft(replay: Pick<OperationSummary, "ns" | "recipe">) {
+function createClusterRedeployDraft(
+  replay: Pick<OperationSummary, "ns" | "recipe">,
+  options: { clean: boolean }
+) {
   const draft = createDeployDraftFromReplay(replay);
-  draft.flags.clean = false;
+  draft.flags.clean = options.clean;
   draft.flags.full = false;
   draft.flags.dryRun = false;
   draft.flags.noSync = false;
@@ -254,6 +261,9 @@ export function NamespacesPanel() {
       if (!token || agentPort === null || !selectedNamespace) {
         throw new Error("No namespace is selected.");
       }
+      if (!canDestroySelectedNamespace) {
+        throw new Error("Destroy is allowed only for namespaces selected from Local overlays.");
+      }
 
       return agentClient.destroy(agentPort, token, { ns: selectedNamespace });
     },
@@ -321,9 +331,13 @@ export function NamespacesPanel() {
     };
   }
 
-  function openDeployWithDraft(mode: NamespaceListEntry["origin"], replay: Pick<OperationSummary, "ns" | "recipe">): void {
+  function openDeployWithDraft(
+    mode: NamespaceListEntry["origin"],
+    replay: Pick<OperationSummary, "ns" | "recipe">,
+    options: { clean: boolean }
+  ): void {
     if (mode === NamespaceOrigin.CLUSTER) {
-      setDeployDraft(createClusterRedeployDraft(replay));
+      setDeployDraft(createClusterRedeployDraft(replay, options));
     } else {
       prefillDeployDraft(replay);
     }
@@ -338,7 +352,7 @@ export function NamespacesPanel() {
   }
 
   const prepareRedeployMutation = useMutation({
-    mutationFn: async (origin: NamespaceListEntry["origin"]) => {
+    mutationFn: async ({ clean, origin }: { clean: boolean; origin: NamespaceListEntry["origin"] }) => {
       if (!selectedNamespace) {
         throw new Error("No namespace is selected.");
       }
@@ -348,17 +362,25 @@ export function NamespacesPanel() {
           ? await loadLatestDeployReplay(selectedNamespace)
           : await loadLocalOverlayDeployRecipe(selectedNamespace);
       return {
+        clean,
         origin,
         replay,
       };
     },
-    onSuccess: ({ origin, replay }) => {
-      openDeployWithDraft(origin, replay);
+    onSuccess: ({ clean, origin, replay }) => {
+      openDeployWithDraft(origin, replay, { clean });
     },
   });
 
+  function resetActionFeedback(): void {
+    adoptMutation.reset();
+    destroyMutation.reset();
+    prepareRedeployMutation.reset();
+  }
+
   const clusterEntries = mapClusterEntries(namespacesQuery.data?.clusterNamespaces ?? []);
   const localEntries = mapLocalOverlayEntries(namespacesQuery.data?.localOverlays ?? []);
+  const canDestroySelectedNamespace = selectedOrigin === NamespaceOrigin.LOCAL;
   const listRaw = namespacesQuery.data?.raw ?? "";
   const listExitCode = namespacesQuery.data?.exitCode ?? null;
   const maskedCreds = credsQuery.data ? maskSensitiveText(credsQuery.data.raw) : "";
@@ -390,6 +412,7 @@ export function NamespacesPanel() {
   function selectNamespace(entry: NamespaceListEntry): void {
     stopLogs(true);
     clearSensitiveState(selectedNamespace);
+    resetActionFeedback();
     transientJob.clearLiveJob();
     setSelectedNamespace(entry.name);
     setSelectedOrigin(entry.origin);
@@ -402,6 +425,7 @@ export function NamespacesPanel() {
   function closeNamespaceDrawer(): void {
     stopLogs(true);
     clearSensitiveState(selectedNamespace);
+    resetActionFeedback();
     transientJob.clearLiveJob();
     setSelectedNamespace(null);
     setSelectedOrigin(null);
@@ -718,7 +742,7 @@ export function NamespacesPanel() {
 
               {selectedOrigin === NamespaceOrigin.CLUSTER ? (
                 <Text c="dimmed" size="sm">
-                  Prepare a bump redeploy from the latest recorded deploy for this live namespace. The draft keeps the previous services and tags but clears `clean`, `full`, and `stage`, so you can change image tags before redeploying.
+                  Prepare an in-place redeploy from the previous recipe. This only opens a draft, so you can still review the service set and image tags before starting the deploy.
                 </Text>
               ) : selectedOrigin === NamespaceOrigin.LOCAL ? (
                 <Text c="dimmed" size="sm">
@@ -727,43 +751,72 @@ export function NamespacesPanel() {
               ) : null}
 
               <Group align="flex-end">
-                {selectedOrigin ? (
+                {selectedOrigin === NamespaceOrigin.CLUSTER ? (
+                  <>
+                    <Button
+                      disabled={!selectedNamespace || prepareRedeployMutation.isPending}
+                      loading={prepareRedeployMutation.isPending}
+                      onClick={() =>
+                        prepareRedeployMutation.mutate({
+                          clean: false,
+                          origin: selectedOrigin,
+                        })
+                      }
+                      variant="light"
+                    >
+                      Prepare in-place redeploy
+                    </Button>
+                  </>
+                ) : selectedOrigin === NamespaceOrigin.LOCAL ? (
                   <Button
                     disabled={!selectedNamespace || prepareRedeployMutation.isPending}
                     loading={prepareRedeployMutation.isPending}
-                    onClick={() => void prepareRedeployMutation.mutateAsync(selectedOrigin)}
+                    onClick={() =>
+                      prepareRedeployMutation.mutate({
+                        clean: false,
+                        origin: selectedOrigin,
+                      })
+                    }
                     variant="light"
                   >
-                    {selectedOrigin === NamespaceOrigin.CLUSTER ? "Prepare bump redeploy" : "Repeat previous deploy"}
+                    Repeat previous deploy
                   </Button>
                 ) : null}
                 <Button
                   disabled={!selectedNamespace || transientJob.isJobRunning}
                   loading={adoptMutation.isPending}
-                  onClick={() => void adoptMutation.mutateAsync()}
+                  onClick={() => adoptMutation.mutate()}
                   variant="light"
                 >
                   Adopt namespace
                 </Button>
-                <TextInput
-                  description="Required before destroy"
-                  label="Type namespace to confirm destroy"
-                  onChange={(event) => setDestroyConfirmation(event.currentTarget.value)}
-                  placeholder={selectedNamespace ?? "namespace"}
-                  value={destroyConfirmation}
-                />
-                <Button
-                  color="red"
-                  disabled={
-                    !selectedNamespace ||
-                    transientJob.isJobRunning ||
-                    destroyConfirmation.trim() !== selectedNamespace
-                  }
-                  loading={destroyMutation.isPending}
-                  onClick={() => void destroyMutation.mutateAsync()}
-                >
-                  Destroy namespace
-                </Button>
+                {canDestroySelectedNamespace ? (
+                  <>
+                    <TextInput
+                      description="Required before destroy"
+                      label="Type namespace to confirm destroy"
+                      onChange={(event) => setDestroyConfirmation(event.currentTarget.value)}
+                      placeholder={selectedNamespace ?? "namespace"}
+                      value={destroyConfirmation}
+                    />
+                    <Button
+                      color="red"
+                      disabled={
+                        !selectedNamespace ||
+                        transientJob.isJobRunning ||
+                        destroyConfirmation.trim() !== selectedNamespace
+                      }
+                      loading={destroyMutation.isPending}
+                      onClick={() => destroyMutation.mutate()}
+                    >
+                      Destroy namespace
+                    </Button>
+                  </>
+                ) : (
+                  <Text c="dimmed" size="sm">
+                    Destroy is available only when the namespace is selected from Local overlays. This prevents removing a live cluster namespace from the wrong list.
+                  </Text>
+                )}
               </Group>
 
               {adoptMutation.isError ? (
