@@ -175,12 +175,55 @@ async def test_namespace_logs_terminates_process_on_disconnect(
     assert len(terminated) == 1
 
 
+async def test_namespace_deploy_recipe_reads_latest_supported_overlay_log(
+    client: httpx.AsyncClient,
+    auth_headers: dict[str, str],
+    backend_recorder: BackendRecorder,
+    fake_staging_repo: dict[str, Path],
+) -> None:
+    overlay_dir = fake_staging_repo["repo_root"] / "overlays" / "qaa-iam"
+    overlay_dir.mkdir(parents=True, exist_ok=True)
+    (overlay_dir / "deploy-20260810-120000.log").write_text(
+        "Command: /tmp/qaa-stagings/scripts/deploy.py qaa-iam --services iam-api --step add_sellers\n",
+        encoding="utf-8",
+    )
+    (overlay_dir / "deploy-20260809-110000.log").write_text(
+        "Command: /tmp/qaa-stagings/scripts/deploy.py qaa-iam --services iam-api,billing --image iam-api=sha-local --image billing=sha-billing --clean --full --no-sync --stage 3\n",
+        encoding="utf-8",
+    )
+
+    response = await client.get("/namespaces/qaa-iam/deploy-recipe", headers=auth_headers)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ns": "qaa-iam",
+        "recipe": {
+            "product": None,
+            "services": ["iam-api", "billing"],
+            "images": {
+                "iam-api": "sha-local",
+                "billing": "sha-billing",
+            },
+            "suites": [],
+            "flags": {
+                "clean": True,
+                "full": True,
+                "dryRun": False,
+                "noSync": True,
+                "stage": 3,
+            },
+        },
+    }
+    assert backend_recorder.operations == []
+
+
 @pytest.mark.parametrize(
     "path",
     [
         "/namespaces",
         "/namespaces/qa-demo/status",
         "/namespaces/qa-demo/creds",
+        "/namespaces/qa-demo/deploy-recipe",
         "/namespaces/qa-demo/logs?deploy=iam-api",
     ],
 )

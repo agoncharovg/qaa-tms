@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+const backendClientMock = vi.hoisted(() => ({
+  listOperations: vi.fn(),
+}));
 const getPreflightMock = vi.hoisted(() => vi.fn());
 const useTransientLiveJobMock = vi.hoisted(() => vi.fn());
 
@@ -13,13 +16,20 @@ vi.mock("@/api/agentClient", async () => {
   };
 });
 
+vi.mock("@/api/backendClient", () => ({
+  backendClient: backendClientMock,
+}));
+
 vi.mock("@/features/stagings/useTransientLiveJob", () => ({
   useTransientLiveJob: useTransientLiveJobMock,
 }));
 
 import { NamespacesPanel } from "@/features/stagings/NamespacesPanel";
+import { OperationType, SectionKey, TabId } from "@/constants";
 import { renderWithProviders } from "@/test/render";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
+import { resetStagingsStoreState, useStagingsStore } from "@/store/stagingsStore";
+import { resetUiStoreState, useUiStore } from "@/store/uiStore";
 
 function readRequestUrl(input: Parameters<typeof fetch>[0]): string {
   if (typeof input === "string") {
@@ -37,12 +47,15 @@ describe("NamespacesPanel", () => {
   const fetchMock = vi.fn<typeof fetch>();
 
   beforeEach(() => {
+    backendClientMock.listOperations.mockReset();
     fetchMock.mockReset();
     getPreflightMock.mockReset();
     useTransientLiveJobMock.mockReset();
     vi.stubGlobal("fetch", fetchMock);
     localStorage.clear();
     resetAuthStoreState();
+    resetStagingsStoreState();
+    resetUiStoreState();
 
     useAuthStore.setState({
       currentUser: {
@@ -212,6 +225,237 @@ describe("NamespacesPanel", () => {
 
     expect(screen.getByLabelText("Credentials output")).toHaveTextContent("sysadmin: secret-token");
     expect(screen.getByRole("button", { name: "Copy" })).toBeEnabled();
+  });
+
+  it("prepares a bump redeploy draft for cluster namespaces", async () => {
+    const user = userEvent.setup();
+
+    getPreflightMock.mockResolvedValue({
+      agent: {
+        app: "qaa-tms-agent",
+        os: "linux",
+        stagingsInstalled: true,
+        stagingsSha: "abc123",
+        version: "0.1.0",
+      },
+      checklist: [],
+      detected: true,
+      port: 47600,
+    });
+
+    backendClientMock.listOperations.mockResolvedValue({
+      items: [
+        {
+          agent_host: "laptop",
+          agent_version: "0.1.0",
+          created_at: "2026-08-09T10:00:00Z",
+          exit_code: 0,
+          finished_at: "2026-08-09T10:05:00Z",
+          id: "00000000-0000-0000-0000-000000000111",
+          ns: "qa-demo",
+          recipe: {
+            flags: {
+              clean: true,
+              dryRun: false,
+              full: true,
+              noSync: true,
+              stage: 4,
+            },
+            images: {
+              "iam-api": "sha-fixed",
+            },
+            product: null,
+            services: ["iam-api", "billing"],
+            suites: [],
+          },
+          stagings_sha: "abc123",
+          started_at: "2026-08-09T10:00:00Z",
+          status: "success",
+          type: OperationType.DEPLOY,
+          user_id: 2,
+        },
+      ],
+      limit: 1,
+      offset: 0,
+      total: 1,
+    });
+
+    fetchMock.mockImplementation((input) => {
+      const url = readRequestUrl(input);
+
+      if (url.endsWith("/namespaces")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              clusterNamespaces: [{ createdAt: null, name: "qa-demo", status: "Active" }],
+              exitCode: 0,
+              localOverlays: [],
+              raw: "qa-demo\n",
+            }),
+            {
+              headers: {
+                "Content-Type": "application/json",
+              },
+            }
+          )
+        );
+      }
+
+      if (url.endsWith("/namespaces/qa-demo/status")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              exitCode: 0,
+              ns: "qa-demo",
+              raw: "pod/iam-api Running\n",
+            }),
+            {
+              headers: {
+                "Content-Type": "application/json",
+              },
+            }
+          )
+        );
+      }
+
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+
+    renderWithProviders(<NamespacesPanel />);
+
+    await user.click(await screen.findByRole("button", { name: /qa-demo/i }));
+    await screen.findByText("pod/iam-api Running");
+    await user.click(screen.getByRole("button", { name: "Prepare bump redeploy" }));
+
+    await waitFor(() => {
+      expect(backendClientMock.listOperations).toHaveBeenCalledWith("token-123", {
+        limit: 1,
+        ns: "qa-demo",
+        offset: 0,
+        type: OperationType.DEPLOY,
+      });
+    });
+
+    await waitFor(() => {
+      const draft = useStagingsStore.getState().deployDraft;
+      expect(draft.ns).toBe("qa-demo");
+      expect(draft.servicesText).toBe("iam-api, billing");
+      expect(draft.imageRows[0]).toEqual({ service: "iam-api", tag: "sha-fixed" });
+      expect(draft.flags.clean).toBe(false);
+      expect(draft.flags.full).toBe(false);
+      expect(draft.flags.noSync).toBe(false);
+      expect(draft.flags.stageText).toBe("");
+    });
+
+    expect(useUiStore.getState().tabsBySection[SectionKey.STAGINGS].activeTabId).toBe(TabId.STAGINGS_DEPLOY);
+  });
+
+  it("repeats the latest deploy recipe for local overlays", async () => {
+    const user = userEvent.setup();
+
+    getPreflightMock.mockResolvedValue({
+      agent: {
+        app: "qaa-tms-agent",
+        os: "linux",
+        stagingsInstalled: true,
+        stagingsSha: "abc123",
+        version: "0.1.0",
+      },
+      checklist: [],
+      detected: true,
+      port: 47600,
+    });
+
+    fetchMock.mockImplementation((input) => {
+      const url = readRequestUrl(input);
+
+      if (url.endsWith("/namespaces")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              clusterNamespaces: [],
+              exitCode: 0,
+              localOverlays: [{ name: "qa-iam" }],
+              raw: "qa-iam\n",
+            }),
+            {
+              headers: {
+                "Content-Type": "application/json",
+              },
+            }
+          )
+        );
+      }
+
+      if (url.endsWith("/namespaces/qa-iam/status")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              exitCode: 0,
+              ns: "qa-iam",
+              raw: "not provisioned\n",
+            }),
+            {
+              headers: {
+                "Content-Type": "application/json",
+              },
+            }
+          )
+        );
+      }
+
+      if (url.endsWith("/namespaces/qa-iam/deploy-recipe")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              ns: "qa-iam",
+              recipe: {
+                flags: {
+                  clean: true,
+                  dryRun: false,
+                  full: true,
+                  noSync: true,
+                  stage: 3,
+                },
+                images: {
+                  "iam-api": "sha-local",
+                },
+                product: null,
+                services: ["iam-api", "billing"],
+                suites: [],
+              },
+            }),
+            {
+              headers: {
+                "Content-Type": "application/json",
+              },
+            }
+          )
+        );
+      }
+
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+
+    renderWithProviders(<NamespacesPanel />);
+
+    await user.click(await screen.findByRole("button", { name: /qa-iam/i }));
+    await screen.findByText("not provisioned");
+    await user.click(screen.getByRole("button", { name: "Repeat previous deploy" }));
+
+    await waitFor(() => {
+      const draft = useStagingsStore.getState().deployDraft;
+      expect(draft.ns).toBe("qa-iam");
+      expect(draft.servicesText).toBe("iam-api, billing");
+      expect(draft.imageRows[0]).toEqual({ service: "iam-api", tag: "sha-local" });
+      expect(draft.flags.clean).toBe(true);
+      expect(draft.flags.full).toBe(true);
+      expect(draft.flags.noSync).toBe(true);
+      expect(draft.flags.stageText).toBe("3");
+    });
+
+    expect(backendClientMock.listOperations).not.toHaveBeenCalled();
+    expect(useUiStore.getState().tabsBySection[SectionKey.STAGINGS].activeTabId).toBe(TabId.STAGINGS_DEPLOY);
   });
 
   it("requires explicit destroy confirmation before calling the agent", async () => {

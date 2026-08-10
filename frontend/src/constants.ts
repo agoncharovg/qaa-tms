@@ -70,6 +70,7 @@ export const AgentPath = {
   STATUS: "/status",
   CREDS: "/creds",
   LOGS: "/logs",
+  DEPLOY_RECIPE: "/deploy-recipe",
   DEPLOY: "/deploy",
   DESTROY: "/destroy",
   ADOPT: "/adopt",
@@ -109,6 +110,10 @@ export function buildAgentNamespaceLogsPath(namespace: string, deploy: string): 
     deploy,
   });
   return `${AgentPath.NAMESPACES}/${encodeURIComponent(namespace)}${AgentPath.LOGS}?${params.toString()}`;
+}
+
+export function buildAgentNamespaceDeployRecipePath(namespace: string): string {
+  return `${AgentPath.NAMESPACES}/${encodeURIComponent(namespace)}${AgentPath.DEPLOY_RECIPE}`;
 }
 
 export function buildAgentE2eSuitesPath(product: Product): string {

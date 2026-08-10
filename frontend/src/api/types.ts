@@ -160,6 +160,17 @@ export interface NamespaceCreds {
   exitCode: number;
 }
 
+export interface NamespaceDeployRecipe {
+  ns: string;
+  recipe: {
+    product?: Product | null;
+    services: string[];
+    images: Record<string, string>;
+    suites: string[];
+    flags: DeployFlags;
+  };
+}
+
 export interface JobLogEvent {
   type: "line";
   line: string;

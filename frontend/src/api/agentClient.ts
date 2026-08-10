@@ -9,6 +9,7 @@ import {
   buildAgentJobPath,
   buildAgentJobStreamPath,
   buildAgentNamespaceCredsPath,
+  buildAgentNamespaceDeployRecipePath,
   buildAgentNamespaceLogsPath,
   buildAgentNamespaceStatusPath,
   DEFAULT_AGENT_PORT_RANGE,
@@ -29,6 +30,7 @@ import type {
   JobStreamMessage,
   JobTerminalEvent,
   NamespaceCreds,
+  NamespaceDeployRecipe,
   NamespaceList,
   NamespaceStatus,
   PreflightItem,
@@ -315,6 +317,21 @@ export const agentClient = {
     return readAgentJson<NamespaceStatus>(
       port,
       buildAgentNamespaceStatusPath(namespace),
+      { method: "GET" },
+      token,
+      signal
+    );
+  },
+
+  getNamespaceDeployRecipe(
+    port: number,
+    token: string,
+    namespace: string,
+    signal?: AbortSignal
+  ): Promise<NamespaceDeployRecipe> {
+    return readAgentJson<NamespaceDeployRecipe>(
+      port,
+      buildAgentNamespaceDeployRecipePath(namespace),
       { method: "GET" },
       token,
       signal

@@ -28,17 +28,20 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { agentClient, getPreflight } from "@/api/agentClient";
-import type { JobTerminalEvent, NamespaceListEntry, NamespaceLogsState } from "@/api/types";
+import { backendClient } from "@/api/backendClient";
+import type { JobTerminalEvent, NamespaceListEntry, NamespaceLogsState, OperationSummary } from "@/api/types";
 import {
   NamespaceLogStatus,
   NamespaceLogStatusLabel,
   NamespaceOrigin,
   NamespaceOriginLabel,
+  OperationType,
   QueryKey,
   SectionKey,
   TabId,
   type NamespaceLogStatus as NamespaceLogStatusType,
 } from "@/constants";
+import { createDeployDraftFromReplay } from "@/features/stagings/deployDraft";
 import { LiveJobPanel } from "@/features/stagings/LiveJobPanel";
 import { useTransientLiveJob } from "@/features/stagings/useTransientLiveJob";
 import { useAuthStore } from "@/store/authStore";
@@ -162,12 +165,28 @@ function mapLocalOverlayEntries(entries: { name: string }[]): NamespaceListEntry
   }));
 }
 
+
+function createClusterRedeployDraft(replay: Pick<OperationSummary, "ns" | "recipe">) {
+  const draft = createDeployDraftFromReplay(replay);
+  draft.flags.clean = false;
+  draft.flags.full = false;
+  draft.flags.dryRun = false;
+  draft.flags.noSync = false;
+  draft.flags.stageText = "";
+  return draft;
+}
+
 export function NamespacesPanel() {
   const queryClient = useQueryClient();
   const token = useAuthStore((state) => state.token);
+  const prefillDeployDraft = useStagingsStore((state) => state.prefillDeployDraft);
+  const setDeployDraft = useStagingsStore((state) => state.setDeployDraft);
   const setSelectedOperationId = useStagingsStore((state) => state.setSelectedOperationId);
   const openTab = useUiStore((state) => state.openTab);
   const switchTab = useUiStore((state) => state.switchTab);
+  const deployOpen = useUiStore((state) =>
+    state.tabsBySection[SectionKey.STAGINGS].tabIds.includes(TabId.STAGINGS_DEPLOY)
+  );
   const historyOpen = useUiStore((state) =>
     state.tabsBySection[SectionKey.STAGINGS].tabIds.includes(TabId.STAGINGS_HISTORY)
   );
@@ -256,6 +275,85 @@ export function NamespacesPanel() {
     onSuccess: (response) => {
       transientJob.startLiveJob(response.jobId, response.opId);
       setSelectedOperationId(null);
+    },
+  });
+
+  async function loadLatestDeployReplay(namespace: string): Promise<Pick<OperationSummary, "ns" | "recipe">> {
+    if (!token) {
+      throw new Error("You must be logged in to load deploy history.");
+    }
+
+    const response = await backendClient.listOperations(token, {
+      limit: 1,
+      ns: namespace,
+      offset: 0,
+      type: OperationType.DEPLOY,
+    });
+    const latestDeploy = response.items[0];
+
+    if (!latestDeploy || latestDeploy.type !== OperationType.DEPLOY || !latestDeploy.ns) {
+      throw new Error(`No recorded deploy recipe was found for ${namespace}.`);
+    }
+
+    return {
+      ns: latestDeploy.ns,
+      recipe: latestDeploy.recipe,
+    };
+  }
+
+  async function loadLocalOverlayDeployRecipe(
+    namespace: string
+  ): Promise<Pick<OperationSummary, "ns" | "recipe">> {
+    if (!token || agentPort === null) {
+      throw new Error("The agent must be connected to load a local deploy recipe.");
+    }
+
+    const response = await agentClient.getNamespaceDeployRecipe(agentPort, token, namespace);
+    return {
+      ns: response.ns,
+      recipe: {
+        product: response.recipe.product,
+        services: response.recipe.services,
+        images: response.recipe.images,
+        suites: response.recipe.suites,
+        flags: { ...response.recipe.flags },
+      },
+    };
+  }
+
+  function openDeployWithDraft(mode: NamespaceListEntry["origin"], replay: Pick<OperationSummary, "ns" | "recipe">): void {
+    if (mode === NamespaceOrigin.CLUSTER) {
+      setDeployDraft(createClusterRedeployDraft(replay));
+    } else {
+      prefillDeployDraft(replay);
+    }
+
+    setSelectedOperationId(null);
+    if (deployOpen) {
+      switchTab(SectionKey.STAGINGS, TabId.STAGINGS_DEPLOY);
+      return;
+    }
+
+    openTab(SectionKey.STAGINGS, TabId.STAGINGS_DEPLOY);
+  }
+
+  const prepareRedeployMutation = useMutation({
+    mutationFn: async (origin: NamespaceListEntry["origin"]) => {
+      if (!selectedNamespace) {
+        throw new Error("No namespace is selected.");
+      }
+
+      const replay =
+        origin === NamespaceOrigin.CLUSTER
+          ? await loadLatestDeployReplay(selectedNamespace)
+          : await loadLocalOverlayDeployRecipe(selectedNamespace);
+      return {
+        origin,
+        replay,
+      };
+    },
+    onSuccess: ({ origin, replay }) => {
+      openDeployWithDraft(origin, replay);
     },
   });
 
@@ -614,11 +712,31 @@ export function NamespacesPanel() {
               <div>
                 <Text fw={600}>Actions</Text>
                 <Text c="dimmed" size="sm">
-                  `adopt` and `destroy` run as agent jobs, stream live output over SSE, and are recorded in History.
+                  `adopt` and `destroy` run as agent jobs, stream live output over SSE, and are recorded in History. Deploy actions open the Deploy tab with a prefilled draft.
                 </Text>
               </div>
 
+              {selectedOrigin === NamespaceOrigin.CLUSTER ? (
+                <Text c="dimmed" size="sm">
+                  Prepare a bump redeploy from the latest recorded deploy for this live namespace. The draft keeps the previous services and tags but clears `clean`, `full`, and `stage`, so you can change image tags before redeploying.
+                </Text>
+              ) : selectedOrigin === NamespaceOrigin.LOCAL ? (
+                <Text c="dimmed" size="sm">
+                  Repeat the latest recorded deploy for this local overlay with the exact same recipe.
+                </Text>
+              ) : null}
+
               <Group align="flex-end">
+                {selectedOrigin ? (
+                  <Button
+                    disabled={!selectedNamespace || prepareRedeployMutation.isPending}
+                    loading={prepareRedeployMutation.isPending}
+                    onClick={() => void prepareRedeployMutation.mutateAsync(selectedOrigin)}
+                    variant="light"
+                  >
+                    {selectedOrigin === NamespaceOrigin.CLUSTER ? "Prepare bump redeploy" : "Repeat previous deploy"}
+                  </Button>
+                ) : null}
                 <Button
                   disabled={!selectedNamespace || transientJob.isJobRunning}
                   loading={adoptMutation.isPending}
@@ -664,6 +782,16 @@ export function NamespacesPanel() {
                     {destroyMutation.error instanceof Error
                       ? destroyMutation.error.message
                       : "Unable to start the destroy job."}
+                  </Text>
+                </Alert>
+              ) : null}
+
+              {prepareRedeployMutation.isError ? (
+                <Alert color="red" icon={<IconAlertCircle size={18} />} title="Prepare deploy draft failed">
+                  <Text>
+                    {prepareRedeployMutation.error instanceof Error
+                      ? prepareRedeployMutation.error.message
+                      : "Unable to load the latest deploy recipe for this namespace."}
                   </Text>
                 </Alert>
               ) : null}

@@ -13,6 +13,7 @@ class AgentPath(StrEnum):
     STATUS = "/status"
     CREDS = "/creds"
     LOGS = "/logs"
+    DEPLOY_RECIPE = "/deploy-recipe"
     DEPLOY = "/deploy"
     DESTROY = "/destroy"
     ADOPT = "/adopt"

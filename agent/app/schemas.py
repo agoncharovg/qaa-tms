@@ -233,3 +233,24 @@ class NamespaceCredsResponse(BaseModel):
     ns: str
     raw: str
     exit_code: int = Field(alias="exitCode")
+
+
+class DeployRecipePayload(BaseModel):
+    """Deploy recipe reused to prefill redeploys."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    product: Product | None = None
+    services: list[str] = Field(default_factory=list)
+    images: dict[str, str] = Field(default_factory=dict)
+    suites: list[str] = Field(default_factory=list)
+    flags: DeployFlags = Field(default_factory=DeployFlags)
+
+
+class NamespaceDeployRecipeResponse(BaseModel):
+    """`/namespaces/{ns}/deploy-recipe` response shape."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ns: str
+    recipe: DeployRecipePayload

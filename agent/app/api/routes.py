@@ -14,6 +14,8 @@ from app.core.constants import AgentPath, HeaderName, Product
 from app.schemas import (
     AdoptRequest,
     AgentPingResponse,
+    DeployRecipePayload,
+    DeployFlags,
     DeployRequest,
     DestroyRequest,
     E2eRunRequest,
@@ -22,6 +24,7 @@ from app.schemas import (
     JobCreateResponse,
     JobReadResponse,
     NamespaceCredsResponse,
+    NamespaceDeployRecipeResponse,
     NamespaceListResponse,
     NamespaceStatusResponse,
     PreflightItem,
@@ -32,6 +35,7 @@ from app.services.jobs import JobManager, JobNotFoundError
 from app.services.namespaces import (
     list_namespaces,
     read_namespace_creds,
+    read_namespace_deploy_recipe,
     read_namespace_status,
     stream_namespace_logs,
 )
@@ -257,6 +261,45 @@ async def get_namespace_creds(
         ns=namespace,
         raw=result.raw,
         exit_code=result.exit_code,
+    )
+
+
+@router.get(
+    f"{AgentPath.NAMESPACES.value}/{{namespace}}{AgentPath.DEPLOY_RECIPE.value}",
+    response_model=NamespaceDeployRecipeResponse,
+)
+async def get_namespace_deploy_recipe(
+    namespace: str,
+    _: AuthDep,
+    settings: SettingsDep,
+) -> NamespaceDeployRecipeResponse:
+    try:
+        recipe = await read_namespace_deploy_recipe(settings, namespace)
+    except StagingNotInstalledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    return NamespaceDeployRecipeResponse(
+        ns=recipe.ns,
+        recipe=DeployRecipePayload(
+            product=None,
+            services=recipe.services,
+            images=recipe.images,
+            suites=[],
+            flags=DeployFlags(
+                clean=recipe.clean,
+                full=recipe.full,
+                dry_run=recipe.dry_run,
+                no_sync=recipe.no_sync,
+                stage=recipe.stage,
+            ),
+        ),
     )
 
 

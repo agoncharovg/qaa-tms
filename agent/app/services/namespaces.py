@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import os
 import re
+import shlex
 import signal
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
@@ -55,6 +56,20 @@ class LocalOverlayRow:
     """Best-effort parsed local overlay row."""
 
     name: str
+
+
+@dataclass(slots=True)
+class RecordedDeployRecipe:
+    """Parsed deploy recipe reconstructed from a local deploy log."""
+
+    ns: str
+    services: list[str] = field(default_factory=list)
+    images: dict[str, str] = field(default_factory=dict)
+    clean: bool = False
+    full: bool = False
+    dry_run: bool = False
+    no_sync: bool = False
+    stage: int | None = None
 
 
 @dataclass(slots=True)
@@ -138,6 +153,27 @@ async def read_namespace_creds(settings: Settings, namespace: str) -> PlainTextC
 
     argv, installation = build_namespace_creds_argv(settings, namespace)
     return await run_plain_text_command(argv, installation.repo_root)
+
+
+async def read_namespace_deploy_recipe(settings: Settings, namespace: str) -> RecordedDeployRecipe:
+    """Read the latest supported local deploy recipe for an overlay namespace."""
+
+    installation = resolve_staging_installation(settings)
+    if installation.bin_path is None:
+        raise StagingNotInstalledError("The staging binary is not installed.")
+    if installation.repo_root is None:
+        raise StagingNotInstalledError("The staging repository is not installed.")
+
+    overlay_dir = installation.repo_root / "overlays" / namespace
+    if not overlay_dir.is_dir():
+        raise FileNotFoundError(f"No recorded deploy recipe was found for {namespace}.")
+
+    for log_path in sorted(overlay_dir.glob("deploy-*.log"), reverse=True):
+        recipe = parse_recorded_deploy_recipe(log_path, namespace)
+        if recipe is not None:
+            return recipe
+
+    raise FileNotFoundError(f"No recorded deploy recipe was found for {namespace}.")
 
 
 async def run_plain_text_command(
@@ -294,6 +330,109 @@ def parse_local_overlay_row(line: str) -> LocalOverlayRow | None:
     if not parts:
         return None
     return LocalOverlayRow(name=parts[0])
+
+
+def parse_recorded_deploy_recipe(log_path: Path, namespace: str) -> RecordedDeployRecipe | None:
+    """Extract a supported deploy recipe from a recorded overlay deploy log."""
+
+    try:
+        raw_output = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+    for raw_line in raw_output.splitlines():
+        line = raw_line.strip()
+        if line.startswith("Command:"):
+            return parse_recorded_deploy_command(line.removeprefix("Command:").strip(), namespace)
+
+    return None
+
+
+def parse_recorded_deploy_command(command: str, expected_namespace: str) -> RecordedDeployRecipe | None:
+    """Parse a `deploy.py` command line captured in a deploy log header."""
+
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return None
+
+    args = extract_recorded_deploy_args(tokens)
+    if not args:
+        return None
+
+    namespace = args[0].strip()
+    if not namespace or namespace != expected_namespace:
+        return None
+
+    recipe = RecordedDeployRecipe(ns=namespace)
+    index = 1
+    while index < len(args):
+        token = args[index]
+        if token == "--services":
+            if index + 1 >= len(args):
+                return None
+            recipe.services = [
+                service.strip()
+                for service in args[index + 1].split(",")
+                if service.strip()
+            ]
+            index += 2
+            continue
+        if token == "--image":
+            if index + 1 >= len(args):
+                return None
+            image_spec = args[index + 1]
+            if "=" not in image_spec:
+                return None
+            service, tag = image_spec.split("=", 1)
+            service = service.strip()
+            tag = tag.strip()
+            if not service or not tag:
+                return None
+            recipe.images[service] = tag
+            index += 2
+            continue
+        if token == "--clean":
+            recipe.clean = True
+            index += 1
+            continue
+        if token == "--full":
+            recipe.full = True
+            index += 1
+            continue
+        if token == "--dry-run":
+            recipe.dry_run = True
+            index += 1
+            continue
+        if token == "--no-sync":
+            recipe.no_sync = True
+            index += 1
+            continue
+        if token == "--stage":
+            if index + 1 >= len(args):
+                return None
+            try:
+                stage = int(args[index + 1])
+            except ValueError:
+                return None
+            if stage < 0 or stage > 7:
+                return None
+            recipe.stage = stage
+            index += 2
+            continue
+        return None
+
+    return recipe
+
+
+def extract_recorded_deploy_args(tokens: list[str]) -> list[str] | None:
+    """Return deploy arguments that follow the recorded `deploy.py` script token."""
+
+    for index in range(len(tokens) - 1, -1, -1):
+        if Path(tokens[index]).name == "deploy.py":
+            remaining = tokens[index + 1 :]
+            return remaining or None
+    return None
 
 
 def strip_ansi(raw_output: str) -> str:

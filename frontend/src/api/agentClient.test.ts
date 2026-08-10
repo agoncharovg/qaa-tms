@@ -8,6 +8,7 @@ import type {
   E2eSuitesResponse,
   JobCreateResponse,
   NamespaceCreds,
+  NamespaceDeployRecipe,
   NamespaceList,
   NamespaceStatus,
   SyncRequest,
@@ -137,7 +138,7 @@ describe("agentClient namespace reads", () => {
     vi.stubGlobal("fetch", fetchMock);
   });
 
-  it("parses the list, status, and credentials responses with bearer auth", async () => {
+  it("parses the list, status, credentials, and local deploy-recipe responses with bearer auth", async () => {
     const list: NamespaceList = {
       clusterNamespaces: [
         {
@@ -159,6 +160,24 @@ describe("agentClient namespace reads", () => {
       exitCode: 0,
       ns: "qa-demo",
       raw: "sysadmin: secret\n",
+    };
+    const deployRecipe: NamespaceDeployRecipe = {
+      ns: "qa-iam",
+      recipe: {
+        flags: {
+          clean: true,
+          dryRun: false,
+          full: true,
+          noSync: true,
+          stage: 3,
+        },
+        images: {
+          "iam-api": "sha-local",
+        },
+        product: null,
+        services: ["iam-api", "billing"],
+        suites: [],
+      },
     };
 
     fetchMock
@@ -182,27 +201,39 @@ describe("agentClient namespace reads", () => {
             "Content-Type": "application/json",
           },
         })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(deployRecipe), {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        })
       );
 
     const listResult = await agentClient.listNamespaces(47600, "token-123");
     const statusResult = await agentClient.getNamespaceStatus(47600, "token-123", "qa-demo");
     const credsResult = await agentClient.getNamespaceCreds(47600, "token-123", "qa-demo");
+    const deployRecipeResult = await agentClient.getNamespaceDeployRecipe(47600, "token-123", "qa-iam");
 
     expect(listResult).toEqual(list);
     expect(statusResult).toEqual(status);
     expect(credsResult).toEqual(creds);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(deployRecipeResult).toEqual(deployRecipe);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
 
     const firstHeaders = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
     const secondHeaders = new Headers(fetchMock.mock.calls[1]?.[1]?.headers);
     const thirdHeaders = new Headers(fetchMock.mock.calls[2]?.[1]?.headers);
+    const fourthHeaders = new Headers(fetchMock.mock.calls[3]?.[1]?.headers);
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe("http://127.0.0.1:47600/namespaces");
     expect(fetchMock.mock.calls[1]?.[0]).toBe("http://127.0.0.1:47600/namespaces/qa-demo/status");
     expect(fetchMock.mock.calls[2]?.[0]).toBe("http://127.0.0.1:47600/namespaces/qa-demo/creds");
+    expect(fetchMock.mock.calls[3]?.[0]).toBe("http://127.0.0.1:47600/namespaces/qa-iam/deploy-recipe");
     expect(firstHeaders.get("Authorization")).toBe("Bearer token-123");
     expect(secondHeaders.get("Authorization")).toBe("Bearer token-123");
     expect(thirdHeaders.get("Authorization")).toBe("Bearer token-123");
+    expect(fourthHeaders.get("Authorization")).toBe("Bearer token-123");
   });
 
   it("parses the e2e suite registry response with bearer auth", async () => {
