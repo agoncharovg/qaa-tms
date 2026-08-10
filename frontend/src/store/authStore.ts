@@ -26,6 +26,7 @@ interface AuthState {
   rememberCredentials: boolean;
   rememberedPassword: string;
   rememberedUsername: string;
+  setCurrentUser: (user: User | null) => void;
   token: string | null;
 }
 
@@ -135,7 +136,7 @@ const initialAuthState = {
   rememberedPassword: initialRememberedCredentials.password,
   rememberedUsername: initialRememberedCredentials.username,
   token: readStoredToken(),
-} satisfies Omit<AuthState, "initialize" | "login" | "logout">;
+} satisfies Omit<AuthState, "initialize" | "login" | "logout" | "setCurrentUser">;
 
 export const useAuthStore = create<AuthState>()((set, get) => ({
   ...initialAuthState,
@@ -231,6 +232,12 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     set({
       currentUser: null,
       token: null,
+    });
+  },
+
+  setCurrentUser(user) {
+    set({
+      currentUser: user,
     });
   },
 }));

@@ -46,6 +46,7 @@ export type StorageKey = (typeof StorageKey)[keyof typeof StorageKey];
 export const BackendPath = {
   AUTH_LOGIN: "/api/v1/auth/login",
   ME: "/api/v1/me",
+  USERS: "/api/v1/users",
   OPERATIONS: "/api/v1/operations",
   REPLAY: "/replay",
   HEALTH: "/health",
@@ -53,6 +54,10 @@ export const BackendPath = {
 } as const;
 
 export type BackendPath = (typeof BackendPath)[keyof typeof BackendPath];
+
+export function buildBackendUserPath(userId: number): string {
+  return `${BackendPath.USERS}/${userId}`;
+}
 
 export function buildBackendOperationPath(operationId: string): string {
   return `${BackendPath.OPERATIONS}/${operationId}`;
@@ -294,6 +299,7 @@ export const QueryKey = {
   AGENT_NAMESPACE_STATUS: "agent-namespace-status",
   AGENT_NAMESPACE_CREDS: "agent-namespace-creds",
   AGENT_E2E_SUITES: "agent-e2e-suites",
+  USERS: "users",
   OPERATIONS: "operations",
   OPERATION_DETAIL: "operation-detail",
   OPERATION_REPLAY: "operation-replay",

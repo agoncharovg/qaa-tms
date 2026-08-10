@@ -23,6 +23,26 @@ export interface User {
   updated_at: string;
 }
 
+export interface UserCreateRequest {
+  username: string;
+  password: string;
+  display_name: string;
+  is_admin?: boolean;
+  auto_login?: boolean;
+}
+
+export interface UserUpdateRequest {
+  display_name?: string;
+  is_admin?: boolean;
+  auto_login?: boolean;
+  password?: string;
+}
+
+export interface UserListResponse {
+  items: User[];
+  total: number;
+}
+
 export interface LoginRequest {
   username: string;
   password: string;

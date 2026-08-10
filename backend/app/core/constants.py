@@ -38,6 +38,8 @@ class RoutePath(StrEnum):
     AUTH = "/auth"
     LOGIN = "/login"
     ME = "/me"
+    USERS = "/users"
+    USER_BY_ID = "/users/{user_id}"
     OPERATIONS = "/operations"
     REPLAY = "/replay"
 

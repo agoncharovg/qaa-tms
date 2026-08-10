@@ -12,6 +12,18 @@ npm run dev -- --host 0.0.0.0 --port 3000
 The SPA serves on `http://localhost:3000` and expects the backend on
 `http://localhost:8000` by default.
 
+## Administration workflow
+
+The Administration section exposes a single `Users` tab for admin accounts.
+It loads `/api/v1/users`, renders the real backend user list, and supports:
+
+- create user
+- edit display name, admin flag, auto-login flag, and password reset
+- hard delete behind explicit typed confirmation
+- inline surfacing of backend `409` guardrail errors such as last-admin removal or audit-history protection
+
+Self-delete is disabled in the UI, self-demotion is blocked in the edit modal, and a successful self-edit keeps the local `currentUser` store coherent without requiring a full reload.
+
 ## Stagings workflow
 
 The Stagings section now includes six tabs:
@@ -56,4 +68,4 @@ local development.
 - `VITE_AGENT_PORTS`: local companion-app probe range. Default:
   `47600-47605`
 
-No new frontend environment variables were added for the E2E slice.
+No new frontend environment variables were added for the user-administration slice.

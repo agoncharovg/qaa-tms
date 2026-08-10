@@ -3,6 +3,7 @@ import {
   DEFAULT_API_BASE_URL,
   buildBackendOperationPath,
   buildBackendOperationReplayPath,
+  buildBackendUserPath,
 } from "@/constants";
 import type {
   LoginRequest,
@@ -11,6 +12,9 @@ import type {
   OperationRead,
   OperationReplay,
   User,
+  UserCreateRequest,
+  UserListResponse,
+  UserUpdateRequest,
 } from "@/api/types";
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL).trim();
@@ -84,6 +88,10 @@ async function request<T>(
     throw toHttpError(response, payload);
   }
 
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   return (await response.json()) as T;
 }
 
@@ -120,6 +128,47 @@ function buildOperationsListPath(params: ListOperationsParams): string {
 export const backendClient = {
   getCurrentUser(token: string, signal?: AbortSignal): Promise<User> {
     return request<User>(BackendPath.ME, { method: "GET" }, token, signal);
+  },
+
+  listUsers(token: string, signal?: AbortSignal): Promise<UserListResponse> {
+    return request<UserListResponse>(BackendPath.USERS, { method: "GET" }, token, signal);
+  },
+
+  createUser(token: string, payload: UserCreateRequest, signal?: AbortSignal): Promise<User> {
+    return request<User>(
+      BackendPath.USERS,
+      {
+        body: JSON.stringify(payload),
+        method: "POST",
+      },
+      token,
+      signal
+    );
+  },
+
+  getUser(token: string, userId: number, signal?: AbortSignal): Promise<User> {
+    return request<User>(buildBackendUserPath(userId), { method: "GET" }, token, signal);
+  },
+
+  updateUser(
+    token: string,
+    userId: number,
+    payload: UserUpdateRequest,
+    signal?: AbortSignal
+  ): Promise<User> {
+    return request<User>(
+      buildBackendUserPath(userId),
+      {
+        body: JSON.stringify(payload),
+        method: "PATCH",
+      },
+      token,
+      signal
+    );
+  },
+
+  deleteUser(token: string, userId: number, signal?: AbortSignal): Promise<void> {
+    return request<void>(buildBackendUserPath(userId), { method: "DELETE" }, token, signal);
   },
 
   getOperation(token: string, operationId: string, signal?: AbortSignal): Promise<OperationRead> {
