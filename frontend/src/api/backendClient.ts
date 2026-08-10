@@ -19,6 +19,36 @@ function buildBackendUrl(path: string): string {
   return new URL(path, apiBaseUrl).toString();
 }
 
+function getBrowserOrigin(): string | null {
+  if (typeof window === "undefined" || typeof window.location?.origin !== "string") {
+    return null;
+  }
+
+  return window.location.origin;
+}
+
+function toNetworkError(url: string, error: unknown): Error {
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return new Error(`Request to ${url} was aborted.`);
+  }
+
+  const origin = getBrowserOrigin();
+  const corsHint = origin ? ` If the backend is up, verify CORS_ORIGINS includes ${origin}.` : "";
+
+  return new Error(
+    `Cannot reach backend at ${url}. Check that the backend is running and VITE_API_BASE_URL is correct.${corsHint}`
+  );
+}
+
+function toHttpError(response: Response, payload: { detail?: string } | null): Error {
+  if (payload?.detail) {
+    return new Error(payload.detail);
+  }
+
+  const statusText = response.statusText || "Unknown error";
+  return new Error(`Backend request failed with ${response.status} ${statusText}.`);
+}
+
 async function request<T>(
   path: string,
   init: RequestInit = {},
@@ -36,15 +66,22 @@ async function request<T>(
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const response = await fetch(buildBackendUrl(path), {
-    ...init,
-    headers,
-    signal,
-  });
+  const url = buildBackendUrl(path);
+  let response: Response;
+
+  try {
+    response = await fetch(url, {
+      ...init,
+      headers,
+      signal,
+    });
+  } catch (error) {
+    throw toNetworkError(url, error);
+  }
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
-    throw new Error(payload?.detail ?? "Backend request failed.");
+    throw toHttpError(response, payload);
   }
 
   return (await response.json()) as T;
@@ -121,9 +158,14 @@ export const backendClient = {
   },
 
   login(payload: LoginRequest, signal?: AbortSignal): Promise<LoginResponse> {
-    return request<LoginResponse>(BackendPath.AUTH_LOGIN, {
-      body: JSON.stringify(payload),
-      method: "POST",
-    }, undefined, signal);
+    return request<LoginResponse>(
+      BackendPath.AUTH_LOGIN,
+      {
+        body: JSON.stringify(payload),
+        method: "POST",
+      },
+      undefined,
+      signal
+    );
   },
 };

@@ -49,6 +49,7 @@ class ClusterNamespaceRow:
     name: str
     status: str
     created_at: str | None = None
+    has_local_overlay: bool = False
 
 
 @dataclass(slots=True)
@@ -138,7 +139,9 @@ async def list_namespaces(settings: Settings) -> tuple[PlainTextCommandResult, P
 
     argv, installation = build_namespace_list_argv(settings)
     result = await run_plain_text_command(argv, installation.repo_root)
-    return result, parse_namespace_list(result.raw)
+    parsed = parse_namespace_list(result.raw)
+    attach_local_overlay_flags(parsed, installation.repo_root)
+    return result, parsed
 
 
 async def read_namespace_status(settings: Settings, namespace: str) -> PlainTextCommandResult:
@@ -439,6 +442,27 @@ def strip_ansi(raw_output: str) -> str:
     """Remove ANSI escapes for parser stability while preserving raw output separately."""
 
     return ANSI_ESCAPE_PATTERN.sub("", raw_output)
+
+
+def attach_local_overlay_flags(parsed: ParsedNamespaceList, repo_root: Path | None) -> None:
+    """Mark cluster namespaces that have a matching local overlay directory."""
+
+    overlay_names = read_overlay_names(repo_root)
+    for entry in parsed.cluster_namespaces:
+        entry.has_local_overlay = entry.name in overlay_names
+
+
+def read_overlay_names(repo_root: Path | None) -> set[str]:
+    """Read local overlay directory names from the staging repo."""
+
+    if repo_root is None:
+        return set()
+
+    overlays_dir = repo_root / "overlays"
+    if not overlays_dir.is_dir():
+        return set()
+
+    return {path.name for path in overlays_dir.iterdir() if path.is_dir()}
 
 
 async def terminate_process(process: asyncio.subprocess.Process) -> None:

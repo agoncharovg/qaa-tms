@@ -135,6 +135,7 @@ export interface ClusterNamespace {
   name: string;
   status: string;
   createdAt: string | null;
+  hasLocalOverlay: boolean;
 }
 
 export interface LocalOverlay {
@@ -207,6 +208,7 @@ export interface NamespaceListEntry {
   statusLabel: string;
   origin: NamespaceOrigin;
   createdAt?: string | null;
+  hasLocalOverlay?: boolean;
 }
 
 export interface OperationRecipe {

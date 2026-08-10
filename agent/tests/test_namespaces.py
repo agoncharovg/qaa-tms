@@ -42,8 +42,11 @@ async def test_list_namespaces_returns_structured_cluster_and_overlay_sections(
     client: httpx.AsyncClient,
     auth_headers: dict[str, str],
     backend_recorder: BackendRecorder,
+    fake_staging_repo: dict[str, Path],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    (fake_staging_repo["repo_root"] / "overlays" / "qaa-demo").mkdir(parents=True, exist_ok=True)
+
     raw_output = (
         "\x1b[32m[OK]\x1b[0m    Prerequisites OK\n"
         "\x1b[36m[INFO]\x1b[0m  Provisioned namespaces on frn-stg cluster:\n"
@@ -71,9 +74,9 @@ async def test_list_namespaces_returns_structured_cluster_and_overlay_sections(
     assert response.json() == {
         "raw": raw_output,
         "clusterNamespaces": [
-            {"name": "calico-system", "status": "Active", "createdAt": "2026-02-11T11:49:58Z"},
-            {"name": "qaa-demo", "status": "Active", "createdAt": "2026-08-07T15:17:19Z"},
-            {"name": "qaa-no-time", "status": "Pending", "createdAt": None},
+            {"name": "calico-system", "status": "Active", "createdAt": "2026-02-11T11:49:58Z", "hasLocalOverlay": False},
+            {"name": "qaa-demo", "status": "Active", "createdAt": "2026-08-07T15:17:19Z", "hasLocalOverlay": True},
+            {"name": "qaa-no-time", "status": "Pending", "createdAt": None, "hasLocalOverlay": False},
         ],
         "localOverlays": [
             {"name": "qaa-iam"},

@@ -210,6 +210,7 @@ async def get_namespaces(
                 "name": entry.name,
                 "status": entry.status,
                 "created_at": entry.created_at,
+                "has_local_overlay": entry.has_local_overlay,
             }
             for entry in parsed.cluster_namespaces
         ],

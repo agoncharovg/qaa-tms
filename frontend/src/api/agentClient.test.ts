@@ -143,6 +143,7 @@ describe("agentClient namespace reads", () => {
       clusterNamespaces: [
         {
           createdAt: "2026-08-07T15:17:19Z",
+          hasLocalOverlay: true,
           name: "qa-demo",
           status: "Active",
         },

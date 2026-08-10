@@ -194,6 +194,7 @@ class ClusterNamespaceEntry(BaseModel):
     name: str
     status: str
     created_at: str | None = Field(default=None, alias="createdAt")
+    has_local_overlay: bool = Field(default=False, alias="hasLocalOverlay")
 
 
 class LocalOverlayEntry(BaseModel):

@@ -137,4 +137,40 @@ describe("backendClient operations", () => {
       "http://localhost:8000/api/v1/operations/00000000-0000-0000-0000-000000000002/replay"
     );
   });
+
+  it("returns a helpful message when the backend is unreachable", async () => {
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+
+    await backendClient
+      .login({
+        password: "admin",
+        username: "admin",
+      })
+      .then(() => {
+        throw new Error("Expected login to fail");
+      })
+      .catch((error: unknown) => {
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toContain(
+          "Cannot reach backend at http://localhost:8000/api/v1/auth/login."
+        );
+        expect((error as Error).message).toContain("VITE_API_BASE_URL");
+      });
+  });
+
+  it("includes HTTP status when backend error payload is not JSON", async () => {
+    fetchMock.mockResolvedValue(
+      new Response("service unavailable", {
+        status: 503,
+        statusText: "Service Unavailable",
+      })
+    );
+
+    await expect(
+      backendClient.login({
+        password: "admin",
+        username: "admin",
+      })
+    ).rejects.toThrow("Backend request failed with 503 Service Unavailable.");
+  });
 });
