@@ -24,9 +24,9 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { agentClient, getPreflight } from "@/api/agentClient";
 import type { E2eRunRequest } from "@/api/types";
-import { PRODUCT_OPTIONS, QueryKey, SectionKey, TabId, type Product } from "@/constants";
-import { LiveJobPanel } from "@/features/stagings/LiveJobPanel";
-import { useTransientLiveJob } from "@/features/stagings/useTransientLiveJob";
+import { PRODUCT_OPTIONS, QueryKey, PluginId, TabId, type Product } from "@/constants";
+import { LiveJobPanel } from "@/plugins/stagings/LiveJobPanel";
+import { useTransientLiveJob } from "@/plugins/stagings/useTransientLiveJob";
 import { useAuthStore } from "@/store/authStore";
 import { useStagingsStore } from "@/store/stagingsStore";
 import { useUiStore } from "@/store/uiStore";
@@ -73,7 +73,7 @@ export function E2ePanel() {
   const openTab = useUiStore((state) => state.openTab);
   const switchTab = useUiStore((state) => state.switchTab);
   const historyOpen = useUiStore((state) =>
-    state.tabsBySection[SectionKey.STAGINGS].tabIds.includes(TabId.STAGINGS_HISTORY)
+    state.tabsByPlugin[PluginId.STAGINGS].tabIds.includes(TabId.STAGINGS_HISTORY)
   );
   const [formState, setFormState] = useState<E2eFormState>({
     ns: "",
@@ -360,11 +360,11 @@ export function E2ePanel() {
                 ? () => {
                     setSelectedOperationId(liveJob.opId);
                     if (historyOpen) {
-                      switchTab(SectionKey.STAGINGS, TabId.STAGINGS_HISTORY);
+                      switchTab(PluginId.STAGINGS, TabId.STAGINGS_HISTORY);
                       return;
                     }
 
-                    openTab(SectionKey.STAGINGS, TabId.STAGINGS_HISTORY);
+                    openTab(PluginId.STAGINGS, TabId.STAGINGS_HISTORY);
                   }
                 : undefined
             }

@@ -1,14 +1,9 @@
-export const SectionKey = {
+export const PluginId = {
   STAGINGS: "stagings",
   ADMIN: "admin",
 } as const;
 
-export type SectionKey = (typeof SectionKey)[keyof typeof SectionKey];
-
-export const SectionLabel: Record<SectionKey, string> = {
-  [SectionKey.STAGINGS]: "Stagings",
-  [SectionKey.ADMIN]: "Administration",
-};
+export type PluginId = (typeof PluginId)[keyof typeof PluginId];
 
 export const ContentType = {
   REACT_VIEW: "react-view",
@@ -21,17 +16,9 @@ export type ContentType = (typeof ContentType)[keyof typeof ContentType];
 export const RoutePath = {
   ROOT: "/",
   LOGIN: "/login",
-  STAGINGS: "/stagings",
-  ADMIN: "/admin",
-  ADMIN_USERS: "/admin/users",
 } as const;
 
 export type RoutePath = (typeof RoutePath)[keyof typeof RoutePath];
-
-export const SectionRoute: Record<SectionKey, RoutePath> = {
-  [SectionKey.STAGINGS]: RoutePath.STAGINGS,
-  [SectionKey.ADMIN]: RoutePath.ADMIN_USERS,
-};
 
 export const StorageKey = {
   TOKEN: "qaa-tms.token",
@@ -46,6 +33,7 @@ export type StorageKey = (typeof StorageKey)[keyof typeof StorageKey];
 export const BackendPath = {
   AUTH_LOGIN: "/api/v1/auth/login",
   ME: "/api/v1/me",
+  ME_PLUGINS: "/api/v1/me/plugins",
   USERS: "/api/v1/users",
   OPERATIONS: "/api/v1/operations",
   REPLAY: "/replay",
@@ -269,6 +257,7 @@ export type JobStreamEvent = (typeof JobStreamEvent)[keyof typeof JobStreamEvent
 export const HttpMethod = {
   GET: "GET",
   POST: "POST",
+  PUT: "PUT",
   PATCH: "PATCH",
   DELETE: "DELETE",
 } as const;
@@ -302,6 +291,7 @@ export const ViewKey = {
   STAGINGS_NAMESPACES: "stagings-namespaces",
   STAGINGS_SYNC: "stagings-sync",
   STAGINGS_E2E: "stagings-e2e",
+  ADMIN_PLUGINS: "admin-plugins",
   ADMIN_USERS: "admin-users",
 } as const;
 
@@ -314,6 +304,7 @@ export const TabId = {
   STAGINGS_NAMESPACES: "tab-stagings-namespaces",
   STAGINGS_SYNC: "tab-stagings-sync",
   STAGINGS_E2E: "tab-stagings-e2e",
+  ADMIN_PLUGINS: "tab-admin-plugins",
   ADMIN_USERS: "tab-admin-users",
 } as const;
 
@@ -326,6 +317,7 @@ export const TabTitle: Record<TabId, string> = {
   [TabId.STAGINGS_NAMESPACES]: "Namespaces",
   [TabId.STAGINGS_SYNC]: "Sync",
   [TabId.STAGINGS_E2E]: "E2E",
+  [TabId.ADMIN_PLUGINS]: "Plugins",
   [TabId.ADMIN_USERS]: "Users",
 };
 
@@ -336,6 +328,7 @@ export const QueryKey = {
   AGENT_NAMESPACE_STATUS: "agent-namespace-status",
   AGENT_NAMESPACE_CREDS: "agent-namespace-creds",
   AGENT_E2E_SUITES: "agent-e2e-suites",
+  ME_PLUGINS: "me-plugins",
   USERS: "users",
   OPERATIONS: "operations",
   OPERATION_DETAIL: "operation-detail",

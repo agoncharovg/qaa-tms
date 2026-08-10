@@ -15,6 +15,7 @@ def test_login_supports_admin_and_test_users(client: TestClient) -> None:
     assert admin_body["token_type"] == TokenType.BEARER.value
     assert admin_body["user"]["username"] == DevUsername.ADMIN.value
     assert admin_body["user"]["is_admin"] is True
+    assert admin_body["user"]["enabled_plugins"] == ["stagings"]
 
     test_response = client.post(
         f"/api/v1{RoutePath.AUTH.value}{RoutePath.LOGIN.value}",
@@ -25,6 +26,7 @@ def test_login_supports_admin_and_test_users(client: TestClient) -> None:
     assert test_body["token_type"] == TokenType.BEARER.value
     assert test_body["user"]["username"] == DevUsername.TEST.value
     assert test_body["user"]["is_admin"] is False
+    assert test_body["user"]["enabled_plugins"] == ["stagings"]
 
 
 def test_me_requires_authentication(client: TestClient) -> None:
@@ -46,3 +48,4 @@ def test_me_returns_authenticated_user(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert response.json()["username"] == DevUsername.ADMIN.value
+    assert response.json()["enabled_plugins"] == ["stagings"]

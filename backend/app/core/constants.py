@@ -3,6 +3,11 @@
 from enum import StrEnum
 
 
+class PluginId(StrEnum):
+    STAGINGS = "stagings"
+    ADMIN = "admin"
+
+
 class OperationType(StrEnum):
     DEPLOY = "deploy"
     DESTROY = "destroy"
@@ -38,6 +43,7 @@ class RoutePath(StrEnum):
     AUTH = "/auth"
     LOGIN = "/login"
     ME = "/me"
+    ME_PLUGINS = "/me/plugins"
     USERS = "/users"
     USER_BY_ID = "/users/{user_id}"
     OPERATIONS = "/operations"
@@ -105,6 +111,7 @@ class ErrorMessage(StrEnum):
     INVALID_AUTHENTICATION_CREDENTIALS = "Invalid authentication credentials."
     OPERATION_NOT_FOUND = "Operation not found."
     USER_NOT_FOUND = "User not found."
+    INVALID_ENABLED_PLUGINS = "enabled_plugins must contain only optional plugin ids."
 
 
 class DevUsername(StrEnum):
@@ -120,6 +127,18 @@ class DevDisplayName(StrEnum):
 class DevPassword(StrEnum):
     EMPTY = ""
     ADMIN = "admin"
+
+
+OPTIONAL_PLUGIN_IDS = frozenset({PluginId.STAGINGS})
+SYSTEM_PLUGIN_IDS = frozenset({PluginId.ADMIN})
+OPTIONAL_PLUGIN_ID_VALUES = tuple(plugin_id.value for plugin_id in OPTIONAL_PLUGIN_IDS)
+SYSTEM_PLUGIN_ID_VALUES = tuple(plugin_id.value for plugin_id in SYSTEM_PLUGIN_IDS)
+
+
+def resolve_enabled_plugins(enabled_plugins: list[str] | None) -> list[str]:
+    source = enabled_plugins if enabled_plugins is not None else list(OPTIONAL_PLUGIN_ID_VALUES)
+    enabled_set = set(source)
+    return [plugin_id for plugin_id in OPTIONAL_PLUGIN_ID_VALUES if plugin_id in enabled_set]
 
 
 DEFAULT_STRING_LENGTH = 255

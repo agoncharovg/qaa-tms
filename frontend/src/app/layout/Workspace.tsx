@@ -1,18 +1,24 @@
 import { AppShell, Paper } from "@mantine/core";
 
 import { WorkspaceContent } from "@/components/WorkspaceContent";
-import { type SectionKey as SectionKeyType } from "@/constants";
-import { getTabsForSection, useUiStore } from "@/store/uiStore";
+import { type PluginId as PluginIdType } from "@/constants";
+import { pluginById } from "@/plugins/registry";
+import { getTabsForPlugin, useUiStore } from "@/store/uiStore";
 
 interface WorkspaceProps {
-  activeSection: SectionKeyType;
+  activePluginId: PluginIdType;
 }
 
-export function Workspace({ activeSection }: WorkspaceProps) {
-  const tabsBySection = useUiStore((state) => state.tabsBySection);
-  const activeTabId = tabsBySection[activeSection].activeTabId;
+export function Workspace({ activePluginId }: WorkspaceProps) {
+  const tabsByPlugin = useUiStore((state) => state.tabsByPlugin);
+  const activePlugin = pluginById(activePluginId);
+  const activeTabId = tabsByPlugin[activePluginId].activeTabId;
   const activeTab =
-    getTabsForSection(activeSection, tabsBySection).find((tab) => tab.id === activeTabId) ?? null;
+    getTabsForPlugin(activePluginId, tabsByPlugin).find((tab) => tab.id === activeTabId) ?? null;
+
+  if (!activePlugin) {
+    return null;
+  }
 
   return (
     <AppShell.Main>
@@ -27,7 +33,7 @@ export function Workspace({ activeSection }: WorkspaceProps) {
           overflow: "auto",
         }}
       >
-        <WorkspaceContent activeSection={activeSection} tab={activeTab} />
+        <WorkspaceContent activePluginLabel={activePlugin.label} tab={activeTab} />
       </Paper>
     </AppShell.Main>
   );

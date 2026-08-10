@@ -15,11 +15,11 @@ vi.mock("@/api/agentClient", () => ({
   getPreflight: getPreflightMock,
 }));
 
-vi.mock("@/features/stagings/useTransientLiveJob", () => ({
+vi.mock("@/plugins/stagings/useTransientLiveJob", () => ({
   useTransientLiveJob: useTransientLiveJobMock,
 }));
 
-import { E2ePanel } from "@/features/stagings/E2ePanel";
+import { E2ePanel } from "@/plugins/stagings/E2ePanel";
 import { renderWithProviders } from "@/test/render";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
 
@@ -38,6 +38,7 @@ describe("E2ePanel", () => {
         auto_login: false,
         created_at: "2026-08-09T00:00:00Z",
         display_name: "Test User",
+        enabled_plugins: ["stagings"],
         id: 2,
         is_admin: false,
         updated_at: "2026-08-09T00:00:00Z",

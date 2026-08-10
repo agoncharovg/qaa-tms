@@ -27,6 +27,7 @@ interface AuthState {
   rememberedPassword: string;
   rememberedUsername: string;
   setCurrentUser: (user: User | null) => void;
+  setEnabledPlugins: (enabledPlugins: User["enabled_plugins"]) => void;
   token: string | null;
 }
 
@@ -113,7 +114,6 @@ function writeStoredRememberedCredentials(
     return;
   }
 
-  // dev-stub: storing a password client-side is temporary until real SSO exists.
   window.localStorage.setItem(
     StorageKey.REMEMBER_ME,
     JSON.stringify({
@@ -136,7 +136,10 @@ const initialAuthState = {
   rememberedPassword: initialRememberedCredentials.password,
   rememberedUsername: initialRememberedCredentials.username,
   token: readStoredToken(),
-} satisfies Omit<AuthState, "initialize" | "login" | "logout" | "setCurrentUser">;
+} satisfies Omit<
+  AuthState,
+  "initialize" | "login" | "logout" | "setCurrentUser" | "setEnabledPlugins"
+>;
 
 export const useAuthStore = create<AuthState>()((set, get) => ({
   ...initialAuthState,
@@ -238,6 +241,21 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   setCurrentUser(user) {
     set({
       currentUser: user,
+    });
+  },
+
+  setEnabledPlugins(enabledPlugins) {
+    set((state) => {
+      if (!state.currentUser) {
+        return state;
+      }
+
+      return {
+        currentUser: {
+          ...state.currentUser,
+          enabled_plugins: enabledPlugins,
+        },
+      };
     });
   },
 }));

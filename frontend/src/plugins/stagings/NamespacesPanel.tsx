@@ -39,13 +39,13 @@ import {
   OperationStatusColor,
   OperationType,
   QueryKey,
-  SectionKey,
+  PluginId,
   TabId,
   type NamespaceLogStatus as NamespaceLogStatusType,
 } from "@/constants";
-import { createDeployDraftFromReplay } from "@/features/stagings/deployDraft";
-import { LiveJobPanel } from "@/features/stagings/LiveJobPanel";
-import { useTransientLiveJob } from "@/features/stagings/useTransientLiveJob";
+import { createDeployDraftFromReplay } from "@/plugins/stagings/deployDraft";
+import { LiveJobPanel } from "@/plugins/stagings/LiveJobPanel";
+import { useTransientLiveJob } from "@/plugins/stagings/useTransientLiveJob";
 import { useAuthStore } from "@/store/authStore";
 import { useStagingsStore } from "@/store/stagingsStore";
 import { useUiStore } from "@/store/uiStore";
@@ -187,10 +187,10 @@ export function NamespacesPanel() {
   const openTab = useUiStore((state) => state.openTab);
   const switchTab = useUiStore((state) => state.switchTab);
   const deployOpen = useUiStore((state) =>
-    state.tabsBySection[SectionKey.STAGINGS].tabIds.includes(TabId.STAGINGS_DEPLOY)
+    state.tabsByPlugin[PluginId.STAGINGS].tabIds.includes(TabId.STAGINGS_DEPLOY)
   );
   const historyOpen = useUiStore((state) =>
-    state.tabsBySection[SectionKey.STAGINGS].tabIds.includes(TabId.STAGINGS_HISTORY)
+    state.tabsByPlugin[PluginId.STAGINGS].tabIds.includes(TabId.STAGINGS_HISTORY)
   );
   const [selectedNamespace, setSelectedNamespace] = useState<string | null>(null);
   const [selectedOrigin, setSelectedOrigin] = useState<NamespaceListEntry["origin"] | null>(null);
@@ -360,11 +360,11 @@ export function NamespacesPanel() {
 
     setSelectedOperationId(null);
     if (deployOpen) {
-      switchTab(SectionKey.STAGINGS, TabId.STAGINGS_DEPLOY);
+      switchTab(PluginId.STAGINGS, TabId.STAGINGS_DEPLOY);
       return;
     }
 
-    openTab(SectionKey.STAGINGS, TabId.STAGINGS_DEPLOY);
+    openTab(PluginId.STAGINGS, TabId.STAGINGS_DEPLOY);
   }
 
   const prepareRedeployMutation = useMutation({
@@ -522,11 +522,11 @@ export function NamespacesPanel() {
 
     setSelectedOperationId(transientJob.liveJob.opId);
     if (historyOpen) {
-      switchTab(SectionKey.STAGINGS, TabId.STAGINGS_HISTORY);
+      switchTab(PluginId.STAGINGS, TabId.STAGINGS_HISTORY);
       return;
     }
 
-    openTab(SectionKey.STAGINGS, TabId.STAGINGS_HISTORY);
+    openTab(PluginId.STAGINGS, TabId.STAGINGS_HISTORY);
   }
 
   if (preflightQuery.isLoading) {

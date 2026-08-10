@@ -10,15 +10,13 @@ import {
 } from "@mantine/core";
 import { IconPlus, IconX } from "@tabler/icons-react";
 
-import {
-  SectionLabel,
-  type SectionKey as SectionKeyType,
-  type TabId as TabIdType,
-} from "@/constants";
-import { SECTION_TAB_CATALOG, TAB_DEFINITIONS, getTabsForSection, useUiStore } from "@/store/uiStore";
+import { type PluginId as PluginIdType, type TabId as TabIdType } from "@/constants";
+import { pluginById, visibleTabs } from "@/plugins/registry";
+import { useAuthStore } from "@/store/authStore";
+import { getTabsForPlugin, TAB_DEFINITIONS, useUiStore } from "@/store/uiStore";
 
 interface TabBarProps {
-  activeSection: SectionKeyType;
+  activePluginId: PluginIdType;
 }
 
 function TabLabel({
@@ -56,16 +54,24 @@ function TabLabel({
   );
 }
 
-export function TabBar({ activeSection }: TabBarProps) {
+export function TabBar({ activePluginId }: TabBarProps) {
+  const currentUser = useAuthStore((state) => state.currentUser);
   const closeTab = useUiStore((state) => state.closeTab);
   const openTab = useUiStore((state) => state.openTab);
   const switchTab = useUiStore((state) => state.switchTab);
-  const tabsBySection = useUiStore((state) => state.tabsBySection);
+  const tabsByPlugin = useUiStore((state) => state.tabsByPlugin);
 
-  const currentSectionState = tabsBySection[activeSection];
-  const openTabs = getTabsForSection(activeSection, tabsBySection);
-  const availableTabIds = SECTION_TAB_CATALOG[activeSection];
-  const closedTabIds = availableTabIds.filter((tabId) => !currentSectionState.tabIds.includes(tabId));
+  const activePlugin = pluginById(activePluginId);
+  if (!activePlugin) {
+    return null;
+  }
+
+  const currentPluginState = tabsByPlugin[activePluginId];
+  const openTabs = getTabsForPlugin(activePluginId, tabsByPlugin).filter((tab) =>
+    visibleTabs(activePlugin, currentUser).some((visibleTab) => visibleTab.id === tab.id)
+  );
+  const availableTabIds = visibleTabs(activePlugin, currentUser).map((tab) => tab.id);
+  const closedTabIds = availableTabIds.filter((tabId) => !currentPluginState.tabIds.includes(tabId));
 
   return (
     <AppShell.Header px="md" py="sm">
@@ -75,7 +81,7 @@ export function TabBar({ activeSection }: TabBarProps) {
             <Tabs
               onChange={(value) => {
                 if (value) {
-                  switchTab(activeSection, value as TabIdType);
+                  switchTab(activePluginId, value as TabIdType);
                 }
               }}
               styles={{
@@ -90,7 +96,7 @@ export function TabBar({ activeSection }: TabBarProps) {
                   paddingTop: "10px",
                 },
               }}
-              value={currentSectionState.activeTabId}
+              value={currentPluginState.activeTabId}
               variant="unstyled"
             >
               <Tabs.List>
@@ -98,7 +104,7 @@ export function TabBar({ activeSection }: TabBarProps) {
                   <Tabs.Tab key={tab.id} value={tab.id}>
                     <TabLabel
                       isCloseable={tab.closeable}
-                      onClose={() => closeTab(activeSection, tab.id)}
+                      onClose={() => closeTab(activePluginId, tab.id)}
                       title={tab.title}
                     />
                   </Tabs.Tab>
@@ -107,7 +113,7 @@ export function TabBar({ activeSection }: TabBarProps) {
             </Tabs>
           ) : (
             <Text c="dimmed" size="sm">
-              No tabs open in {SectionLabel[activeSection]}.
+              No tabs open in {activePlugin.label}.
             </Text>
           )}
         </ScrollArea>
@@ -122,7 +128,7 @@ export function TabBar({ activeSection }: TabBarProps) {
           <Menu.Dropdown>
             {closedTabIds.length > 0 ? (
               closedTabIds.map((tabId) => (
-                <Menu.Item key={tabId} onClick={() => openTab(activeSection, tabId)}>
+                <Menu.Item key={tabId} onClick={() => openTab(activePluginId, tabId)}>
                   {TAB_DEFINITIONS[tabId].title}
                 </Menu.Item>
               ))

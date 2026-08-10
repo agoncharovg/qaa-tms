@@ -33,7 +33,7 @@ export function RequireAdmin({ children }: PropsWithChildren) {
   const currentUser = useAuthStore((state) => state.currentUser);
 
   if (!currentUser?.is_admin) {
-    return <Navigate replace to={RoutePath.STAGINGS} />;
+    return <Navigate replace to={RoutePath.ROOT} />;
   }
 
   return children ? <>{children}</> : <Outlet />;

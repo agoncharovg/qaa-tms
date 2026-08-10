@@ -7,8 +7,8 @@ import type {
   OperationStatus,
   OperationType,
   PreflightKey,
+  PluginId,
   Product,
-  SectionKey,
   TabId,
   ViewKey,
 } from "@/constants";
@@ -19,8 +19,17 @@ export interface User {
   display_name: string;
   is_admin: boolean;
   auto_login: boolean;
+  enabled_plugins: PluginId[];
   created_at: string;
   updated_at: string;
+}
+
+export interface MePluginsUpdateRequest {
+  enabled_plugins: PluginId[];
+}
+
+export interface MePluginsResponse {
+  enabled_plugins: PluginId[];
 }
 
 export interface UserCreateRequest {
@@ -275,11 +284,12 @@ export interface OperationListResponse {
 
 export interface WorkspaceTabDefinition {
   id: TabId;
-  section: SectionKey;
+  pluginId: PluginId;
   title: string;
   contentType: ContentType;
   viewKey?: ViewKey;
   iframeSrc?: string;
   html?: string;
   closeable: boolean;
+  adminOnly?: boolean;
 }

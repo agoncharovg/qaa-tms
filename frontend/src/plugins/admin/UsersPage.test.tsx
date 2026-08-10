@@ -13,7 +13,7 @@ vi.mock("@/api/backendClient", () => ({
   backendClient: backendClientMock,
 }));
 
-import { UsersPage } from "@/features/admin/UsersPage";
+import { UsersPage } from "@/plugins/admin/UsersPage";
 import { renderWithProviders } from "@/test/render";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
 import type { User, UserListResponse } from "@/api/types";
@@ -22,6 +22,7 @@ const adminUser: User = {
   auto_login: false,
   created_at: "2026-08-09T00:00:00Z",
   display_name: "Administrator",
+  enabled_plugins: ["stagings"],
   id: 1,
   is_admin: true,
   updated_at: "2026-08-09T00:00:00Z",
@@ -32,6 +33,7 @@ const secondUser: User = {
   auto_login: true,
   created_at: "2026-08-09T01:00:00Z",
   display_name: "Jane Viewer",
+  enabled_plugins: ["stagings"],
   id: 2,
   is_admin: false,
   updated_at: "2026-08-09T01:00:00Z",
@@ -74,6 +76,7 @@ describe("UsersPage", () => {
       auto_login: true,
       created_at: "2026-08-09T02:00:00Z",
       display_name: "Eve Adams",
+      enabled_plugins: ["stagings"],
       id: 3,
       is_admin: true,
       updated_at: "2026-08-09T02:00:00Z",

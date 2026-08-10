@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildDeployRequestFromDraft, createEmptyDeployDraft, DeployMode } from "@/features/stagings/deployDraft";
+import { buildDeployRequestFromDraft, createEmptyDeployDraft, DeployMode } from "@/plugins/stagings/deployDraft";
 
 describe("deployDraft", () => {
   it("builds the raw deploy request including clean", () => {

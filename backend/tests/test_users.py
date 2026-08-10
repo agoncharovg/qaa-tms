@@ -4,7 +4,7 @@ from typing import Any, cast
 
 from fastapi.testclient import TestClient
 
-from app.core.constants import DevPassword, DevUsername, OperationStatus, OperationType
+from app.core.constants import DevPassword, DevUsername, OperationStatus, OperationType, PluginId
 
 
 def login(client: TestClient, username: str, password: str) -> tuple[str, dict[str, Any]]:
@@ -205,6 +205,67 @@ def test_user_lookup_returns_404_for_unknown_id(client: TestClient) -> None:
 
     assert response.status_code == 404
     assert response.json()["detail"] == "User not found."
+
+
+def test_me_returns_enabled_plugins_default_for_seeded_user_and_me_plugins_is_self_service(
+    client: TestClient,
+) -> None:
+    token, _ = login(client, DevUsername.TEST.value, DevPassword.EMPTY.value)
+
+    me_response = client.get("/api/v1/me", headers=auth_header(token))
+    plugins_response = client.get("/api/v1/me/plugins", headers=auth_header(token))
+
+    assert me_response.status_code == 200
+    assert me_response.json()["enabled_plugins"] == [PluginId.STAGINGS.value]
+    assert plugins_response.status_code == 200
+    assert plugins_response.json() == {"enabled_plugins": [PluginId.STAGINGS.value]}
+
+
+def test_put_me_plugins_round_trips_and_updates_me(client: TestClient) -> None:
+    token, _ = login(client, DevUsername.TEST.value, DevPassword.EMPTY.value)
+
+    disable_response = client.put(
+        "/api/v1/me/plugins",
+        headers=auth_header(token),
+        json={"enabled_plugins": []},
+    )
+    assert disable_response.status_code == 200
+    assert disable_response.json() == {"enabled_plugins": []}
+
+    me_after_disable = client.get("/api/v1/me", headers=auth_header(token))
+    assert me_after_disable.status_code == 200
+    assert me_after_disable.json()["enabled_plugins"] == []
+
+    restore_response = client.put(
+        "/api/v1/me/plugins",
+        headers=auth_header(token),
+        json={"enabled_plugins": [PluginId.STAGINGS.value]},
+    )
+    assert restore_response.status_code == 200
+    assert restore_response.json() == {"enabled_plugins": [PluginId.STAGINGS.value]}
+
+
+def test_put_me_plugins_rejects_unknown_and_system_ids_without_mutating_row(
+    client: TestClient,
+) -> None:
+    token, _ = login(client, DevUsername.TEST.value, DevPassword.EMPTY.value)
+
+    unknown_response = client.put(
+        "/api/v1/me/plugins",
+        headers=auth_header(token),
+        json={"enabled_plugins": ["unknown-plugin"]},
+    )
+    system_response = client.put(
+        "/api/v1/me/plugins",
+        headers=auth_header(token),
+        json={"enabled_plugins": [PluginId.ADMIN.value]},
+    )
+    me_response = client.get("/api/v1/me", headers=auth_header(token))
+
+    assert unknown_response.status_code == 422
+    assert system_response.status_code == 422
+    assert me_response.status_code == 200
+    assert me_response.json()["enabled_plugins"] == [PluginId.STAGINGS.value]
 
 
 def test_guardrails_block_self_delete_and_self_demote(client: TestClient) -> None:

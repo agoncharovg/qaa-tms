@@ -1,13 +1,30 @@
-import { Button, Group, Stack, Text, Title } from "@mantine/core";
-import { IconFlask, IconHistory, IconPlaylistAdd, IconRefresh, IconRocket } from "@tabler/icons-react";
+import {
+  Button,
+  Group,
+  Stack,
+  Text,
+  Title,
+} from "@mantine/core";
+import {
+  IconFlask,
+  IconHistory,
+  IconPlaylistAdd,
+  IconRefresh,
+  IconRocket,
+} from "@tabler/icons-react";
 
-import { DeployPanel } from "@/features/stagings/DeployPanel";
-import { E2ePanel } from "@/features/stagings/E2ePanel";
-import { HistoryPanel } from "@/features/stagings/HistoryPanel";
-import { NamespacesPanel } from "@/features/stagings/NamespacesPanel";
-import { PreflightPanel } from "@/features/stagings/PreflightPanel";
-import { SyncPanel } from "@/features/stagings/SyncPanel";
-import { SectionKey, TabId, ViewKey, type ViewKey as ViewKeyType } from "@/constants";
+import {
+  PluginId,
+  TabId,
+  ViewKey,
+  type ViewKey as ViewKeyType,
+} from "@/constants";
+import { DeployPanel } from "@/plugins/stagings/DeployPanel";
+import { E2ePanel } from "@/plugins/stagings/E2ePanel";
+import { HistoryPanel } from "@/plugins/stagings/HistoryPanel";
+import { NamespacesPanel } from "@/plugins/stagings/NamespacesPanel";
+import { PreflightPanel } from "@/plugins/stagings/PreflightPanel";
+import { SyncPanel } from "@/plugins/stagings/SyncPanel";
 import { useUiStore } from "@/store/uiStore";
 
 interface StagingsSectionProps {
@@ -25,20 +42,20 @@ interface StagingsSectionProps {
 export function StagingsSection({ mode }: StagingsSectionProps) {
   const openTab = useUiStore((state) => state.openTab);
   const switchTab = useUiStore((state) => state.switchTab);
-  const sectionTabs = useUiStore((state) => state.tabsBySection[SectionKey.STAGINGS]);
-  const deployOpen = sectionTabs.tabIds.includes(TabId.STAGINGS_DEPLOY);
-  const historyOpen = sectionTabs.tabIds.includes(TabId.STAGINGS_HISTORY);
-  const namespacesOpen = sectionTabs.tabIds.includes(TabId.STAGINGS_NAMESPACES);
-  const syncOpen = sectionTabs.tabIds.includes(TabId.STAGINGS_SYNC);
-  const e2eOpen = sectionTabs.tabIds.includes(TabId.STAGINGS_E2E);
+  const pluginTabs = useUiStore((state) => state.tabsByPlugin[PluginId.STAGINGS]);
+  const deployOpen = pluginTabs.tabIds.includes(TabId.STAGINGS_DEPLOY);
+  const historyOpen = pluginTabs.tabIds.includes(TabId.STAGINGS_HISTORY);
+  const namespacesOpen = pluginTabs.tabIds.includes(TabId.STAGINGS_NAMESPACES);
+  const syncOpen = pluginTabs.tabIds.includes(TabId.STAGINGS_SYNC);
+  const e2eOpen = pluginTabs.tabIds.includes(TabId.STAGINGS_E2E);
 
   const activateTab = (tabId: typeof TabId[keyof typeof TabId]) => {
-    if (sectionTabs.tabIds.includes(tabId)) {
-      switchTab(SectionKey.STAGINGS, tabId);
+    if (pluginTabs.tabIds.includes(tabId)) {
+      switchTab(PluginId.STAGINGS, tabId);
       return;
     }
 
-    openTab(SectionKey.STAGINGS, tabId);
+    openTab(PluginId.STAGINGS, tabId);
   };
 
   if (mode === ViewKey.STAGINGS_DEPLOY) {
@@ -71,10 +88,18 @@ export function StagingsSection({ mode }: StagingsSectionProps) {
           </Text>
         </div>
         <Group>
-          <Button leftSection={<IconRocket size={16} />} onClick={() => activateTab(TabId.STAGINGS_DEPLOY)} variant="light">
+          <Button
+            leftSection={<IconRocket size={16} />}
+            onClick={() => activateTab(TabId.STAGINGS_DEPLOY)}
+            variant="light"
+          >
             {deployOpen ? "Switch to Deploy" : "Open Deploy tab"}
           </Button>
-          <Button leftSection={<IconHistory size={16} />} onClick={() => activateTab(TabId.STAGINGS_HISTORY)} variant="light">
+          <Button
+            leftSection={<IconHistory size={16} />}
+            onClick={() => activateTab(TabId.STAGINGS_HISTORY)}
+            variant="light"
+          >
             {historyOpen ? "Switch to History" : "Open History tab"}
           </Button>
           <Button
@@ -84,10 +109,18 @@ export function StagingsSection({ mode }: StagingsSectionProps) {
           >
             {namespacesOpen ? "Switch to Namespaces" : "Open Namespaces tab"}
           </Button>
-          <Button leftSection={<IconRefresh size={16} />} onClick={() => activateTab(TabId.STAGINGS_SYNC)} variant="light">
+          <Button
+            leftSection={<IconRefresh size={16} />}
+            onClick={() => activateTab(TabId.STAGINGS_SYNC)}
+            variant="light"
+          >
             {syncOpen ? "Switch to Sync" : "Open Sync tab"}
           </Button>
-          <Button leftSection={<IconFlask size={16} />} onClick={() => activateTab(TabId.STAGINGS_E2E)} variant="light">
+          <Button
+            leftSection={<IconFlask size={16} />}
+            onClick={() => activateTab(TabId.STAGINGS_E2E)}
+            variant="light"
+          >
             {e2eOpen ? "Switch to E2E" : "Open E2E tab"}
           </Button>
         </Group>

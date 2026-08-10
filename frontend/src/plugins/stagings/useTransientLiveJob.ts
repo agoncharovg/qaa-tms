@@ -9,7 +9,7 @@ import {
   reduceLiveJobState,
   type LiveJobAction,
   type LiveJobState,
-} from "@/features/stagings/liveJobState";
+} from "@/plugins/stagings/liveJobState";
 
 export function useTransientLiveJob(agentPort: number | null, token: string | null) {
   const queryClient = useQueryClient();

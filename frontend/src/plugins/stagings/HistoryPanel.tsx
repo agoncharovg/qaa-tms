@@ -25,7 +25,7 @@ import {
   OperationType,
   OperationTypeLabel,
   QueryKey,
-  SectionKey,
+  PluginId,
   TabId,
   type OperationStatus as OperationStatusType,
 } from "@/constants";
@@ -51,7 +51,7 @@ export function HistoryPanel() {
   const openTab = useUiStore((state) => state.openTab);
   const switchTab = useUiStore((state) => state.switchTab);
   const deployOpen = useUiStore((state) =>
-    state.tabsBySection[SectionKey.STAGINGS].tabIds.includes(TabId.STAGINGS_DEPLOY)
+    state.tabsByPlugin[PluginId.STAGINGS].tabIds.includes(TabId.STAGINGS_DEPLOY)
   );
 
   async function replayOperation(): Promise<void> {
@@ -66,11 +66,11 @@ export function HistoryPanel() {
 
     prefillDeployDraft(replay);
     if (deployOpen) {
-      switchTab(SectionKey.STAGINGS, TabId.STAGINGS_DEPLOY);
+      switchTab(PluginId.STAGINGS, TabId.STAGINGS_DEPLOY);
       return;
     }
 
-    openTab(SectionKey.STAGINGS, TabId.STAGINGS_DEPLOY);
+    openTab(PluginId.STAGINGS, TabId.STAGINGS_DEPLOY);
   }
 
   const listQuery = useQuery({

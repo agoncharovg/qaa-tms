@@ -26,6 +26,7 @@ describe("backendClient operations", () => {
           auto_login: false,
           created_at: "2026-08-09T10:00:00Z",
           display_name: "Administrator",
+          enabled_plugins: ["stagings"],
           id: 1,
           is_admin: true,
           updated_at: "2026-08-09T10:00:00Z",
@@ -54,11 +55,52 @@ describe("backendClient operations", () => {
     expect(headers.get("Authorization")).toBe("Bearer token-123");
   });
 
+  it("gets and updates the caller plugin settings with the correct wire shape", async () => {
+    const response = {
+      enabled_plugins: ["stagings"],
+    };
+
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(response), {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ enabled_plugins: [] }), {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        })
+      );
+
+    const getResult = await backendClient.getMyPlugins("token-123");
+    const updateResult = await backendClient.updateMyPlugins("token-123", []);
+
+    expect(getResult).toEqual(response);
+    expect(updateResult).toEqual({ enabled_plugins: [] });
+
+    const [getUrl, getInit] = fetchMock.mock.calls[0] ?? [];
+    const [updateUrl, updateInit] = fetchMock.mock.calls[1] ?? [];
+
+    expect(getUrl).toBe("http://localhost:8000/api/v1/me/plugins");
+    expect(getInit?.method).toBe("GET");
+    expect(new Headers(getInit?.headers).get("Authorization")).toBe("Bearer token-123");
+
+    expect(updateUrl).toBe("http://localhost:8000/api/v1/me/plugins");
+    expect(updateInit?.method).toBe("PUT");
+    expect(updateInit?.body).toBe(JSON.stringify({ enabled_plugins: [] }));
+    expect(new Headers(updateInit?.headers).get("Authorization")).toBe("Bearer token-123");
+  });
+
   it("sends create, update, get, and delete user requests with the correct wire shape", async () => {
     const createdUser: User = {
       auto_login: true,
       created_at: "2026-08-09T10:00:00Z",
       display_name: "Jane Admin",
+      enabled_plugins: ["stagings"],
       id: 3,
       is_admin: true,
       updated_at: "2026-08-09T10:00:00Z",

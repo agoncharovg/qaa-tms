@@ -36,7 +36,7 @@ export function LoginPage() {
 
   useEffect(() => {
     if (token && currentUser) {
-      navigate(RoutePath.STAGINGS, { replace: true });
+      navigate(RoutePath.ROOT, { replace: true });
     }
   }, [currentUser, navigate, token]);
 
@@ -56,7 +56,7 @@ export function LoginPage() {
           rememberCredentials: remember,
         }
       );
-      navigate(RoutePath.STAGINGS, { replace: true });
+      navigate(RoutePath.ROOT, { replace: true });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Login failed.");
     } finally {

@@ -20,12 +20,12 @@ vi.mock("@/api/backendClient", () => ({
   backendClient: backendClientMock,
 }));
 
-vi.mock("@/features/stagings/useTransientLiveJob", () => ({
+vi.mock("@/plugins/stagings/useTransientLiveJob", () => ({
   useTransientLiveJob: useTransientLiveJobMock,
 }));
 
-import { NamespacesPanel } from "@/features/stagings/NamespacesPanel";
-import { OperationType, SectionKey, TabId } from "@/constants";
+import { NamespacesPanel } from "@/plugins/stagings/NamespacesPanel";
+import { OperationType, PluginId, TabId } from "@/constants";
 import { renderWithProviders } from "@/test/render";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
 import { resetStagingsStoreState, useStagingsStore } from "@/store/stagingsStore";
@@ -62,6 +62,7 @@ describe("NamespacesPanel", () => {
         auto_login: false,
         created_at: "2026-08-09T00:00:00Z",
         display_name: "Test User",
+        enabled_plugins: ["stagings"],
         id: 2,
         is_admin: false,
         updated_at: "2026-08-09T00:00:00Z",
@@ -348,7 +349,7 @@ describe("NamespacesPanel", () => {
       expect(draft.flags.stageText).toBe("");
     });
 
-    expect(useUiStore.getState().tabsBySection[SectionKey.STAGINGS].activeTabId).toBe(TabId.STAGINGS_DEPLOY);
+    expect(useUiStore.getState().tabsByPlugin[PluginId.STAGINGS].activeTabId).toBe(TabId.STAGINGS_DEPLOY);
   });
 
   it("clears the prepare deploy error when another namespace is selected", async () => {
@@ -790,7 +791,7 @@ describe("NamespacesPanel", () => {
     });
 
     expect(backendClientMock.listOperations).not.toHaveBeenCalled();
-    expect(useUiStore.getState().tabsBySection[SectionKey.STAGINGS].activeTabId).toBe(TabId.STAGINGS_DEPLOY);
+    expect(useUiStore.getState().tabsByPlugin[PluginId.STAGINGS].activeTabId).toBe(TabId.STAGINGS_DEPLOY);
   });
 
   it("requires explicit destroy confirmation before calling the agent", async () => {

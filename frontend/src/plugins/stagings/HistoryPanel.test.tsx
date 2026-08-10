@@ -30,7 +30,7 @@ vi.mock("@/api/agentClient", () => ({
 }));
 
 import { Workspace } from "@/app/layout/Workspace";
-import { SectionKey, TabId } from "@/constants";
+import { PluginId, TabId } from "@/constants";
 import { renderWithProviders } from "@/test/render";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
 import { resetStagingsStoreState } from "@/store/stagingsStore";
@@ -42,6 +42,7 @@ function seedAuthAndTabs(): void {
       auto_login: false,
       created_at: "2026-08-09T00:00:00Z",
       display_name: "Test User",
+      enabled_plugins: ["stagings"],
       id: 2,
       is_admin: false,
       updated_at: "2026-08-09T00:00:00Z",
@@ -51,9 +52,9 @@ function seedAuthAndTabs(): void {
   });
   useUiStore.setState((state) => ({
     ...state,
-    tabsBySection: {
-      ...state.tabsBySection,
-      [SectionKey.STAGINGS]: {
+    tabsByPlugin: {
+      ...state.tabsByPlugin,
+      [PluginId.STAGINGS]: {
         activeTabId: TabId.STAGINGS_HISTORY,
         tabIds: [TabId.STAGINGS_HISTORY, TabId.STAGINGS_DEPLOY],
       },
@@ -182,7 +183,7 @@ describe("History panel", () => {
 
     renderWithProviders(
       <AppShell>
-        <Workspace activeSection={SectionKey.STAGINGS} />
+        <Workspace activePluginId={PluginId.STAGINGS} />
       </AppShell>
     );
 
@@ -268,7 +269,7 @@ describe("History panel", () => {
 
     renderWithProviders(
       <AppShell>
-        <Workspace activeSection={SectionKey.STAGINGS} />
+        <Workspace activePluginId={PluginId.STAGINGS} />
       </AppShell>
     );
 

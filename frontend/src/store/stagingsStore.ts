@@ -6,13 +6,13 @@ import {
   createDeployDraftFromReplay,
   createEmptyDeployDraft,
   type DeployDraft,
-} from "@/features/stagings/deployDraft";
+} from "@/plugins/stagings/deployDraft";
 import {
   createLiveJobState,
   reduceLiveJobState,
   type LiveJobAction,
   type LiveJobState,
-} from "@/features/stagings/liveJobState";
+} from "@/plugins/stagings/liveJobState";
 
 interface StagingsState {
   clearLiveJob: () => void;

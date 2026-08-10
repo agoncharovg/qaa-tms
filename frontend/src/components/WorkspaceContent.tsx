@@ -2,39 +2,35 @@ import { Alert, Code, Stack, Text, Title } from "@mantine/core";
 import { IconInfoCircle } from "@tabler/icons-react";
 
 import type { WorkspaceTabDefinition } from "@/api/types";
-import { ContentType, ViewKey, type SectionKey as SectionKeyType } from "@/constants";
-import { UsersPage } from "@/features/admin/UsersPage";
-import { StagingsSection } from "@/features/stagings/StagingsSection";
-
-const reactViewRegistry = {
-  [ViewKey.ADMIN_USERS]: <UsersPage />,
-  [ViewKey.STAGINGS_DEPLOY]: <StagingsSection mode={ViewKey.STAGINGS_DEPLOY} />,
-  [ViewKey.STAGINGS_HISTORY]: <StagingsSection mode={ViewKey.STAGINGS_HISTORY} />,
-  [ViewKey.STAGINGS_NAMESPACES]: <StagingsSection mode={ViewKey.STAGINGS_NAMESPACES} />,
-  [ViewKey.STAGINGS_PREFLIGHT]: <StagingsSection mode={ViewKey.STAGINGS_PREFLIGHT} />,
-  [ViewKey.STAGINGS_SYNC]: <StagingsSection mode={ViewKey.STAGINGS_SYNC} />,
-  [ViewKey.STAGINGS_E2E]: <StagingsSection mode={ViewKey.STAGINGS_E2E} />,
-} as const;
+import { ContentType } from "@/constants";
+import { viewRegistry } from "@/plugins/registry";
+import { useAuthStore } from "@/store/authStore";
 
 interface WorkspaceContentProps {
-  activeSection: SectionKeyType;
+  activePluginLabel: string;
   tab: WorkspaceTabDefinition | null;
 }
 
-export function WorkspaceContent({ activeSection, tab }: WorkspaceContentProps) {
+export function WorkspaceContent({ activePluginLabel, tab }: WorkspaceContentProps) {
+  const currentUser = useAuthStore((state) => state.currentUser);
+
   if (!tab) {
     return (
       <Stack gap="sm" h="100%" justify="center">
         <Title order={3}>No workspace tab is open</Title>
         <Text c="dimmed">
-          Open a tab from the top bar to start working inside the {activeSection} section.
+          Open a tab from the top bar to start working inside the {activePluginLabel} plugin.
         </Text>
       </Stack>
     );
   }
 
+  if (tab.adminOnly && !currentUser?.is_admin) {
+    return null;
+  }
+
   if (tab.contentType === ContentType.REACT_VIEW && tab.viewKey) {
-    return reactViewRegistry[tab.viewKey];
+    return viewRegistry[tab.viewKey] ?? null;
   }
 
   if (tab.contentType === ContentType.IFRAME && tab.iframeSrc) {

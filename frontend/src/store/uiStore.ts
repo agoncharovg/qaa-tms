@@ -1,120 +1,101 @@
 import { create } from "zustand";
 
-import type { WorkspaceTabDefinition } from "@/api/types";
+import type { User, WorkspaceTabDefinition } from "@/api/types";
 import {
-  ContentType,
-  SectionKey,
+  PluginId,
   StorageKey,
-  TabId,
-  TabTitle,
-  ViewKey,
-  type SectionKey as SectionKeyType,
+  type PluginId as PluginIdType,
   type TabId as TabIdType,
 } from "@/constants";
+import {
+  defaultTabIdByPlugin,
+  enabledOptionalPluginIdSet,
+  PLUGIN_IDS,
+  pluginById,
+  pluginVisible,
+  tabCatalog,
+  tabDefinitions,
+  visibleTabs,
+} from "@/plugins/catalog";
 
-export interface SectionTabState {
+export interface PluginTabState {
   activeTabId: TabIdType | null;
   tabIds: TabIdType[];
 }
 
-export type TabsBySection = Record<SectionKeyType, SectionTabState>;
+export type TabsByPlugin = Record<PluginIdType, PluginTabState>;
+
+type PluginVisibilityUser = Pick<User, "enabled_plugins" | "is_admin">;
 
 interface UiState {
-  closeTab: (section: SectionKeyType, tabId: TabIdType) => void;
-  openTab: (section: SectionKeyType, tabId: TabIdType) => void;
+  closeTab: (pluginId: PluginIdType, tabId: TabIdType) => void;
+  openTab: (pluginId: PluginIdType, tabId: TabIdType) => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   sidebarCollapsed: boolean;
-  switchTab: (section: SectionKeyType, tabId: TabIdType) => void;
-  tabsBySection: TabsBySection;
+  switchTab: (pluginId: PluginIdType, tabId: TabIdType) => void;
+  tabsByPlugin: TabsByPlugin;
   toggleSidebar: () => void;
 }
 
-export const TAB_DEFINITIONS: Record<TabIdType, WorkspaceTabDefinition> = {
-  [TabId.STAGINGS_PREFLIGHT]: {
-    closeable: true,
-    contentType: ContentType.REACT_VIEW,
-    id: TabId.STAGINGS_PREFLIGHT,
-    section: SectionKey.STAGINGS,
-    title: TabTitle[TabId.STAGINGS_PREFLIGHT],
-    viewKey: ViewKey.STAGINGS_PREFLIGHT,
-  },
-  [TabId.STAGINGS_DEPLOY]: {
-    closeable: true,
-    contentType: ContentType.REACT_VIEW,
-    id: TabId.STAGINGS_DEPLOY,
-    section: SectionKey.STAGINGS,
-    title: TabTitle[TabId.STAGINGS_DEPLOY],
-    viewKey: ViewKey.STAGINGS_DEPLOY,
-  },
-  [TabId.STAGINGS_HISTORY]: {
-    closeable: true,
-    contentType: ContentType.REACT_VIEW,
-    id: TabId.STAGINGS_HISTORY,
-    section: SectionKey.STAGINGS,
-    title: TabTitle[TabId.STAGINGS_HISTORY],
-    viewKey: ViewKey.STAGINGS_HISTORY,
-  },
-  [TabId.STAGINGS_NAMESPACES]: {
-    closeable: true,
-    contentType: ContentType.REACT_VIEW,
-    id: TabId.STAGINGS_NAMESPACES,
-    section: SectionKey.STAGINGS,
-    title: TabTitle[TabId.STAGINGS_NAMESPACES],
-    viewKey: ViewKey.STAGINGS_NAMESPACES,
-  },
-  [TabId.STAGINGS_SYNC]: {
-    closeable: true,
-    contentType: ContentType.REACT_VIEW,
-    id: TabId.STAGINGS_SYNC,
-    section: SectionKey.STAGINGS,
-    title: TabTitle[TabId.STAGINGS_SYNC],
-    viewKey: ViewKey.STAGINGS_SYNC,
-  },
-  [TabId.STAGINGS_E2E]: {
-    closeable: true,
-    contentType: ContentType.REACT_VIEW,
-    id: TabId.STAGINGS_E2E,
-    section: SectionKey.STAGINGS,
-    title: TabTitle[TabId.STAGINGS_E2E],
-    viewKey: ViewKey.STAGINGS_E2E,
-  },
-  [TabId.ADMIN_USERS]: {
-    closeable: true,
-    contentType: ContentType.REACT_VIEW,
-    id: TabId.ADMIN_USERS,
-    section: SectionKey.ADMIN,
-    title: TabTitle[TabId.ADMIN_USERS],
-    viewKey: ViewKey.ADMIN_USERS,
-  },
-};
-
-export const SECTION_TAB_CATALOG: Record<SectionKeyType, TabIdType[]> = {
-  [SectionKey.STAGINGS]: [
-    TabId.STAGINGS_PREFLIGHT,
-    TabId.STAGINGS_DEPLOY,
-    TabId.STAGINGS_HISTORY,
-    TabId.STAGINGS_NAMESPACES,
-    TabId.STAGINGS_SYNC,
-    TabId.STAGINGS_E2E,
-  ],
-  [SectionKey.ADMIN]: [TabId.ADMIN_USERS],
+const DEFAULT_VISIBILITY_USER: PluginVisibilityUser = {
+  enabled_plugins: [PluginId.STAGINGS],
+  is_admin: false,
 };
 
 function isBrowser(): boolean {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 }
 
-export function createDefaultTabsBySection(): TabsBySection {
+function resolveVisibilityUser(user: PluginVisibilityUser | null | undefined): PluginVisibilityUser {
+  if (!user) {
+    return DEFAULT_VISIBILITY_USER;
+  }
+
   return {
-    [SectionKey.ADMIN]: {
-      activeTabId: TabId.ADMIN_USERS,
-      tabIds: [TabId.ADMIN_USERS],
-    },
-    [SectionKey.STAGINGS]: {
-      activeTabId: TabId.STAGINGS_PREFLIGHT,
-      tabIds: [TabId.STAGINGS_PREFLIGHT],
-    },
+    enabled_plugins: user.enabled_plugins,
+    is_admin: user.is_admin,
   };
+}
+
+function createEmptyPluginState(): PluginTabState {
+  return {
+    activeTabId: null,
+    tabIds: [],
+  };
+}
+
+function createDefaultStateForPlugin(
+  pluginId: PluginIdType,
+  user: PluginVisibilityUser | null | undefined
+): PluginTabState {
+  const resolvedUser = resolveVisibilityUser(user);
+  const plugin = pluginById(pluginId);
+  if (!plugin) {
+    return createEmptyPluginState();
+  }
+
+  const enabledOptionalIds = enabledOptionalPluginIdSet(resolvedUser.enabled_plugins);
+  if (!pluginVisible(plugin, resolvedUser, enabledOptionalIds)) {
+    return createEmptyPluginState();
+  }
+
+  const defaultTabId = visibleTabs(plugin, resolvedUser)[0]?.id ?? null;
+  if (!defaultTabId) {
+    return createEmptyPluginState();
+  }
+
+  return {
+    activeTabId: defaultTabId,
+    tabIds: [defaultTabId],
+  };
+}
+
+export function createDefaultTabsByPlugin(
+  user: PluginVisibilityUser | null | undefined = DEFAULT_VISIBILITY_USER
+): TabsByPlugin {
+  return Object.fromEntries(
+    PLUGIN_IDS.map((pluginId) => [pluginId, createDefaultStateForPlugin(pluginId, user)])
+  ) as TabsByPlugin;
 }
 
 export function readStoredSidebarCollapsed(): boolean {
@@ -133,51 +114,27 @@ function writeStoredSidebarCollapsed(collapsed: boolean): void {
   window.localStorage.setItem(StorageKey.SIDEBAR_COLLAPSED, String(collapsed));
 }
 
-export function readStoredTabsBySection(): TabsBySection {
-  if (!isBrowser()) {
-    return createDefaultTabsBySection();
+export function sanitizePluginTabs(
+  value: PluginTabState | undefined,
+  pluginId: PluginIdType,
+  user: PluginVisibilityUser | null | undefined = DEFAULT_VISIBILITY_USER
+): PluginTabState {
+  const resolvedUser = resolveVisibilityUser(user);
+  const plugin = pluginById(pluginId);
+  if (!plugin) {
+    return createEmptyPluginState();
   }
 
-  const rawValue = window.localStorage.getItem(StorageKey.TABS);
-  if (!rawValue) {
-    return createDefaultTabsBySection();
+  const enabledOptionalIds = enabledOptionalPluginIdSet(resolvedUser.enabled_plugins);
+  if (!pluginVisible(plugin, resolvedUser, enabledOptionalIds)) {
+    return createEmptyPluginState();
   }
 
-  try {
-    const parsed = JSON.parse(rawValue) as Partial<TabsBySection>;
-    return {
-      [SectionKey.ADMIN]: sanitizeSectionTabs(parsed[SectionKey.ADMIN], SectionKey.ADMIN),
-      [SectionKey.STAGINGS]: sanitizeSectionTabs(parsed[SectionKey.STAGINGS], SectionKey.STAGINGS),
-    };
-  } catch {
-    return createDefaultTabsBySection();
-  }
-}
-
-function writeStoredTabsBySection(tabsBySection: TabsBySection): void {
-  if (!isBrowser()) {
-    return;
-  }
-
-  window.localStorage.setItem(StorageKey.TABS, JSON.stringify(tabsBySection));
-}
-
-function sanitizeSectionTabs(
-  value: SectionTabState | undefined,
-  section: SectionKeyType
-): SectionTabState {
-  const allowedTabs = new Set(SECTION_TAB_CATALOG[section]);
-  const defaultState = createDefaultTabsBySection()[section];
+  const allowedTabs = new Set(visibleTabs(plugin, resolvedUser).map((tab) => tab.id));
+  const defaultState = createDefaultStateForPlugin(pluginId, resolvedUser);
   const tabIds = (value?.tabIds ?? []).filter((tabId): tabId is TabIdType => allowedTabs.has(tabId));
   const activeTabId =
     value?.activeTabId && tabIds.includes(value.activeTabId) ? value.activeTabId : tabIds[0] ?? null;
-
-  if (tabIds.length === 0 && value?.activeTabId === null) {
-    return {
-      activeTabId: null,
-      tabIds: [],
-    };
-  }
 
   if (tabIds.length === 0) {
     return defaultState;
@@ -189,33 +146,70 @@ function sanitizeSectionTabs(
   };
 }
 
-export function openTabInSectionState(
-  sectionState: SectionTabState,
+function sanitizeTabsByPlugin(
+  value: Partial<TabsByPlugin> | undefined,
+  user: PluginVisibilityUser | null | undefined = DEFAULT_VISIBILITY_USER
+): TabsByPlugin {
+  return Object.fromEntries(
+    PLUGIN_IDS.map((pluginId) => [pluginId, sanitizePluginTabs(value?.[pluginId], pluginId, user)])
+  ) as TabsByPlugin;
+}
+
+export function readStoredTabsByPlugin(
+  user: PluginVisibilityUser | null | undefined = DEFAULT_VISIBILITY_USER
+): TabsByPlugin {
+  if (!isBrowser()) {
+    return createDefaultTabsByPlugin(user);
+  }
+
+  const rawValue = window.localStorage.getItem(StorageKey.TABS);
+  if (!rawValue) {
+    return createDefaultTabsByPlugin(user);
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue) as Partial<TabsByPlugin>;
+    return sanitizeTabsByPlugin(parsed, user);
+  } catch {
+    return createDefaultTabsByPlugin(user);
+  }
+}
+
+function writeStoredTabsByPlugin(tabsByPlugin: TabsByPlugin): void {
+  if (!isBrowser()) {
+    return;
+  }
+
+  window.localStorage.setItem(StorageKey.TABS, JSON.stringify(tabsByPlugin));
+}
+
+export function openTabInPluginState(
+  pluginState: PluginTabState,
   tabId: TabIdType
-): SectionTabState {
-  if (sectionState.tabIds.includes(tabId)) {
+): PluginTabState {
+  if (pluginState.tabIds.includes(tabId)) {
     return {
-      ...sectionState,
+      ...pluginState,
       activeTabId: tabId,
     };
   }
 
   return {
     activeTabId: tabId,
-    tabIds: [...sectionState.tabIds, tabId],
+    tabIds: [...pluginState.tabIds, tabId],
   };
 }
 
-export function closeTabInSectionState(
-  sectionState: SectionTabState,
+export function closeTabInPluginState(
+  pluginState: PluginTabState,
   tabId: TabIdType
-): SectionTabState {
-  const closeIndex = sectionState.tabIds.indexOf(tabId);
+): PluginTabState {
+  const closeIndex = pluginState.tabIds.indexOf(tabId);
   if (closeIndex === -1) {
-    return sectionState;
+    return pluginState;
   }
 
-  const nextTabIds = sectionState.tabIds.filter((existingTabId) => existingTabId !== tabId);
+  const nextTabIds = pluginState.tabIds.filter((existingTabId) => existingTabId !== tabId);
   if (nextTabIds.length === 0) {
     return {
       activeTabId: null,
@@ -223,9 +217,9 @@ export function closeTabInSectionState(
     };
   }
 
-  if (sectionState.activeTabId !== tabId) {
+  if (pluginState.activeTabId !== tabId) {
     return {
-      activeTabId: sectionState.activeTabId,
+      activeTabId: pluginState.activeTabId,
       tabIds: nextTabIds,
     };
   }
@@ -237,45 +231,49 @@ export function closeTabInSectionState(
   };
 }
 
-export function switchTabInSectionState(
-  sectionState: SectionTabState,
+export function switchTabInPluginState(
+  pluginState: PluginTabState,
   tabId: TabIdType
-): SectionTabState {
-  if (!sectionState.tabIds.includes(tabId)) {
-    return sectionState;
+): PluginTabState {
+  if (!pluginState.tabIds.includes(tabId)) {
+    return pluginState;
   }
 
   return {
-    ...sectionState,
+    ...pluginState,
     activeTabId: tabId,
   };
 }
 
-const initialTabsBySection = readStoredTabsBySection();
+const initialTabsByPlugin = readStoredTabsByPlugin();
 
 export const useUiStore = create<UiState>()((set) => ({
-  closeTab(section, tabId) {
+  closeTab(pluginId, tabId) {
     set((state) => {
-      const nextTabsBySection = {
-        ...state.tabsBySection,
-        [section]: closeTabInSectionState(state.tabsBySection[section], tabId),
+      const nextTabsByPlugin = {
+        ...state.tabsByPlugin,
+        [pluginId]: closeTabInPluginState(state.tabsByPlugin[pluginId], tabId),
       };
-      writeStoredTabsBySection(nextTabsBySection);
+      writeStoredTabsByPlugin(nextTabsByPlugin);
       return {
-        tabsBySection: nextTabsBySection,
+        tabsByPlugin: nextTabsByPlugin,
       };
     });
   },
 
-  openTab(section, tabId) {
+  openTab(pluginId, tabId) {
     set((state) => {
-      const nextTabsBySection = {
-        ...state.tabsBySection,
-        [section]: openTabInSectionState(state.tabsBySection[section], tabId),
+      if (tabDefinitions[tabId].pluginId !== pluginId) {
+        return state;
+      }
+
+      const nextTabsByPlugin = {
+        ...state.tabsByPlugin,
+        [pluginId]: openTabInPluginState(state.tabsByPlugin[pluginId], tabId),
       };
-      writeStoredTabsBySection(nextTabsBySection);
+      writeStoredTabsByPlugin(nextTabsByPlugin);
       return {
-        tabsBySection: nextTabsBySection,
+        tabsByPlugin: nextTabsByPlugin,
       };
     });
   },
@@ -289,20 +287,20 @@ export const useUiStore = create<UiState>()((set) => ({
 
   sidebarCollapsed: readStoredSidebarCollapsed(),
 
-  switchTab(section, tabId) {
+  switchTab(pluginId, tabId) {
     set((state) => {
-      const nextTabsBySection = {
-        ...state.tabsBySection,
-        [section]: switchTabInSectionState(state.tabsBySection[section], tabId),
+      const nextTabsByPlugin = {
+        ...state.tabsByPlugin,
+        [pluginId]: switchTabInPluginState(state.tabsByPlugin[pluginId], tabId),
       };
-      writeStoredTabsBySection(nextTabsBySection);
+      writeStoredTabsByPlugin(nextTabsByPlugin);
       return {
-        tabsBySection: nextTabsBySection,
+        tabsByPlugin: nextTabsByPlugin,
       };
     });
   },
 
-  tabsBySection: initialTabsBySection,
+  tabsByPlugin: initialTabsByPlugin,
 
   toggleSidebar() {
     set((state) => {
@@ -315,11 +313,38 @@ export const useUiStore = create<UiState>()((set) => ({
   },
 }));
 
-export function getTabsForSection(section: SectionKeyType, tabsBySection: TabsBySection): WorkspaceTabDefinition[] {
-  return tabsBySection[section].tabIds.map((tabId) => TAB_DEFINITIONS[tabId]);
+export function getTabsForPlugin(
+  pluginId: PluginIdType,
+  tabsByPlugin: TabsByPlugin
+): WorkspaceTabDefinition[] {
+  return tabsByPlugin[pluginId].tabIds.map((tabId) => tabDefinitions[tabId]);
 }
 
-export function resetUiStoreState(): void {
+export function syncTabsForUser(user: PluginVisibilityUser | null | undefined): void {
+  const nextTabsByPlugin = sanitizeTabsByPlugin(useUiStore.getState().tabsByPlugin, user);
+  writeStoredTabsByPlugin(nextTabsByPlugin);
+  useUiStore.setState({
+    tabsByPlugin: nextTabsByPlugin,
+  });
+}
+
+export function ensureDefaultTabForPlugin(pluginId: PluginIdType): void {
+  const defaultTabId = defaultTabIdByPlugin[pluginId];
+  if (!defaultTabId) {
+    return;
+  }
+
+  const pluginState = useUiStore.getState().tabsByPlugin[pluginId];
+  if (pluginState.tabIds.length > 0) {
+    return;
+  }
+
+  useUiStore.getState().openTab(pluginId, defaultTabId);
+}
+
+export function resetUiStoreState(
+  user: PluginVisibilityUser | null | undefined = DEFAULT_VISIBILITY_USER
+): void {
   if (isBrowser()) {
     window.localStorage.removeItem(StorageKey.SIDEBAR_COLLAPSED);
     window.localStorage.removeItem(StorageKey.TABS);
@@ -327,6 +352,8 @@ export function resetUiStoreState(): void {
 
   useUiStore.setState({
     sidebarCollapsed: false,
-    tabsBySection: createDefaultTabsBySection(),
+    tabsByPlugin: createDefaultTabsByPlugin(user),
   });
 }
+
+export { tabCatalog as PLUGIN_TAB_CATALOG, tabDefinitions as TAB_DEFINITIONS };

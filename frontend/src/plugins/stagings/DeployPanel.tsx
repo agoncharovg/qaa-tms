@@ -32,7 +32,7 @@ import {
   MAX_DEPLOY_STAGE,
   MIN_DEPLOY_STAGE,
   QueryKey,
-  SectionKey,
+  PluginId,
   TabId,
 } from "@/constants";
 import {
@@ -44,9 +44,9 @@ import {
   isShortcutFullDeploy,
   requiresExplicitSemver,
   type ShortcutDeployMode,
-} from "@/features/stagings/deployDraft";
-import { LiveJobPanel } from "@/features/stagings/LiveJobPanel";
-import { isTerminalJobStatus } from "@/features/stagings/liveJobState";
+} from "@/plugins/stagings/deployDraft";
+import { LiveJobPanel } from "@/plugins/stagings/LiveJobPanel";
+import { isTerminalJobStatus } from "@/plugins/stagings/liveJobState";
 import { useAuthStore } from "@/store/authStore";
 import { useStagingsStore } from "@/store/stagingsStore";
 import { useUiStore } from "@/store/uiStore";
@@ -90,7 +90,7 @@ export function DeployPanel() {
   const openTab = useUiStore((state) => state.openTab);
   const switchTab = useUiStore((state) => state.switchTab);
   const historyOpen = useUiStore((state) =>
-    state.tabsBySection[SectionKey.STAGINGS].tabIds.includes(TabId.STAGINGS_HISTORY)
+    state.tabsByPlugin[PluginId.STAGINGS].tabIds.includes(TabId.STAGINGS_HISTORY)
   );
   const streamAbortControllerRef = useRef<AbortController | null>(null);
   const currentJobStatusRef = useRef(liveJob?.status);
@@ -779,11 +779,11 @@ export function DeployPanel() {
                 ? () => {
                     setSelectedOperationId(liveJob.opId);
                     if (historyOpen) {
-                      switchTab(SectionKey.STAGINGS, TabId.STAGINGS_HISTORY);
+                      switchTab(PluginId.STAGINGS, TabId.STAGINGS_HISTORY);
                       return;
                     }
 
-                    openTab(SectionKey.STAGINGS, TabId.STAGINGS_HISTORY);
+                    openTab(PluginId.STAGINGS, TabId.STAGINGS_HISTORY);
                   }
                 : undefined
             }

@@ -9,11 +9,25 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AdminUser, CurrentUser, get_db
-from app.core.constants import ApiTag, ErrorMessage, RoutePath
+from app.core.constants import (
+    OPTIONAL_PLUGIN_ID_VALUES,
+    ApiTag,
+    ErrorMessage,
+    RoutePath,
+)
 from app.core.security import hash_password
 from app.models.operation import Operation
 from app.models.user import User
-from app.schemas.user import UserCreateRequest, UserListResponse, UserRead, UserUpdateRequest
+from app.schemas.user import (
+    MePluginsResponse,
+    MePluginsUpdateRequest,
+    UserCreateRequest,
+    UserListResponse,
+    UserRead,
+    UserUpdateRequest,
+    to_me_plugins_response,
+    to_user_read,
+)
 
 router = APIRouter(tags=[ApiTag.USERS.value])
 
@@ -45,13 +59,37 @@ async def ensure_not_last_admin(db: AsyncSession, user: User) -> None:
         )
 
 
-def to_user_read(user: User) -> UserRead:
-    return UserRead.model_validate(user)
+def normalize_enabled_plugins(enabled_plugins: list[str]) -> list[str]:
+    provided = set(enabled_plugins)
+    invalid = provided.difference(OPTIONAL_PLUGIN_ID_VALUES)
+    if invalid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=ErrorMessage.INVALID_ENABLED_PLUGINS.value,
+        )
+    return [plugin_id for plugin_id in OPTIONAL_PLUGIN_ID_VALUES if plugin_id in provided]
 
 
 @router.get(RoutePath.ME.value, response_model=UserRead)
 async def get_me(current_user: CurrentUser) -> UserRead:
     return to_user_read(current_user)
+
+
+@router.get(RoutePath.ME_PLUGINS.value, response_model=MePluginsResponse)
+async def get_my_plugins(current_user: CurrentUser) -> MePluginsResponse:
+    return to_me_plugins_response(current_user)
+
+
+@router.put(RoutePath.ME_PLUGINS.value, response_model=MePluginsResponse)
+async def update_my_plugins(
+    payload: MePluginsUpdateRequest,
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> MePluginsResponse:
+    current_user.enabled_plugins = normalize_enabled_plugins(payload.enabled_plugins)
+    await db.commit()
+    await db.refresh(current_user)
+    return to_me_plugins_response(current_user)
 
 
 @router.get(RoutePath.USERS.value, response_model=UserListResponse)

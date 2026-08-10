@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
 
-import { LiveJobPanel } from "@/features/stagings/LiveJobPanel";
-import { createLiveJobState } from "@/features/stagings/liveJobState";
+import { LiveJobPanel } from "@/plugins/stagings/LiveJobPanel";
+import { createLiveJobState } from "@/plugins/stagings/liveJobState";
 import { JobStatus } from "@/constants";
 import { renderWithProviders } from "@/test/render";
 

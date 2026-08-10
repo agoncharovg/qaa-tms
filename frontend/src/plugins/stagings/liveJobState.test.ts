@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createLiveJobState, reduceLiveJobState } from "@/features/stagings/liveJobState";
+import { createLiveJobState, reduceLiveJobState } from "@/plugins/stagings/liveJobState";
 
 describe("reduceLiveJobState", () => {
   it("appends log lines and transitions to terminal status", () => {

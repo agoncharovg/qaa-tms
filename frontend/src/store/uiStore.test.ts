@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { SectionKey, StorageKey, TabId } from "@/constants";
+import { PluginId, StorageKey, TabId } from "@/constants";
 import {
-  closeTabInSectionState,
-  createDefaultTabsBySection,
-  openTabInSectionState,
+  closeTabInPluginState,
+  createDefaultTabsByPlugin,
+  openTabInPluginState,
   readStoredSidebarCollapsed,
+  readStoredTabsByPlugin,
   resetUiStoreState,
-  switchTabInSectionState,
+  switchTabInPluginState,
   useUiStore,
 } from "@/store/uiStore";
 
@@ -25,20 +26,79 @@ describe("uiStore", () => {
     expect(readStoredSidebarCollapsed()).toBe(true);
   });
 
-  it("opens, switches, and closes tabs per section", () => {
-    const initialState = createDefaultTabsBySection();
-    const openedState = openTabInSectionState(initialState[SectionKey.STAGINGS], TabId.STAGINGS_NAMESPACES);
+  it("opens, switches, and closes tabs per plugin", () => {
+    const initialState = createDefaultTabsByPlugin();
+    const openedState = openTabInPluginState(
+      initialState[PluginId.STAGINGS],
+      TabId.STAGINGS_NAMESPACES
+    );
 
     expect(openedState.tabIds).toEqual([TabId.STAGINGS_PREFLIGHT, TabId.STAGINGS_NAMESPACES]);
     expect(openedState.activeTabId).toBe(TabId.STAGINGS_NAMESPACES);
 
-    const switchedState = switchTabInSectionState(openedState, TabId.STAGINGS_PREFLIGHT);
+    const switchedState = switchTabInPluginState(openedState, TabId.STAGINGS_PREFLIGHT);
 
     expect(switchedState.activeTabId).toBe(TabId.STAGINGS_PREFLIGHT);
 
-    const closedState = closeTabInSectionState(switchedState, TabId.STAGINGS_PREFLIGHT);
+    const closedState = closeTabInPluginState(switchedState, TabId.STAGINGS_PREFLIGHT);
 
     expect(closedState.tabIds).toEqual([TabId.STAGINGS_NAMESPACES]);
     expect(closedState.activeTabId).toBe(TabId.STAGINGS_NAMESPACES);
+  });
+
+  it("restores the default tab when a visible plugin was persisted with no open tabs", () => {
+    localStorage.setItem(
+      StorageKey.TABS,
+      JSON.stringify({
+        [PluginId.ADMIN]: {
+          activeTabId: TabId.ADMIN_PLUGINS,
+          tabIds: [TabId.ADMIN_PLUGINS],
+        },
+        [PluginId.STAGINGS]: {
+          activeTabId: null,
+          tabIds: [],
+        },
+      })
+    );
+
+    const sanitized = readStoredTabsByPlugin({
+      enabled_plugins: [PluginId.STAGINGS],
+      is_admin: false,
+    });
+
+    expect(sanitized[PluginId.STAGINGS]).toEqual({
+      activeTabId: TabId.STAGINGS_PREFLIGHT,
+      tabIds: [TabId.STAGINGS_PREFLIGHT],
+    });
+  });
+
+  it("drops tabs from disabled plugins and admin-only tabs for non-admin users", () => {
+    localStorage.setItem(
+      StorageKey.TABS,
+      JSON.stringify({
+        [PluginId.ADMIN]: {
+          activeTabId: TabId.ADMIN_USERS,
+          tabIds: [TabId.ADMIN_USERS],
+        },
+        [PluginId.STAGINGS]: {
+          activeTabId: TabId.STAGINGS_HISTORY,
+          tabIds: [TabId.STAGINGS_HISTORY],
+        },
+      })
+    );
+
+    const sanitized = readStoredTabsByPlugin({
+      enabled_plugins: [],
+      is_admin: false,
+    });
+
+    expect(sanitized[PluginId.STAGINGS]).toEqual({
+      activeTabId: null,
+      tabIds: [],
+    });
+    expect(sanitized[PluginId.ADMIN]).toEqual({
+      activeTabId: TabId.ADMIN_PLUGINS,
+      tabIds: [TabId.ADMIN_PLUGINS],
+    });
   });
 });

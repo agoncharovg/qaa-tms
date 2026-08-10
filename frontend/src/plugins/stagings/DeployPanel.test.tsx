@@ -17,7 +17,7 @@ vi.mock("@/api/agentClient", () => ({
   getPreflight: getPreflightMock,
 }));
 
-import { DeployPanel } from "@/features/stagings/DeployPanel";
+import { DeployPanel } from "@/plugins/stagings/DeployPanel";
 import { renderWithProviders } from "@/test/render";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
 import { resetStagingsStoreState } from "@/store/stagingsStore";
@@ -41,6 +41,7 @@ describe("DeployPanel", () => {
         auto_login: false,
         created_at: "2026-08-09T00:00:00Z",
         display_name: "Test User",
+        enabled_plugins: ["stagings"],
         id: 2,
         is_admin: false,
         updated_at: "2026-08-09T00:00:00Z",

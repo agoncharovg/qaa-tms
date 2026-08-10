@@ -18,6 +18,13 @@ def enum_values(enum_type: type[OperationType] | type[OperationStatus]) -> list[
     return [member.value for member in enum_type]
 
 
+def recipe_type() -> sa.JSON:
+    return sa.JSON().with_variant(
+        postgresql.JSONB(astext_type=sa.Text()),
+        "postgresql",
+    )
+
+
 def upgrade() -> None:
     op.create_table(
         "users",
@@ -53,7 +60,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("ns", sa.String(length=255), nullable=True),
-        sa.Column("recipe", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column("recipe", recipe_type(), nullable=False),
         sa.Column(
             "status",
             sa.Enum(OperationStatus, native_enum=False, values_callable=enum_values),

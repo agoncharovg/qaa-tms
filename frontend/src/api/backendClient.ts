@@ -3,6 +3,7 @@ import {
   BackendPath,
   DEFAULT_API_BASE_URL,
   HttpHeader,
+  type PluginId,
   HttpMethod,
   HttpStatus,
   MediaType,
@@ -13,6 +14,7 @@ import {
 import type {
   LoginRequest,
   LoginResponse,
+  MePluginsResponse,
   OperationListResponse,
   OperationRead,
   OperationReplay,
@@ -133,6 +135,26 @@ function buildOperationsListPath(params: ListOperationsParams): string {
 export const backendClient = {
   getCurrentUser(token: string, signal?: AbortSignal): Promise<User> {
     return request<User>(BackendPath.ME, { method: HttpMethod.GET }, token, signal);
+  },
+
+  getMyPlugins(token: string, signal?: AbortSignal): Promise<MePluginsResponse> {
+    return request<MePluginsResponse>(BackendPath.ME_PLUGINS, { method: HttpMethod.GET }, token, signal);
+  },
+
+  updateMyPlugins(
+    token: string,
+    enabledPluginIds: PluginId[],
+    signal?: AbortSignal
+  ): Promise<MePluginsResponse> {
+    return request<MePluginsResponse>(
+      BackendPath.ME_PLUGINS,
+      {
+        body: JSON.stringify({ enabled_plugins: enabledPluginIds }),
+        method: HttpMethod.PUT,
+      },
+      token,
+      signal
+    );
   },
 
   listUsers(token: string, signal?: AbortSignal): Promise<UserListResponse> {

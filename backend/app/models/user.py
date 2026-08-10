@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Integer, String
+from sqlalchemy import JSON, Boolean, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.constants import DEFAULT_STRING_LENGTH
@@ -28,6 +28,7 @@ class User(Base):
     display_name: Mapped[str] = mapped_column(String(DEFAULT_STRING_LENGTH))
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     auto_login: Mapped[bool] = mapped_column(Boolean, default=False)
+    enabled_plugins: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

@@ -21,6 +21,7 @@ const loginResponse: LoginResponse = {
     auto_login: false,
     created_at: "2026-08-09T00:00:00Z",
     display_name: "Administrator",
+    enabled_plugins: ["stagings"],
     id: 1,
     is_admin: true,
     updated_at: "2026-08-09T00:00:00Z",

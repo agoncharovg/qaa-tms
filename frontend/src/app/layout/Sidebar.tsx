@@ -13,49 +13,28 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconLogout,
-  IconRocket,
-  IconSettings,
   IconUserCircle,
 } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 
-import { RoutePath } from "@/constants";
-import {
-  SectionKey,
-  SectionLabel,
-  SectionRoute,
-  type SectionKey as SectionKeyType,
-} from "@/constants";
+import { RoutePath, type PluginId as PluginIdType } from "@/constants";
+import { enabledOptionalPluginIdSet, visiblePlugins } from "@/plugins/registry";
 import { useAuthStore } from "@/store/authStore";
 import { useUiStore } from "@/store/uiStore";
 
 interface SidebarProps {
-  activeSection: SectionKeyType;
+  activePluginId: PluginIdType;
 }
 
-export function Sidebar({ activeSection }: SidebarProps) {
+export function Sidebar({ activePluginId }: SidebarProps) {
   const navigate = useNavigate();
   const currentUser = useAuthStore((state) => state.currentUser);
   const logout = useAuthStore((state) => state.logout);
   const sidebarCollapsed = useUiStore((state) => state.sidebarCollapsed);
   const toggleSidebar = useUiStore((state) => state.toggleSidebar);
 
-  const sections = [
-    {
-      icon: IconRocket,
-      key: SectionKey.STAGINGS,
-      label: SectionLabel[SectionKey.STAGINGS],
-    },
-    ...(currentUser?.is_admin
-      ? [
-          {
-            icon: IconSettings,
-            key: SectionKey.ADMIN,
-            label: SectionLabel[SectionKey.ADMIN],
-          },
-        ]
-      : []),
-  ] as const;
+  const enabledOptionalIds = enabledOptionalPluginIdSet(currentUser?.enabled_plugins);
+  const plugins = visiblePlugins(currentUser, enabledOptionalIds);
 
   return (
     <AppShell.Navbar p="sm">
@@ -88,17 +67,17 @@ export function Sidebar({ activeSection }: SidebarProps) {
 
       <AppShell.Section grow>
         <Stack gap="xs">
-          {sections.map((section) => {
+          {plugins.map((plugin) => {
             const item = (
               <UnstyledButton
-                aria-current={activeSection === section.key ? "page" : undefined}
-                aria-label={section.label}
-                key={section.key}
-                onClick={() => navigate(SectionRoute[section.key])}
+                aria-current={activePluginId === plugin.id ? "page" : undefined}
+                aria-label={plugin.label}
+                key={plugin.id}
+                onClick={() => navigate(plugin.route)}
                 style={{
                   alignItems: "center",
                   backgroundColor:
-                    activeSection === section.key ? "rgba(34, 139, 230, 0.18)" : "transparent",
+                    activePluginId === plugin.id ? "rgba(34, 139, 230, 0.18)" : "transparent",
                   border: "1px solid rgba(255, 255, 255, 0.08)",
                   borderRadius: "12px",
                   display: "flex",
@@ -108,13 +87,13 @@ export function Sidebar({ activeSection }: SidebarProps) {
                   transition: "background-color 150ms ease",
                 }}
               >
-                <section.icon size={18} />
-                {!sidebarCollapsed ? <Text fw={500}>{section.label}</Text> : null}
+                <plugin.icon size={18} />
+                {!sidebarCollapsed ? <Text fw={500}>{plugin.label}</Text> : null}
               </UnstyledButton>
             );
 
             return sidebarCollapsed ? (
-              <Tooltip key={section.key} label={section.label} position="right">
+              <Tooltip key={plugin.id} label={plugin.label} position="right">
                 {item}
               </Tooltip>
             ) : (

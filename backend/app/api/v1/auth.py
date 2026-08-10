@@ -14,7 +14,7 @@ from app.core.constants import ApiTag, RoutePath, TokenType
 from app.core.security import create_access_token, verify_password
 from app.models.user import User
 from app.schemas.auth import LoginRequest, LoginResponse
-from app.schemas.user import UserRead
+from app.schemas.user import to_user_read
 
 router = APIRouter(prefix=RoutePath.AUTH.value, tags=[ApiTag.AUTH.value])
 
@@ -37,5 +37,5 @@ async def login(
     return LoginResponse(
         access_token=token,
         token_type=TokenType.BEARER,
-        user=UserRead.model_validate(user),
+        user=to_user_read(user),
     )

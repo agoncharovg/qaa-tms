@@ -7,7 +7,7 @@ import {
   OperationStatusLabel,
   type OperationStatus as OperationStatusType,
 } from "@/constants";
-import { isTerminalJobStatus, type LiveJobState } from "@/features/stagings/liveJobState";
+import { isTerminalJobStatus, type LiveJobState } from "@/plugins/stagings/liveJobState";
 
 interface LiveJobPanelProps {
   cancelPending?: boolean;
