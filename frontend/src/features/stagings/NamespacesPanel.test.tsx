@@ -457,6 +457,234 @@ describe("NamespacesPanel", () => {
     });
   });
 
+  it("shows a clear error when the agent lacks deploy-recipe and backend history is empty", async () => {
+    const user = userEvent.setup();
+
+    getPreflightMock.mockResolvedValue({
+      agent: {
+        app: "qaa-tms-agent",
+        os: "linux",
+        stagingsInstalled: true,
+        stagingsSha: "abc123",
+        version: "0.1.0",
+      },
+      checklist: [],
+      detected: true,
+      port: 47600,
+    });
+
+    backendClientMock.listOperations.mockResolvedValue({
+      items: [],
+      limit: 1,
+      offset: 0,
+      total: 0,
+    });
+
+    fetchMock.mockImplementation((input) => {
+      const url = readRequestUrl(input);
+
+      if (url.endsWith("/namespaces")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              clusterNamespaces: [],
+              exitCode: 0,
+              localOverlays: [{ name: "qaa-iam" }],
+              raw: "qaa-iam\n",
+            }),
+            {
+              headers: {
+                "Content-Type": "application/json",
+              },
+            }
+          )
+        );
+      }
+
+      if (url.endsWith("/namespaces/qaa-iam/status")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              exitCode: 0,
+              ns: "qaa-iam",
+              raw: "not provisioned\n",
+            }),
+            {
+              headers: {
+                "Content-Type": "application/json",
+              },
+            }
+          )
+        );
+      }
+
+      if (url.endsWith("/namespaces/qaa-iam/deploy-recipe")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              detail: "Not Found",
+            }),
+            {
+              headers: {
+                "Content-Type": "application/json",
+              },
+              status: 404,
+            }
+          )
+        );
+      }
+
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+
+    renderWithProviders(<NamespacesPanel />);
+
+    await user.click(await screen.findByRole("button", { name: /qaa-iam/i }));
+    await screen.findByText("not provisioned");
+    await user.click(screen.getByRole("button", { name: "Repeat previous deploy" }));
+
+    expect(await screen.findByText("Prepare deploy draft failed")).toBeInTheDocument();
+    expect(document.body.textContent).toContain(
+      "The running companion app does not expose local deploy recipes yet"
+    );
+    expect(document.body.textContent).toContain(
+      "backend History does not contain a previous deploy for this namespace"
+    );
+  });
+
+  it("falls back to backend history when the agent lacks the deploy-recipe route", async () => {
+    const user = userEvent.setup();
+
+    getPreflightMock.mockResolvedValue({
+      agent: {
+        app: "qaa-tms-agent",
+        os: "linux",
+        stagingsInstalled: true,
+        stagingsSha: "abc123",
+        version: "0.1.0",
+      },
+      checklist: [],
+      detected: true,
+      port: 47600,
+    });
+
+    backendClientMock.listOperations.mockResolvedValue({
+      items: [
+        {
+          agent_host: "laptop",
+          agent_version: "0.1.0",
+          created_at: "2026-08-09T10:00:00Z",
+          exit_code: 0,
+          finished_at: "2026-08-09T10:05:00Z",
+          id: "00000000-0000-0000-0000-000000000113",
+          ns: "qa-iam",
+          recipe: {
+            flags: {
+              clean: false,
+              dryRun: false,
+              full: false,
+              noSync: false,
+              stage: null,
+            },
+            images: {
+              "iam-api": "sha-history",
+            },
+            product: null,
+            services: ["iam-api"],
+            suites: [],
+          },
+          stagings_sha: "abc123",
+          started_at: "2026-08-09T10:00:00Z",
+          status: "success",
+          type: OperationType.DEPLOY,
+          user_id: 2,
+        },
+      ],
+      limit: 1,
+      offset: 0,
+      total: 1,
+    });
+
+    fetchMock.mockImplementation((input) => {
+      const url = readRequestUrl(input);
+
+      if (url.endsWith("/namespaces")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              clusterNamespaces: [],
+              exitCode: 0,
+              localOverlays: [{ name: "qa-iam" }],
+              raw: "qa-iam\n",
+            }),
+            {
+              headers: {
+                "Content-Type": "application/json",
+              },
+            }
+          )
+        );
+      }
+
+      if (url.endsWith("/namespaces/qa-iam/status")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              exitCode: 0,
+              ns: "qa-iam",
+              raw: "not provisioned\n",
+            }),
+            {
+              headers: {
+                "Content-Type": "application/json",
+              },
+            }
+          )
+        );
+      }
+
+      if (url.endsWith("/namespaces/qa-iam/deploy-recipe")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              detail: "Not Found",
+            }),
+            {
+              headers: {
+                "Content-Type": "application/json",
+              },
+              status: 404,
+            }
+          )
+        );
+      }
+
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+
+    renderWithProviders(<NamespacesPanel />);
+
+    await user.click(await screen.findByRole("button", { name: /qa-iam/i }));
+    await screen.findByText("not provisioned");
+    await user.click(screen.getByRole("button", { name: "Repeat previous deploy" }));
+
+    await waitFor(() => {
+      expect(backendClientMock.listOperations).toHaveBeenCalledWith("token-123", {
+        limit: 1,
+        ns: "qa-iam",
+        offset: 0,
+        type: OperationType.DEPLOY,
+      });
+    });
+
+    await waitFor(() => {
+      const draft = useStagingsStore.getState().deployDraft;
+      expect(draft.ns).toBe("qa-iam");
+      expect(draft.servicesText).toBe("iam-api");
+      expect(draft.imageRows[0]).toEqual({ service: "iam-api", tag: "sha-history" });
+    });
+  });
+
   it("repeats the latest deploy recipe for local overlays", async () => {
     const user = userEvent.setup();
 

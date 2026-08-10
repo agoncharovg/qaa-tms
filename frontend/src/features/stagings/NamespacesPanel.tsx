@@ -318,17 +318,38 @@ export function NamespacesPanel() {
       throw new Error("The agent must be connected to load a local deploy recipe.");
     }
 
-    const response = await agentClient.getNamespaceDeployRecipe(agentPort, token, namespace);
-    return {
-      ns: response.ns,
-      recipe: {
-        product: response.recipe.product,
-        services: response.recipe.services,
-        images: response.recipe.images,
-        suites: response.recipe.suites,
-        flags: { ...response.recipe.flags },
-      },
-    };
+    try {
+      const response = await agentClient.getNamespaceDeployRecipe(agentPort, token, namespace);
+      return {
+        ns: response.ns,
+        recipe: {
+          product: response.recipe.product,
+          services: response.recipe.services,
+          images: response.recipe.images,
+          suites: response.recipe.suites,
+          flags: { ...response.recipe.flags },
+        },
+      };
+    } catch (error) {
+      if (error instanceof Error && error.message === "Not Found") {
+        try {
+          return await loadLatestDeployReplay(namespace);
+        } catch (historyError) {
+          if (
+            historyError instanceof Error &&
+            historyError.message === `No recorded deploy recipe was found for ${namespace}.`
+          ) {
+            throw new Error(
+              `No recorded deploy recipe was found for ${namespace}. The running companion app does not expose local deploy recipes yet, and backend History does not contain a previous deploy for this namespace.`
+            );
+          }
+
+          throw historyError;
+        }
+      }
+
+      throw error;
+    }
   }
 
   function openDeployWithDraft(
