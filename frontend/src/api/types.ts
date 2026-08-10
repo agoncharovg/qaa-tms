@@ -64,6 +64,7 @@ export interface AgentPreflightAvailable {
 export type AgentPreflightState = AgentPreflightAvailable | AgentPreflightUnavailable;
 
 export interface DeployFlags {
+  clean: boolean;
   full: boolean;
   dryRun: boolean;
   noSync: boolean;

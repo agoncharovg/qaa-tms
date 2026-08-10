@@ -15,7 +15,7 @@ DEPLOY_BODY = {
     "ns": "qaa-demo",
     "services": ["iam-api", "billing"],
     "images": {"billing": "0.881.1"},
-    "flags": {"full": True, "dryRun": False, "noSync": True, "stage": 4},
+    "flags": {"clean": True, "full": True, "dryRun": False, "noSync": True, "stage": 4},
 }
 DESTROY_BODY = {"ns": "qaa-demo"}
 ADOPT_BODY = {"ns": "qaa-demo"}
@@ -84,6 +84,7 @@ async def test_deploy_streams_buffered_output_and_success(
     events = parse_sse_events(stream_response.text)
 
     assert job["status"] == "success"
+    assert "--clean" in job["argv"]
     assert [event for event, _ in events[:-1]] == ["log", "log", "log", "log"]
     assert events[-1] == ("terminal", {"type": "terminal", "status": "success", "exitCode": 0})
 
@@ -96,7 +97,7 @@ async def test_deploy_streams_buffered_output_and_success(
             "services": ["iam-api", "billing"],
             "images": {"billing": "0.881.1"},
             "suites": [],
-            "flags": {"full": True, "dryRun": False, "noSync": True, "stage": 4},
+            "flags": {"clean": True, "full": True, "dryRun": False, "noSync": True, "stage": 4},
         },
     )
 

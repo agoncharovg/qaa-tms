@@ -29,6 +29,7 @@ describe("agentClient job creation requests", () => {
     };
     const payload: DeployRequest = {
       flags: {
+        clean: true,
         dryRun: true,
         full: true,
         noSync: true,

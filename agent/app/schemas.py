@@ -39,6 +39,7 @@ class DeployFlags(BaseModel):
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
+    clean: bool = False
     full: bool = False
     dry_run: bool = Field(default=False, alias="dryRun")
     no_sync: bool = Field(default=False, alias="noSync")
@@ -48,6 +49,7 @@ class DeployFlags(BaseModel):
         """Return replay-safe camelCase flags for backend audit storage."""
 
         return {
+            "clean": self.clean,
             "full": self.full,
             "dryRun": self.dry_run,
             "noSync": self.no_sync,

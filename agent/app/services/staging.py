@@ -80,6 +80,8 @@ def build_deploy_argv(
         argv.extend(["--services", ",".join(request.services)])
     for service, tag in request.images.items():
         argv.extend(["--image", f"{service}={tag}"])
+    if request.flags.clean:
+        argv.append("--clean")
     if request.flags.full:
         argv.append("--full")
     if request.flags.dry_run:

@@ -6,6 +6,7 @@ const agentClientMock = vi.hoisted(() => ({
   cancelJob: vi.fn(),
   deploy: vi.fn(),
   getJob: vi.fn(),
+  listNamespaces: vi.fn(),
   streamJob: vi.fn(),
 }));
 
@@ -27,6 +28,7 @@ describe("DeployPanel", () => {
     agentClientMock.cancelJob.mockReset();
     agentClientMock.deploy.mockReset();
     agentClientMock.getJob.mockReset();
+    agentClientMock.listNamespaces.mockReset();
     agentClientMock.streamJob.mockReset();
     getPreflightMock.mockReset();
     localStorage.clear();
@@ -48,8 +50,7 @@ describe("DeployPanel", () => {
     });
   });
 
-  it("builds the expected deploy request from the form", async () => {
-    const user = userEvent.setup();
+  function mockHealthyAgent(): void {
     getPreflightMock.mockResolvedValue({
       agent: {
         app: "qaa-tms-agent",
@@ -61,6 +62,12 @@ describe("DeployPanel", () => {
       checklist: [],
       detected: true,
       port: 47600,
+    });
+    agentClientMock.listNamespaces.mockResolvedValue({
+      clusterNamespaces: [{ createdAt: null, name: "qaa-iam", status: "Active" }],
+      exitCode: 0,
+      localOverlays: [{ name: "qaa-local" }],
+      raw: "",
     });
     agentClientMock.deploy.mockResolvedValue({
       jobId: "job-123",
@@ -77,6 +84,11 @@ describe("DeployPanel", () => {
       status: "running",
     });
     agentClientMock.streamJob.mockResolvedValue(undefined);
+  }
+
+  it("builds the expected raw deploy request from the form", async () => {
+    const user = userEvent.setup();
+    mockHealthyAgent();
 
     renderWithProviders(<DeployPanel />);
 
@@ -84,6 +96,7 @@ describe("DeployPanel", () => {
     await user.type(screen.getByRole("textbox", { name: /Services/i }), "iam-api, billing-api");
     await user.type(screen.getByRole("textbox", { name: /^Service$/i }), "iam-api");
     await user.type(screen.getByRole("textbox", { name: /Tag/i }), "sha-123");
+    await user.click(screen.getByRole("checkbox", { name: /Clean/i }));
     await user.click(screen.getByRole("checkbox", { name: /Full/i }));
     await user.click(screen.getByRole("checkbox", { name: /Dry run/i }));
     await user.click(screen.getByRole("checkbox", { name: /No sync/i }));
@@ -93,6 +106,7 @@ describe("DeployPanel", () => {
     await waitFor(() => {
       expect(agentClientMock.deploy).toHaveBeenCalledWith(47600, "token-123", {
         flags: {
+          clean: true,
           dryRun: true,
           full: true,
           noSync: true,
@@ -103,6 +117,49 @@ describe("DeployPanel", () => {
         },
         ns: "qa-demo",
         services: ["iam-api", "billing-api"],
+      });
+    });
+  });
+
+  it("expands the IAM shortcut into a clean full deploy", async () => {
+    const user = userEvent.setup();
+    mockHealthyAgent();
+
+    renderWithProviders(<DeployPanel />);
+
+    await user.selectOptions(await screen.findByRole("combobox", { name: /Deploy mode/i }), "iam");
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: /Namespace/i })).toHaveValue("qaa-iam");
+    });
+
+    await user.click(screen.getByRole("checkbox", { name: /Recreate from scratch/i }));
+    await user.click(screen.getByRole("checkbox", { name: /Also deploy frontend/i }));
+    await user.click(screen.getByRole("button", { name: "Deploy" }));
+
+    await waitFor(() => {
+      expect(agentClientMock.deploy).toHaveBeenCalledWith(47600, "token-123", {
+        flags: {
+          clean: true,
+          dryRun: false,
+          full: false,
+          noSync: false,
+          stage: null,
+        },
+        images: {
+          "iam-api": "latest",
+        },
+        ns: "qaa-iam",
+        services: [
+          "infra",
+          "iam-api",
+          "access-control",
+          "billing",
+          "cdn-api",
+          "platform-notifier",
+          "iam-al-drb",
+          "frontend",
+        ],
       });
     });
   });
