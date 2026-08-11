@@ -62,9 +62,10 @@ All config uses the `AGENT_` prefix:
 - `AGENT_KUBECTL_BIN`
   Optional explicit path to the `kubectl` executable. Default: `kubectl`.
 - `AGENT_KUBECONFIG`
-  Optional kubeconfig override exported only to `kubectl` subprocesses. Leave
-  empty to inherit the companion app process environment (`KUBECONFIG` or
-  `~/.kube/config`).
+  Optional explicit kubeconfig override exported only to `kubectl` subprocesses.
+  If unset, the agent uses `AGENT_KUBECONFIG_ACTIVE_PATH` as the primary source
+  and appends any inherited shell `KUBECONFIG` entries for merged context
+  discovery.
 - `AGENT_KUBECTL_REQUEST_TIMEOUT`
   Timeout added to non-streaming `kubectl` read commands. Default: `10s`.
 

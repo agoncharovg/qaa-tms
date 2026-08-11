@@ -123,13 +123,46 @@ def resolve_kubectl_bin(settings: Settings) -> str:
     raise KubectlNotInstalledError(ErrorMessage.KUBECTL_NOT_INSTALLED.value)
 
 
-def build_kube_env(settings: Settings) -> dict[str, str] | None:
+def build_kube_env(settings: Settings) -> dict[str, str]:
     """Build the subprocess env override for kubeconfig selection."""
 
-    kubeconfig = settings.kubeconfig.strip()
-    if not kubeconfig:
-        return None
-    return {"KUBECONFIG": str(Path(kubeconfig).expanduser())}
+    explicit_kubeconfig = settings.kubeconfig.strip()
+    if explicit_kubeconfig:
+        expanded_parts = [
+            str(Path(part).expanduser())
+            for part in explicit_kubeconfig.split(os.pathsep)
+            if part.strip()
+        ]
+        return {"KUBECONFIG": os.pathsep.join(expanded_parts)}
+
+    active_kubeconfig = str(Path(settings.kubeconfig_active_path).expanduser())
+    inherited_kubeconfig = os.environ.get("KUBECONFIG", "").strip()
+    if not inherited_kubeconfig:
+        return {"KUBECONFIG": active_kubeconfig}
+
+    kubeconfig_parts = [active_kubeconfig]
+    active_identity = (
+        os.path.realpath(active_kubeconfig)
+        if Path(active_kubeconfig).exists()
+        else active_kubeconfig
+    )
+    seen_paths = {active_identity}
+    for raw_part in inherited_kubeconfig.split(os.pathsep):
+        part = raw_part.strip()
+        if not part:
+            continue
+        expanded_part = str(Path(part).expanduser())
+        part_identity = (
+            os.path.realpath(expanded_part)
+            if Path(expanded_part).exists()
+            else expanded_part
+        )
+        if part_identity in seen_paths:
+            continue
+        kubeconfig_parts.append(expanded_part)
+        seen_paths.add(part_identity)
+
+    return {"KUBECONFIG": os.pathsep.join(kubeconfig_parts)}
 
 
 def validate_kube_name(value: str) -> str:

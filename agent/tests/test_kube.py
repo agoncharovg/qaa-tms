@@ -43,7 +43,6 @@ def fake_kubectl(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, P
     record_path = tmp_path / "kubectl-record.jsonl"
     kubeconfig = tmp_path / "kubeconfig-test.yaml"
     kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")
-
     kubectl_bin = tmp_path / "kubectl"
     kubectl_bin.write_text(
         textwrap.dedent(
@@ -52,11 +51,9 @@ def fake_kubectl(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, P
             import json
             import os
             import sys
-
             CONTEXT = {KUBE_CONTEXT!r}
             NAMESPACE = {KUBE_NAMESPACE!r}
             POD = {KUBE_POD!r}
-
             def record(args):
                 record_path = os.environ.get("FAKE_KUBECTL_RECORD")
                 if not record_path:
@@ -67,7 +64,6 @@ def fake_kubectl(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, P
                 }}
                 with open(record_path, "a", encoding="utf-8") as handle:
                     handle.write(json.dumps(payload) + "\\n")
-
             def main() -> int:
                 args = sys.argv[1:]
                 record(args)
@@ -93,11 +89,9 @@ def fake_kubectl(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, P
                         ],
                     }}))
                     return 0
-
                 if args[:2] == ["config", "use-context"]:
                     print(f'Switched to context "{{args[2]}}"')
                     return 0
-
                 if args[:2] == ["get", "namespaces"]:
                     print(json.dumps({{
                         "items": [
@@ -106,7 +100,6 @@ def fake_kubectl(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, P
                         ]
                     }}))
                     return 0
-
                 if args[:2] == ["get", "pods"]:
                     print(json.dumps({{
                         "items": [
@@ -143,29 +136,23 @@ def fake_kubectl(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, P
                         ]
                     }}))
                     return 0
-
                 if args[:2] == ["describe", "pod"]:
                     print("Name: iam-api-123")
                     print("Events:")
                     print("  Warning  FailedScheduling")
                     return 3
-
                 if args[:1] == ["logs"]:
                     print("line one", flush=True)
                     print("line two", flush=True)
                     return 0
-
                 if args[:2] == ["delete", "pod"]:
                     print(f'pod "{{args[2]}}" deleted')
                     return 0
-
                 if args[:2] == ["top", "pods"]:
                     print("error: Metrics API not available", file=sys.stderr)
                     return 42
-
                 print("unsupported invocation", file=sys.stderr)
                 return 2
-
             raise SystemExit(main())
             """
         ),
@@ -206,13 +193,71 @@ async def kube_client(kube_app: Any) -> httpx.AsyncClient:
         yield async_client
 
 
+async def test_get_kube_contexts_defaults_to_active_kubeconfig_path(
+    fake_kubectl: dict[str, Path],
+    backend_recorder: BackendRecorder,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("KUBECONFIG", raising=False)
+    active_kubeconfig = fake_kubectl["record_path"].parent / "managed-active.yaml"
+    active_kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")
+    settings = Settings(
+        AGENT_HOST="127.0.0.1",
+        AGENT_PORT=47600,
+        AGENT_BACKEND_URL="http://backend.test",
+        AGENT_CORS_ORIGINS="http://localhost:3000,http://127.0.0.1:3000",
+        AGENT_KUBECTL_BIN=str(fake_kubectl["kubectl_bin"]),
+        AGENT_KUBECONFIG_ACTIVE_PATH=str(active_kubeconfig),
+        AGENT_KUBECTL_REQUEST_TIMEOUT="10s",
+    )
+    application = create_app(settings, backend_transport=backend_recorder.build_transport())
+    async with application.router.lifespan_context(application):
+        transport = httpx.ASGITransport(app=application)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            response = await client.get("/kube/contexts", headers=auth_headers)
+    assert response.status_code == 200
+    invocations = read_invocations(fake_kubectl["record_path"])
+    assert invocations[-1]["kubeconfig"] == str(active_kubeconfig)
+
+
+async def test_get_kube_contexts_merges_active_and_inherited_kubeconfig(
+    fake_kubectl: dict[str, Path],
+    backend_recorder: BackendRecorder,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    inherited_kubeconfig = fake_kubectl["record_path"].parent / "default-source.yaml"
+    inherited_kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")
+    active_kubeconfig = fake_kubectl["record_path"].parent / "managed-active.yaml"
+    active_kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")
+    monkeypatch.setenv("KUBECONFIG", str(inherited_kubeconfig))
+
+    settings = Settings(
+        AGENT_HOST="127.0.0.1",
+        AGENT_PORT=47600,
+        AGENT_BACKEND_URL="http://backend.test",
+        AGENT_CORS_ORIGINS="http://localhost:3000,http://127.0.0.1:3000",
+        AGENT_KUBECTL_BIN=str(fake_kubectl["kubectl_bin"]),
+        AGENT_KUBECONFIG_ACTIVE_PATH=str(active_kubeconfig),
+        AGENT_KUBECTL_REQUEST_TIMEOUT="10s",
+    )
+    application = create_app(settings, backend_transport=backend_recorder.build_transport())
+    async with application.router.lifespan_context(application):
+        transport = httpx.ASGITransport(app=application)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            response = await client.get("/kube/contexts", headers=auth_headers)
+    assert response.status_code == 200
+    invocations = read_invocations(fake_kubectl["record_path"])
+    assert invocations[-1]["kubeconfig"] == f"{active_kubeconfig}:{inherited_kubeconfig}"
+
+
 async def test_get_kube_contexts_returns_rows_and_marks_current(
     kube_client: httpx.AsyncClient,
     auth_headers: dict[str, str],
     fake_kubectl: dict[str, Path],
 ) -> None:
     response = await kube_client.get("/kube/contexts", headers=auth_headers)
-
     assert response.status_code == 200
     assert response.json() == {
         "contexts": [
@@ -254,7 +299,6 @@ async def test_get_kube_namespaces_and_pods_parse_structured_rows(
         headers=auth_headers,
         params={"context": "team/prod", "namespace": KUBE_NAMESPACE},
     )
-
     assert namespaces_response.status_code == 200
     assert namespaces_response.json() == {
         "namespaces": [
@@ -263,7 +307,6 @@ async def test_get_kube_namespaces_and_pods_parse_structured_rows(
         ],
         "exitCode": 0,
     }
-
     assert pods_response.status_code == 200
     assert pods_response.json() == {
         "pods": [
@@ -288,7 +331,6 @@ async def test_get_kube_namespaces_and_pods_parse_structured_rows(
         ],
         "exitCode": 0,
     }
-
     invocations = read_invocations(fake_kubectl["record_path"])
     namespace_invocation = invocations[0]
     pods_invocation = invocations[1]
@@ -313,7 +355,6 @@ async def test_describe_and_top_surface_raw_output_and_exit_codes(
         headers=auth_headers,
         params={"namespace": KUBE_NAMESPACE},
     )
-
     assert describe_response.status_code == 200
     assert describe_response.json() == {
         "name": KUBE_POD,
@@ -342,7 +383,6 @@ async def test_use_context_and_delete_pod_record_best_effort_operations(
         headers=auth_headers,
         json={"context": "team/prod", "namespace": KUBE_NAMESPACE},
     )
-
     assert use_context_response.status_code == 200
     assert use_context_response.json() == {
         "raw": 'Switched to context "team/prod"\n',
@@ -353,7 +393,6 @@ async def test_use_context_and_delete_pod_record_best_effort_operations(
         "raw": 'pod "iam-api-123" deleted\n',
         "exitCode": 0,
     }
-
     assert len(backend_recorder.operations) == 2
     assert backend_recorder.operations[0]["type"] == "kube_use_context"
     assert backend_recorder.operations[0]["ns"] is None
@@ -382,14 +421,12 @@ async def test_kube_logs_stream_emit_log_and_terminal_events(
             "tail": "20",
         },
     )
-
     assert response.status_code == 200
     assert parse_sse_events(response.text) == [
         ("log", {"type": "line", "line": "line one"}),
         ("log", {"type": "line", "line": "line two"}),
         ("terminal", {"type": "terminal", "status": "success", "exitCode": 0}),
     ]
-
     invocation = read_invocations(fake_kubectl["record_path"])[0]
     assert "--context=team/prod" in invocation["args"]
     assert "--namespace=qa-demo" in invocation["args"]
@@ -468,11 +505,9 @@ async def test_kube_routes_return_503_when_kubectl_is_absent(
         AGENT_KUBECTL_BIN=str(tmp_path / "missing-kubectl"),
     )
     application = create_app(settings, backend_transport=backend_recorder.build_transport())
-
     async with application.router.lifespan_context(application):
         transport = httpx.ASGITransport(app=application)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             response = await send_request(client, method, path, auth_headers, body)
-
     assert response.status_code == 503
     assert response.json() == {"detail": "kubectl is not installed."}
