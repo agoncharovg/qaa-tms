@@ -28,7 +28,7 @@ import {
 type PluginVisibilityUser = Pick<User, "enabled_plugins" | "is_admin">;
 
 const DEFAULT_VISIBILITY_USER: PluginVisibilityUser = {
-  enabled_plugins: [PluginId.STAGINGS, PluginId.QAA_GENERATOR],
+  enabled_plugins: [PluginId.STAGINGS, PluginId.KUBER, PluginId.QAA_GENERATOR],
   is_admin: false,
 };
 

@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
-import os
 import re
 import shlex
-import signal
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -16,7 +13,6 @@ from re import Pattern
 
 from app.core.config import Settings
 from app.core.constants import (
-    DEFAULT_CANCEL_WAIT_SECONDS,
     MAX_STAGE,
     MIN_STAGE,
     ErrorMessage,
@@ -26,6 +22,14 @@ from app.core.constants import (
     StagingFlag,
 )
 from app.schemas import JobLogEvent, JobTerminalEvent
+from app.services.command import (
+    LOG_READ_POLL_SECONDS,
+    PlainTextCommandResult,
+    run_plain_text_command,
+    spawn_namespaces_process,
+    strip_ansi,
+    terminate_process,
+)
 from app.services.sse import encode_sse
 from app.services.staging import (
     StagingInstallation,
@@ -41,14 +45,6 @@ class NamespaceCommand(StrEnum):
     STATUS = "status"
     CREDS = "creds"
     LOGS = "logs"
-
-
-@dataclass(slots=True)
-class PlainTextCommandResult:
-    """Captured plain-text command output."""
-
-    raw: str
-    exit_code: int
 
 
 @dataclass(slots=True)
@@ -97,7 +93,6 @@ class NamespaceListSection(StrEnum):
     LOCAL = "local"
 
 
-ANSI_ESCAPE_PATTERN: Pattern[str] = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 CLUSTER_SECTION_PATTERN: Pattern[str] = re.compile(
     r"provisioned\s+namespaces.*cluster:",
     re.IGNORECASE,
@@ -106,7 +101,6 @@ LOCAL_SECTION_PATTERN: Pattern[str] = re.compile(
     r"local\s+overlay\s+directories:",
     re.IGNORECASE,
 )
-LOG_READ_POLL_SECONDS = 0.25
 
 
 def build_namespace_list_argv(settings: Settings) -> tuple[list[str], StagingInstallation]:
@@ -188,25 +182,6 @@ async def read_namespace_deploy_recipe(settings: Settings, namespace: str) -> Re
     raise FileNotFoundError(f"No recorded deploy recipe was found for {namespace}.")
 
 
-async def run_plain_text_command(
-    argv: list[str],
-    repo_root: Path | None,
-) -> PlainTextCommandResult:
-    """Run a command and capture merged plain-text output verbatim."""
-
-    process = await asyncio.create_subprocess_exec(
-        *argv,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-        cwd=str(repo_root) if repo_root is not None else None,
-        start_new_session=True,
-    )
-    stdout, _ = await process.communicate()
-    raw = stdout.decode("utf-8", errors="replace")
-    exit_code = process.returncode if process.returncode is not None else 1
-    return PlainTextCommandResult(raw=raw, exit_code=exit_code)
-
-
 def stream_namespace_logs(
     settings: Settings,
     namespace: str,
@@ -276,21 +251,6 @@ def stream_namespace_logs(
                 await terminate_process(process)
 
     return iterator()
-
-
-async def spawn_namespaces_process(
-    argv: list[str],
-    repo_root: Path | None,
-) -> asyncio.subprocess.Process:
-    """Spawn a long-running namespaces process."""
-
-    return await asyncio.create_subprocess_exec(
-        *argv,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-        cwd=str(repo_root) if repo_root is not None else None,
-        start_new_session=True,
-    )
 
 
 def parse_namespace_list(raw_output: str) -> ParsedNamespaceList:
@@ -448,12 +408,6 @@ def extract_recorded_deploy_args(tokens: list[str]) -> list[str] | None:
     return None
 
 
-def strip_ansi(raw_output: str) -> str:
-    """Remove ANSI escapes for parser stability while preserving raw output separately."""
-
-    return ANSI_ESCAPE_PATTERN.sub("", raw_output)
-
-
 def attach_local_overlay_flags(parsed: ParsedNamespaceList, repo_root: Path | None) -> None:
     """Mark cluster namespaces that have a matching local overlay directory."""
 
@@ -473,32 +427,6 @@ def read_overlay_names(repo_root: Path | None) -> set[str]:
         return set()
 
     return {path.name for path in overlays_dir.iterdir() if path.is_dir()}
-
-
-async def terminate_process(process: asyncio.subprocess.Process) -> None:
-    """Terminate a process group cleanly, then force-kill if needed."""
-
-    if process.returncode is not None:
-        return
-
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        return
-    except OSError:
-        with contextlib.suppress(ProcessLookupError):
-            process.terminate()
-
-    try:
-        await asyncio.wait_for(process.wait(), timeout=DEFAULT_CANCEL_WAIT_SECONDS)
-        return
-    except TimeoutError:
-        pass
-
-    with contextlib.suppress(ProcessLookupError):
-        os.killpg(process.pid, signal.SIGKILL)
-    with contextlib.suppress(asyncio.TimeoutError):
-        await asyncio.wait_for(process.wait(), timeout=DEFAULT_CANCEL_WAIT_SECONDS)
 
 
 def _build_namespace_argv(

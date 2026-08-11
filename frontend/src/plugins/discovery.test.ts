@@ -39,6 +39,7 @@ describe("plugin discovery", () => {
   it("discovers the shipped plugins in deterministic manifest order", () => {
     expect(PLUGINS.map((plugin) => plugin.id)).toEqual([
       PluginId.STAGINGS,
+      PluginId.KUBER,
       PluginId.QAA_GENERATOR,
       PluginId.ADMIN,
     ]);
@@ -48,8 +49,9 @@ describe("plugin discovery", () => {
     const viewKeys = PLUGINS.flatMap((plugin) => plugin.tabs.map((tab) => tab.viewKey));
     expect(new Set(viewKeys).size).toBe(viewKeys.length);
     expect(PLUGINS[0]?.requiresAgent).toBe(true);
-    expect(PLUGINS[1]?.requiresAgent).toBe(false);
-    expect(PLUGINS[2]?.kind).toBe(PluginKind.SYSTEM);
+    expect(PLUGINS[1]?.requiresAgent).toBe(true);
+    expect(PLUGINS[2]?.requiresAgent).toBe(false);
+    expect(PLUGINS[3]?.kind).toBe(PluginKind.SYSTEM);
   });
 
   it("rejects duplicate plugin ids", () => {

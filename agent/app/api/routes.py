@@ -10,7 +10,15 @@ from fastapi.responses import StreamingResponse
 
 from app.api.deps import AuthContext, get_job_manager, get_settings, require_auth
 from app.core.config import Settings
-from app.core.constants import AgentPath, ErrorMessage, HeaderName, HeaderValue, Product
+from app.core.constants import (
+    DEFAULT_KUBE_LOG_TAIL,
+    AgentPath,
+    ErrorMessage,
+    HeaderName,
+    HeaderValue,
+    OperationType,
+    Product,
+)
 from app.schemas import (
     AdoptRequest,
     AgentPingResponse,
@@ -23,6 +31,16 @@ from app.schemas import (
     E2eSuitesResponse,
     JobCreateResponse,
     JobReadResponse,
+    KubeCommandResult,
+    KubeContextsResponse,
+    KubeDeletePodRequest,
+    KubeNamespace,
+    KubeNamespacesResponse,
+    KubePod,
+    KubePodDescribeResponse,
+    KubePodsResponse,
+    KubeTopResponse,
+    KubeUseContextRequest,
     NamespaceCredsResponse,
     NamespaceDeployRecipeResponse,
     NamespaceListResponse,
@@ -32,6 +50,18 @@ from app.schemas import (
 )
 from app.services.e2e import list_e2e_suites
 from app.services.jobs import JobManager, JobNotFoundError
+from app.services.kube import (
+    KubectlNotInstalledError,
+    delete_pod,
+    describe_pod,
+    list_contexts,
+    list_namespaces_kube,
+    list_pods,
+    push_kube_operation,
+    stream_pod_logs,
+    top_pods,
+    use_context,
+)
 from app.services.namespaces import (
     list_namespaces,
     read_namespace_creds,
@@ -305,6 +335,254 @@ async def get_namespace_deploy_recipe(
             ),
         ),
     )
+
+
+@router.get(AgentPath.KUBE_CONTEXTS.value, response_model=KubeContextsResponse)
+async def get_kube_contexts(
+    _: AuthDep,
+    settings: SettingsDep,
+) -> KubeContextsResponse:
+    try:
+        result, rows, current_context = await list_contexts(settings)
+    except KubectlNotInstalledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    return KubeContextsResponse(
+        contexts=[
+            {
+                "name": row.name,
+                "cluster": row.cluster,
+                "user": row.user,
+                "namespace": row.namespace,
+                "current": row.current,
+            }
+            for row in rows
+        ],
+        current_context=current_context,
+        exit_code=result.exit_code,
+    )
+
+
+@router.post(AgentPath.KUBE_USE_CONTEXT.value, response_model=KubeCommandResult)
+async def post_kube_use_context(
+    request_body: KubeUseContextRequest,
+    request: Request,
+    auth: AuthDep,
+    settings: SettingsDep,
+) -> KubeCommandResult:
+    try:
+        result = await use_context(settings, request_body.context)
+    except KubectlNotInstalledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    await push_kube_operation(
+        request.app.state.backend_client,
+        auth.token,
+        op_type=OperationType.KUBE_USE_CONTEXT,
+        ns=None,
+        recipe={"context": request_body.context},
+        result=result,
+    )
+    return KubeCommandResult(raw=result.raw, exit_code=result.exit_code)
+
+
+@router.get(AgentPath.KUBE_NAMESPACES.value, response_model=KubeNamespacesResponse)
+async def get_kube_namespaces(
+    _: AuthDep,
+    settings: SettingsDep,
+    context: str | None = Query(default=None),
+) -> KubeNamespacesResponse:
+    try:
+        result, rows = await list_namespaces_kube(settings, context)
+    except KubectlNotInstalledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    return KubeNamespacesResponse(
+        namespaces=[KubeNamespace(name=row.name, phase=row.phase) for row in rows],
+        exit_code=result.exit_code,
+    )
+
+
+@router.get(AgentPath.KUBE_PODS.value, response_model=KubePodsResponse)
+async def get_kube_pods(
+    _: AuthDep,
+    settings: SettingsDep,
+    namespace: str = Query(...),
+    context: str | None = Query(default=None),
+) -> KubePodsResponse:
+    try:
+        result, rows = await list_pods(settings, context, namespace)
+    except KubectlNotInstalledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    return KubePodsResponse(
+        pods=[
+            KubePod(
+                name=row.name,
+                phase=row.phase,
+                ready=row.ready,
+                restarts=row.restarts,
+                containers=row.containers,
+                node=row.node,
+                created_at=row.created_at,
+            )
+            for row in rows
+        ],
+        exit_code=result.exit_code,
+    )
+
+
+@router.get(
+    f"{AgentPath.KUBE_PODS.value}/{{pod}}{AgentPath.DESCRIBE.value}",
+    response_model=KubePodDescribeResponse,
+)
+async def get_kube_pod_describe(
+    pod: str,
+    _: AuthDep,
+    settings: SettingsDep,
+    namespace: str = Query(...),
+    context: str | None = Query(default=None),
+) -> KubePodDescribeResponse:
+    try:
+        result = await describe_pod(settings, context, namespace, pod)
+    except KubectlNotInstalledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    return KubePodDescribeResponse(
+        name=pod,
+        raw=result.raw,
+        exit_code=result.exit_code,
+    )
+
+
+@router.get(f"{AgentPath.KUBE_PODS.value}/{{pod}}{AgentPath.LOGS.value}")
+async def get_kube_pod_logs(
+    pod: str,
+    request: Request,
+    _: AuthDep,
+    settings: SettingsDep,
+    namespace: str = Query(...),
+    context: str | None = Query(default=None),
+    container: str | None = Query(default=None),
+    follow: bool = Query(default=True),
+    tail: int = Query(default=DEFAULT_KUBE_LOG_TAIL, ge=0),
+    previous: bool = Query(default=False),
+) -> StreamingResponse:
+    try:
+        stream = stream_pod_logs(
+            settings,
+            context,
+            namespace,
+            pod,
+            container,
+            follow,
+            tail,
+            previous,
+            is_disconnected=request.is_disconnected,
+        )
+    except KubectlNotInstalledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    return _build_sse_response(stream)
+
+
+@router.post(
+    f"{AgentPath.KUBE_PODS.value}/{{pod}}{AgentPath.DELETE.value}",
+    response_model=KubeCommandResult,
+)
+async def post_kube_pod_delete(
+    pod: str,
+    request_body: KubeDeletePodRequest,
+    request: Request,
+    auth: AuthDep,
+    settings: SettingsDep,
+) -> KubeCommandResult:
+    try:
+        result = await delete_pod(settings, request_body.context, request_body.namespace, pod)
+    except KubectlNotInstalledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    await push_kube_operation(
+        request.app.state.backend_client,
+        auth.token,
+        op_type=OperationType.KUBE_DELETE_POD,
+        ns=request_body.namespace,
+        recipe={"pod": pod, "context": request_body.context},
+        result=result,
+    )
+    return KubeCommandResult(raw=result.raw, exit_code=result.exit_code)
+
+
+@router.get(AgentPath.KUBE_TOP.value, response_model=KubeTopResponse)
+async def get_kube_top(
+    _: AuthDep,
+    settings: SettingsDep,
+    namespace: str = Query(...),
+    context: str | None = Query(default=None),
+) -> KubeTopResponse:
+    try:
+        result = await top_pods(settings, context, namespace)
+    except KubectlNotInstalledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    return KubeTopResponse(raw=result.raw, exit_code=result.exit_code)
 
 
 @router.get(f"{AgentPath.JOBS.value}/{{job_id}}{AgentPath.STREAM.value}")

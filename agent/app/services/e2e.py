@@ -8,7 +8,7 @@ from re import Pattern
 
 from app.core.config import Settings
 from app.core.constants import ErrorMessage, Product, StagingCommand, StagingFlag
-from app.services.namespaces import PlainTextCommandResult, run_plain_text_command, strip_ansi
+from app.services.command import PlainTextCommandResult, run_plain_text_command, strip_ansi
 from app.services.staging import (
     StagingInstallation,
     StagingNotInstalledError,

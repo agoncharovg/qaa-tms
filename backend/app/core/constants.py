@@ -5,6 +5,7 @@ from enum import StrEnum
 
 class PluginId(StrEnum):
     STAGINGS = "stagings"
+    KUBER = "kuber"
     QAA_GENERATOR = "qaa-generator"
     ADMIN = "admin"
 
@@ -16,6 +17,8 @@ class OperationType(StrEnum):
     ADOPT = "adopt"
     SYNC = "sync"
     SETUP = "setup"
+    KUBE_USE_CONTEXT = "kube_use_context"
+    KUBE_DELETE_POD = "kube_delete_pod"
     QAA_GENERATE = "qaa_generate"
 
 
@@ -180,7 +183,7 @@ class DevPassword(StrEnum):
     ADMIN = "admin"
 
 
-OPTIONAL_PLUGIN_IDS = (PluginId.STAGINGS, PluginId.QAA_GENERATOR)
+OPTIONAL_PLUGIN_IDS = (PluginId.STAGINGS, PluginId.KUBER, PluginId.QAA_GENERATOR)
 SYSTEM_PLUGIN_IDS = (PluginId.ADMIN,)
 OPTIONAL_PLUGIN_ID_VALUES = tuple(plugin_id.value for plugin_id in OPTIONAL_PLUGIN_IDS)
 SYSTEM_PLUGIN_ID_VALUES = tuple(plugin_id.value for plugin_id in SYSTEM_PLUGIN_IDS)

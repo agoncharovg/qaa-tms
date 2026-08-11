@@ -59,6 +59,10 @@ function createBootstrapTabsByPlugin(): TabsByPlugin {
       activeTabId: TabId.ADMIN_PLUGINS,
       tabIds: [TabId.ADMIN_PLUGINS],
     },
+    [PluginId.KUBER]: {
+      activeTabId: TabId.KUBE_CLUSTERS,
+      tabIds: [TabId.KUBE_CLUSTERS],
+    },
     [PluginId.QAA_GENERATOR]: {
       activeTabId: TabId.QAA_GENERATE,
       tabIds: [TabId.QAA_GENERATE],

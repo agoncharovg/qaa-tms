@@ -45,6 +45,14 @@ All config uses the `AGENT_` prefix:
 - `AGENT_STAGINGS_REPO`
   Optional explicit repo-root override. If unset, the agent derives the repo
   root from the resolved `staging` binary path.
+- `AGENT_KUBECTL_BIN`
+  Optional explicit path to the `kubectl` executable. Default: `kubectl`.
+- `AGENT_KUBECONFIG`
+  Optional kubeconfig override exported only to `kubectl` subprocesses. Leave
+  empty to inherit the companion app process environment (`KUBECONFIG` or
+  `~/.kube/config`).
+- `AGENT_KUBECTL_REQUEST_TIMEOUT`
+  Timeout added to non-streaming `kubectl` read commands. Default: `10s`.
 
 See [.env.example](/home/andreigoncharov/Projects/qaa-tms/agent/.env.example).
 
@@ -65,6 +73,14 @@ Implemented in this slice:
 - `GET /namespaces/{ns}/status`
 - `GET /namespaces/{ns}/creds`
 - `GET /namespaces/{ns}/logs?deploy=...`
+- `GET /kube/contexts`
+- `POST /kube/contexts/use`
+- `GET /kube/namespaces?context=...`
+- `GET /kube/pods?context=...&namespace=...`
+- `GET /kube/pods/{pod}/describe?context=...&namespace=...`
+- `GET /kube/pods/{pod}/logs?context=...&namespace=...&container=...&follow=...&tail=...&previous=...`
+- `POST /kube/pods/{pod}/delete`
+- `GET /kube/top?context=...&namespace=...`
 - `POST /deploy`
 - `POST /destroy`
 - `POST /adopt`
@@ -94,12 +110,15 @@ local watcher process only; the already-triggered remote Jenkins build keeps run
 `staging e2e-run <placeholder> --product <P> --list-suites`, parses the named suite
 registry, and does not create backend audit records.
 
+The `kube/*` routes shell out to the engineer's local `kubectl` binary and use
+their real kubeconfig access. Reads are one-shot commands, pod logs stream over
+the shared SSE frame format, and the two mutations (`use-context`, `delete pod`)
+push best-effort audit rows to the backend operations journal.
+
 Not implemented here:
 
 - `/setup`
 - grafana endpoints
-
-No new agent environment variables were added for the E2E slice.
 
 ## Companion App Scope
 

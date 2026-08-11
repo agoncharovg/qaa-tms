@@ -128,6 +128,15 @@ export interface SyncRequest {
   flags: SyncFlags;
 }
 
+export interface KubeUseContextRequest {
+  context: string;
+}
+
+export interface KubeDeletePodRequest {
+  context: string | null;
+  namespace: string;
+}
+
 export interface E2eSuite {
   name: string;
   marks: string;
@@ -300,6 +309,61 @@ export interface NamespaceDeployRecipe {
     suites: string[];
     flags: DeployFlags;
   };
+}
+
+export interface KubeContext {
+  name: string;
+  cluster: string;
+  user: string;
+  namespace: string | null;
+  current: boolean;
+}
+
+export interface KubeContextsResponse {
+  contexts: KubeContext[];
+  currentContext: string | null;
+  exitCode: number;
+}
+
+export interface KubeNamespace {
+  name: string;
+  phase: string | null;
+}
+
+export interface KubeNamespacesResponse {
+  namespaces: KubeNamespace[];
+  exitCode: number;
+}
+
+export interface KubePod {
+  name: string;
+  phase: string | null;
+  ready: string;
+  restarts: number;
+  containers: string[];
+  node: string | null;
+  createdAt: string | null;
+}
+
+export interface KubePodsResponse {
+  pods: KubePod[];
+  exitCode: number;
+}
+
+export interface KubePodDescribe {
+  name: string;
+  raw: string;
+  exitCode: number;
+}
+
+export interface KubeTopResponse {
+  raw: string;
+  exitCode: number;
+}
+
+export interface KubeCommandResult {
+  raw: string;
+  exitCode: number;
 }
 
 export interface JobLogEvent {

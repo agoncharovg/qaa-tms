@@ -21,6 +21,7 @@ Two plugin classes exist in this slice:
 
 - `system`: always visible to authenticated users and never toggleable. `Administration` is the only system plugin.
 - `optional`: visible only when the current user enables it for themselves. `Stagings` and `QAA Generator` ship as optional builtin plugins in this build.
+  `Kuber` also ships as an optional builtin plugin in this build.
 
 Static metadata lives in `src/plugins/catalog.ts`. React view wiring lives in
 `src/plugins/*/manifest.tsx`, discovered statically at build time through Vite
@@ -111,6 +112,22 @@ to the backend-side `QAA_GENERATOR_ACTOR` setting or omits the header.
 Plaintext qaa-generator tokens returned by the admin workflows are shown exactly once in a copy
 modal. They are not persisted in local storage, Zustand, or React Query list caches, and they are
 not written to the backend operations audit.
+
+## Kuber workflow
+
+The `Kuber` optional plugin talks only to the local companion app and never to the
+central backend for cluster I/O.
+
+- `Clusters`: list the real contexts merged by local `kubectl config view -o json`,
+  highlight the current context, and optionally persist a new active context with
+  `kubectl config use-context`.
+- `Pods`: choose a context and namespace, browse structured pod rows, open a pod
+  drawer, stream container logs over authenticated fetch-SSE, load raw `describe`
+  output, inspect raw `kubectl top pods` output, and delete a pod behind a type-to-confirm gate.
+
+The plugin requires `kubectl` to be available on the engineer's machine. The
+companion app may optionally override the kubectl path or kubeconfig via its
+`AGENT_KUBECTL_BIN` and `AGENT_KUBECONFIG` settings.
 
 ## Docker Compose
 

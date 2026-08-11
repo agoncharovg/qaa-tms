@@ -113,6 +113,23 @@ class SyncRequest(BaseModel):
     flags: SyncFlags = Field(default_factory=SyncFlags)
 
 
+class KubeUseContextRequest(BaseModel):
+    """Kube context activation request."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    context: str = Field(min_length=1)
+
+
+class KubeDeletePodRequest(BaseModel):
+    """Kube pod deletion request."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    context: str | None = None
+    namespace: str = Field(min_length=1)
+
+
 class E2eSuite(BaseModel):
     """Named suite from the static product registry."""
 
@@ -232,6 +249,97 @@ class NamespaceCredsResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     ns: str
+    raw: str
+    exit_code: int = Field(alias="exitCode")
+
+
+class KubeContext(BaseModel):
+    """Kube context row."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    cluster: str
+    user: str
+    namespace: str | None = None
+    current: bool
+
+
+class KubeContextsResponse(BaseModel):
+    """`/kube/contexts` response shape."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    contexts: list[KubeContext] = Field(default_factory=list)
+    current_context: str | None = Field(default=None, alias="currentContext")
+    exit_code: int = Field(alias="exitCode")
+
+
+class KubeNamespace(BaseModel):
+    """Kube namespace row."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    phase: str | None = None
+
+
+class KubeNamespacesResponse(BaseModel):
+    """`/kube/namespaces` response shape."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    namespaces: list[KubeNamespace] = Field(default_factory=list)
+    exit_code: int = Field(alias="exitCode")
+
+
+class KubePod(BaseModel):
+    """Kube pod row."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    name: str
+    phase: str | None = None
+    ready: str
+    restarts: int
+    containers: list[str] = Field(default_factory=list)
+    node: str | None = None
+    created_at: str | None = Field(default=None, alias="createdAt")
+
+
+class KubePodsResponse(BaseModel):
+    """`/kube/pods` response shape."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    pods: list[KubePod] = Field(default_factory=list)
+    exit_code: int = Field(alias="exitCode")
+
+
+class KubePodDescribeResponse(BaseModel):
+    """`/kube/pods/{pod}/describe` response shape."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    name: str
+    raw: str
+    exit_code: int = Field(alias="exitCode")
+
+
+class KubeTopResponse(BaseModel):
+    """`/kube/top` response shape."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    raw: str
+    exit_code: int = Field(alias="exitCode")
+
+
+class KubeCommandResult(BaseModel):
+    """Shared kube command response shape."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
     raw: str
     exit_code: int = Field(alias="exitCode")
 

@@ -14,6 +14,8 @@ from app.core.constants import (
     DEFAULT_AGENT_PORT,
     DEFAULT_BACKEND_URL,
     DEFAULT_CORS_ORIGINS,
+    DEFAULT_KUBECTL_BIN,
+    DEFAULT_KUBECTL_REQUEST_TIMEOUT,
     EnvFile,
     EnvKey,
 )
@@ -38,6 +40,12 @@ class Settings(BaseSettings):
     backend_url: str = Field(default=DEFAULT_BACKEND_URL, alias=EnvKey.BACKEND_URL.value)
     staging_bin: str | None = Field(default=None, alias=EnvKey.STAGING_BIN.value)
     stagings_repo: str | None = Field(default=None, alias=EnvKey.STAGINGS_REPO.value)
+    kubectl_bin: str = Field(default=DEFAULT_KUBECTL_BIN, alias=EnvKey.KUBECTL_BIN.value)
+    kubeconfig: str = Field(default="", alias=EnvKey.KUBECONFIG.value)
+    kubectl_request_timeout: str = Field(
+        default=DEFAULT_KUBECTL_REQUEST_TIMEOUT,
+        alias=EnvKey.KUBECTL_REQUEST_TIMEOUT.value,
+    )
 
     @field_validator("host")
     @classmethod

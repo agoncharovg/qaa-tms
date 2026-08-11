@@ -7,6 +7,12 @@ import type {
   E2eRunRequest,
   E2eSuitesResponse,
   JobCreateResponse,
+  KubeCommandResult,
+  KubeContextsResponse,
+  KubeNamespacesResponse,
+  KubePodDescribe,
+  KubePodsResponse,
+  KubeTopResponse,
   NamespaceCreds,
   NamespaceDeployRecipe,
   NamespaceList,
@@ -127,6 +133,190 @@ describe("agentClient job creation requests", () => {
       expect(headers.get("Accept")).toBe("application/json");
       expect(headers.get("X-QAA-TMS")).toBe("1");
     }
+  });
+});
+
+describe("agentClient kube requests", () => {
+  const fetchMock = vi.fn<typeof fetch>();
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  it("sends kube JSON requests with the expected URLs, methods, bodies, and bearer auth", async () => {
+    const contexts: KubeContextsResponse = {
+      contexts: [
+        {
+          cluster: "dev-cluster",
+          current: true,
+          name: "team/dev",
+          namespace: "qa-demo",
+          user: "dev-user",
+        },
+      ],
+      currentContext: "team/dev",
+      exitCode: 0,
+    };
+    const commandResult: KubeCommandResult = {
+      raw: "ok\n",
+      exitCode: 0,
+    };
+    const namespaces: KubeNamespacesResponse = {
+      namespaces: [{ name: "qa-demo", phase: "Active" }],
+      exitCode: 0,
+    };
+    const pods: KubePodsResponse = {
+      pods: [
+        {
+          containers: ["api"],
+          createdAt: "2026-08-11T08:00:00Z",
+          name: "iam-api-123",
+          node: "node-a",
+          phase: "Running",
+          ready: "1/1",
+          restarts: 0,
+        },
+      ],
+      exitCode: 0,
+    };
+    const describe: KubePodDescribe = {
+      name: "iam-api-123",
+      raw: "Name: iam-api-123\n",
+      exitCode: 0,
+    };
+    const top: KubeTopResponse = {
+      raw: "iam-api-123 10m 32Mi\n",
+      exitCode: 0,
+    };
+
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify(contexts), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(commandResult), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(namespaces), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(pods), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(describe), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(commandResult), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(top), { status: 200 }));
+
+    expect(await agentClient.getKubeContexts(47600, "token-123")).toEqual(contexts);
+    expect(await agentClient.useKubeContext(47600, "token-123", "team/prod")).toEqual(commandResult);
+    expect(await agentClient.listKubeNamespaces(47600, "token-123", "team/prod")).toEqual(namespaces);
+    expect(await agentClient.listKubePods(47600, "token-123", "team/prod", "qa-demo")).toEqual(pods);
+    expect(await agentClient.describeKubePod(47600, "token-123", "iam-api-123", "team/prod", "qa-demo")).toEqual(
+      describe
+    );
+    expect(
+      await agentClient.deleteKubePod(47600, "token-123", "iam-api-123", {
+        context: "team/prod",
+        namespace: "qa-demo",
+      })
+    ).toEqual(commandResult);
+    expect(await agentClient.getKubeTop(47600, "token-123", "team/prod", "qa-demo")).toEqual(top);
+
+    expect(fetchMock).toHaveBeenCalledTimes(7);
+
+    const [contextsUrl, contextsInit] = fetchMock.mock.calls[0] ?? [];
+    const [useContextUrl, useContextInit] = fetchMock.mock.calls[1] ?? [];
+    const [namespacesUrl, namespacesInit] = fetchMock.mock.calls[2] ?? [];
+    const [podsUrl, podsInit] = fetchMock.mock.calls[3] ?? [];
+    const [describeUrl, describeInit] = fetchMock.mock.calls[4] ?? [];
+    const [deleteUrl, deleteInit] = fetchMock.mock.calls[5] ?? [];
+    const [topUrl, topInit] = fetchMock.mock.calls[6] ?? [];
+
+    expect(contextsUrl).toBe("http://127.0.0.1:47600/kube/contexts");
+    expect(useContextUrl).toBe("http://127.0.0.1:47600/kube/contexts/use");
+    expect(namespacesUrl).toBe("http://127.0.0.1:47600/kube/namespaces?context=team%2Fprod");
+    expect(podsUrl).toBe("http://127.0.0.1:47600/kube/pods?namespace=qa-demo&context=team%2Fprod");
+    expect(describeUrl).toBe(
+      "http://127.0.0.1:47600/kube/pods/iam-api-123/describe?namespace=qa-demo&context=team%2Fprod"
+    );
+    expect(deleteUrl).toBe("http://127.0.0.1:47600/kube/pods/iam-api-123/delete");
+    expect(topUrl).toBe("http://127.0.0.1:47600/kube/top?namespace=qa-demo&context=team%2Fprod");
+
+    for (const init of [
+      contextsInit,
+      useContextInit,
+      namespacesInit,
+      podsInit,
+      describeInit,
+      deleteInit,
+      topInit,
+    ]) {
+      const headers = new Headers(init?.headers);
+      expect(headers.get("Authorization")).toBe("Bearer token-123");
+      expect(headers.get("Accept")).toBe("application/json");
+      expect(headers.get("X-QAA-TMS")).toBe("1");
+    }
+
+    expect(contextsInit?.method).toBe("GET");
+    expect(namespacesInit?.method).toBe("GET");
+    expect(podsInit?.method).toBe("GET");
+    expect(describeInit?.method).toBe("GET");
+    expect(topInit?.method).toBe("GET");
+    expect(useContextInit?.method).toBe("POST");
+    expect(deleteInit?.method).toBe("POST");
+    expect(useContextInit?.body).toBe(JSON.stringify({ context: "team/prod" }));
+    expect(deleteInit?.body).toBe(JSON.stringify({ context: "team/prod", namespace: "qa-demo" }));
+  });
+
+  it("streams kube pod logs through fetch SSE with bearer auth", async () => {
+    const frames = [
+      'event: log\ndata: {"type":"line","line":"line one"}\n\n',
+      'event: terminal\ndata: {"type":"terminal","status":"success","exitCode":0}\n\n',
+    ];
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const encoder = new TextEncoder();
+        for (const frame of frames) {
+          controller.enqueue(encoder.encode(frame));
+        }
+        controller.close();
+      },
+    });
+    const onMessage = vi.fn();
+
+    fetchMock.mockResolvedValue(
+      new Response(body, {
+        headers: {
+          "Content-Type": "text/event-stream",
+        },
+        status: 200,
+      })
+    );
+
+    await agentClient.streamKubePodLogs(
+      47600,
+      "token-123",
+      "iam-api-123",
+      {
+        context: "team/prod",
+        namespace: "qa-demo",
+        container: "api",
+        follow: true,
+        tail: 200,
+        previous: false,
+      },
+      onMessage
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    const headers = new Headers(init?.headers);
+
+    expect(url).toBe(
+      "http://127.0.0.1:47600/kube/pods/iam-api-123/logs?follow=true&namespace=qa-demo&previous=false&tail=200&context=team%2Fprod&container=api"
+    );
+    expect(init?.method).toBe("GET");
+    expect(headers.get("Authorization")).toBe("Bearer token-123");
+    expect(onMessage).toHaveBeenNthCalledWith(1, {
+      event: "log",
+      data: { type: "line", line: "line one" },
+    });
+    expect(onMessage).toHaveBeenNthCalledWith(2, {
+      event: "terminal",
+      data: { type: "terminal", status: "success", exitCode: 0 },
+    });
   });
 });
 

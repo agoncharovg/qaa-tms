@@ -6,7 +6,11 @@ from fastapi.testclient import TestClient
 
 from app.core.constants import DevPassword, DevUsername, OperationStatus, OperationType, PluginId
 
-DEFAULT_OPTIONAL_PLUGIN_IDS = [PluginId.STAGINGS.value, PluginId.QAA_GENERATOR.value]
+DEFAULT_OPTIONAL_PLUGIN_IDS = [
+    PluginId.STAGINGS.value,
+    PluginId.KUBER.value,
+    PluginId.QAA_GENERATOR.value,
+]
 
 
 def login(client: TestClient, username: str, password: str) -> tuple[str, dict[str, Any]]:

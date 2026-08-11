@@ -1,5 +1,6 @@
 export const PluginId = {
   STAGINGS: "stagings",
+  KUBER: "kuber",
   QAA_GENERATOR: "qaa-generator",
   ADMIN: "admin",
 } as const;
@@ -14,6 +15,7 @@ export const PluginOrigin = {
 export type PluginOrigin = (typeof PluginOrigin)[keyof typeof PluginOrigin];
 
 export const IconName = {
+  CLUSTER: "cluster",
   ROCKET: "rocket",
   SPARKLES: "sparkles",
   SETTINGS: "settings",
@@ -44,6 +46,7 @@ export const StorageKey = {
   AUTO_LOGIN: "qaa-tms.auto-login",
   SIDEBAR_COLLAPSED: "qaa-tms.sidebar-collapsed",
   TABS: "qaa-tms.tabs",
+  KUBE: "qaa-tms.kube",
 } as const;
 
 export type StorageKey = (typeof StorageKey)[keyof typeof StorageKey];
@@ -124,9 +127,16 @@ export const AgentPath = {
   PREFLIGHT: "/preflight",
   SETUP: "/setup",
   NAMESPACES: "/namespaces",
+  KUBE_CONTEXTS: "/kube/contexts",
+  KUBE_USE_CONTEXT: "/kube/contexts/use",
+  KUBE_NAMESPACES: "/kube/namespaces",
+  KUBE_PODS: "/kube/pods",
+  KUBE_TOP: "/kube/top",
   STATUS: "/status",
   CREDS: "/creds",
   LOGS: "/logs",
+  DESCRIBE: "/describe",
+  DELETE: "/delete",
   DEPLOY_RECIPE: "/deploy-recipe",
   DEPLOY: "/deploy",
   DESTROY: "/destroy",
@@ -171,6 +181,79 @@ export function buildAgentNamespaceLogsPath(namespace: string, deploy: string): 
 
 export function buildAgentNamespaceDeployRecipePath(namespace: string): string {
   return `${AgentPath.NAMESPACES}/${encodeURIComponent(namespace)}${AgentPath.DEPLOY_RECIPE}`;
+}
+
+function setOptionalSearchParam(
+  searchParams: URLSearchParams,
+  key: string,
+  value: string | null | undefined
+): void {
+  if (!value) {
+    return;
+  }
+
+  searchParams.set(key, value);
+}
+
+export function buildAgentKubeNamespacesPath(context?: string | null): string {
+  const params = new URLSearchParams();
+  setOptionalSearchParam(params, "context", context);
+  const query = params.toString();
+  return query ? `${AgentPath.KUBE_NAMESPACES}?${query}` : AgentPath.KUBE_NAMESPACES;
+}
+
+export function buildAgentKubePodsPath(context: string | null | undefined, namespace: string): string {
+  const params = new URLSearchParams({
+    namespace,
+  });
+  setOptionalSearchParam(params, "context", context);
+  return `${AgentPath.KUBE_PODS}?${params.toString()}`;
+}
+
+export function buildAgentKubePodDescribePath(
+  pod: string,
+  context: string | null | undefined,
+  namespace: string
+): string {
+  const params = new URLSearchParams({
+    namespace,
+  });
+  setOptionalSearchParam(params, "context", context);
+  return `${AgentPath.KUBE_PODS}/${encodeURIComponent(pod)}${AgentPath.DESCRIBE}?${params.toString()}`;
+}
+
+export function buildAgentKubePodLogsPath(
+  pod: string,
+  params: {
+    context?: string | null;
+    namespace: string;
+    container?: string | null;
+    follow: boolean;
+    tail: number;
+    previous: boolean;
+  }
+): string {
+  const searchParams = new URLSearchParams({
+    follow: String(params.follow),
+    namespace: params.namespace,
+    previous: String(params.previous),
+    tail: String(params.tail),
+  });
+  setOptionalSearchParam(searchParams, "context", params.context);
+  setOptionalSearchParam(searchParams, "container", params.container);
+  return `${AgentPath.KUBE_PODS}/${encodeURIComponent(pod)}${AgentPath.LOGS}?${searchParams.toString()}`;
+}
+
+export function buildAgentKubePodDeletePath(pod: string): string {
+  return `${AgentPath.KUBE_PODS}/${encodeURIComponent(pod)}${AgentPath.DELETE}`;
+}
+
+export function buildAgentKubeTopPath(context: string | null | undefined, namespace: string): string {
+  const params = new URLSearchParams({
+    namespace,
+  });
+  setOptionalSearchParam(params, "context", context);
+  return `${AgentPath.KUBE_TOP}?${params.toString()}`;
 }
 
 export function buildAgentE2eSuitesPath(product: Product): string {
@@ -233,6 +316,8 @@ export const OperationType = {
   ADOPT: "adopt",
   SYNC: "sync",
   SETUP: "setup",
+  KUBE_USE_CONTEXT: "kube_use_context",
+  KUBE_DELETE_POD: "kube_delete_pod",
   QAA_GENERATE: "qaa_generate",
 } as const;
 
@@ -245,6 +330,8 @@ export const OperationTypeLabel: Record<OperationType, string> = {
   [OperationType.ADOPT]: "Adopt",
   [OperationType.SYNC]: "Sync",
   [OperationType.SETUP]: "Setup",
+  [OperationType.KUBE_USE_CONTEXT]: "Set context",
+  [OperationType.KUBE_DELETE_POD]: "Delete pod",
   [OperationType.QAA_GENERATE]: "QAA generate",
 };
 
@@ -359,6 +446,8 @@ export const ViewKey = {
   STAGINGS_NAMESPACES: "stagings-namespaces",
   STAGINGS_SYNC: "stagings-sync",
   STAGINGS_E2E: "stagings-e2e",
+  KUBE_CLUSTERS: "kube-clusters",
+  KUBE_PODS: "kube-pods",
   QAA_GENERATE: "qaa-generate",
   QAA_LIVE: "qaa-live",
   QAA_RUNS: "qaa-runs",
@@ -376,6 +465,8 @@ export const TabId = {
   STAGINGS_NAMESPACES: "tab-stagings-namespaces",
   STAGINGS_SYNC: "tab-stagings-sync",
   STAGINGS_E2E: "tab-stagings-e2e",
+  KUBE_CLUSTERS: "tab-kube-clusters",
+  KUBE_PODS: "tab-kube-pods",
   QAA_GENERATE: "tab-qaa-generate",
   QAA_LIVE: "tab-qaa-live",
   QAA_RUNS: "tab-qaa-runs",
@@ -393,6 +484,8 @@ export const TabTitle: Record<TabId, string> = {
   [TabId.STAGINGS_NAMESPACES]: "Namespaces",
   [TabId.STAGINGS_SYNC]: "Sync",
   [TabId.STAGINGS_E2E]: "E2E",
+  [TabId.KUBE_CLUSTERS]: "Clusters",
+  [TabId.KUBE_PODS]: "Pods",
   [TabId.QAA_GENERATE]: "Generate",
   [TabId.QAA_LIVE]: "Live",
   [TabId.QAA_RUNS]: "Runs",
@@ -408,6 +501,11 @@ export const QueryKey = {
   AGENT_NAMESPACE_STATUS: "agent-namespace-status",
   AGENT_NAMESPACE_CREDS: "agent-namespace-creds",
   AGENT_E2E_SUITES: "agent-e2e-suites",
+  KUBE_CONTEXTS: "kube-contexts",
+  KUBE_NAMESPACES: "kube-namespaces",
+  KUBE_PODS: "kube-pods",
+  KUBE_POD_DESCRIBE: "kube-pod-describe",
+  KUBE_TOP: "kube-top",
   ME_PLUGINS: "me-plugins",
   USERS: "users",
   OPERATIONS: "operations",
@@ -431,6 +529,7 @@ export const AUTH_SCHEME_BEARER = "Bearer" as const;
 export const DEFAULT_OPERATIONS_PAGE_SIZE = 20 as const;
 export const DEFAULT_QAA_RUNS_PAGE_SIZE = 20 as const;
 export const DEFAULT_JOB_POLL_INTERVAL_MS = 2000 as const;
+export const DEFAULT_KUBE_LOG_TAIL = 200 as const;
 export const DEFAULT_IMAGE_TAG = "latest" as const;
 export const MIN_DEPLOY_STAGE = 0 as const;
 export const MAX_DEPLOY_STAGE = 7 as const;

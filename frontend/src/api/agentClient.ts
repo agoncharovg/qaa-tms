@@ -9,6 +9,12 @@ import {
   buildAgentJobCancelPath,
   buildAgentJobPath,
   buildAgentJobStreamPath,
+  buildAgentKubeNamespacesPath,
+  buildAgentKubePodDeletePath,
+  buildAgentKubePodDescribePath,
+  buildAgentKubePodLogsPath,
+  buildAgentKubePodsPath,
+  buildAgentKubeTopPath,
   buildAgentNamespaceCredsPath,
   buildAgentNamespaceDeployRecipePath,
   buildAgentNamespaceLogsPath,
@@ -29,6 +35,14 @@ import type {
   E2eRunRequest,
   E2eSuitesResponse,
   JobCreateResponse,
+  KubeCommandResult,
+  KubeContextsResponse,
+  KubeDeletePodRequest,
+  KubeNamespacesResponse,
+  KubePodDescribe,
+  KubePodsResponse,
+  KubeTopResponse,
+  KubeUseContextRequest,
   JobLogEvent,
   JobRead,
   JobStreamMessage,
@@ -297,6 +311,36 @@ export const agentClient = {
     );
   },
 
+  getKubeContexts(
+    port: number,
+    token: string,
+    signal?: AbortSignal
+  ): Promise<KubeContextsResponse> {
+    return readAgentJson<KubeContextsResponse>(
+      port,
+      AgentPath.KUBE_CONTEXTS,
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
+  getKubeTop(
+    port: number,
+    token: string,
+    context: string | null | undefined,
+    namespace: string,
+    signal?: AbortSignal
+  ): Promise<KubeTopResponse> {
+    return readAgentJson<KubeTopResponse>(
+      port,
+      buildAgentKubeTopPath(context, namespace),
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
   getNamespaceCreds(
     port: number,
     token: string,
@@ -342,11 +386,75 @@ export const agentClient = {
     );
   },
 
+  listKubeNamespaces(
+    port: number,
+    token: string,
+    context?: string | null,
+    signal?: AbortSignal
+  ): Promise<KubeNamespacesResponse> {
+    return readAgentJson<KubeNamespacesResponse>(
+      port,
+      buildAgentKubeNamespacesPath(context),
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
+  listKubePods(
+    port: number,
+    token: string,
+    context: string | null | undefined,
+    namespace: string,
+    signal?: AbortSignal
+  ): Promise<KubePodsResponse> {
+    return readAgentJson<KubePodsResponse>(
+      port,
+      buildAgentKubePodsPath(context, namespace),
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
   listNamespaces(port: number, token: string, signal?: AbortSignal): Promise<NamespaceList> {
     return readAgentJson<NamespaceList>(
       port,
       AgentPath.NAMESPACES,
       { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
+  describeKubePod(
+    port: number,
+    token: string,
+    pod: string,
+    context: string | null | undefined,
+    namespace: string,
+    signal?: AbortSignal
+  ): Promise<KubePodDescribe> {
+    return readAgentJson<KubePodDescribe>(
+      port,
+      buildAgentKubePodDescribePath(pod, context, namespace),
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
+  deleteKubePod(
+    port: number,
+    token: string,
+    pod: string,
+    payload: KubeDeletePodRequest,
+    signal?: AbortSignal
+  ): Promise<KubeCommandResult> {
+    return readAgentJson<KubeCommandResult>(
+      port,
+      buildAgentKubePodDeletePath(pod),
+      createJsonBody(payload),
       token,
       signal
     );
@@ -360,6 +468,30 @@ export const agentClient = {
     signal?: AbortSignal
   ): Promise<void> {
     return streamAgentCommand(port, token, buildAgentJobStreamPath(jobId), onMessage, signal);
+  },
+
+  async streamKubePodLogs(
+    port: number,
+    token: string,
+    pod: string,
+    params: {
+      context?: string | null;
+      namespace: string;
+      container?: string | null;
+      follow: boolean;
+      tail: number;
+      previous: boolean;
+    },
+    onMessage: (message: JobStreamMessage) => void,
+    signal?: AbortSignal
+  ): Promise<void> {
+    return streamAgentCommand(
+      port,
+      token,
+      buildAgentKubePodLogsPath(pod, params),
+      onMessage,
+      signal
+    );
   },
 
   async streamNamespaceLogs(
@@ -386,5 +518,21 @@ export const agentClient = {
     signal?: AbortSignal
   ): Promise<JobCreateResponse> {
     return readAgentJson<JobCreateResponse>(port, AgentPath.SYNC, createJsonBody(payload), token, signal);
+  },
+
+  useKubeContext(
+    port: number,
+    token: string,
+    context: string,
+    signal?: AbortSignal
+  ): Promise<KubeCommandResult> {
+    const payload: KubeUseContextRequest = { context };
+    return readAgentJson<KubeCommandResult>(
+      port,
+      AgentPath.KUBE_USE_CONTEXT,
+      createJsonBody(payload),
+      token,
+      signal
+    );
   },
 };

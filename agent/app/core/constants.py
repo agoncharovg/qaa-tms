@@ -10,9 +10,16 @@ class AgentPath(StrEnum):
     PREFLIGHT = "/preflight"
     SETUP = "/setup"
     NAMESPACES = "/namespaces"
+    KUBE_CONTEXTS = "/kube/contexts"
+    KUBE_USE_CONTEXT = "/kube/contexts/use"
+    KUBE_NAMESPACES = "/kube/namespaces"
+    KUBE_PODS = "/kube/pods"
+    KUBE_TOP = "/kube/top"
     STATUS = "/status"
     CREDS = "/creds"
     LOGS = "/logs"
+    DESCRIBE = "/describe"
+    DELETE = "/delete"
     DEPLOY_RECIPE = "/deploy-recipe"
     DEPLOY = "/deploy"
     DESTROY = "/destroy"
@@ -54,6 +61,8 @@ class OperationType(StrEnum):
     ADOPT = "adopt"
     SYNC = "sync"
     SETUP = "setup"
+    KUBE_USE_CONTEXT = "kube_use_context"
+    KUBE_DELETE_POD = "kube_delete_pod"
 
 
 class Product(StrEnum):
@@ -79,6 +88,9 @@ class EnvKey(StrEnum):
     BACKEND_URL = "AGENT_BACKEND_URL"
     STAGING_BIN = "AGENT_STAGING_BIN"
     STAGINGS_REPO = "AGENT_STAGINGS_REPO"
+    KUBECTL_BIN = "AGENT_KUBECTL_BIN"
+    KUBECONFIG = "AGENT_KUBECONFIG"
+    KUBECTL_REQUEST_TIMEOUT = "AGENT_KUBECTL_REQUEST_TIMEOUT"
 
 
 class EnvFile(StrEnum):
@@ -143,6 +155,36 @@ class StagingCommand(StrEnum):
     E2E_RUN = "e2e-run"
 
 
+class KubectlCommand(StrEnum):
+    CONFIG = "config"
+    GET = "get"
+    DESCRIBE = "describe"
+    LOGS = "logs"
+    DELETE = "delete"
+    TOP = "top"
+    VIEW = "view"
+    USE_CONTEXT = "use-context"
+    PODS = "pods"
+    NAMESPACES = "namespaces"
+
+
+class KubectlFlag(StrEnum):
+    OUTPUT = "-o"
+    CONTEXT = "--context"
+    NAMESPACE = "--namespace"
+    CONTAINER = "--container"
+    FOLLOW = "--follow"
+    TAIL = "--tail"
+    PREVIOUS = "--previous"
+    REQUEST_TIMEOUT = "--request-timeout"
+    NO_HEADERS = "--no-headers"
+    IGNORE_NOT_FOUND = "--ignore-not-found"
+
+
+class KubectlOutput(StrEnum):
+    JSON = "json"
+
+
 class StagingFlag(StrEnum):
     SERVICES = "--services"
     IMAGE = "--image"
@@ -170,6 +212,8 @@ class ErrorMessage(StrEnum):
     JOB_NOT_FOUND = "Job not found."
     STAGING_BINARY_NOT_INSTALLED = "The staging binary is not installed."
     UNAUTHORIZED = "Unauthorized."
+    KUBECTL_NOT_INSTALLED = "kubectl is not installed."
+    INVALID_KUBE_NAME = "Invalid Kubernetes resource name."
 
 
 AGENT_APP_NAME = "qaa-tms-agent"
@@ -188,6 +232,9 @@ DEFAULT_COMMAND_TIMEOUT_SECONDS = 5.0
 DEFAULT_CANCEL_WAIT_SECONDS = 5.0
 DEFAULT_KUBECONFIG_FRESHNESS_SECONDS = 12 * 60 * 60
 DEFAULT_STAGING_BINARY_NAME = "staging"
+DEFAULT_KUBECTL_BIN = "kubectl"
+DEFAULT_KUBECTL_REQUEST_TIMEOUT = "10s"
+DEFAULT_KUBE_LOG_TAIL = 200
 HTTPS_PORT = 443
 MIN_STAGE = 0
 MAX_STAGE = 7
