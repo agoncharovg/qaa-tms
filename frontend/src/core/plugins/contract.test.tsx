@@ -21,6 +21,7 @@ import { definePlugin } from "@/core/plugins/definePlugin";
 import { BuiltinHostApiProvider } from "@/core/plugins/host";
 import { FALLBACK_PLUGIN_ICON, resolveIcon } from "@/core/plugins/icons";
 import { PluginKind, type PluginManifest } from "@/core/plugins/types";
+import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
 
 const CONTRACT_TEST_ROUTE = "/stagings" as const;
 
@@ -69,6 +70,50 @@ function createPluginManifest(overrides: Partial<PluginManifest> = {}): PluginMa
 }
 
 describe("plugin contract", () => {
+  it("does not render admin-only tabs for non-admin users", () => {
+    resetAuthStoreState();
+    useAuthStore.setState({
+      currentUser: {
+        auto_login: false,
+        created_at: "2026-08-11T00:00:00Z",
+        display_name: "Viewer",
+        enabled_plugins: [PluginId.QAA_GENERATOR],
+        id: 2,
+        is_admin: false,
+        updated_at: "2026-08-11T00:00:00Z",
+        username: "viewer@example.com",
+      },
+      token: "token-123",
+    });
+
+    const plugin = createPluginManifest({
+      tabs: [
+        {
+          adminOnly: true,
+          element: <div>admin panel</div>,
+          id: TabId.QAA_ADMIN,
+          title: "Admin",
+          viewKey: ViewKey.QAA_ADMIN,
+        },
+      ],
+    });
+
+    renderWithHost(
+      <WorkspaceContent
+        activePlugin={plugin}
+        tab={createWorkspaceTabDefinition({
+          adminOnly: true,
+          id: TabId.QAA_ADMIN,
+          pluginId: PluginId.QAA_GENERATOR,
+          title: "Admin",
+          viewKey: ViewKey.QAA_ADMIN,
+        })}
+      />
+    );
+
+    expect(screen.queryByText("admin panel")).not.toBeInTheDocument();
+  });
+
   it("mounts a builtin definePlugin mount tab in-process and cleans it up", () => {
     const cleanupSpy = vi.fn();
     let mountedElement: HTMLElement | undefined;

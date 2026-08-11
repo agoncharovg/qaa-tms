@@ -55,12 +55,16 @@ export const BackendPath = {
   USERS: "/api/v1/users",
   OPERATIONS: "/api/v1/operations",
   QAA_RUNS: "/api/v1/qaa/runs",
+  QAA_ADMIN_USERS: "/api/v1/qaa/admin/users",
+  QAA_ADMIN_SERVICE_TOKENS: "/api/v1/qaa/admin/service-tokens",
   REPLAY: "/replay",
   PAUSE: "/pause",
   RESUME: "/resume",
   STOP: "/stop",
   EVENTS_STREAM: "/events/stream",
   ARTIFACTS: "/artifacts",
+  REGENERATE: "/tokens/regenerate",
+  REVOKE: "/revoke",
   HEALTH: "/health",
   READY: "/ready",
 } as const;
@@ -101,6 +105,18 @@ export function buildBackendQaaRunStreamPath(runId: string): string {
 
 export function buildBackendQaaRunArtifactsPath(runId: string): string {
   return `${buildBackendQaaRunPath(runId)}${BackendPath.ARTIFACTS}`;
+}
+
+export function buildBackendQaaUserPath(userId: string): string {
+  return `${BackendPath.QAA_ADMIN_USERS}/${encodeURIComponent(userId)}`;
+}
+
+export function buildBackendQaaUserRegeneratePath(userId: string): string {
+  return `${buildBackendQaaUserPath(userId)}${BackendPath.REGENERATE}`;
+}
+
+export function buildBackendQaaServiceTokenRevokePath(tokenId: string): string {
+  return `${BackendPath.QAA_ADMIN_SERVICE_TOKENS}/${encodeURIComponent(tokenId)}${BackendPath.REVOKE}`;
 }
 
 export const AgentPath = {
@@ -346,6 +362,7 @@ export const ViewKey = {
   QAA_GENERATE: "qaa-generate",
   QAA_LIVE: "qaa-live",
   QAA_RUNS: "qaa-runs",
+  QAA_ADMIN: "qaa-admin",
   ADMIN_PLUGINS: "admin-plugins",
   ADMIN_USERS: "admin-users",
 } as const;
@@ -362,6 +379,7 @@ export const TabId = {
   QAA_GENERATE: "tab-qaa-generate",
   QAA_LIVE: "tab-qaa-live",
   QAA_RUNS: "tab-qaa-runs",
+  QAA_ADMIN: "tab-qaa-admin",
   ADMIN_PLUGINS: "tab-admin-plugins",
   ADMIN_USERS: "tab-admin-users",
 } as const;
@@ -378,6 +396,7 @@ export const TabTitle: Record<TabId, string> = {
   [TabId.QAA_GENERATE]: "Generate",
   [TabId.QAA_LIVE]: "Live",
   [TabId.QAA_RUNS]: "Runs",
+  [TabId.QAA_ADMIN]: "Admin",
   [TabId.ADMIN_PLUGINS]: "Plugins",
   [TabId.ADMIN_USERS]: "Users",
 };
@@ -397,6 +416,7 @@ export const QueryKey = {
   QAA_RUNS: "qaa-runs",
   QAA_RUN_DETAIL: "qaa-run-detail",
   QAA_RUN_ARTIFACTS: "qaa-run-artifacts",
+  QAA_USERS: "qaa-users",
 } as const;
 
 export type QueryKey = (typeof QueryKey)[keyof typeof QueryKey];

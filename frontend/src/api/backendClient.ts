@@ -2,6 +2,9 @@ import {
   AUTH_SCHEME_BEARER,
   BackendPath,
   DEFAULT_API_BASE_URL,
+  buildBackendQaaServiceTokenRevokePath,
+  buildBackendQaaUserPath,
+  buildBackendQaaUserRegeneratePath,
   buildBackendQaaRunArtifactsPath,
   buildBackendQaaRunPath,
   buildBackendQaaRunPausePath,
@@ -30,6 +33,13 @@ import type {
   QaaRunEvent,
   QaaRunListResponse,
   QaaRunRead,
+  QaaServiceTokenCreateRequest,
+  QaaServiceTokenRevokeResponse,
+  QaaUser,
+  QaaUserCreateRequest,
+  QaaUserListResponse,
+  QaaUserTokenCreateResponse,
+  QaaUserTokenRegenerateResponse,
   User,
   UserCreateRequest,
   UserListResponse,
@@ -47,6 +57,13 @@ const QAA_LIST_QUERY_PARAM = {
   STATUS: "status",
 } as const;
 
+const QAA_USERS_QUERY_PARAM = {
+  EMAIL: "email",
+  LIMIT: "limit",
+  OFFSET: "offset",
+  SLACK_USER_ID: "slack_user_id",
+} as const;
+
 interface QaaRunsListParams {
   jiraKey?: string;
   status?: string[];
@@ -55,6 +72,13 @@ interface QaaRunsListParams {
   createdTo?: string;
   limit?: number;
   cursor?: string | null;
+}
+
+interface QaaUsersListParams {
+  email?: string;
+  slackUserId?: string;
+  limit?: number;
+  offset?: number;
 }
 
 export class BackendHttpError extends Error {
@@ -234,6 +258,28 @@ function buildQaaRunsListPath(params: QaaRunsListParams): string {
   return serialized ? `${BackendPath.QAA_RUNS}?${serialized}` : BackendPath.QAA_RUNS;
 }
 
+function buildQaaUsersListPath(params: QaaUsersListParams): string {
+  const searchParams = new URLSearchParams();
+
+  if (params.email) {
+    searchParams.set(QAA_USERS_QUERY_PARAM.EMAIL, params.email);
+  }
+  if (params.slackUserId) {
+    searchParams.set(QAA_USERS_QUERY_PARAM.SLACK_USER_ID, params.slackUserId);
+  }
+  if (params.limit !== undefined) {
+    searchParams.set(QAA_USERS_QUERY_PARAM.LIMIT, String(params.limit));
+  }
+  if (params.offset !== undefined) {
+    searchParams.set(QAA_USERS_QUERY_PARAM.OFFSET, String(params.offset));
+  }
+
+  const serialized = searchParams.toString();
+  return serialized
+    ? `${BackendPath.QAA_ADMIN_USERS}?${serialized}`
+    : BackendPath.QAA_ADMIN_USERS;
+}
+
 export const backendClient = {
   createQaaRun(
     token: string,
@@ -368,6 +414,81 @@ export const backendClient = {
     return request<QaaRunListResponse>(
       buildQaaRunsListPath(params),
       { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
+  listQaaUsers(
+    token: string,
+    params: QaaUsersListParams,
+    signal?: AbortSignal
+  ): Promise<QaaUserListResponse> {
+    return request<QaaUserListResponse>(
+      buildQaaUsersListPath(params),
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
+  createQaaUser(
+    token: string,
+    payload: QaaUserCreateRequest,
+    signal?: AbortSignal
+  ): Promise<QaaUserTokenCreateResponse> {
+    return request<QaaUserTokenCreateResponse>(
+      BackendPath.QAA_ADMIN_USERS,
+      {
+        body: JSON.stringify(payload),
+        method: HttpMethod.POST,
+      },
+      token,
+      signal
+    );
+  },
+
+  getQaaUser(token: string, userId: string, signal?: AbortSignal): Promise<QaaUser> {
+    return request<QaaUser>(buildBackendQaaUserPath(userId), { method: HttpMethod.GET }, token, signal);
+  },
+
+  regenerateQaaUserToken(
+    token: string,
+    userId: string,
+    signal?: AbortSignal
+  ): Promise<QaaUserTokenRegenerateResponse> {
+    return request<QaaUserTokenRegenerateResponse>(
+      buildBackendQaaUserRegeneratePath(userId),
+      { method: HttpMethod.POST },
+      token,
+      signal
+    );
+  },
+
+  createQaaServiceToken(
+    token: string,
+    payload: QaaServiceTokenCreateRequest,
+    signal?: AbortSignal
+  ): Promise<QaaUserTokenCreateResponse> {
+    return request<QaaUserTokenCreateResponse>(
+      BackendPath.QAA_ADMIN_SERVICE_TOKENS,
+      {
+        body: JSON.stringify(payload),
+        method: HttpMethod.POST,
+      },
+      token,
+      signal
+    );
+  },
+
+  revokeQaaServiceToken(
+    token: string,
+    tokenId: string,
+    signal?: AbortSignal
+  ): Promise<QaaServiceTokenRevokeResponse> {
+    return request<QaaServiceTokenRevokeResponse>(
+      buildBackendQaaServiceTokenRevokePath(tokenId),
+      { method: HttpMethod.POST },
       token,
       signal
     );

@@ -13,6 +13,7 @@ from app.core.constants import (
     DEFAULT_QAA_GENERATOR_ACTOR,
     DEFAULT_QAA_GENERATOR_BASE_URL,
     DEFAULT_QAA_GENERATOR_SERVICE_TOKEN,
+    DEFAULT_QAA_GENERATOR_SUPERUSER_TOKEN,
     EnvFile,
     EnvKey,
 )
@@ -45,6 +46,10 @@ class Settings(BaseSettings):
     qaa_generator_service_token: str = Field(
         default=DEFAULT_QAA_GENERATOR_SERVICE_TOKEN,
         alias=EnvKey.QAA_GENERATOR_SERVICE_TOKEN.value,
+    )
+    qaa_generator_superuser_token: str = Field(
+        default=DEFAULT_QAA_GENERATOR_SUPERUSER_TOKEN,
+        alias=EnvKey.QAA_GENERATOR_SUPERUSER_TOKEN.value,
     )
     qaa_generator_actor: str = Field(
         default=DEFAULT_QAA_GENERATOR_ACTOR,

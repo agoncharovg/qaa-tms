@@ -44,6 +44,13 @@ const qaaGeneratorPlugin = definePlugin({
       viewKey: ViewKey.QAA_RUNS,
       element: <QaaGeneratorSection mode={ViewKey.QAA_RUNS} />,
     },
+    {
+      adminOnly: true,
+      id: TabId.QAA_ADMIN,
+      title: TabTitle[TabId.QAA_ADMIN],
+      viewKey: ViewKey.QAA_ADMIN,
+      element: <QaaGeneratorSection mode={ViewKey.QAA_ADMIN} />,
+    },
   ],
 });
 

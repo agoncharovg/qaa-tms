@@ -15,15 +15,26 @@ from app.core.constants import AuthScheme, HttpHeader, MediaType
 from app.models.user import User
 
 
+class QaaGeneratorTokenMode(StrEnum):
+    SERVICE = "service"
+    SUPERUSER = "superuser"
+
+
 class QaaGeneratorServicePath(StrEnum):
     RUNS = "/runs"
     RUN_BY_ID = "/runs/{run_id}"
+    USERS = "/users"
+    USER_BY_ID = "/users/{user_id}"
+    SERVICE_TOKENS = "/service-tokens"
+    SERVICE_TOKEN_BY_ID = "/service-tokens/{token_id}"
 
 
 class QaaGeneratorProxyMessage(StrEnum):
     INVALID_RESPONSE = "The qaa-generator service returned an invalid response."
     NETWORK_ERROR = "Cannot reach the qaa-generator service."
     SERVICE_TOKEN_REJECTED = "QAA Generator rejected the configured service token."
+    SUPERUSER_TOKEN_NOT_CONFIGURED = "qaa-generator superuser token not configured"
+    SUPERUSER_TOKEN_REJECTED = "superuser token rejected by qaa-generator"
     UPSTREAM_ERROR = "The qaa-generator service request failed."
 
 
@@ -52,6 +63,18 @@ def build_qaa_run_artifacts_path(run_id: str, suffix: str) -> str:
     return f"{build_qaa_run_path(run_id)}{suffix}"
 
 
+def build_qaa_user_path(user_id: str) -> str:
+    return QaaGeneratorServicePath.USER_BY_ID.value.format(user_id=user_id)
+
+
+def build_qaa_user_token_regenerate_path(user_id: str, suffix: str) -> str:
+    return f"{build_qaa_user_path(user_id)}{suffix}"
+
+
+def build_qaa_service_token_revoke_path(token_id: str, suffix: str) -> str:
+    return f"{QaaGeneratorServicePath.SERVICE_TOKEN_BY_ID.value.format(token_id=token_id)}{suffix}"
+
+
 def resolve_actor_value(settings: Settings, user: User) -> str | None:
     if QAA_GENERATOR_EMAIL_GUARD in user.username:
         return f"{QAA_GENERATOR_EMAIL_ACTOR_PREFIX}{user.username}"
@@ -60,11 +83,25 @@ def resolve_actor_value(settings: Settings, user: User) -> str | None:
     return actor or None
 
 
+def resolve_token_value(settings: Settings, token_mode: QaaGeneratorTokenMode) -> str:
+    if token_mode is QaaGeneratorTokenMode.SUPERUSER:
+        token = settings.qaa_generator_superuser_token.strip()
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                detail=QaaGeneratorProxyMessage.SUPERUSER_TOKEN_NOT_CONFIGURED.value,
+            )
+        return token
+
+    return settings.qaa_generator_service_token
+
+
 def build_outbound_headers(
     settings: Settings,
-    user: User,
     *,
     accept: MediaType,
+    token_mode: QaaGeneratorTokenMode,
+    user: User | None = None,
     content_type: MediaType | None = None,
     idempotency_key: str | None = None,
     last_event_id: str | None = None,
@@ -72,11 +109,11 @@ def build_outbound_headers(
     headers = {
         HttpHeader.ACCEPT.value: accept.value,
         HttpHeader.AUTHORIZATION.value: (
-            f"{AuthScheme.BEARER.value} {settings.qaa_generator_service_token}"
+            f"{AuthScheme.BEARER.value} {resolve_token_value(settings, token_mode)}"
         ),
     }
-    actor = resolve_actor_value(settings, user)
-    if actor is not None:
+    actor = resolve_actor_value(settings, user) if user is not None else None
+    if actor is not None and token_mode is QaaGeneratorTokenMode.SERVICE:
         headers[HttpHeader.ACTOR.value] = actor
     if content_type is not None:
         headers[HttpHeader.CONTENT_TYPE.value] = content_type.value
@@ -117,8 +154,21 @@ async def read_json_payload(response: httpx.Response) -> Any:
         return {}
 
 
-def map_upstream_status(response: httpx.Response, payload: Any) -> HTTPException:
+def map_upstream_status(
+    response: httpx.Response,
+    payload: Any,
+    *,
+    token_mode: QaaGeneratorTokenMode,
+) -> HTTPException:
     message = extract_error_message(payload)
+    if token_mode is QaaGeneratorTokenMode.SUPERUSER and response.status_code in {
+        status.HTTP_401_UNAUTHORIZED,
+        status.HTTP_403_FORBIDDEN,
+    }:
+        return HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=QaaGeneratorProxyMessage.SUPERUSER_TOKEN_REJECTED.value,
+        )
     if response.status_code == status.HTTP_401_UNAUTHORIZED:
         return HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -141,6 +191,7 @@ async def request_json(
     method: str,
     path: str,
     headers: dict[str, str],
+    token_mode: QaaGeneratorTokenMode,
     params: Sequence[tuple[str, str | int | float | bool | None]] | None = None,
     json_body: dict[str, Any] | None = None,
     passthrough_status_codes: frozenset[int] = PASSTHROUGH_STATUS_CODES,
@@ -164,7 +215,7 @@ async def request_json(
     if response.status_code in passthrough_status_codes or response.is_success:
         return QaaGeneratorJsonResponse(payload=payload, status_code=response.status_code)
 
-    raise map_upstream_status(response, payload)
+    raise map_upstream_status(response, payload, token_mode=token_mode)
 
 
 async def open_event_stream(
@@ -172,6 +223,7 @@ async def open_event_stream(
     *,
     path: str,
     headers: dict[str, str],
+    token_mode: QaaGeneratorTokenMode,
 ) -> httpx.Response:
     request = client.build_request("GET", path, headers=headers)
     try:
@@ -187,4 +239,4 @@ async def open_event_stream(
 
     payload = await read_json_payload(response)
     await response.aclose()
-    raise map_upstream_status(response, payload)
+    raise map_upstream_status(response, payload, token_mode=token_mode)

@@ -102,10 +102,15 @@ not use the local agent.
 - `Generate`: submit `{ jira_key, dry_run, skip_pr, skip_exec, branch?, profile }` to the backend proxy, which re-authenticates to qaa-generator with the service token stored on the server.
 - `Live`: stream one run over authenticated fetch-SSE, inspect its live events, and issue `pause` / `resume` / `stop`.
 - `Runs`: filter the shared run list with cursor pagination, inspect a run and its artifacts inline, and open any run into the Live tab.
+- `Admin`: admin-only tab, always kept last in the plugin tab order, for qaa-generator user lookup/create, user-token regeneration, and service-token create/revoke. The backend calls qaa-generator with its separate `QAA_GENERATOR_SUPERUSER_TOKEN`; the browser never receives either qaa-generator token.
 
 The browser never receives the qaa-generator service token. The backend derives the optional
 delegation header as `email:<username>` when the username contains `@`; otherwise it falls back
 to the backend-side `QAA_GENERATOR_ACTOR` setting or omits the header.
+
+Plaintext qaa-generator tokens returned by the admin workflows are shown exactly once in a copy
+modal. They are not persisted in local storage, Zustand, or React Query list caches, and they are
+not written to the backend operations audit.
 
 ## Docker Compose
 

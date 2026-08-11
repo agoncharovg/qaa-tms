@@ -201,6 +201,48 @@ export interface QaaRunControlResponse {
   run_id: string;
 }
 
+export interface QaaUser {
+  id: string;
+  email?: string | null;
+  slack_user_id?: string | null;
+  name?: string | null;
+  description?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  [key: string]: unknown;
+}
+
+export interface QaaUserCreateRequest {
+  email?: string;
+  slack_user_id?: string;
+  name?: string;
+  description?: string;
+}
+
+export interface QaaUserListResponse {
+  items: QaaUser[];
+  next_cursor?: string | null;
+  total?: number;
+  [key: string]: unknown;
+}
+
+export interface QaaUserTokenCreateResponse {
+  user: QaaUser;
+  token: string;
+}
+
+export interface QaaUserTokenRegenerateResponse {
+  token: string;
+}
+
+export interface QaaServiceTokenCreateRequest {
+  name: string;
+}
+
+export interface QaaServiceTokenRevokeResponse {
+  revoked: boolean;
+}
+
 export interface JobRead {
   jobId: string;
   opId: string;

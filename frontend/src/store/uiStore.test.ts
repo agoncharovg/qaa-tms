@@ -80,6 +80,10 @@ describe("uiStore", () => {
           activeTabId: TabId.ADMIN_USERS,
           tabIds: [TabId.ADMIN_USERS],
         },
+        [PluginId.QAA_GENERATOR]: {
+          activeTabId: TabId.QAA_ADMIN,
+          tabIds: [TabId.QAA_GENERATE, TabId.QAA_ADMIN],
+        },
         [PluginId.STAGINGS]: {
           activeTabId: TabId.STAGINGS_HISTORY,
           tabIds: [TabId.STAGINGS_HISTORY],
@@ -88,13 +92,17 @@ describe("uiStore", () => {
     );
 
     const sanitized = readStoredTabsByPlugin({
-      enabled_plugins: [],
+      enabled_plugins: [PluginId.QAA_GENERATOR],
       is_admin: false,
     });
 
     expect(sanitized[PluginId.STAGINGS]).toEqual({
       activeTabId: null,
       tabIds: [],
+    });
+    expect(sanitized[PluginId.QAA_GENERATOR]).toEqual({
+      activeTabId: TabId.QAA_GENERATE,
+      tabIds: [TabId.QAA_GENERATE],
     });
     expect(sanitized[PluginId.ADMIN]).toEqual({
       activeTabId: TabId.ADMIN_PLUGINS,
