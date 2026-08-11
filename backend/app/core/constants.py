@@ -19,6 +19,7 @@ class OperationType(StrEnum):
     SETUP = "setup"
     KUBE_USE_CONTEXT = "kube_use_context"
     KUBE_DELETE_POD = "kube_delete_pod"
+    KUBECONFIG_REFRESH = "kubeconfig_refresh"
     QAA_GENERATE = "qaa_generate"
 
 

@@ -2,6 +2,8 @@ import type {
   ContentType,
   JobStatus,
   JobStreamEvent,
+  KubeconfigAction,
+  KubeconfigReason,
   NamespaceLogStatus,
   NamespaceOrigin,
   OperationStatus,
@@ -93,6 +95,28 @@ export interface AgentPreflightAvailable {
 }
 
 export type AgentPreflightState = AgentPreflightAvailable | AgentPreflightUnavailable;
+
+export interface KubeconfigStatus {
+  path: string;
+  activePath: string;
+  exists: boolean;
+  contentValid: boolean;
+  tokenExpiresAt: string | null;
+  tokenExpired: boolean;
+  modifiedAt: string | null;
+  ageSeconds: number | null;
+  maxAgeSeconds: number;
+  stale: boolean;
+  active: boolean;
+  healthy: boolean;
+  recommendedAction: KubeconfigAction;
+  reasons: KubeconfigReason[];
+  url: string;
+}
+
+export interface KubeconfigRefreshRequest {
+  activate: boolean;
+}
 
 export interface DeployFlags {
   clean: boolean;

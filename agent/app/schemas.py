@@ -8,7 +8,15 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.constants import MAX_STAGE, MIN_STAGE, JobStatus, PreflightKey, Product
+from app.core.constants import (
+    MAX_STAGE,
+    MIN_STAGE,
+    JobStatus,
+    KubeconfigAction,
+    KubeconfigReason,
+    PreflightKey,
+    Product,
+)
 
 
 class AgentPingResponse(BaseModel):
@@ -32,6 +40,36 @@ class PreflightItem(BaseModel):
     ok: bool
     detail: str
     how_to: str = Field(alias="howTo")
+
+
+class KubeconfigStatus(BaseModel):
+    """`/staging/kubeconfig/*` response shape."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    path: str
+    active_path: str = Field(alias="activePath")
+    exists: bool
+    content_valid: bool = Field(alias="contentValid")
+    token_expires_at: datetime | None = Field(default=None, alias="tokenExpiresAt")
+    token_expired: bool = Field(alias="tokenExpired")
+    modified_at: datetime | None = Field(default=None, alias="modifiedAt")
+    age_seconds: int | None = Field(default=None, alias="ageSeconds")
+    max_age_seconds: int = Field(alias="maxAgeSeconds")
+    stale: bool
+    active: bool
+    healthy: bool
+    recommended_action: KubeconfigAction = Field(alias="recommendedAction")
+    reasons: list[KubeconfigReason] = Field(default_factory=list)
+    url: str
+
+
+class KubeconfigRefreshRequest(BaseModel):
+    """Refresh request body for the staging kubeconfig."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    activate: bool = True
 
 
 class DeployFlags(BaseModel):

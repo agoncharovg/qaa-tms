@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { MantineProvider, createTheme } from "@mantine/core";
+import { Notifications } from "@mantine/notifications";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
 
@@ -48,6 +49,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <MantineProvider defaultColorScheme="dark" forceColorScheme="dark" theme={theme}>
+        <Notifications />
         <BrowserRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
           <AuthBootstrap />
         </BrowserRouter>

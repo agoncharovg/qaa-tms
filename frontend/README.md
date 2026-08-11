@@ -91,6 +91,13 @@ The `Stagings` optional plugin exposes six tabs:
 - `Sync`: submit the global `staging sync` flags form and watch the shared live job log panel used by deploy, destroy, adopt, and sync.
 - `E2E`: choose a product, load its named suite registry from the agent, select suites, submit `{ ns, product, suites[], threads? }`, and watch the shared live job log panel for the `staging e2e-run` job.
 
+Every Stagings tab also shares a persistent kubeconfig banner from the section
+shell. It detects whether the staging kubeconfig is missing, stale, token-expired,
+invalid, or merely not the active kubeconfig, and it exposes `Refresh only`,
+`Refresh & activate`, and `Activate` actions through the local companion app.
+Refreshing the kubeconfig requires Full VPN because the agent downloads it from
+the staging kubeconfig URL under the engineer's local environment.
+
 The Deploy, Sync, Namespaces, and E2E workflows depend on the local companion app being
 reachable on a probed localhost port, because authenticated agent requests reuse the same
 Bearer token as the central backend.

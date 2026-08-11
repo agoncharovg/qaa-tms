@@ -16,6 +16,7 @@ from app.core.constants import (
     ErrorMessage,
     HeaderName,
     HeaderValue,
+    KubeconfigAction,
     OperationType,
     Product,
 )
@@ -32,6 +33,8 @@ from app.schemas import (
     JobCreateResponse,
     JobReadResponse,
     KubeCommandResult,
+    KubeconfigRefreshRequest,
+    KubeconfigStatus,
     KubeContextsResponse,
     KubeDeletePodRequest,
     KubeNamespace,
@@ -62,6 +65,15 @@ from app.services.kube import (
     top_pods,
     use_context,
 )
+from app.services.kubeconfig import (
+    KubeconfigActivePathConflictError,
+    KubeconfigDownloadFailedError,
+    KubeconfigDownloadInvalidError,
+    activate,
+    push_kubeconfig_operation,
+    read_status,
+    refresh,
+)
 from app.services.namespaces import (
     list_namespaces,
     read_namespace_creds,
@@ -86,6 +98,94 @@ async def ping(settings: SettingsDep) -> AgentPingResponse:
 @router.get(AgentPath.PREFLIGHT.value, response_model=list[PreflightItem])
 async def preflight(_: AuthDep, settings: SettingsDep) -> list[PreflightItem]:
     return await collect_preflight(settings)
+
+
+@router.get(AgentPath.KUBECONFIG_STATUS.value, response_model=KubeconfigStatus)
+async def get_kubeconfig_status(_: AuthDep, settings: SettingsDep) -> KubeconfigStatus:
+    return read_status(settings)
+
+
+@router.post(AgentPath.KUBECONFIG_REFRESH.value, response_model=KubeconfigStatus)
+async def post_kubeconfig_refresh(
+    request_body: KubeconfigRefreshRequest,
+    request: Request,
+    auth: AuthDep,
+    settings: SettingsDep,
+) -> KubeconfigStatus:
+    try:
+        status_after_refresh = await refresh(settings)
+    except KubeconfigDownloadFailedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+    except KubeconfigDownloadInvalidError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+
+    if request_body.activate and status_after_refresh.healthy:
+        try:
+            final_status = activate(settings)
+        except KubeconfigActivePathConflictError as exc:
+            await push_kubeconfig_operation(
+                client=request.app.state.backend_client,
+                token=auth.token,
+                action=KubeconfigAction.REFRESH,
+                settings=settings,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(exc),
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
+        await push_kubeconfig_operation(
+            client=request.app.state.backend_client,
+            token=auth.token,
+            action=KubeconfigAction.REFRESH_AND_ACTIVATE,
+            settings=settings,
+        )
+        return final_status
+
+    await push_kubeconfig_operation(
+        client=request.app.state.backend_client,
+        token=auth.token,
+        action=KubeconfigAction.REFRESH,
+        settings=settings,
+    )
+    return status_after_refresh
+
+
+@router.post(AgentPath.KUBECONFIG_ACTIVATE.value, response_model=KubeconfigStatus)
+async def post_kubeconfig_activate(
+    request: Request,
+    auth: AuthDep,
+    settings: SettingsDep,
+) -> KubeconfigStatus:
+    try:
+        result = activate(settings)
+    except KubeconfigActivePathConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    await push_kubeconfig_operation(
+        client=request.app.state.backend_client,
+        token=auth.token,
+        action=KubeconfigAction.ACTIVATE,
+        settings=settings,
+    )
+    return result
 
 
 @router.post(

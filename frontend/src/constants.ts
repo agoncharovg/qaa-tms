@@ -125,6 +125,9 @@ export function buildBackendQaaServiceTokenRevokePath(tokenId: string): string {
 export const AgentPath = {
   PING: "/ping",
   PREFLIGHT: "/preflight",
+  KUBECONFIG_STATUS: "/staging/kubeconfig/status",
+  KUBECONFIG_REFRESH: "/staging/kubeconfig/refresh",
+  KUBECONFIG_ACTIVATE: "/staging/kubeconfig/activate",
   SETUP: "/setup",
   NAMESPACES: "/namespaces",
   KUBE_CONTEXTS: "/kube/contexts",
@@ -318,6 +321,7 @@ export const OperationType = {
   SETUP: "setup",
   KUBE_USE_CONTEXT: "kube_use_context",
   KUBE_DELETE_POD: "kube_delete_pod",
+  KUBECONFIG_REFRESH: "kubeconfig_refresh",
   QAA_GENERATE: "qaa_generate",
 } as const;
 
@@ -332,7 +336,37 @@ export const OperationTypeLabel: Record<OperationType, string> = {
   [OperationType.SETUP]: "Setup",
   [OperationType.KUBE_USE_CONTEXT]: "Set context",
   [OperationType.KUBE_DELETE_POD]: "Delete pod",
+  [OperationType.KUBECONFIG_REFRESH]: "Kubeconfig refresh",
   [OperationType.QAA_GENERATE]: "QAA generate",
+};
+
+export const KubeconfigAction = {
+  NONE: "none",
+  REFRESH: "refresh",
+  ACTIVATE: "activate",
+  REFRESH_AND_ACTIVATE: "refresh_and_activate",
+} as const;
+
+export type KubeconfigAction = (typeof KubeconfigAction)[keyof typeof KubeconfigAction];
+
+export const KubeconfigReason = {
+  MISSING: "missing",
+  STALE: "stale",
+  TOKEN_EXPIRED: "token_expired",
+  CONTENT_INVALID: "content_invalid",
+  NOT_ACTIVE: "not_active",
+  HEALTHY: "healthy",
+} as const;
+
+export type KubeconfigReason = (typeof KubeconfigReason)[keyof typeof KubeconfigReason];
+
+export const KubeconfigReasonLabel: Record<KubeconfigReason, string> = {
+  [KubeconfigReason.MISSING]: "Missing",
+  [KubeconfigReason.STALE]: "Stale (older than 48h)",
+  [KubeconfigReason.TOKEN_EXPIRED]: "Token expired",
+  [KubeconfigReason.CONTENT_INVALID]: "Invalid content",
+  [KubeconfigReason.NOT_ACTIVE]: "Not the active config",
+  [KubeconfigReason.HEALTHY]: "Healthy",
 };
 
 export const OperationStatus = {
@@ -501,6 +535,7 @@ export const QueryKey = {
   AGENT_NAMESPACE_STATUS: "agent-namespace-status",
   AGENT_NAMESPACE_CREDS: "agent-namespace-creds",
   AGENT_E2E_SUITES: "agent-e2e-suites",
+  KUBECONFIG_STATUS: "kubeconfig-status",
   KUBE_CONTEXTS: "kube-contexts",
   KUBE_NAMESPACES: "kube-namespaces",
   KUBE_PODS: "kube-pods",
@@ -529,6 +564,7 @@ export const AUTH_SCHEME_BEARER = "Bearer" as const;
 export const DEFAULT_OPERATIONS_PAGE_SIZE = 20 as const;
 export const DEFAULT_QAA_RUNS_PAGE_SIZE = 20 as const;
 export const DEFAULT_JOB_POLL_INTERVAL_MS = 2000 as const;
+export const DEFAULT_KUBECONFIG_STATUS_POLL_MS = 60000 as const;
 export const DEFAULT_KUBE_LOG_TAIL = 200 as const;
 export const DEFAULT_IMAGE_TAG = "latest" as const;
 export const MIN_DEPLOY_STAGE = 0 as const;

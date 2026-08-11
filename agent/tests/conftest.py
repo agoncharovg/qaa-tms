@@ -18,6 +18,27 @@ from app.core.config import Settings
 from app.core.constants import BackendPath
 from app.main import create_app
 
+FAKE_STAGING_KUBECONFIG = textwrap.dedent(
+    """\
+    apiVersion: v1
+    kind: Config
+    current-context: staging
+    clusters:
+    - name: staging
+      cluster:
+        server: https://staging.example
+    contexts:
+    - name: staging
+      context:
+        cluster: staging
+        user: staging-user
+    users:
+    - name: staging-user
+      user:
+        token: fake.token.value
+    """
+)
+
 
 @dataclass(slots=True)
 class BackendRecorder:
@@ -63,7 +84,7 @@ def fake_staging_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[s
 
     (repo_root / "README.md").write_text("fake repo\n", encoding="utf-8")
     (scripts_venv.parent.parent / "pyvenv.cfg").write_text("home = /tmp\n", encoding="utf-8")
-    kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")
+    kubeconfig.write_text(FAKE_STAGING_KUBECONFIG, encoding="utf-8")
     docker_config.write_text(
         json.dumps(
             {

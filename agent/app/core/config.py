@@ -14,10 +14,15 @@ from app.core.constants import (
     DEFAULT_AGENT_PORT,
     DEFAULT_BACKEND_URL,
     DEFAULT_CORS_ORIGINS,
+    DEFAULT_KUBECONFIG_ACTIVE_PATH,
     DEFAULT_KUBECTL_BIN,
     DEFAULT_KUBECTL_REQUEST_TIMEOUT,
+    DEFAULT_STAGING_KUBECONFIG,
+    DEFAULT_STAGING_KUBECONFIG_MAX_AGE_HOURS,
+    DEFAULT_STAGING_KUBECONFIG_URL,
     EnvFile,
     EnvKey,
+    StagingEnvKey,
 )
 
 
@@ -40,6 +45,22 @@ class Settings(BaseSettings):
     backend_url: str = Field(default=DEFAULT_BACKEND_URL, alias=EnvKey.BACKEND_URL.value)
     staging_bin: str | None = Field(default=None, alias=EnvKey.STAGING_BIN.value)
     stagings_repo: str | None = Field(default=None, alias=EnvKey.STAGINGS_REPO.value)
+    staging_kubeconfig: str = Field(
+        default=DEFAULT_STAGING_KUBECONFIG,
+        alias=StagingEnvKey.KUBECONFIG.value,
+    )
+    staging_kubeconfig_url: str = Field(
+        default=DEFAULT_STAGING_KUBECONFIG_URL,
+        alias=EnvKey.STAGING_KUBECONFIG_URL.value,
+    )
+    kubeconfig_active_path: str = Field(
+        default=DEFAULT_KUBECONFIG_ACTIVE_PATH,
+        alias=EnvKey.KUBECONFIG_ACTIVE_PATH.value,
+    )
+    staging_kubeconfig_max_age_hours: int = Field(
+        default=DEFAULT_STAGING_KUBECONFIG_MAX_AGE_HOURS,
+        alias=EnvKey.STAGING_KUBECONFIG_MAX_AGE_HOURS.value,
+    )
     kubectl_bin: str = Field(default=DEFAULT_KUBECTL_BIN, alias=EnvKey.KUBECTL_BIN.value)
     kubeconfig: str = Field(default="", alias=EnvKey.KUBECONFIG.value)
     kubectl_request_timeout: str = Field(

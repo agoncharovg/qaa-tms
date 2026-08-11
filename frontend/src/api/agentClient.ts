@@ -36,6 +36,8 @@ import type {
   E2eSuitesResponse,
   JobCreateResponse,
   KubeCommandResult,
+  KubeconfigRefreshRequest,
+  KubeconfigStatus,
   KubeContextsResponse,
   KubeDeletePodRequest,
   KubeNamespacesResponse,
@@ -191,6 +193,50 @@ export async function getPreflight(token: string, signal?: AbortSignal): Promise
   };
 }
 
+export function getKubeconfigStatus(
+  port: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<KubeconfigStatus> {
+  return readAgentJson<KubeconfigStatus>(
+    port,
+    AgentPath.KUBECONFIG_STATUS,
+    { method: HttpMethod.GET },
+    token,
+    signal
+  );
+}
+
+export function refreshKubeconfig(
+  port: number,
+  token: string,
+  activate: boolean,
+  signal?: AbortSignal
+): Promise<KubeconfigStatus> {
+  const payload: KubeconfigRefreshRequest = { activate };
+  return readAgentJson<KubeconfigStatus>(
+    port,
+    AgentPath.KUBECONFIG_REFRESH,
+    createJsonBody(payload),
+    token,
+    signal
+  );
+}
+
+export function activateKubeconfig(
+  port: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<KubeconfigStatus> {
+  return readAgentJson<KubeconfigStatus>(
+    port,
+    AgentPath.KUBECONFIG_ACTIVATE,
+    { method: HttpMethod.POST },
+    token,
+    signal
+  );
+}
+
 function parseJobStreamMessage(event: string, data: string): JobStreamMessage | null {
   if (event === JobStreamEvent.LOG) {
     return {
@@ -240,6 +286,7 @@ async function streamAgentCommand(
 }
 
 export const agentClient = {
+  activateKubeconfig,
   adopt(
     port: number,
     token: string,
@@ -535,4 +582,6 @@ export const agentClient = {
       signal
     );
   },
+  getKubeconfigStatus,
+  refreshKubeconfig,
 };

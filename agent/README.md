@@ -45,6 +45,20 @@ All config uses the `AGENT_` prefix:
 - `AGENT_STAGINGS_REPO`
   Optional explicit repo-root override. If unset, the agent derives the repo
   root from the resolved `staging` binary path.
+- `STAGING_KUBECONFIG`
+  Staging kubeconfig path inspected by preflight and the Stagings kubeconfig
+  banner. Default: `~/.kube/ai-staging.yaml`.
+- `AGENT_STAGING_KUBECONFIG_URL`
+  Download URL used by `POST /staging/kubeconfig/refresh`. Default:
+  `https://kubeconf.frn-stg.p.gc.onl/config`. It relies on ambient Full VPN access.
+- `AGENT_KUBECONFIG_ACTIVE_PATH`
+  Managed active kubeconfig symlink path. Default: `~/.kube/config`. If your
+  normal `~/.kube/config` is a real merged file, point this setting at the same
+  managed symlink path used by `qaa kuber`, for example `~/.kube/kubecfg.yaml`.
+  The agent refuses to overwrite a regular file at this path.
+- `AGENT_STAGING_KUBECONFIG_MAX_AGE_HOURS`
+  Maximum accepted age for the staging kubeconfig before it is considered stale.
+  Default: `48`.
 - `AGENT_KUBECTL_BIN`
   Optional explicit path to the `kubectl` executable. Default: `kubectl`.
 - `AGENT_KUBECONFIG`
@@ -69,6 +83,9 @@ Implemented in this slice:
 
 - `GET /ping`
 - `GET /preflight`
+- `GET /staging/kubeconfig/status`
+- `POST /staging/kubeconfig/refresh`
+- `POST /staging/kubeconfig/activate`
 - `GET /namespaces`
 - `GET /namespaces/{ns}/status`
 - `GET /namespaces/{ns}/creds`
@@ -99,6 +116,13 @@ The namespace read endpoints remain read-only wrappers around the local
 `staging` CLI. They are not jobs, do not create `jobId` or `opId` values, and
 do not write to the backend operations journal. The `creds` response is
 sensitive and is meant only for the authenticated localhost browser flow.
+
+The Stagings kubeconfig routes are pure local-agent helpers. `status` checks the
+staging file for existence, content validity, JWT expiry, staleness, and active
+path selection without calling the cluster. `refresh` downloads a fresh staging
+kubeconfig, validates it before replacing the local file, and can activate it in
+the same request. `activate` atomically re-points the managed active-kubeconfig
+symlink at the staging file and refuses to overwrite a regular file.
 
 `POST /deploy`, `POST /destroy`, `POST /adopt`, `POST /sync`, and `POST /e2e-run` are all
 job-creating endpoints. They share the same job lifecycle: create `{ jobId, opId }`,

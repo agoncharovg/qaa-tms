@@ -5,27 +5,40 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-import os
 import shutil
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 
 from app.core.config import Settings
 from app.core.constants import (
     DEFAULT_COMMAND_TIMEOUT_SECONDS,
-    DEFAULT_KUBECONFIG_FRESHNESS_SECONDS,
-    DEFAULT_STAGING_KUBECONFIG,
     HTTPS_PORT,
     DockerRegistry,
+    KubeconfigReason,
     PreflightKey,
     RequiredTool,
-    StagingEnvKey,
     VpnProbeHost,
 )
-from app.schemas import PreflightItem
+from app.schemas import KubeconfigStatus, PreflightItem
+from app.services.kubeconfig import read_status
 from app.services.staging import StagingInstallation, resolve_staging_installation
+
+
+class KubeconfigPreflightMessage:
+    HEALTHY = "Staging kubeconfig is fresh and valid."
+    HOW_TO = "Use the Stagings kubeconfig banner to refresh and activate the staging kubeconfig."
+    PREFIX = "Staging kubeconfig status:"
+
+
+KUBECONFIG_REASON_DETAIL = {
+    KubeconfigReason.MISSING: "missing",
+    KubeconfigReason.CONTENT_INVALID: "invalid content",
+    KubeconfigReason.TOKEN_EXPIRED: "token expired",
+    KubeconfigReason.STALE: "stale",
+    KubeconfigReason.NOT_ACTIVE: "not the active kubeconfig",
+    KubeconfigReason.HEALTHY: "healthy",
+}
 
 
 @dataclass(slots=True)
@@ -49,9 +62,9 @@ async def collect_preflight(settings: Settings) -> list[PreflightItem]:
 
     checks: list[Callable[[], Awaitable[PreflightItem]]] = [
         _check_tools,
-        lambda: _check_cluster_reachable(_kubeconfig_path()),
+        lambda: _check_cluster_reachable(_kubeconfig_path(settings)),
         _check_vpn,
-        _check_kubeconfig,
+        lambda: _check_kubeconfig(settings),
         lambda: _check_docker_auth(DockerRegistry.HARBOR, docker_auths),
         lambda: _check_docker_auth(DockerRegistry.STAGING, docker_auths),
         lambda: _check_harbor_pull(docker_harbor.ok),
@@ -161,36 +174,14 @@ async def _check_vpn() -> PreflightItem:
     )
 
 
-async def _check_kubeconfig() -> PreflightItem:
-    kubeconfig_path = _kubeconfig_path()
-    if not kubeconfig_path.exists():
-        return PreflightItem(
-            key=PreflightKey.KUBECONFIG,
-            ok=False,
-            detail=f"Kubeconfig is missing at {kubeconfig_path}.",
-            how_to=(
-                "Download it with: curl -o ~/.kube/ai-staging.yaml "
-                "https://kubeconf.frn-stg.p.gc.onl/config"
-            ),
-        )
-
-    modified_at = datetime.fromtimestamp(kubeconfig_path.stat().st_mtime, tz=UTC)
-    age_seconds = (datetime.now(tz=UTC) - modified_at).total_seconds()
-    ok = age_seconds <= DEFAULT_KUBECONFIG_FRESHNESS_SECONDS
-    freshness_hours = DEFAULT_KUBECONFIG_FRESHNESS_SECONDS // 3600
-    detail = (
-        f"Kubeconfig was refreshed at {modified_at.isoformat()}."
-        if ok
-        else (
-            f"Kubeconfig was last refreshed at {modified_at.isoformat()} "
-            f"and is older than {freshness_hours} hours."
-        )
-    )
+async def _check_kubeconfig(settings: Settings) -> PreflightItem:
+    status = read_status(settings)
+    detail = _format_kubeconfig_detail(status)
     return PreflightItem(
         key=PreflightKey.KUBECONFIG,
-        ok=ok,
+        ok=status.healthy,
         detail=detail,
-        how_to="Re-download ~/.kube/ai-staging.yaml after connecting Full VPN.",
+        how_to=KubeconfigPreflightMessage.HOW_TO,
     )
 
 
@@ -306,9 +297,28 @@ async def _check_repo_installed(installation: StagingInstallation) -> PreflightI
     )
 
 
-def _kubeconfig_path() -> Path:
-    raw = os.environ.get(StagingEnvKey.KUBECONFIG.value, DEFAULT_STAGING_KUBECONFIG)
-    return Path(raw).expanduser()
+def _format_kubeconfig_detail(status: KubeconfigStatus) -> str:
+    if status.reasons == [KubeconfigReason.HEALTHY]:
+        return KubeconfigPreflightMessage.HEALTHY
+
+    detail_parts = [
+        f"{KubeconfigPreflightMessage.PREFIX} "
+        + ", ".join(KUBECONFIG_REASON_DETAIL[reason] for reason in status.reasons)
+        + "."
+    ]
+    if status.modified_at is not None and status.age_seconds is not None:
+        detail_parts.append(
+            "Last modified at "
+            f"{status.modified_at.isoformat()} "
+            f"({status.age_seconds}s old; max {status.max_age_seconds}s)."
+        )
+    if status.token_expires_at is not None:
+        detail_parts.append(f"Token expires at {status.token_expires_at.isoformat()}.")
+    return " ".join(detail_parts)
+
+
+def _kubeconfig_path(settings: Settings) -> Path:
+    return Path(settings.staging_kubeconfig).expanduser()
 
 
 def _read_docker_auths() -> dict[str, object]:

@@ -8,6 +8,7 @@ import type {
   E2eSuitesResponse,
   JobCreateResponse,
   KubeCommandResult,
+  KubeconfigStatus,
   KubeContextsResponse,
   KubeNamespacesResponse,
   KubePodDescribe,
@@ -317,6 +318,74 @@ describe("agentClient kube requests", () => {
       event: "terminal",
       data: { type: "terminal", status: "success", exitCode: 0 },
     });
+  });
+});
+
+describe("agentClient kubeconfig requests", () => {
+  const fetchMock = vi.fn<typeof fetch>();
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  it("sends the kubeconfig status, refresh, and activate requests with bearer auth", async () => {
+    const status: KubeconfigStatus = {
+      active: false,
+      activePath: "/tmp/.kube/config",
+      ageSeconds: 173000,
+      contentValid: true,
+      exists: true,
+      healthy: false,
+      maxAgeSeconds: 172800,
+      modifiedAt: "2026-08-11T08:00:00Z",
+      path: "/tmp/.kube/ai-staging.yaml",
+      reasons: ["stale"],
+      recommendedAction: "refresh_and_activate",
+      stale: true,
+      tokenExpired: false,
+      tokenExpiresAt: "2026-08-12T08:00:00Z",
+      url: "https://kube.example/config",
+    };
+    const refreshed: KubeconfigStatus = {
+      ...status,
+      active: true,
+      ageSeconds: 0,
+      healthy: true,
+      reasons: ["healthy"],
+      recommendedAction: "none",
+      stale: false,
+    };
+
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify(status), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(refreshed), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(refreshed), { status: 200 }));
+
+    expect(await agentClient.getKubeconfigStatus(47600, "token-123")).toEqual(status);
+    expect(await agentClient.refreshKubeconfig(47600, "token-123", true)).toEqual(refreshed);
+    expect(await agentClient.activateKubeconfig(47600, "token-123")).toEqual(refreshed);
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    const [statusUrl, statusInit] = fetchMock.mock.calls[0] ?? [];
+    const [refreshUrl, refreshInit] = fetchMock.mock.calls[1] ?? [];
+    const [activateUrl, activateInit] = fetchMock.mock.calls[2] ?? [];
+
+    expect(statusUrl).toBe("http://127.0.0.1:47600/staging/kubeconfig/status");
+    expect(refreshUrl).toBe("http://127.0.0.1:47600/staging/kubeconfig/refresh");
+    expect(activateUrl).toBe("http://127.0.0.1:47600/staging/kubeconfig/activate");
+    expect(statusInit?.method).toBe("GET");
+    expect(refreshInit?.method).toBe("POST");
+    expect(activateInit?.method).toBe("POST");
+    expect(refreshInit?.body).toBe(JSON.stringify({ activate: true }));
+
+    for (const init of [statusInit, refreshInit, activateInit]) {
+      const headers = new Headers(init?.headers);
+      expect(headers.get("Authorization")).toBe("Bearer token-123");
+      expect(headers.get("Accept")).toBe("application/json");
+      expect(headers.get("X-QAA-TMS")).toBe("1");
+    }
   });
 });
 

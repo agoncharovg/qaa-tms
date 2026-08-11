@@ -8,6 +8,9 @@ from enum import StrEnum
 class AgentPath(StrEnum):
     PING = "/ping"
     PREFLIGHT = "/preflight"
+    KUBECONFIG_STATUS = "/staging/kubeconfig/status"
+    KUBECONFIG_REFRESH = "/staging/kubeconfig/refresh"
+    KUBECONFIG_ACTIVATE = "/staging/kubeconfig/activate"
     SETUP = "/setup"
     NAMESPACES = "/namespaces"
     KUBE_CONTEXTS = "/kube/contexts"
@@ -63,6 +66,7 @@ class OperationType(StrEnum):
     SETUP = "setup"
     KUBE_USE_CONTEXT = "kube_use_context"
     KUBE_DELETE_POD = "kube_delete_pod"
+    KUBECONFIG_REFRESH = "kubeconfig_refresh"
 
 
 class Product(StrEnum):
@@ -91,6 +95,9 @@ class EnvKey(StrEnum):
     KUBECTL_BIN = "AGENT_KUBECTL_BIN"
     KUBECONFIG = "AGENT_KUBECONFIG"
     KUBECTL_REQUEST_TIMEOUT = "AGENT_KUBECTL_REQUEST_TIMEOUT"
+    STAGING_KUBECONFIG_URL = "AGENT_STAGING_KUBECONFIG_URL"
+    KUBECONFIG_ACTIVE_PATH = "AGENT_KUBECONFIG_ACTIVE_PATH"
+    STAGING_KUBECONFIG_MAX_AGE_HOURS = "AGENT_STAGING_KUBECONFIG_MAX_AGE_HOURS"
 
 
 class EnvFile(StrEnum):
@@ -214,6 +221,33 @@ class ErrorMessage(StrEnum):
     UNAUTHORIZED = "Unauthorized."
     KUBECTL_NOT_INSTALLED = "kubectl is not installed."
     INVALID_KUBE_NAME = "Invalid Kubernetes resource name."
+    KUBECONFIG_DOWNLOAD_FAILED = (
+        "Failed to download the staging kubeconfig. Connect Full VPN and retry."
+    )
+    KUBECONFIG_DOWNLOAD_INVALID = (
+        "Downloaded file is not a valid kubeconfig. Connect Full VPN and retry."
+    )
+    KUBECONFIG_ACTIVE_PATH_NOT_SYMLINK = (
+        "The active kubeconfig path is a regular file and would be overwritten. "
+        "Set AGENT_KUBECONFIG_ACTIVE_PATH to a managed symlink path, for example "
+        "~/.kube/kubecfg.yaml, and retry."
+    )
+
+
+class KubeconfigAction(StrEnum):
+    NONE = "none"
+    REFRESH = "refresh"
+    ACTIVATE = "activate"
+    REFRESH_AND_ACTIVATE = "refresh_and_activate"
+
+
+class KubeconfigReason(StrEnum):
+    MISSING = "missing"
+    STALE = "stale"
+    TOKEN_EXPIRED = "token_expired"
+    CONTENT_INVALID = "content_invalid"
+    NOT_ACTIVE = "not_active"
+    HEALTHY = "healthy"
 
 
 AGENT_APP_NAME = "qaa-tms-agent"
@@ -230,7 +264,11 @@ DEFAULT_AUTH_CACHE_TTL_SECONDS = 30
 DEFAULT_BACKEND_TIMEOUT_SECONDS = 10.0
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 5.0
 DEFAULT_CANCEL_WAIT_SECONDS = 5.0
-DEFAULT_KUBECONFIG_FRESHNESS_SECONDS = 12 * 60 * 60
+DEFAULT_STAGING_KUBECONFIG_URL = "https://kubeconf.frn-stg.p.gc.onl/config"
+DEFAULT_KUBECONFIG_ACTIVE_PATH = "~/.kube/config"
+DEFAULT_STAGING_KUBECONFIG_MAX_AGE_HOURS = 48
+DEFAULT_KUBECONFIG_FRESHNESS_SECONDS = DEFAULT_STAGING_KUBECONFIG_MAX_AGE_HOURS * 60 * 60
+KUBECONFIG_REFRESH_GRACE_SECONDS = 300
 DEFAULT_STAGING_BINARY_NAME = "staging"
 DEFAULT_KUBECTL_BIN = "kubectl"
 DEFAULT_KUBECTL_REQUEST_TIMEOUT = "10s"

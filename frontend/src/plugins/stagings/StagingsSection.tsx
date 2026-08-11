@@ -22,6 +22,7 @@ import {
 import { DeployPanel } from "@/plugins/stagings/DeployPanel";
 import { E2ePanel } from "@/plugins/stagings/E2ePanel";
 import { HistoryPanel } from "@/plugins/stagings/HistoryPanel";
+import { KubeconfigBanner } from "@/plugins/stagings/KubeconfigBanner";
 import { NamespacesPanel } from "@/plugins/stagings/NamespacesPanel";
 import { PreflightPanel } from "@/plugins/stagings/PreflightPanel";
 import { SyncPanel } from "@/plugins/stagings/SyncPanel";
@@ -58,27 +59,7 @@ export function StagingsSection({ mode }: StagingsSectionProps) {
     openTab(PluginId.STAGINGS, tabId);
   };
 
-  if (mode === ViewKey.STAGINGS_DEPLOY) {
-    return <DeployPanel />;
-  }
-
-  if (mode === ViewKey.STAGINGS_HISTORY) {
-    return <HistoryPanel />;
-  }
-
-  if (mode === ViewKey.STAGINGS_NAMESPACES) {
-    return <NamespacesPanel />;
-  }
-
-  if (mode === ViewKey.STAGINGS_SYNC) {
-    return <SyncPanel />;
-  }
-
-  if (mode === ViewKey.STAGINGS_E2E) {
-    return <E2ePanel />;
-  }
-
-  return (
+  let content = (
     <Stack gap="lg">
       <Group justify="space-between">
         <div>
@@ -127,6 +108,25 @@ export function StagingsSection({ mode }: StagingsSectionProps) {
       </Group>
 
       <PreflightPanel />
+    </Stack>
+  );
+
+  if (mode === ViewKey.STAGINGS_DEPLOY) {
+    content = <DeployPanel />;
+  } else if (mode === ViewKey.STAGINGS_HISTORY) {
+    content = <HistoryPanel />;
+  } else if (mode === ViewKey.STAGINGS_NAMESPACES) {
+    content = <NamespacesPanel />;
+  } else if (mode === ViewKey.STAGINGS_SYNC) {
+    content = <SyncPanel />;
+  } else if (mode === ViewKey.STAGINGS_E2E) {
+    content = <E2ePanel />;
+  }
+
+  return (
+    <Stack gap="lg">
+      <KubeconfigBanner />
+      {content}
     </Stack>
   );
 }
