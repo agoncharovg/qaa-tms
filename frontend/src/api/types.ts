@@ -219,6 +219,13 @@ export interface QaaUserCreateRequest {
   description?: string;
 }
 
+export interface QaaUserUpdateRequest {
+  email?: string | null;
+  slack_user_id?: string | null;
+  name?: string | null;
+  description?: string | null;
+}
+
 export interface QaaUserListResponse {
   items: QaaUser[];
   next_cursor?: string | null;

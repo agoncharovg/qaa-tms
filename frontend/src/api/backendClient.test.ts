@@ -456,6 +456,77 @@ describe("backendClient operations", () => {
     );
   });
 
+  it("sends qaa admin user requests with the correct wire shape", async () => {
+    const qaaUser = {
+      description: "Owns generator runs",
+      email: "alice@example.com",
+      id: "user-123",
+      name: "Alice Example",
+      slack_user_id: "U123",
+    };
+    const updatePayload = {
+      description: "Updated owner",
+      email: "alice@example.com",
+      name: "Alice Updated",
+      slack_user_id: "U123",
+    };
+
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ items: [qaaUser], next_cursor: null }), {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(qaaUser), {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(updatePayload), {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 204,
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ token: "rotated-token" }), {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        })
+      );
+
+    await backendClient.listQaaUsers("token-123", { limit: 50, offset: 0 });
+    await backendClient.getQaaUser("token-123", "user-123");
+    await backendClient.updateQaaUser("token-123", "user-123", updatePayload);
+    await backendClient.deleteQaaUser("token-123", "user-123");
+    await backendClient.regenerateQaaUserToken("token-123", "user-123");
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("http://localhost:8000/api/v1/qaa/admin/users?limit=50&offset=0");
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("http://localhost:8000/api/v1/qaa/admin/users/user-123");
+    expect(fetchMock.mock.calls[2]?.[0]).toBe("http://localhost:8000/api/v1/qaa/admin/users/user-123");
+    expect(fetchMock.mock.calls[3]?.[0]).toBe("http://localhost:8000/api/v1/qaa/admin/users/user-123");
+    expect(fetchMock.mock.calls[4]?.[0]).toBe(
+      "http://localhost:8000/api/v1/qaa/admin/users/user-123/tokens/regenerate"
+    );
+    expect(fetchMock.mock.calls[2]?.[1]?.method).toBe("PATCH");
+    expect(fetchMock.mock.calls[2]?.[1]?.body).toBe(JSON.stringify(updatePayload));
+    expect(fetchMock.mock.calls[3]?.[1]?.method).toBe("DELETE");
+    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("Authorization")).toBe(
+      "Bearer token-123"
+    );
+  });
+
   it("streams qaa-generator SSE frames over authenticated fetch", async () => {
     fetchMock.mockResolvedValue(
       new Response(

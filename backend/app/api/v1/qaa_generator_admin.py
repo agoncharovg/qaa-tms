@@ -6,13 +6,17 @@ from enum import StrEnum
 from typing import cast
 
 import httpx
-from fastapi import APIRouter, Query, Request, Response
+from fastapi import APIRouter, Query, Request, Response, status
 from fastapi.responses import JSONResponse
 
 from app.api.deps import AdminUser
 from app.core.config import Settings
 from app.core.constants import ApiTag, MediaType, RoutePath
-from app.schemas.qaa_generator import QaaServiceTokenCreateRequest, QaaUserCreateRequest
+from app.schemas.qaa_generator import (
+    QaaServiceTokenCreateRequest,
+    QaaUserCreateRequest,
+    QaaUserUpdateRequest,
+)
 from app.services.qaa_generator import (
     QaaGeneratorJsonResponse,
     QaaGeneratorServicePath,
@@ -28,7 +32,9 @@ router = APIRouter(tags=[ApiTag.QAA_GENERATOR.value])
 
 
 class HttpMethod(StrEnum):
+    DELETE = "DELETE"
     GET = "GET"
+    PATCH = "PATCH"
     POST = "POST"
 
 
@@ -47,7 +53,9 @@ def get_settings(request: Request) -> Settings:
     return cast(Settings, request.app.state.settings)
 
 
-def build_proxy_response(result: QaaGeneratorJsonResponse) -> JSONResponse:
+def build_proxy_response(result: QaaGeneratorJsonResponse) -> Response:
+    if result.status_code == status.HTTP_204_NO_CONTENT:
+        return Response(status_code=result.status_code)
     return JSONResponse(content=result.payload, status_code=result.status_code)
 
 
@@ -132,6 +140,45 @@ async def get_qaa_user(
     result = await request_json(
         client,
         method=HttpMethod.GET.value,
+        path=build_qaa_user_path(user_id),
+        headers=build_admin_headers(get_settings(request)),
+        token_mode=QaaGeneratorTokenMode.SUPERUSER,
+    )
+    return build_proxy_response(result)
+
+
+@router.patch(f"{RoutePath.QAA_ADMIN_USERS.value}{RoutePath.QAA_ADMIN_USER_BY_ID.value}")
+async def update_qaa_user(
+    user_id: str,
+    payload: QaaUserUpdateRequest,
+    request: Request,
+    _: AdminUser,
+) -> Response:
+    client = get_qaa_client(request)
+    result = await request_json(
+        client,
+        method=HttpMethod.PATCH.value,
+        path=build_qaa_user_path(user_id),
+        headers=build_admin_headers(get_settings(request)),
+        token_mode=QaaGeneratorTokenMode.SUPERUSER,
+        json_body=payload.model_dump(mode="json", exclude_unset=True),
+    )
+    return build_proxy_response(result)
+
+
+@router.delete(
+    f"{RoutePath.QAA_ADMIN_USERS.value}{RoutePath.QAA_ADMIN_USER_BY_ID.value}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_qaa_user(
+    user_id: str,
+    request: Request,
+    _: AdminUser,
+) -> Response:
+    client = get_qaa_client(request)
+    result = await request_json(
+        client,
+        method=HttpMethod.DELETE.value,
         path=build_qaa_user_path(user_id),
         headers=build_admin_headers(get_settings(request)),
         token_mode=QaaGeneratorTokenMode.SUPERUSER,

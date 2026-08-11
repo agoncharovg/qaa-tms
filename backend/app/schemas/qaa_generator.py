@@ -33,6 +33,21 @@ class QaaUserCreateRequest(BaseModel):
         return self
 
 
+class QaaUserUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str | None = None
+    slack_user_id: str | None = None
+    name: str | None = None
+    description: str | None = None
+
+    @model_validator(mode="after")
+    def validate_payload_presence(self) -> QaaUserUpdateRequest:
+        if not self.model_fields_set:
+            raise ValueError("At least one field must be provided.")
+        return self
+
+
 class QaaServiceTokenCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

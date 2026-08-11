@@ -40,6 +40,7 @@ import type {
   QaaUserListResponse,
   QaaUserTokenCreateResponse,
   QaaUserTokenRegenerateResponse,
+  QaaUserUpdateRequest,
   User,
   UserCreateRequest,
   UserListResponse,
@@ -452,6 +453,27 @@ export const backendClient = {
     return request<QaaUser>(buildBackendQaaUserPath(userId), { method: HttpMethod.GET }, token, signal);
   },
 
+  updateQaaUser(
+    token: string,
+    userId: string,
+    payload: QaaUserUpdateRequest,
+    signal?: AbortSignal
+  ): Promise<QaaUser> {
+    return request<QaaUser>(
+      buildBackendQaaUserPath(userId),
+      {
+        body: JSON.stringify(payload),
+        method: HttpMethod.PATCH,
+      },
+      token,
+      signal
+    );
+  },
+
+  deleteQaaUser(token: string, userId: string, signal?: AbortSignal): Promise<void> {
+    return request<void>(buildBackendQaaUserPath(userId), { method: HttpMethod.DELETE }, token, signal);
+  },
+
   regenerateQaaUserToken(
     token: string,
     userId: string,
@@ -542,10 +564,13 @@ export const backendClient = {
     }
 
     if (!response.body) {
-      throw new Error("QAA run stream is unavailable.");
+      throw new Error("SSE response did not include a readable body.");
     }
 
     for await (const frame of parseSseStream(response.body, signal)) {
+      if (frame.event !== "message") {
+        continue;
+      }
       onMessage(JSON.parse(frame.data) as QaaRunEvent);
     }
   },

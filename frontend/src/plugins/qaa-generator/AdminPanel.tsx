@@ -1,11 +1,8 @@
 import { useState } from "react";
 import {
   Alert,
-  Badge,
   Button,
-  Code,
   CopyButton,
-  Divider,
   Group,
   Loader,
   Modal,
@@ -16,36 +13,19 @@ import {
   Textarea,
   Title,
 } from "@mantine/core";
-import { IconAlertCircle, IconCopy, IconEye, IconKey, IconPlus, IconShieldX } from "@tabler/icons-react";
+import { IconAlertCircle, IconCopy, IconEdit, IconKey, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { backendClient } from "@/api/backendClient";
-import type {
-  QaaServiceTokenCreateRequest,
-  QaaUser,
-  QaaUserCreateRequest,
-} from "@/api/types";
+import type { QaaUser, QaaUserCreateRequest, QaaUserUpdateRequest } from "@/api/types";
 import { QueryKey } from "@/constants";
 import { useAuthStore } from "@/store/authStore";
 
-type LookupFormState = {
-  email: string;
-  slackUserId: string;
-};
-
-type CreateUserFormState = {
+type UserFormState = {
   email: string;
   slackUserId: string;
   name: string;
   description: string;
-};
-
-type ServiceTokenFormState = {
-  name: string;
-};
-
-type RevokeTokenFormState = {
-  tokenId: string;
 };
 
 type TokenModalState = {
@@ -55,86 +35,53 @@ type TokenModalState = {
 
 const QaaAdminPanelCopy = {
   ADMIN_TITLE: "QAA Generator Admin",
-  ADMIN_SUBTITLE: "Manage qaa-generator users and service tokens with the backend-held superuser token.",
+  ADMIN_SUBTITLE: "Manage qaa-generator users with the backend-held superuser token.",
   COPY_ACTION: "Copy token",
   COPIED_ACTION: "Copied",
   COPY_ONCE_WARNING:
     "This plaintext token is shown once. Copy it now. It is never stored in the SPA or written to the operations audit.",
-  CREATE_SERVICE_TOKEN_ACTION: "Create service token",
-  CREATE_SERVICE_TOKEN_ERROR: "Unable to create the service token.",
-  CREATE_SERVICE_TOKEN_NAME_LABEL: "Service token name",
-  CREATE_SERVICE_TOKEN_SECTION: "Service tokens",
-  CREATE_SERVICE_TOKEN_SUBTITLE:
-    "Create one token at a time, then revoke by token id when it is no longer needed.",
   CREATE_USER_ACTION: "Create user",
   CREATE_USER_ERROR: "Unable to create the qaa-generator user.",
   CREATE_USER_MODAL_TITLE: "Create qaa-generator user",
   CREATE_USER_SUBTITLE: "Provide at least one identifier.",
-  DETAIL_CREATED_LABEL: "Created",
-  DETAIL_DESCRIPTION_LABEL: "Description",
-  DETAIL_EMAIL_LABEL: "Email",
-  DETAIL_MODAL_TITLE: "User details",
-  DETAIL_NAME_LABEL: "Name",
+  DELETE_ACTION: "Delete",
+  DELETE_CONFIRMATION_HELP: "Type the identifier below to confirm permanent deletion.",
+  DELETE_CONFIRMATION_LABEL: "Confirmation",
+  DELETE_CONFIRMATION_TITLE: "Delete qaa-generator user",
+  DELETE_ERROR: "Unable to delete the qaa-generator user.",
+  DELETE_SUBMIT_ACTION: "Delete user",
   DETAIL_NOT_SET: "Not set",
-  DETAIL_SLACK_LABEL: "Slack user id",
-  DETAIL_UPDATED_LABEL: "Updated",
-  LOAD_DETAILS_ACTION: "View details",
-  LOAD_DETAILS_ERROR: "Unable to load the qaa-generator user details.",
-  LOAD_USERS_ACTION: "Search users",
-  LOAD_USERS_ERROR: "Unable to load qaa-generator users.",
-  LOADING_DETAILS: "Loading user details.",
+  EDIT_ACTION: "Edit",
+  EDIT_MODAL_TITLE: "Edit qaa-generator user",
+  EDIT_SUBMIT_ACTION: "Save changes",
+  EDIT_SUBTITLE: "Clear a field to remove it. Keep at least one identifier.",
   LOADING_USERS: "Loading qaa-generator users.",
-  NO_USERS: "No qaa-generator users matched the current lookup.",
+  NO_USERS: "No qaa-generator users were returned.",
   REGENERATE_ACTION: "Regenerate token",
   REGENERATE_ERROR: "Unable to regenerate the qaa-generator user token.",
-  RESET_LOOKUP_ACTION: "Reset",
-  REVOKE_ACTION: "Revoke token",
-  REVOKE_ERROR: "Unable to revoke the service token.",
-  REVOKE_SUCCESS: "Service token revoked.",
-  REVOKE_TOKEN_ID_LABEL: "Service token id",
-  SERVICE_TOKEN_MODAL_TITLE: "Copy the new qaa-generator service token",
+  TABLE_ACTIONS: "Actions",
+  TABLE_CREATED: "Created",
+  TABLE_DESCRIPTION: "Description",
+  TABLE_EMAIL: "Email",
+  TABLE_NAME: "Name",
+  TABLE_SLACK: "Slack user id",
   TOKEN_FIELD_LABEL: "Plaintext token",
+  UPDATE_ERROR: "Unable to update the qaa-generator user.",
   USER_CREATED_TOKEN_MODAL_TITLE: "Copy the new qaa-generator user token",
   USER_REGENERATED_TOKEN_MODAL_TITLE: "Copy the regenerated qaa-generator user token",
-  USERS_CREATED_AT_HEADER: "Created",
-  USERS_DESCRIPTION_LABEL: "Description",
-  USERS_EMAIL_HEADER: "Email",
-  USERS_EMAIL_LABEL: "Email",
-  USERS_LOOKUP_LABEL: "Lookup",
-  USERS_NAME_HEADER: "Name",
-  USERS_NAME_LABEL: "Name",
   USERS_SECTION: "Users",
-  USERS_SLACK_HEADER: "Slack user id",
-  USERS_SLACK_LABEL: "Slack user id",
-  USERS_TABLE_ACTIONS: "Actions",
-} as const;
-
-const QaaAdminPanelQueryKey = {
-  DETAIL: "detail",
+  USERS_SUBTITLE: "Every user can be edited, deleted, or issued a fresh token from one table.",
 } as const;
 
 const QAA_USERS_DEFAULT_LIMIT = 50 as const;
 const QAA_USERS_DEFAULT_OFFSET = 0 as const;
 const QAA_COPY_TIMEOUT_MS = 2000 as const;
 
-const LOOKUP_FORM_INITIAL_STATE: LookupFormState = {
-  email: "",
-  slackUserId: "",
-};
-
-const CREATE_USER_FORM_INITIAL_STATE: CreateUserFormState = {
+const USER_FORM_INITIAL_STATE: UserFormState = {
   description: "",
   email: "",
   name: "",
   slackUserId: "",
-};
-
-const SERVICE_TOKEN_FORM_INITIAL_STATE: ServiceTokenFormState = {
-  name: "",
-};
-
-const REVOKE_TOKEN_FORM_INITIAL_STATE: RevokeTokenFormState = {
-  tokenId: "",
 };
 
 function formatOptionalText(value: string | null | undefined): string {
@@ -154,55 +101,103 @@ function formatDate(value: string | null | undefined): string {
   return date.toLocaleString();
 }
 
-function buildQaaUserCreatePayload(form: CreateUserFormState): QaaUserCreateRequest {
+function toUserFormState(user: QaaUser): UserFormState {
   return {
-    description: form.description || undefined,
-    email: form.email || undefined,
-    name: form.name || undefined,
-    slack_user_id: form.slackUserId || undefined,
+    description: typeof user.description === "string" ? user.description : "",
+    email: typeof user.email === "string" ? user.email : "",
+    name: typeof user.name === "string" ? user.name : "",
+    slackUserId: typeof user.slack_user_id === "string" ? user.slack_user_id : "",
   };
 }
 
-function buildQaaServiceTokenPayload(form: ServiceTokenFormState): QaaServiceTokenCreateRequest {
+function hasUserIdentifier(form: UserFormState): boolean {
+  return form.email.trim().length > 0 || form.slackUserId.trim().length > 0;
+}
+
+function buildQaaUserCreatePayload(form: UserFormState): QaaUserCreateRequest {
   return {
-    name: form.name,
+    description: form.description.trim() || undefined,
+    email: form.email.trim() || undefined,
+    name: form.name.trim() || undefined,
+    slack_user_id: form.slackUserId.trim() || undefined,
   };
 }
 
-function UserDetailBody({ user }: { user: QaaUser }) {
+function buildQaaUserUpdatePayload(form: UserFormState): QaaUserUpdateRequest {
+  return {
+    description: form.description.trim() || null,
+    email: form.email.trim() || null,
+    name: form.name.trim() || null,
+    slack_user_id: form.slackUserId.trim() || null,
+  };
+}
+
+function resolveUserIdentifier(user: QaaUser): string {
+  const candidates = [user.email, user.slack_user_id, user.name, user.id];
+  for (const value of candidates) {
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value;
+    }
+  }
+  return user.id;
+}
+
+function QaaUserFormFields({
+  form,
+  onChange,
+}: {
+  form: UserFormState;
+  onChange: (next: UserFormState) => void;
+}) {
   return (
-    <Stack gap="xs">
-      <Group justify="space-between">
-        <Text fw={600}>{QaaAdminPanelCopy.DETAIL_EMAIL_LABEL}</Text>
-        <Text>{formatOptionalText(typeof user.email === "string" ? user.email : null)}</Text>
-      </Group>
-      <Group justify="space-between">
-        <Text fw={600}>{QaaAdminPanelCopy.DETAIL_SLACK_LABEL}</Text>
-        <Text>
-          {formatOptionalText(typeof user.slack_user_id === "string" ? user.slack_user_id : null)}
-        </Text>
-      </Group>
-      <Group justify="space-between">
-        <Text fw={600}>{QaaAdminPanelCopy.DETAIL_NAME_LABEL}</Text>
-        <Text>{formatOptionalText(typeof user.name === "string" ? user.name : null)}</Text>
-      </Group>
-      <Group justify="space-between" align="flex-start">
-        <Text fw={600}>{QaaAdminPanelCopy.DETAIL_DESCRIPTION_LABEL}</Text>
-        <Text maw={420} ta="right">
-          {formatOptionalText(typeof user.description === "string" ? user.description : null)}
-        </Text>
-      </Group>
-      <Group justify="space-between">
-        <Text fw={600}>{QaaAdminPanelCopy.DETAIL_CREATED_LABEL}</Text>
-        <Text>{formatDate(typeof user.created_at === "string" ? user.created_at : null)}</Text>
-      </Group>
-      <Group justify="space-between">
-        <Text fw={600}>{QaaAdminPanelCopy.DETAIL_UPDATED_LABEL}</Text>
-        <Text>{formatDate(typeof user.updated_at === "string" ? user.updated_at : null)}</Text>
-      </Group>
-      <Divider />
-      <Code block>{JSON.stringify(user, null, 2)}</Code>
-    </Stack>
+    <>
+      <TextInput
+        aria-label={QaaAdminPanelCopy.TABLE_EMAIL}
+        label={QaaAdminPanelCopy.TABLE_EMAIL}
+        value={form.email}
+        onChange={(event) =>
+          onChange({
+            ...form,
+            email: event.currentTarget.value,
+          })
+        }
+      />
+      <TextInput
+        aria-label={QaaAdminPanelCopy.TABLE_SLACK}
+        label={QaaAdminPanelCopy.TABLE_SLACK}
+        value={form.slackUserId}
+        onChange={(event) =>
+          onChange({
+            ...form,
+            slackUserId: event.currentTarget.value,
+          })
+        }
+      />
+      <TextInput
+        aria-label={QaaAdminPanelCopy.TABLE_NAME}
+        label={QaaAdminPanelCopy.TABLE_NAME}
+        value={form.name}
+        onChange={(event) =>
+          onChange({
+            ...form,
+            name: event.currentTarget.value,
+          })
+        }
+      />
+      <Textarea
+        aria-label={QaaAdminPanelCopy.TABLE_DESCRIPTION}
+        autosize
+        label={QaaAdminPanelCopy.TABLE_DESCRIPTION}
+        minRows={3}
+        value={form.description}
+        onChange={(event) =>
+          onChange({
+            ...form,
+            description: event.currentTarget.value,
+          })
+        }
+      />
+    </>
   );
 }
 
@@ -211,22 +206,13 @@ export function AdminPanel() {
   const token = useAuthStore((state) => state.token);
   const currentUser = useAuthStore((state) => state.currentUser);
 
-  const [lookupForm, setLookupForm] = useState<LookupFormState>(LOOKUP_FORM_INITIAL_STATE);
-  const [appliedLookup, setAppliedLookup] = useState<LookupFormState>(LOOKUP_FORM_INITIAL_STATE);
   const [createUserOpened, setCreateUserOpened] = useState(false);
-  const [createUserForm, setCreateUserForm] = useState<CreateUserFormState>(
-    CREATE_USER_FORM_INITIAL_STATE
-  );
-  const [serviceTokenForm, setServiceTokenForm] = useState<ServiceTokenFormState>(
-    SERVICE_TOKEN_FORM_INITIAL_STATE
-  );
-  const [revokeTokenForm, setRevokeTokenForm] = useState<RevokeTokenFormState>(
-    REVOKE_TOKEN_FORM_INITIAL_STATE
-  );
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const [detailOpened, setDetailOpened] = useState(false);
+  const [createUserForm, setCreateUserForm] = useState<UserFormState>(USER_FORM_INITIAL_STATE);
+  const [editingUser, setEditingUser] = useState<QaaUser | null>(null);
+  const [editUserForm, setEditUserForm] = useState<UserFormState>(USER_FORM_INITIAL_STATE);
+  const [deletingUser, setDeletingUser] = useState<QaaUser | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [tokenModal, setTokenModal] = useState<TokenModalState | null>(null);
-  const [revokeSuccessMessage, setRevokeSuccessMessage] = useState<string | null>(null);
 
   const usersQuery = useQuery({
     enabled: Boolean(token) && Boolean(currentUser?.is_admin),
@@ -234,20 +220,12 @@ export function AdminPanel() {
       backendClient.listQaaUsers(
         token ?? "",
         {
-          email: appliedLookup.email || undefined,
           limit: QAA_USERS_DEFAULT_LIMIT,
           offset: QAA_USERS_DEFAULT_OFFSET,
-          slackUserId: appliedLookup.slackUserId || undefined,
         },
         signal
       ),
-    queryKey: [QueryKey.QAA_USERS, token, appliedLookup.email, appliedLookup.slackUserId],
-  });
-
-  const userDetailQuery = useQuery({
-    enabled: Boolean(token) && Boolean(selectedUserId) && detailOpened && Boolean(currentUser?.is_admin),
-    queryFn: ({ signal }) => backendClient.getQaaUser(token ?? "", selectedUserId ?? "", signal),
-    queryKey: [QueryKey.QAA_USERS, QaaAdminPanelQueryKey.DETAIL, selectedUserId, token],
+    queryKey: [QueryKey.QAA_USERS, token],
   });
 
   const createUserMutation = useMutation({
@@ -263,10 +241,24 @@ export function AdminPanel() {
       });
       return response.user;
     },
-    onSuccess: async (createdUser) => {
+    onSuccess: async () => {
       setCreateUserOpened(false);
-      setCreateUserForm(CREATE_USER_FORM_INITIAL_STATE);
-      setSelectedUserId(createdUser.id);
+      setCreateUserForm(USER_FORM_INITIAL_STATE);
+      await queryClient.invalidateQueries({ queryKey: [QueryKey.QAA_USERS] });
+    },
+  });
+
+  const updateUserMutation = useMutation({
+    mutationFn: async ({ payload, userId }: { payload: QaaUserUpdateRequest; userId: string }) => {
+      if (!token) {
+        throw new Error("Authentication is required.");
+      }
+
+      return backendClient.updateQaaUser(token, userId, payload);
+    },
+    onSuccess: async () => {
+      setEditingUser(null);
+      setEditUserForm(USER_FORM_INITIAL_STATE);
       await queryClient.invalidateQueries({ queryKey: [QueryKey.QAA_USERS] });
     },
   });
@@ -284,46 +276,23 @@ export function AdminPanel() {
       });
       return userId;
     },
-    onSuccess: async (userId) => {
-      if (selectedUserId === userId) {
-        await queryClient.invalidateQueries({
-          queryKey: [QueryKey.QAA_USERS, QaaAdminPanelQueryKey.DETAIL, userId],
-        });
-      }
+    onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: [QueryKey.QAA_USERS] });
     },
   });
 
-  const createServiceTokenMutation = useMutation({
-    mutationFn: async (payload: QaaServiceTokenCreateRequest) => {
+  const deleteUserMutation = useMutation({
+    mutationFn: async (userId: string) => {
       if (!token) {
         throw new Error("Authentication is required.");
       }
 
-      const response = await backendClient.createQaaServiceToken(token, payload);
-      setTokenModal({
-        title: QaaAdminPanelCopy.SERVICE_TOKEN_MODAL_TITLE,
-        token: response.token,
-      });
-      return response.user;
+      await backendClient.deleteQaaUser(token, userId);
     },
     onSuccess: async () => {
-      setServiceTokenForm(SERVICE_TOKEN_FORM_INITIAL_STATE);
+      setDeletingUser(null);
+      setDeleteConfirmation("");
       await queryClient.invalidateQueries({ queryKey: [QueryKey.QAA_USERS] });
-    },
-  });
-
-  const revokeServiceTokenMutation = useMutation({
-    mutationFn: async (tokenId: string) => {
-      if (!token) {
-        throw new Error("Authentication is required.");
-      }
-
-      return backendClient.revokeQaaServiceToken(token, tokenId);
-    },
-    onSuccess: () => {
-      setRevokeTokenForm(REVOKE_TOKEN_FORM_INITIAL_STATE);
-      setRevokeSuccessMessage(QaaAdminPanelCopy.REVOKE_SUCCESS);
     },
   });
 
@@ -333,56 +302,71 @@ export function AdminPanel() {
 
   function openCreateUserModal(): void {
     createUserMutation.reset();
-    setCreateUserForm(CREATE_USER_FORM_INITIAL_STATE);
+    setCreateUserForm(USER_FORM_INITIAL_STATE);
     setCreateUserOpened(true);
   }
 
   function closeCreateUserModal(): void {
     createUserMutation.reset();
     setCreateUserOpened(false);
-    setCreateUserForm(CREATE_USER_FORM_INITIAL_STATE);
+    setCreateUserForm(USER_FORM_INITIAL_STATE);
   }
 
-  function openUserDetails(userId: string): void {
-    setSelectedUserId(userId);
-    setDetailOpened(true);
+  function openEditUserModal(user: QaaUser): void {
+    updateUserMutation.reset();
+    setEditingUser(user);
+    setEditUserForm(toUserFormState(user));
   }
 
-  function closeUserDetails(): void {
-    setSelectedUserId(null);
-    setDetailOpened(false);
+  function closeEditUserModal(): void {
+    updateUserMutation.reset();
+    setEditingUser(null);
+    setEditUserForm(USER_FORM_INITIAL_STATE);
+  }
+
+  function openDeleteUserModal(user: QaaUser): void {
+    deleteUserMutation.reset();
+    setDeletingUser(user);
+    setDeleteConfirmation("");
+  }
+
+  function closeDeleteUserModal(): void {
+    deleteUserMutation.reset();
+    setDeletingUser(null);
+    setDeleteConfirmation("");
   }
 
   function closeTokenModal(): void {
     setTokenModal(null);
     createUserMutation.reset();
     regenerateTokenMutation.reset();
-    createServiceTokenMutation.reset();
-  }
-
-  function applyLookup(): void {
-    setAppliedLookup(lookupForm);
-  }
-
-  function resetLookup(): void {
-    setLookupForm(LOOKUP_FORM_INITIAL_STATE);
-    setAppliedLookup(LOOKUP_FORM_INITIAL_STATE);
   }
 
   function submitCreateUser(): void {
-    setRevokeSuccessMessage(null);
     createUserMutation.mutate(buildQaaUserCreatePayload(createUserForm));
   }
 
-  function submitCreateServiceToken(): void {
-    setRevokeSuccessMessage(null);
-    createServiceTokenMutation.mutate(buildQaaServiceTokenPayload(serviceTokenForm));
+  function submitEditUser(): void {
+    if (!editingUser) {
+      return;
+    }
+
+    updateUserMutation.mutate({
+      payload: buildQaaUserUpdatePayload(editUserForm),
+      userId: editingUser.id,
+    });
   }
 
-  function submitRevokeServiceToken(): void {
-    setRevokeSuccessMessage(null);
-    revokeServiceTokenMutation.mutate(revokeTokenForm.tokenId);
+  function submitDeleteUser(): void {
+    if (!deletingUser) {
+      return;
+    }
+
+    deleteUserMutation.mutate(deletingUser.id);
   }
+
+  const deleteIdentifier = deletingUser ? resolveUserIdentifier(deletingUser) : "";
+  const deleteConfirmationMatches = deleteConfirmation.trim() === deleteIdentifier;
 
   return (
     <Stack gap="lg">
@@ -396,36 +380,10 @@ export function AdminPanel() {
         </Button>
       </Group>
 
-      <Stack gap="md">
-        <div>
-          <Title order={3}>{QaaAdminPanelCopy.USERS_SECTION}</Title>
-          <Text c="dimmed">{QaaAdminPanelCopy.USERS_LOOKUP_LABEL}</Text>
-        </div>
-        <Group align="flex-end" grow>
-          <TextInput
-            aria-label={QaaAdminPanelCopy.USERS_EMAIL_LABEL}
-            label={QaaAdminPanelCopy.USERS_EMAIL_LABEL}
-            value={lookupForm.email}
-            onChange={(event) =>
-              setLookupForm((current) => ({ ...current, email: event.currentTarget.value }))
-            }
-          />
-          <TextInput
-            aria-label={QaaAdminPanelCopy.USERS_SLACK_LABEL}
-            label={QaaAdminPanelCopy.USERS_SLACK_LABEL}
-            value={lookupForm.slackUserId}
-            onChange={(event) =>
-              setLookupForm((current) => ({ ...current, slackUserId: event.currentTarget.value }))
-            }
-          />
-        </Group>
-        <Group>
-          <Button onClick={applyLookup}>{QaaAdminPanelCopy.LOAD_USERS_ACTION}</Button>
-          <Button onClick={resetLookup} variant="light">
-            {QaaAdminPanelCopy.RESET_LOOKUP_ACTION}
-          </Button>
-        </Group>
-      </Stack>
+      <div>
+        <Title order={3}>{QaaAdminPanelCopy.USERS_SECTION}</Title>
+        <Text c="dimmed">{QaaAdminPanelCopy.USERS_SUBTITLE}</Text>
+      </div>
 
       {usersQuery.isLoading ? (
         <Stack align="center" gap="sm" py="xl">
@@ -435,16 +393,14 @@ export function AdminPanel() {
       ) : null}
 
       {usersQuery.isError ? (
-        <Alert color="red" icon={<IconAlertCircle size={18} />} title={QaaAdminPanelCopy.LOAD_USERS_ERROR}>
+        <Alert color="red" icon={<IconAlertCircle size={18} />} title={QaaAdminPanelCopy.USERS_SECTION}>
           <Stack gap="sm">
             <Text>
-              {usersQuery.error instanceof Error
-                ? usersQuery.error.message
-                : QaaAdminPanelCopy.LOAD_USERS_ERROR}
+              {usersQuery.error instanceof Error ? usersQuery.error.message : QaaAdminPanelCopy.USERS_SECTION}
             </Text>
             <Group>
               <Button onClick={() => void usersQuery.refetch()} variant="light">
-                {QaaAdminPanelCopy.LOAD_USERS_ACTION}
+                Retry
               </Button>
             </Group>
           </Stack>
@@ -456,15 +412,16 @@ export function AdminPanel() {
       ) : null}
 
       {!usersQuery.isLoading && !usersQuery.isError && (usersQuery.data?.items.length ?? 0) > 0 ? (
-        <Table.ScrollContainer minWidth={860}>
+        <Table.ScrollContainer minWidth={980}>
           <Table highlightOnHover striped withTableBorder>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>{QaaAdminPanelCopy.USERS_NAME_HEADER}</Table.Th>
-                <Table.Th>{QaaAdminPanelCopy.USERS_EMAIL_HEADER}</Table.Th>
-                <Table.Th>{QaaAdminPanelCopy.USERS_SLACK_HEADER}</Table.Th>
-                <Table.Th>{QaaAdminPanelCopy.USERS_CREATED_AT_HEADER}</Table.Th>
-                <Table.Th>{QaaAdminPanelCopy.USERS_TABLE_ACTIONS}</Table.Th>
+                <Table.Th>{QaaAdminPanelCopy.TABLE_NAME}</Table.Th>
+                <Table.Th>{QaaAdminPanelCopy.TABLE_EMAIL}</Table.Th>
+                <Table.Th>{QaaAdminPanelCopy.TABLE_SLACK}</Table.Th>
+                <Table.Th>{QaaAdminPanelCopy.TABLE_DESCRIPTION}</Table.Th>
+                <Table.Th>{QaaAdminPanelCopy.TABLE_CREATED}</Table.Th>
+                <Table.Th>{QaaAdminPanelCopy.TABLE_ACTIONS}</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -477,17 +434,22 @@ export function AdminPanel() {
                       typeof user.slack_user_id === "string" ? user.slack_user_id : null
                     )}
                   </Table.Td>
+                  <Table.Td>
+                    {formatOptionalText(
+                      typeof user.description === "string" ? user.description : null
+                    )}
+                  </Table.Td>
                   <Table.Td>{formatDate(typeof user.created_at === "string" ? user.created_at : null)}</Table.Td>
                   <Table.Td>
                     <Group gap="xs">
                       <Button
-                        aria-label={`${QaaAdminPanelCopy.LOAD_DETAILS_ACTION} ${user.id}`}
-                        leftSection={<IconEye size={14} />}
-                        onClick={() => openUserDetails(user.id)}
+                        aria-label={`${QaaAdminPanelCopy.EDIT_ACTION} ${user.id}`}
+                        leftSection={<IconEdit size={14} />}
+                        onClick={() => openEditUserModal(user)}
                         size="xs"
                         variant="light"
                       >
-                        {QaaAdminPanelCopy.LOAD_DETAILS_ACTION}
+                        {QaaAdminPanelCopy.EDIT_ACTION}
                       </Button>
                       <Button
                         aria-label={`${QaaAdminPanelCopy.REGENERATE_ACTION} ${user.id}`}
@@ -500,6 +462,16 @@ export function AdminPanel() {
                       >
                         {QaaAdminPanelCopy.REGENERATE_ACTION}
                       </Button>
+                      <Button
+                        aria-label={`${QaaAdminPanelCopy.DELETE_ACTION} ${user.id}`}
+                        color="red"
+                        leftSection={<IconTrash size={14} />}
+                        onClick={() => openDeleteUserModal(user)}
+                        size="xs"
+                        variant="light"
+                      >
+                        {QaaAdminPanelCopy.DELETE_ACTION}
+                      </Button>
                     </Group>
                   </Table.Td>
                 </Table.Tr>
@@ -509,85 +481,12 @@ export function AdminPanel() {
         </Table.ScrollContainer>
       ) : null}
 
-      <Divider />
-
-      <Stack gap="md">
-        <div>
-          <Title order={3}>{QaaAdminPanelCopy.CREATE_SERVICE_TOKEN_SECTION}</Title>
-          <Text c="dimmed">{QaaAdminPanelCopy.CREATE_SERVICE_TOKEN_SUBTITLE}</Text>
-        </div>
-
-        {revokeSuccessMessage ? (
-          <Alert color="teal" title={QaaAdminPanelCopy.CREATE_SERVICE_TOKEN_SECTION}>
-            {revokeSuccessMessage}
-          </Alert>
-        ) : null}
-
-        <Group align="flex-end" grow>
-          <TextInput
-            aria-label={QaaAdminPanelCopy.CREATE_SERVICE_TOKEN_NAME_LABEL}
-            label={QaaAdminPanelCopy.CREATE_SERVICE_TOKEN_NAME_LABEL}
-            value={serviceTokenForm.name}
-            onChange={(event) =>
-              setServiceTokenForm({
-                name: event.currentTarget.value,
-              })
-            }
-          />
-          <Button
-            leftSection={<IconPlus size={16} />}
-            loading={createServiceTokenMutation.isPending}
-            onClick={submitCreateServiceToken}
-          >
-            {QaaAdminPanelCopy.CREATE_SERVICE_TOKEN_ACTION}
-          </Button>
-        </Group>
-
-        {createServiceTokenMutation.isError ? (
-          <Alert color="red" icon={<IconAlertCircle size={18} />} title={QaaAdminPanelCopy.CREATE_SERVICE_TOKEN_ERROR}>
-            {createServiceTokenMutation.error instanceof Error
-              ? createServiceTokenMutation.error.message
-              : QaaAdminPanelCopy.CREATE_SERVICE_TOKEN_ERROR}
-          </Alert>
-        ) : null}
-
-        <Group align="flex-end" grow>
-          <TextInput
-            aria-label={QaaAdminPanelCopy.REVOKE_TOKEN_ID_LABEL}
-            label={QaaAdminPanelCopy.REVOKE_TOKEN_ID_LABEL}
-            value={revokeTokenForm.tokenId}
-            onChange={(event) =>
-              setRevokeTokenForm({
-                tokenId: event.currentTarget.value,
-              })
-            }
-          />
-          <Button
-            color="red"
-            leftSection={<IconShieldX size={16} />}
-            loading={revokeServiceTokenMutation.isPending}
-            onClick={submitRevokeServiceToken}
-            variant="light"
-          >
-            {QaaAdminPanelCopy.REVOKE_ACTION}
-          </Button>
-        </Group>
-
-        {revokeServiceTokenMutation.isError ? (
-          <Alert color="red" icon={<IconAlertCircle size={18} />} title={QaaAdminPanelCopy.REVOKE_ERROR}>
-            {revokeServiceTokenMutation.error instanceof Error
-              ? revokeServiceTokenMutation.error.message
-              : QaaAdminPanelCopy.REVOKE_ERROR}
-          </Alert>
-        ) : null}
-      </Stack>
-
       <Modal
         opened={createUserOpened}
         onClose={closeCreateUserModal}
         title={QaaAdminPanelCopy.CREATE_USER_MODAL_TITLE}
+        centered
         transitionProps={{ duration: 0 }}
-        withinPortal={false}
       >
         <Stack>
           <Text c="dimmed" size="sm">
@@ -602,42 +501,14 @@ export function AdminPanel() {
             </Alert>
           ) : null}
 
-          <TextInput
-            aria-label={QaaAdminPanelCopy.USERS_EMAIL_LABEL}
-            label={QaaAdminPanelCopy.USERS_EMAIL_LABEL}
-            value={createUserForm.email}
-            onChange={(event) =>
-              setCreateUserForm((current) => ({ ...current, email: event.currentTarget.value }))
-            }
-          />
-          <TextInput
-            aria-label={QaaAdminPanelCopy.USERS_SLACK_LABEL}
-            label={QaaAdminPanelCopy.USERS_SLACK_LABEL}
-            value={createUserForm.slackUserId}
-            onChange={(event) =>
-              setCreateUserForm((current) => ({ ...current, slackUserId: event.currentTarget.value }))
-            }
-          />
-          <TextInput
-            aria-label={QaaAdminPanelCopy.USERS_NAME_LABEL}
-            label={QaaAdminPanelCopy.USERS_NAME_LABEL}
-            value={createUserForm.name}
-            onChange={(event) =>
-              setCreateUserForm((current) => ({ ...current, name: event.currentTarget.value }))
-            }
-          />
-          <Textarea
-            aria-label={QaaAdminPanelCopy.USERS_DESCRIPTION_LABEL}
-            autosize
-            label={QaaAdminPanelCopy.USERS_DESCRIPTION_LABEL}
-            minRows={3}
-            value={createUserForm.description}
-            onChange={(event) =>
-              setCreateUserForm((current) => ({ ...current, description: event.currentTarget.value }))
-            }
-          />
+          <QaaUserFormFields form={createUserForm} onChange={setCreateUserForm} />
+
           <Group justify="flex-end">
-            <Button onClick={submitCreateUser} loading={createUserMutation.isPending}>
+            <Button
+              disabled={!hasUserIdentifier(createUserForm)}
+              loading={createUserMutation.isPending}
+              onClick={submitCreateUser}
+            >
               {QaaAdminPanelCopy.CREATE_USER_ACTION}
             </Button>
           </Group>
@@ -645,55 +516,100 @@ export function AdminPanel() {
       </Modal>
 
       <Modal
-        opened={detailOpened}
-        onClose={closeUserDetails}
-        title={QaaAdminPanelCopy.DETAIL_MODAL_TITLE}
+        opened={editingUser !== null}
+        onClose={closeEditUserModal}
+        title={QaaAdminPanelCopy.EDIT_MODAL_TITLE}
+        centered
         transitionProps={{ duration: 0 }}
-        withinPortal={false}
       >
-        {userDetailQuery.isLoading ? (
-          <Stack align="center" gap="sm" py="xl">
-            <Loader size="lg" />
-            <Text c="dimmed">{QaaAdminPanelCopy.LOADING_DETAILS}</Text>
-          </Stack>
-        ) : null}
+        <Stack>
+          <Text c="dimmed" size="sm">
+            {QaaAdminPanelCopy.EDIT_SUBTITLE}
+          </Text>
 
-        {userDetailQuery.isError ? (
-          <Alert color="red" icon={<IconAlertCircle size={18} />} title={QaaAdminPanelCopy.LOAD_DETAILS_ERROR}>
-            {userDetailQuery.error instanceof Error
-              ? userDetailQuery.error.message
-              : QaaAdminPanelCopy.LOAD_DETAILS_ERROR}
-          </Alert>
-        ) : null}
+          {updateUserMutation.isError ? (
+            <Alert color="red" icon={<IconAlertCircle size={18} />} title={QaaAdminPanelCopy.UPDATE_ERROR}>
+              {updateUserMutation.error instanceof Error
+                ? updateUserMutation.error.message
+                : QaaAdminPanelCopy.UPDATE_ERROR}
+            </Alert>
+          ) : null}
 
-        {!userDetailQuery.isLoading && !userDetailQuery.isError && userDetailQuery.data ? (
-          <UserDetailBody user={userDetailQuery.data} />
-        ) : null}
+          <QaaUserFormFields form={editUserForm} onChange={setEditUserForm} />
+
+          <Group justify="flex-end">
+            <Button
+              disabled={!hasUserIdentifier(editUserForm)}
+              loading={updateUserMutation.isPending}
+              onClick={submitEditUser}
+            >
+              {QaaAdminPanelCopy.EDIT_SUBMIT_ACTION}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={deletingUser !== null}
+        onClose={closeDeleteUserModal}
+        title={QaaAdminPanelCopy.DELETE_CONFIRMATION_TITLE}
+        centered
+        transitionProps={{ duration: 0 }}
+      >
+        <Stack>
+          <Text>
+            Delete <strong>{deleteIdentifier}</strong>.
+          </Text>
+          <Text c="dimmed" size="sm">
+            {QaaAdminPanelCopy.DELETE_CONFIRMATION_HELP}
+          </Text>
+
+          {deleteUserMutation.isError ? (
+            <Alert color="red" icon={<IconAlertCircle size={18} />} title={QaaAdminPanelCopy.DELETE_ERROR}>
+              {deleteUserMutation.error instanceof Error
+                ? deleteUserMutation.error.message
+                : QaaAdminPanelCopy.DELETE_ERROR}
+            </Alert>
+          ) : null}
+
+          <TextInput
+            aria-label={QaaAdminPanelCopy.DELETE_CONFIRMATION_LABEL}
+            label={QaaAdminPanelCopy.DELETE_CONFIRMATION_LABEL}
+            value={deleteConfirmation}
+            onChange={(event) => setDeleteConfirmation(event.currentTarget.value)}
+          />
+
+          <Group justify="flex-end">
+            <Button
+              color="red"
+              disabled={!deleteConfirmationMatches}
+              loading={deleteUserMutation.isPending}
+              onClick={submitDeleteUser}
+            >
+              {QaaAdminPanelCopy.DELETE_SUBMIT_ACTION}
+            </Button>
+          </Group>
+        </Stack>
       </Modal>
 
       <Modal
         opened={tokenModal !== null}
         onClose={closeTokenModal}
         title={tokenModal?.title ?? QaaAdminPanelCopy.TOKEN_FIELD_LABEL}
+        centered
         transitionProps={{ duration: 0 }}
-        withinPortal={false}
       >
         <Stack>
-          <Alert color="yellow" icon={<IconAlertCircle size={18} />} title={tokenModal?.title ?? ""}>
+          <Alert color="yellow" title={QaaAdminPanelCopy.COPY_ONCE_WARNING}>
             {QaaAdminPanelCopy.COPY_ONCE_WARNING}
           </Alert>
-          <Textarea
+          <TextInput
             aria-label={QaaAdminPanelCopy.TOKEN_FIELD_LABEL}
-            autosize
             label={QaaAdminPanelCopy.TOKEN_FIELD_LABEL}
-            minRows={3}
             readOnly
             value={tokenModal?.token ?? ""}
           />
-          <Group justify="space-between">
-            <Badge color="yellow" variant="light">
-              {QaaAdminPanelCopy.COPY_ONCE_WARNING}
-            </Badge>
+          <Group justify="flex-end">
             <CopyButton timeout={QAA_COPY_TIMEOUT_MS} value={tokenModal?.token ?? ""}>
               {({ copied, copy }) => (
                 <Button leftSection={<IconCopy size={16} />} onClick={copy} variant="light">

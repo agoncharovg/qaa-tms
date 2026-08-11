@@ -54,6 +54,15 @@ QAA_ADMIN_USER_CREATE_UPSTREAM_PAYLOAD = {
     **QAA_ADMIN_USER_CREATE_PAYLOAD,
     "slack_user_id": None,
 }
+QAA_ADMIN_USER_UPDATE_PAYLOAD = {
+    "description": "Updated owner",
+    "name": "Alice Updated",
+}
+QAA_ADMIN_USER_UPDATE_RESPONSE = {
+    **QAA_ADMIN_USER,
+    "description": "Updated owner",
+    "name": "Alice Updated",
+}
 QAA_ADMIN_SERVICE_TOKEN_CREATE_PAYLOAD = {
     "name": "CI token",
 }
@@ -84,12 +93,16 @@ AUTH_SCHEME_BEARER = "Bearer"
 ADMIN_REQUIRED_DETAIL = "Admin access is required."
 SUPERUSER_NOT_CONFIGURED_DETAIL = "qaa-generator superuser token not configured"
 SUPERUSER_REJECTED_DETAIL = "superuser token rejected by qaa-generator"
+METHOD_DELETE = "DELETE"
 METHOD_GET = "GET"
+METHOD_PATCH = "PATCH"
 METHOD_POST = "POST"
 ADMIN_ROUTE_CASES = (
     (METHOD_GET, QAA_ADMIN_USERS_PATH, None),
     (METHOD_POST, QAA_ADMIN_USERS_PATH, QAA_ADMIN_USER_CREATE_PAYLOAD),
     (METHOD_GET, QAA_ADMIN_USER_DETAIL_PATH, None),
+    (METHOD_PATCH, QAA_ADMIN_USER_DETAIL_PATH, QAA_ADMIN_USER_UPDATE_PAYLOAD),
+    (METHOD_DELETE, QAA_ADMIN_USER_DETAIL_PATH, None),
     (METHOD_POST, QAA_ADMIN_USER_REGENERATE_PATH, None),
     (METHOD_POST, QAA_ADMIN_SERVICE_TOKENS_PATH, QAA_ADMIN_SERVICE_TOKEN_CREATE_PAYLOAD),
     (METHOD_POST, QAA_ADMIN_SERVICE_TOKEN_REVOKE_PATH, None),
@@ -254,6 +267,49 @@ def test_get_qaa_user_passes_through_not_found(
 
     assert response.status_code == 404
     assert response.json()["detail"] == QAA_ADMIN_ERROR_DETAIL
+
+
+def test_update_qaa_user_relays_partial_payload(
+    client: TestClient,
+    install_qaa_client: Callable[[Callable[[httpx.Request], httpx.Response]], None],
+) -> None:
+    token, _ = login(client, DevUsername.ADMIN.value, DevPassword.ADMIN.value)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == METHOD_PATCH
+        assert request.url.path == UPSTREAM_QAA_USER_DETAIL_PATH
+        assert json.loads(request.content.decode("utf-8")) == QAA_ADMIN_USER_UPDATE_PAYLOAD
+        return httpx.Response(status_code=200, json=QAA_ADMIN_USER_UPDATE_RESPONSE)
+
+    install_qaa_client(handler)
+
+    response = client.patch(
+        QAA_ADMIN_USER_DETAIL_PATH,
+        headers=auth_header(token),
+        json=QAA_ADMIN_USER_UPDATE_PAYLOAD,
+    )
+
+    assert response.status_code == 200
+    assert response.json() == QAA_ADMIN_USER_UPDATE_RESPONSE
+
+
+def test_delete_qaa_user_passes_through_no_content(
+    client: TestClient,
+    install_qaa_client: Callable[[Callable[[httpx.Request], httpx.Response]], None],
+) -> None:
+    token, _ = login(client, DevUsername.ADMIN.value, DevPassword.ADMIN.value)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == METHOD_DELETE
+        assert request.url.path == UPSTREAM_QAA_USER_DETAIL_PATH
+        return httpx.Response(status_code=204)
+
+    install_qaa_client(handler)
+
+    response = client.delete(QAA_ADMIN_USER_DETAIL_PATH, headers=auth_header(token))
+
+    assert response.status_code == 204
+    assert response.content == b""
 
 
 def test_regenerate_qaa_user_token_relays_plaintext_token_and_no_secret_audit(

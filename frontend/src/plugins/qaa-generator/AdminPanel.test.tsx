@@ -5,12 +5,11 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 
 const backendClientMock = vi.hoisted(() => ({
-  createQaaServiceToken: vi.fn(),
   createQaaUser: vi.fn(),
-  getQaaUser: vi.fn(),
+  deleteQaaUser: vi.fn(),
   listQaaUsers: vi.fn(),
   regenerateQaaUserToken: vi.fn(),
-  revokeQaaServiceToken: vi.fn(),
+  updateQaaUser: vi.fn(),
 }));
 
 vi.mock("@/api/backendClient", () => ({
@@ -57,6 +56,7 @@ const qaaUserListResponse: QaaUserListResponse = {
   items: [
     {
       created_at: "2026-08-11T10:00:00Z",
+      description: "Owns generator runs",
       email: "alice@example.com",
       id: QAA_USER_ID,
       name: "Alice Example",
@@ -80,12 +80,11 @@ function renderQaaTabBar() {
 
 describe("QAA Generator AdminPanel", () => {
   beforeEach(() => {
-    backendClientMock.createQaaServiceToken.mockReset();
     backendClientMock.createQaaUser.mockReset();
-    backendClientMock.getQaaUser.mockReset();
+    backendClientMock.deleteQaaUser.mockReset();
     backendClientMock.listQaaUsers.mockReset();
     backendClientMock.regenerateQaaUserToken.mockReset();
-    backendClientMock.revokeQaaServiceToken.mockReset();
+    backendClientMock.updateQaaUser.mockReset();
     localStorage.clear();
     resetAuthStoreState();
     resetUiStoreState({
@@ -93,7 +92,6 @@ describe("QAA Generator AdminPanel", () => {
       is_admin: false,
     });
     backendClientMock.listQaaUsers.mockResolvedValue(qaaUserListResponse);
-    backendClientMock.getQaaUser.mockResolvedValue(qaaUserListResponse.items[0]);
   });
 
   it("keeps the admin tab last and visible to admins in the qaa tab menu", async () => {
@@ -137,9 +135,11 @@ describe("QAA Generator AdminPanel", () => {
     renderWithProviders(<AdminPanel />);
 
     expect(await screen.findByText("Alice Example")).toBeInTheDocument();
+    expect(screen.queryByText("Service tokens")).not.toBeInTheDocument();
+    expect(screen.queryByText("Lookup")).not.toBeInTheDocument();
 
-    await user.click(screen.getAllByRole("button", { name: "Create user" })[0]);
-    await user.type(screen.getAllByLabelText("Email")[1], "alice@example.com");
+    await user.click(screen.getByRole("button", { name: "Create user" }));
+    await user.type(screen.getByLabelText("Email"), "alice@example.com");
     await user.type(screen.getByLabelText("Name"), "Alice Example");
     await user.type(screen.getByLabelText("Description"), "Owns generator runs");
     await user.click(screen.getAllByRole("button", { name: "Create user" })[1]);
@@ -156,13 +156,63 @@ describe("QAA Generator AdminPanel", () => {
       );
     });
 
-    expect(await screen.findAllByText("Copy the new qaa-generator user token")).toHaveLength(2);
+    expect(await screen.findByText("Copy the new qaa-generator user token")).toBeInTheDocument();
     expect(screen.getByDisplayValue(QAA_USER_TOKEN)).toBeInTheDocument();
-    expect(
-      screen.getAllByText(
-        "This plaintext token is shown once. Copy it now. It is never stored in the SPA or written to the operations audit."
-      )
-    ).toHaveLength(2);
+  });
+
+  it("edits and deletes qaa-generator users from the shared table", async () => {
+    const user = userEvent.setup();
+    backendClientMock.updateQaaUser.mockResolvedValue({
+      ...qaaUserListResponse.items[0],
+      description: "Updated owner",
+      name: "Alice Updated",
+    });
+    backendClientMock.deleteQaaUser.mockResolvedValue(undefined);
+
+    useAuthStore.setState({
+      currentUser: adminUser,
+      token: ADMIN_TOKEN,
+    });
+    resetUiStoreState({
+      enabled_plugins: QAA_ENABLED_PLUGINS,
+      is_admin: true,
+    });
+
+    renderWithProviders(<AdminPanel />);
+    await screen.findByText("Alice Example");
+
+    await user.click(screen.getByRole("button", { name: `Edit ${QAA_USER_ID}` }));
+    const nameInput = await screen.findByLabelText("Name");
+    await user.clear(nameInput);
+    await user.type(nameInput, "Alice Updated");
+    const descriptionInput = screen.getByLabelText("Description");
+    await user.clear(descriptionInput);
+    await user.type(descriptionInput, "Updated owner");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => {
+      expect(backendClientMock.updateQaaUser).toHaveBeenCalledWith(
+        ADMIN_TOKEN,
+        QAA_USER_ID,
+        {
+          description: "Updated owner",
+          email: "alice@example.com",
+          name: "Alice Updated",
+          slack_user_id: "U123",
+        }
+      );
+    });
+
+    await user.click(screen.getByRole("button", { name: `Delete ${QAA_USER_ID}` }));
+    const deleteButton = await screen.findByRole("button", { name: "Delete user" });
+    expect(deleteButton).toBeDisabled();
+    await user.type(screen.getByLabelText("Confirmation"), "alice@example.com");
+    expect(deleteButton).toBeEnabled();
+    await user.click(deleteButton);
+
+    await waitFor(() => {
+      expect(backendClientMock.deleteQaaUser).toHaveBeenCalledWith(ADMIN_TOKEN, QAA_USER_ID);
+    });
   });
 
   it("hides the admin tab from non-admins and does not render the panel", async () => {
