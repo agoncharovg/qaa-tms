@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
-import type { TablerIcon } from "@tabler/icons-react";
 
-import type { PluginId, TabId, ViewKey } from "@/constants";
+import type { IconName, PluginId, PluginOrigin, TabId, ViewKey } from "@/constants";
+import type { MountContext, Unmount } from "@/core/plugins/host";
 
 export const PluginKind = {
   SYSTEM: "system",
@@ -20,19 +20,37 @@ export interface PluginTabSpec {
 export interface PluginSpec {
   id: PluginId;
   label: string;
-  icon: TablerIcon;
+  icon: IconName;
   route: string;
   order: number;
   kind: PluginKind;
+  origin: PluginOrigin;
+  contractVersion: number;
   adminOnly?: boolean;
   tabs: PluginTabSpec[];
   requiresAgent?: boolean;
 }
 
-export interface PluginTab extends PluginTabSpec {
+export interface PluginElementTab extends PluginTabSpec {
   element: ReactNode;
+  mount?: never;
 }
+
+export interface PluginMountTab extends PluginTabSpec {
+  element?: never;
+  mount: (context: MountContext) => Unmount;
+}
+
+export type PluginTab = PluginElementTab | PluginMountTab;
 
 export interface PluginManifest extends Omit<PluginSpec, "tabs"> {
   tabs: PluginTab[];
+}
+
+export function pluginTabHasElement(tab: PluginTab): tab is PluginElementTab {
+  return "element" in tab;
+}
+
+export function pluginTabHasMount(tab: PluginTab): tab is PluginMountTab {
+  return "mount" in tab;
 }

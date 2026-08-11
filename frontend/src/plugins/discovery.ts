@@ -1,17 +1,28 @@
 import { PluginKind, type PluginManifest, type PluginTab } from "@/core/plugins/types";
+import { PluginOrigin } from "@/constants";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function hasOwnProperty(value: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
 function isPluginTab(value: unknown): value is PluginTab {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const hasElement = hasOwnProperty(value, "element");
+  const hasMount = typeof value.mount === "function";
+
   return (
-    isRecord(value) &&
     typeof value.id === "string" &&
     typeof value.title === "string" &&
     typeof value.viewKey === "string" &&
     (value.adminOnly === undefined || typeof value.adminOnly === "boolean") &&
-    "element" in value
+    hasElement !== hasMount
   );
 }
 
@@ -20,13 +31,16 @@ function isPluginManifest(value: unknown): value is PluginManifest {
     isRecord(value) &&
     typeof value.id === "string" &&
     typeof value.label === "string" &&
+    typeof value.icon === "string" &&
     typeof value.route === "string" &&
     typeof value.order === "number" &&
     Number.isFinite(value.order) &&
     (value.kind === PluginKind.SYSTEM || value.kind === PluginKind.OPTIONAL) &&
+    (value.origin === PluginOrigin.BUILTIN || value.origin === PluginOrigin.LOCAL) &&
+    typeof value.contractVersion === "number" &&
+    Number.isFinite(value.contractVersion) &&
     (value.adminOnly === undefined || typeof value.adminOnly === "boolean") &&
     (value.requiresAgent === undefined || typeof value.requiresAgent === "boolean") &&
-    "icon" in value &&
     Array.isArray(value.tabs) &&
     value.tabs.every(isPluginTab)
   );

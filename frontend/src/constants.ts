@@ -5,6 +5,22 @@ export const PluginId = {
 
 export type PluginId = (typeof PluginId)[keyof typeof PluginId];
 
+export const PluginOrigin = {
+  BUILTIN: "builtin",
+  LOCAL: "local",
+} as const;
+
+export type PluginOrigin = (typeof PluginOrigin)[keyof typeof PluginOrigin];
+
+export const IconName = {
+  ROCKET: "rocket",
+  SETTINGS: "settings",
+} as const;
+
+export type IconName = (typeof IconName)[keyof typeof IconName];
+
+export const CONTRACT_VERSION = 1 as const;
+
 export const ContentType = {
   REACT_VIEW: "react-view",
   IFRAME: "iframe",

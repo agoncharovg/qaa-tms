@@ -24,21 +24,46 @@ Two plugin classes exist in this slice:
 
 Static metadata lives in `src/plugins/catalog.ts`. React view wiring lives in
 `src/plugins/*/manifest.tsx`, discovered statically at build time through Vite
-`import.meta.glob("./*/manifest.tsx", { eager: true })`. `src/plugins/catalog.ts`
-derives selectors from the discovered manifest list, and `src/plugins/registry.ts`
-provides the `viewRegistry` used by the workspace.
+`import.meta.glob("./*/manifest.tsx", { eager: true })`. Each manifest is authored
+through `definePlugin(...)` and exports a self-contained `PluginManifest` with:
+
+- `origin`: currently always `PluginOrigin.BUILTIN` for shipped plugins. `PluginOrigin.LOCAL`
+  is reserved for the next slice and is intentionally not rendered in this build.
+- `contractVersion`: the host/plugin contract version the manifest targets. The
+  current host version is `CONTRACT_VERSION`.
+- `icon`: an `IconName` string resolved by the shell through its icon registry.
+- `tabs`: each tab must declare exactly one render path:
+  `element` for the builtin fast-path, or `mount(ctx)` for the in-process host API path.
+
+`src/plugins/catalog.ts` derives selectors from the discovered manifest list, and
+`src/plugins/registry.ts` provides the builtin `viewRegistry` used by the workspace.
+
+The shared contract surface for plugin rendering is:
+
+- `definePlugin(...)`: validates manifest shape, contract version support, and
+  per-plugin tab uniqueness.
+- `MountContext`: `{ container, viewKey, host, agentBaseUrl? }`
+- `HostApi`: chrome-only host access for theme tokens, view metadata, and optional
+  tab navigation.
+
+`HostApi` intentionally does not expose the app auth token, backend client, or any
+other credentials. Builtin plugins may still use first-party application modules
+directly because they ship in the same bundle, but that is outside the portable contract.
 
 To add a plugin:
 
 1. Add the plugin id and tab/view enums to `src/constants.ts` if the plugin introduces new stable identifiers.
-2. Create `src/plugins/<plugin-id>/manifest.tsx` that `export default`s a complete `PluginManifest`.
-3. Set the manifest `order`, reuse the existing enum values (`PluginId`, `TabId`, `ViewKey`, `TabTitle`), and place the actual screen code under `src/plugins/<plugin-id>/`.
+2. Create `src/plugins/<plugin-id>/manifest.tsx` that `export default`s `definePlugin({...})`.
+3. Set the manifest `order`, `origin`, `contractVersion`, and `icon`, reuse the existing enum values (`PluginId`, `TabId`, `ViewKey`, `TabTitle`), and place the actual screen code under `src/plugins/<plugin-id>/`.
 
 There is no central plugin registry to edit anymore. Dropping a folder with a valid
 `manifest.tsx` under `src/plugins/<plugin-id>/` is enough for the frontend build to
 pick it up. Discovery stays fully static: no runtime filesystem scan, no remote module
 loading, and no extra chunks for plugin manifests. Optional plugins still need the
 backend to carry its own `PluginId` entry and optional/system classification.
+
+Only builtin, bundle-time plugins are wired today. Runtime-loaded or local plugins,
+their transport, and their discovery source are explicitly out of scope for this slice.
 
 The shell keeps `TabId` and `ViewKey` stable, so localStorage tab persistence stays
 compatible while each manifest becomes the source of truth.

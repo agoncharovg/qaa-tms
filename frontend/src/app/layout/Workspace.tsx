@@ -33,7 +33,7 @@ export function Workspace({ activePluginId }: WorkspaceProps) {
           overflow: "auto",
         }}
       >
-        <WorkspaceContent activePluginLabel={activePlugin.label} tab={activeTab} />
+        <WorkspaceContent activePlugin={activePlugin} tab={activeTab} />
       </Paper>
     </AppShell.Main>
   );

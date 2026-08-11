@@ -1,16 +1,26 @@
-import { PluginId, TabId, TabTitle, ViewKey } from "@/constants";
-import { PluginKind, type PluginManifest } from "@/core/plugins/types";
-import { IconRocket } from "@tabler/icons-react";
+import {
+  CONTRACT_VERSION,
+  IconName,
+  PluginId,
+  PluginOrigin,
+  TabId,
+  TabTitle,
+  ViewKey,
+} from "@/constants";
+import { definePlugin } from "@/core/plugins/definePlugin";
+import { PluginKind } from "@/core/plugins/types";
 
 import { StagingsSection } from "@/plugins/stagings/StagingsSection";
 
 const STAGINGS_PLUGIN_ROUTE = "/stagings" as const;
 
-const stagingsPlugin: PluginManifest = {
+const stagingsPlugin = definePlugin({
+  contractVersion: CONTRACT_VERSION,
   id: PluginId.STAGINGS,
-  icon: IconRocket,
+  icon: IconName.ROCKET,
   kind: PluginKind.OPTIONAL,
   label: "Stagings",
+  origin: PluginOrigin.BUILTIN,
   order: 10,
   requiresAgent: true,
   route: STAGINGS_PLUGIN_ROUTE,
@@ -52,6 +62,6 @@ const stagingsPlugin: PluginManifest = {
       element: <StagingsSection mode={ViewKey.STAGINGS_E2E} />,
     },
   ],
-};
+});
 
 export default stagingsPlugin;

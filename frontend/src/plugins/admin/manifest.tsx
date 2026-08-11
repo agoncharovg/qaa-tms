@@ -1,18 +1,28 @@
-import { PluginId, TabId, TabTitle, ViewKey } from "@/constants";
-import { PluginKind, type PluginManifest } from "@/core/plugins/types";
-import { IconSettings } from "@tabler/icons-react";
+import {
+  CONTRACT_VERSION,
+  IconName,
+  PluginId,
+  PluginOrigin,
+  TabId,
+  TabTitle,
+  ViewKey,
+} from "@/constants";
+import { definePlugin } from "@/core/plugins/definePlugin";
+import { PluginKind } from "@/core/plugins/types";
 
 import { PluginsPage } from "@/plugins/admin/PluginsPage";
 import { UsersPage } from "@/plugins/admin/UsersPage";
 
 const ADMIN_PLUGIN_ROUTE = "/admin" as const;
 
-const adminPlugin: PluginManifest = {
+const adminPlugin = definePlugin({
   adminOnly: false,
+  contractVersion: CONTRACT_VERSION,
   id: PluginId.ADMIN,
-  icon: IconSettings,
+  icon: IconName.SETTINGS,
   kind: PluginKind.SYSTEM,
   label: "Administration",
+  origin: PluginOrigin.BUILTIN,
   order: 20,
   route: ADMIN_PLUGIN_ROUTE,
   tabs: [
@@ -30,6 +40,6 @@ const adminPlugin: PluginManifest = {
       element: <UsersPage />,
     },
   ],
-};
+});
 
 export default adminPlugin;

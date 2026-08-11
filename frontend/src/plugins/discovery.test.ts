@@ -1,16 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { IconRocket, IconSettings } from "@tabler/icons-react";
 
-import { PluginId, TabId, TabTitle, ViewKey } from "@/constants";
+import {
+  CONTRACT_VERSION,
+  IconName,
+  PluginId,
+  PluginOrigin,
+  TabId,
+  TabTitle,
+  ViewKey,
+} from "@/constants";
 import { PluginKind, type PluginManifest } from "@/core/plugins/types";
 import { PLUGINS, validatePluginManifests } from "@/plugins/discovery";
 
 function createPluginManifest(overrides: Partial<PluginManifest>): PluginManifest {
   return {
+    contractVersion: CONTRACT_VERSION,
     id: PluginId.STAGINGS,
-    icon: IconRocket,
+    icon: IconName.ROCKET,
     kind: PluginKind.OPTIONAL,
     label: "Stagings",
+    origin: PluginOrigin.BUILTIN,
     order: 10,
     requiresAgent: true,
     route: "/stagings",
@@ -43,7 +52,7 @@ describe("plugin discovery", () => {
       validatePluginManifests([
         createPluginManifest({}),
         createPluginManifest({
-          icon: IconSettings,
+          icon: IconName.SETTINGS,
           label: "Administration",
           order: 20,
           route: "/admin",
@@ -65,10 +74,12 @@ describe("plugin discovery", () => {
       validatePluginManifests([
         createPluginManifest({}),
         createPluginManifest({
-          icon: IconSettings,
+          contractVersion: CONTRACT_VERSION,
+          icon: IconName.SETTINGS,
           id: PluginId.ADMIN,
           kind: PluginKind.SYSTEM,
           label: "Administration",
+          origin: PluginOrigin.BUILTIN,
           order: 20,
           requiresAgent: false,
           route: "/admin",
@@ -90,10 +101,12 @@ describe("plugin discovery", () => {
       validatePluginManifests([
         createPluginManifest({
           adminOnly: false,
-          icon: IconSettings,
+          contractVersion: CONTRACT_VERSION,
+          icon: IconName.SETTINGS,
           id: PluginId.ADMIN,
           kind: PluginKind.SYSTEM,
           label: "Administration",
+          origin: PluginOrigin.BUILTIN,
           order: 20,
           requiresAgent: false,
           route: "/admin",

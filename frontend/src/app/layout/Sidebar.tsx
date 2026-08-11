@@ -18,6 +18,7 @@ import {
 import { useNavigate } from "react-router-dom";
 
 import { RoutePath, type PluginId as PluginIdType } from "@/constants";
+import { resolveIcon } from "@/core/plugins/icons";
 import { enabledOptionalPluginIdSet, visiblePlugins } from "@/plugins/registry";
 import { useAuthStore } from "@/store/authStore";
 import { useUiStore } from "@/store/uiStore";
@@ -68,6 +69,7 @@ export function Sidebar({ activePluginId }: SidebarProps) {
       <AppShell.Section grow>
         <Stack gap="xs">
           {plugins.map((plugin) => {
+            const Icon = resolveIcon(plugin.icon);
             const item = (
               <UnstyledButton
                 aria-current={activePluginId === plugin.id ? "page" : undefined}
@@ -87,7 +89,7 @@ export function Sidebar({ activePluginId }: SidebarProps) {
                   transition: "background-color 150ms ease",
                 }}
               >
-                <plugin.icon size={18} />
+                <Icon size={18} />
                 {!sidebarCollapsed ? <Text fw={500}>{plugin.label}</Text> : null}
               </UnstyledButton>
             );

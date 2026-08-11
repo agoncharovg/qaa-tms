@@ -16,6 +16,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { backendClient } from "@/api/backendClient";
 import type { User } from "@/api/types";
 import { QueryKey } from "@/constants";
+import { resolveIcon } from "@/core/plugins/icons";
 import { PluginKind } from "@/core/plugins/types";
 import { usePluginsContext } from "@/plugins/context";
 import { useAuthStore } from "@/store/authStore";
@@ -106,11 +107,12 @@ export function PluginsPage() {
           <Table.Tbody>
             {optionalPlugins.map((plugin) => {
               const checked = enabledOptionalIds.has(plugin.id);
+              const Icon = resolveIcon(plugin.icon);
               return (
                 <Table.Tr key={plugin.id}>
                   <Table.Td>
                     <Group gap="sm" wrap="nowrap">
-                      <plugin.icon size={18} />
+                      <Icon size={18} />
                       <div>
                         <Text fw={500}>{plugin.label}</Text>
                         <Text c="dimmed" size="sm">
@@ -136,32 +138,35 @@ export function PluginsPage() {
                 </Table.Tr>
               );
             })}
-            {systemPlugins.map((plugin) => (
-              <Table.Tr key={plugin.id}>
-                <Table.Td>
-                  <Group gap="sm" wrap="nowrap">
-                    <plugin.icon size={18} />
-                    <div>
-                      <Text fw={500}>{plugin.label}</Text>
-                      <Text c="dimmed" size="sm">
-                        Always available to authenticated users
-                      </Text>
-                    </div>
-                  </Group>
-                </Table.Td>
-                <Table.Td>
-                  <Badge color="blue" variant="light">
-                    System
-                  </Badge>
-                </Table.Td>
-                <Table.Td>
-                  <Text size="sm">This plugin cannot be disabled.</Text>
-                </Table.Td>
-                <Table.Td>
-                  <Switch aria-label={`${plugin.label} is enabled`} checked disabled />
-                </Table.Td>
-              </Table.Tr>
-            ))}
+            {systemPlugins.map((plugin) => {
+              const Icon = resolveIcon(plugin.icon);
+              return (
+                <Table.Tr key={plugin.id}>
+                  <Table.Td>
+                    <Group gap="sm" wrap="nowrap">
+                      <Icon size={18} />
+                      <div>
+                        <Text fw={500}>{plugin.label}</Text>
+                        <Text c="dimmed" size="sm">
+                          Always available to authenticated users
+                        </Text>
+                      </div>
+                    </Group>
+                  </Table.Td>
+                  <Table.Td>
+                    <Badge color="blue" variant="light">
+                      System
+                    </Badge>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="sm">This plugin cannot be disabled.</Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Switch aria-label={`${plugin.label} is enabled`} checked disabled />
+                  </Table.Td>
+                </Table.Tr>
+              );
+            })}
           </Table.Tbody>
         </Table>
       </Table.ScrollContainer>

@@ -17,11 +17,16 @@ export {
 } from "@/plugins/catalog";
 
 import type { PluginTab } from "@/core/plugins/types";
+import { pluginTabHasElement } from "@/core/plugins/types";
 import type { ViewKey } from "@/constants";
 import { PLUGINS } from "@/plugins/discovery";
 
 export { PLUGINS } from "@/plugins/discovery";
 
 export const viewRegistry = Object.fromEntries(
-  PLUGINS.flatMap((plugin) => plugin.tabs.map((tab) => [tab.viewKey, tab.element] as const))
+  PLUGINS.flatMap((plugin) =>
+    plugin.tabs
+      .filter(pluginTabHasElement)
+      .map((tab) => [tab.viewKey, tab.element] as const)
+  )
 ) as Record<ViewKey, PluginTab["element"]>;
