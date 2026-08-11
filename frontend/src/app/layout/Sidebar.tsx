@@ -10,16 +10,18 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import {
+  IconChevronDown,
   IconChevronLeft,
   IconChevronRight,
   IconLogout,
   IconUserCircle,
 } from "@tabler/icons-react";
+import type { CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { RoutePath, type PluginId as PluginIdType } from "@/constants";
 import { resolveIcon } from "@/core/plugins/icons";
-import { enabledOptionalPluginIdSet, visiblePlugins } from "@/plugins/registry";
+import { enabledOptionalPluginIdSet, visiblePlugins, visibleTabs } from "@/plugins/registry";
 import { useAuthStore } from "@/store/authStore";
 import { useUiStore } from "@/store/uiStore";
 
@@ -27,12 +29,44 @@ interface SidebarProps {
   activePluginId: PluginIdType;
 }
 
+function buildItemButtonStyle(active: boolean, collapsed: boolean): CSSProperties {
+  return {
+    alignItems: "center",
+    backgroundColor: active ? "rgba(34, 139, 230, 0.18)" : "transparent",
+    border: "1px solid rgba(255, 255, 255, 0.08)",
+    borderRadius: "12px",
+    display: "flex",
+    gap: "12px",
+    justifyContent: collapsed ? "center" : "flex-start",
+    padding: collapsed ? "12px 10px" : "12px 14px",
+    transition: "background-color 150ms ease",
+    width: "100%",
+  };
+}
+
+function buildTabButtonStyle(active: boolean, open: boolean): CSSProperties {
+  return {
+    alignItems: "center",
+    backgroundColor: active ? "rgba(34, 139, 230, 0.14)" : open ? "rgba(255, 255, 255, 0.03)" : "transparent",
+    border: "1px solid rgba(255, 255, 255, 0.06)",
+    borderRadius: "10px",
+    color: "inherit",
+    display: "flex",
+    justifyContent: "space-between",
+    padding: "9px 12px",
+    transition: "background-color 150ms ease",
+    width: "100%",
+  };
+}
+
 export function Sidebar({ activePluginId }: SidebarProps) {
   const navigate = useNavigate();
   const currentUser = useAuthStore((state) => state.currentUser);
   const logout = useAuthStore((state) => state.logout);
   const sidebarCollapsed = useUiStore((state) => state.sidebarCollapsed);
+  const tabsByPlugin = useUiStore((state) => state.tabsByPlugin);
   const toggleSidebar = useUiStore((state) => state.toggleSidebar);
+  const openTab = useUiStore((state) => state.openTab);
 
   const enabledOptionalIds = enabledOptionalPluginIdSet(currentUser?.enabled_plugins);
   const plugins = visiblePlugins(currentUser, enabledOptionalIds);
@@ -70,36 +104,101 @@ export function Sidebar({ activePluginId }: SidebarProps) {
         <Stack gap="xs">
           {plugins.map((plugin) => {
             const Icon = resolveIcon(plugin.icon);
+            const isActivePlugin = activePluginId === plugin.id;
+            const pluginTabs = visibleTabs(plugin, currentUser);
+            const pluginState = tabsByPlugin[plugin.id];
             const item = (
               <UnstyledButton
-                aria-current={activePluginId === plugin.id ? "page" : undefined}
+                aria-current={isActivePlugin ? "page" : undefined}
                 aria-label={plugin.label}
                 key={plugin.id}
                 onClick={() => navigate(plugin.route)}
-                style={{
-                  alignItems: "center",
-                  backgroundColor:
-                    activePluginId === plugin.id ? "rgba(34, 139, 230, 0.18)" : "transparent",
-                  border: "1px solid rgba(255, 255, 255, 0.08)",
-                  borderRadius: "12px",
-                  display: "flex",
-                  gap: "12px",
-                  justifyContent: sidebarCollapsed ? "center" : "flex-start",
-                  padding: sidebarCollapsed ? "12px 10px" : "12px 14px",
-                  transition: "background-color 150ms ease",
-                }}
+                style={buildItemButtonStyle(isActivePlugin, sidebarCollapsed)}
               >
                 <Icon size={18} />
-                {!sidebarCollapsed ? <Text fw={500}>{plugin.label}</Text> : null}
+                {!sidebarCollapsed ? (
+                  <>
+                    <Text fw={500}>{plugin.label}</Text>
+                    <Box ml="auto">
+                      <IconChevronDown
+                        size={16}
+                        style={{
+                          opacity: isActivePlugin && pluginTabs.length > 0 ? 0.9 : 0.35,
+                          transform:
+                            isActivePlugin && pluginTabs.length > 0 ? "rotate(0deg)" : "rotate(-90deg)",
+                          transition: "transform 150ms ease, opacity 150ms ease",
+                        }}
+                      />
+                    </Box>
+                  </>
+                ) : null}
               </UnstyledButton>
             );
 
-            return sidebarCollapsed ? (
-              <Tooltip key={plugin.id} label={plugin.label} position="right">
-                {item}
-              </Tooltip>
-            ) : (
-              item
+            return (
+              <Box key={plugin.id}>
+                {sidebarCollapsed ? (
+                  <Tooltip label={plugin.label} position="right">
+                    {item}
+                  </Tooltip>
+                ) : (
+                  item
+                )}
+
+                {!sidebarCollapsed && isActivePlugin && pluginTabs.length > 0 ? (
+                  <Box
+                    ml="md"
+                    mt="xs"
+                    pl="md"
+                    style={{ borderLeft: "1px solid rgba(255, 255, 255, 0.08)" }}
+                  >
+                    <Stack gap={6}>
+                      {pluginTabs.map((tab) => {
+                        const isActiveTab = pluginState.activeTabId === tab.id;
+                        const isOpenTab = pluginState.tabIds.includes(tab.id);
+
+                        return (
+                          <UnstyledButton
+                            aria-current={isActiveTab ? "page" : undefined}
+                            aria-label={tab.title}
+                            key={tab.id}
+                            onClick={() => {
+                              openTab(plugin.id, tab.id);
+                              navigate(plugin.route);
+                            }}
+                            style={buildTabButtonStyle(isActiveTab, isOpenTab)}
+                          >
+                            <Group gap="xs" wrap="nowrap">
+                              <Box
+                                aria-hidden="true"
+                                h={6}
+                                style={{
+                                  borderRadius: "999px",
+                                  backgroundColor: isActiveTab
+                                    ? "rgba(116, 192, 252, 1)"
+                                    : isOpenTab
+                                      ? "rgba(134, 142, 150, 0.85)"
+                                      : "rgba(255, 255, 255, 0.28)",
+                                  flexShrink: 0,
+                                }}
+                                w={6}
+                              />
+                              <Text fw={isActiveTab ? 600 : 500} size="sm">
+                                {tab.title}
+                              </Text>
+                            </Group>
+                            {isOpenTab ? (
+                              <Text c="dimmed" size="xs">
+                                Open
+                              </Text>
+                            ) : null}
+                          </UnstyledButton>
+                        );
+                      })}
+                    </Stack>
+                  </Box>
+                ) : null}
+              </Box>
             );
           })}
         </Stack>

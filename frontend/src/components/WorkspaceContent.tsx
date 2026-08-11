@@ -93,7 +93,7 @@ export function WorkspaceContent({ activePlugin, tab }: WorkspaceContentProps) {
       <Stack gap="sm" h="100%" justify="center">
         <Title order={3}>No workspace tab is open</Title>
         <Text c="dimmed">
-          Open a tab from the top bar to start working inside the {activePlugin.label} plugin.
+          Open a tab from the sidebar tree or the top bar to start working inside the {activePlugin.label} plugin.
         </Text>
       </Stack>
     );
