@@ -25,7 +25,7 @@ import { HistoryPanel } from "@/plugins/stagings/HistoryPanel";
 import { NamespacesPanel } from "@/plugins/stagings/NamespacesPanel";
 import { PreflightPanel } from "@/plugins/stagings/PreflightPanel";
 import { SyncPanel } from "@/plugins/stagings/SyncPanel";
-import { useUiStore } from "@/store/uiStore";
+import { useUiStore } from "@/store/uiStoreCore";
 
 interface StagingsSectionProps {
   mode: Extract<

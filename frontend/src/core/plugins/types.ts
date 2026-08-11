@@ -22,6 +22,7 @@ export interface PluginSpec {
   label: string;
   icon: TablerIcon;
   route: string;
+  order: number;
   kind: PluginKind;
   adminOnly?: boolean;
   tabs: PluginTabSpec[];

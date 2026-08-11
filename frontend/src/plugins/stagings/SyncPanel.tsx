@@ -22,7 +22,7 @@ import { LiveJobPanel } from "@/plugins/stagings/LiveJobPanel";
 import { useTransientLiveJob } from "@/plugins/stagings/useTransientLiveJob";
 import { useAuthStore } from "@/store/authStore";
 import { useStagingsStore } from "@/store/stagingsStore";
-import { useUiStore } from "@/store/uiStore";
+import { useUiStore } from "@/store/uiStoreCore";
 
 function buildSyncRequest(formState: {
   apply: boolean;
@@ -252,4 +252,3 @@ export function SyncPanel() {
     </Stack>
   );
 }
-

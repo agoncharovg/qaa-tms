@@ -1,0 +1,113 @@
+import { describe, expect, it } from "vitest";
+import { IconRocket, IconSettings } from "@tabler/icons-react";
+
+import { PluginId, TabId, TabTitle, ViewKey } from "@/constants";
+import { PluginKind, type PluginManifest } from "@/core/plugins/types";
+import { PLUGINS, validatePluginManifests } from "@/plugins/discovery";
+
+function createPluginManifest(overrides: Partial<PluginManifest>): PluginManifest {
+  return {
+    id: PluginId.STAGINGS,
+    icon: IconRocket,
+    kind: PluginKind.OPTIONAL,
+    label: "Stagings",
+    order: 10,
+    requiresAgent: true,
+    route: "/stagings",
+    tabs: [
+      {
+        element: null,
+        id: TabId.STAGINGS_PREFLIGHT,
+        title: TabTitle[TabId.STAGINGS_PREFLIGHT],
+        viewKey: ViewKey.STAGINGS_PREFLIGHT,
+      },
+    ],
+    ...overrides,
+  };
+}
+
+describe("plugin discovery", () => {
+  it("discovers the shipped plugins in deterministic manifest order", () => {
+    expect(PLUGINS.map((plugin) => plugin.id)).toEqual([PluginId.STAGINGS, PluginId.ADMIN]);
+    expect(new Set(PLUGINS.map((plugin) => plugin.id)).size).toBe(PLUGINS.length);
+    expect(new Set(PLUGINS.map((plugin) => plugin.route)).size).toBe(PLUGINS.length);
+
+    const viewKeys = PLUGINS.flatMap((plugin) => plugin.tabs.map((tab) => tab.viewKey));
+    expect(new Set(viewKeys).size).toBe(viewKeys.length);
+    expect(PLUGINS[0]?.requiresAgent).toBe(true);
+    expect(PLUGINS[1]?.kind).toBe(PluginKind.SYSTEM);
+  });
+
+  it("rejects duplicate plugin ids", () => {
+    expect(() =>
+      validatePluginManifests([
+        createPluginManifest({}),
+        createPluginManifest({
+          icon: IconSettings,
+          label: "Administration",
+          order: 20,
+          route: "/admin",
+          tabs: [
+            {
+              element: null,
+              id: TabId.ADMIN_PLUGINS,
+              title: TabTitle[TabId.ADMIN_PLUGINS],
+              viewKey: ViewKey.ADMIN_PLUGINS,
+            },
+          ],
+        }),
+      ])
+    ).toThrow(/duplicate plugin id/i);
+  });
+
+  it("rejects duplicate tab ids across plugins", () => {
+    expect(() =>
+      validatePluginManifests([
+        createPluginManifest({}),
+        createPluginManifest({
+          icon: IconSettings,
+          id: PluginId.ADMIN,
+          kind: PluginKind.SYSTEM,
+          label: "Administration",
+          order: 20,
+          requiresAgent: false,
+          route: "/admin",
+          tabs: [
+            {
+              element: null,
+              id: TabId.STAGINGS_PREFLIGHT,
+              title: TabTitle[TabId.STAGINGS_PREFLIGHT],
+              viewKey: ViewKey.ADMIN_PLUGINS,
+            },
+          ],
+        }),
+      ])
+    ).toThrow(/duplicate tab id/i);
+  });
+
+  it("rejects a system plugin that defaults to an admin-only tab", () => {
+    expect(() =>
+      validatePluginManifests([
+        createPluginManifest({
+          adminOnly: false,
+          icon: IconSettings,
+          id: PluginId.ADMIN,
+          kind: PluginKind.SYSTEM,
+          label: "Administration",
+          order: 20,
+          requiresAgent: false,
+          route: "/admin",
+          tabs: [
+            {
+              adminOnly: true,
+              element: null,
+              id: TabId.ADMIN_USERS,
+              title: TabTitle[TabId.ADMIN_USERS],
+              viewKey: ViewKey.ADMIN_USERS,
+            },
+          ],
+        }),
+      ])
+    ).toThrow(/admin-only tab/i);
+  });
+});

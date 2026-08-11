@@ -23,17 +23,25 @@ Two plugin classes exist in this slice:
 - `optional`: visible only when the current user enables it for themselves. `Stagings` is the only optional plugin.
 
 Static metadata lives in `src/plugins/catalog.ts`. React view wiring lives in
-`src/plugins/*/manifest.tsx`, and `src/plugins/registry.ts` provides the
-`viewRegistry` used by the workspace.
+`src/plugins/*/manifest.tsx`, discovered statically at build time through Vite
+`import.meta.glob("./*/manifest.tsx", { eager: true })`. `src/plugins/catalog.ts`
+derives selectors from the discovered manifest list, and `src/plugins/registry.ts`
+provides the `viewRegistry` used by the workspace.
 
 To add a plugin:
 
-1. Extend `src/plugins/catalog.ts` with the plugin id, route, icon, kind, and tab specs.
-2. Create `src/plugins/<plugin-id>/manifest.tsx` and supply the tab `element` nodes.
-3. Place the actual screen code under `src/plugins/<plugin-id>/`.
+1. Add the plugin id and tab/view enums to `src/constants.ts` if the plugin introduces new stable identifiers.
+2. Create `src/plugins/<plugin-id>/manifest.tsx` that `export default`s a complete `PluginManifest`.
+3. Set the manifest `order`, reuse the existing enum values (`PluginId`, `TabId`, `ViewKey`, `TabTitle`), and place the actual screen code under `src/plugins/<plugin-id>/`.
+
+There is no central plugin registry to edit anymore. Dropping a folder with a valid
+`manifest.tsx` under `src/plugins/<plugin-id>/` is enough for the frontend build to
+pick it up. Discovery stays fully static: no runtime filesystem scan, no remote module
+loading, and no extra chunks for plugin manifests. Optional plugins still need the
+backend to carry its own `PluginId` entry and optional/system classification.
 
 The shell keeps `TabId` and `ViewKey` stable, so localStorage tab persistence stays
-compatible while the plugin registry becomes the source of truth.
+compatible while each manifest becomes the source of truth.
 
 ## Administration workflow
 

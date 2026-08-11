@@ -10,6 +10,7 @@ import {
   pluginByRoute,
   visiblePlugins,
 } from "@/plugins/registry";
+import { PluginsProvider } from "@/plugins/provider";
 import { useAuthStore } from "@/store/authStore";
 import { syncTabsForUser, useUiStore } from "@/store/uiStore";
 
@@ -41,21 +42,23 @@ export function AppLayout() {
   }
 
   return (
-    <AppShell
-      header={{ height: 76 }}
-      navbar={{ breakpoint: "sm", width: sidebarCollapsed ? 92 : 280 }}
-      padding="md"
-      styles={{
-        main: {
-          background:
-            "radial-gradient(circle at top right, rgba(34, 139, 230, 0.14), transparent 30%), #0b1017",
-          minHeight: "100vh",
-        },
-      }}
-    >
-      <Sidebar activePluginId={activePlugin.id} />
-      <TabBar activePluginId={activePlugin.id} />
-      <Workspace activePluginId={activePlugin.id} />
-    </AppShell>
+    <PluginsProvider>
+      <AppShell
+        header={{ height: 76 }}
+        navbar={{ breakpoint: "sm", width: sidebarCollapsed ? 92 : 280 }}
+        padding="md"
+        styles={{
+          main: {
+            background:
+              "radial-gradient(circle at top right, rgba(34, 139, 230, 0.14), transparent 30%), #0b1017",
+            minHeight: "100vh",
+          },
+        }}
+      >
+        <Sidebar activePluginId={activePlugin.id} />
+        <TabBar activePluginId={activePlugin.id} />
+        <Workspace activePluginId={activePlugin.id} />
+      </AppShell>
+    </PluginsProvider>
   );
 }

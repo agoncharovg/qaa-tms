@@ -49,7 +49,7 @@ import { LiveJobPanel } from "@/plugins/stagings/LiveJobPanel";
 import { isTerminalJobStatus } from "@/plugins/stagings/liveJobState";
 import { useAuthStore } from "@/store/authStore";
 import { useStagingsStore } from "@/store/stagingsStore";
-import { useUiStore } from "@/store/uiStore";
+import { useUiStore } from "@/store/uiStoreCore";
 
 const DEPLOY_MODE_OPTIONS = [
   { label: "Raw staging deploy", value: DeployMode.RAW },

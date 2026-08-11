@@ -17,11 +17,7 @@ import { backendClient } from "@/api/backendClient";
 import type { User } from "@/api/types";
 import { QueryKey } from "@/constants";
 import { PluginKind } from "@/core/plugins/types";
-import {
-  PLUGINS,
-  enabledOptionalPluginIdSet,
-  resolveEnabledOptionalPluginIds,
-} from "@/plugins/registry";
+import { usePluginsContext } from "@/plugins/context";
 import { useAuthStore } from "@/store/authStore";
 
 export function PluginsPage() {
@@ -30,6 +26,8 @@ export function PluginsPage() {
   const currentUser = useAuthStore((state) => state.currentUser);
   const setEnabledPlugins = useAuthStore((state) => state.setEnabledPlugins);
   const [pendingPluginId, setPendingPluginId] = useState<string | null>(null);
+  const { enabledOptionalPluginIdSet, plugins, resolveEnabledOptionalPluginIds } =
+    usePluginsContext();
 
   const updateMutation = useMutation({
     mutationFn: async (enabledPluginIds: User["enabled_plugins"]) => {
@@ -58,8 +56,8 @@ export function PluginsPage() {
   }
 
   const resolvedCurrentUser = currentUser;
-  const optionalPlugins = PLUGINS.filter((plugin) => plugin.kind === PluginKind.OPTIONAL);
-  const systemPlugins = PLUGINS.filter((plugin) => plugin.kind === PluginKind.SYSTEM);
+  const optionalPlugins = plugins.filter((plugin) => plugin.kind === PluginKind.OPTIONAL);
+  const systemPlugins = plugins.filter((plugin) => plugin.kind === PluginKind.SYSTEM);
   const enabledOptionalIds = enabledOptionalPluginIdSet(resolvedCurrentUser.enabled_plugins);
 
   function handleToggle(pluginId: (typeof optionalPlugins)[number]["id"], checked: boolean): void {

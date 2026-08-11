@@ -1,34 +1,57 @@
-import { type PluginManifest } from "@/core/plugins/types";
-import { StagingsSection } from "@/plugins/stagings/StagingsSection";
-import { ViewKey } from "@/constants";
-import { stagingsPluginSpec } from "@/plugins/catalog";
+import { PluginId, TabId, TabTitle, ViewKey } from "@/constants";
+import { PluginKind, type PluginManifest } from "@/core/plugins/types";
+import { IconRocket } from "@tabler/icons-react";
 
-export const stagingsPlugin: PluginManifest = {
-  ...stagingsPluginSpec,
+import { StagingsSection } from "@/plugins/stagings/StagingsSection";
+
+const STAGINGS_PLUGIN_ROUTE = "/stagings" as const;
+
+const stagingsPlugin: PluginManifest = {
+  id: PluginId.STAGINGS,
+  icon: IconRocket,
+  kind: PluginKind.OPTIONAL,
+  label: "Stagings",
+  order: 10,
+  requiresAgent: true,
+  route: STAGINGS_PLUGIN_ROUTE,
   tabs: [
     {
-      ...stagingsPluginSpec.tabs[0],
+      id: TabId.STAGINGS_PREFLIGHT,
+      title: TabTitle[TabId.STAGINGS_PREFLIGHT],
+      viewKey: ViewKey.STAGINGS_PREFLIGHT,
       element: <StagingsSection mode={ViewKey.STAGINGS_PREFLIGHT} />,
     },
     {
-      ...stagingsPluginSpec.tabs[1],
+      id: TabId.STAGINGS_DEPLOY,
+      title: TabTitle[TabId.STAGINGS_DEPLOY],
+      viewKey: ViewKey.STAGINGS_DEPLOY,
       element: <StagingsSection mode={ViewKey.STAGINGS_DEPLOY} />,
     },
     {
-      ...stagingsPluginSpec.tabs[2],
+      id: TabId.STAGINGS_HISTORY,
+      title: TabTitle[TabId.STAGINGS_HISTORY],
+      viewKey: ViewKey.STAGINGS_HISTORY,
       element: <StagingsSection mode={ViewKey.STAGINGS_HISTORY} />,
     },
     {
-      ...stagingsPluginSpec.tabs[3],
+      id: TabId.STAGINGS_NAMESPACES,
+      title: TabTitle[TabId.STAGINGS_NAMESPACES],
+      viewKey: ViewKey.STAGINGS_NAMESPACES,
       element: <StagingsSection mode={ViewKey.STAGINGS_NAMESPACES} />,
     },
     {
-      ...stagingsPluginSpec.tabs[4],
+      id: TabId.STAGINGS_SYNC,
+      title: TabTitle[TabId.STAGINGS_SYNC],
+      viewKey: ViewKey.STAGINGS_SYNC,
       element: <StagingsSection mode={ViewKey.STAGINGS_SYNC} />,
     },
     {
-      ...stagingsPluginSpec.tabs[5],
+      id: TabId.STAGINGS_E2E,
+      title: TabTitle[TabId.STAGINGS_E2E],
+      viewKey: ViewKey.STAGINGS_E2E,
       element: <StagingsSection mode={ViewKey.STAGINGS_E2E} />,
     },
   ],
 };
+
+export default stagingsPlugin;

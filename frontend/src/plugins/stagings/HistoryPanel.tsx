@@ -31,7 +31,7 @@ import {
 } from "@/constants";
 import { useAuthStore } from "@/store/authStore";
 import { useStagingsStore } from "@/store/stagingsStore";
-import { useUiStore } from "@/store/uiStore";
+import { useUiStore } from "@/store/uiStoreCore";
 
 function getStatusColor(status: OperationStatusType): string {
   return OperationStatusColor[status];
