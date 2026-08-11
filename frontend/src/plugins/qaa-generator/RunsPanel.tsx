@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Anchor,
@@ -8,6 +8,7 @@ import {
   Drawer,
   Group,
   Loader,
+  LoadingOverlay,
   MultiSelect,
   Paper,
   Stack,
@@ -20,6 +21,7 @@ import { IconAlertCircle, IconPlayerPlay, IconRotateClockwise } from "@tabler/ic
 import { useQuery } from "@tanstack/react-query";
 
 import { backendClient } from "@/api/backendClient";
+import type { QaaRunListResponse, QaaRunSummary } from "@/api/types";
 import {
   DEFAULT_QAA_RUNS_PAGE_SIZE,
   QaaRunStatus,
@@ -36,10 +38,12 @@ const RUNS_PANEL_COPY = {
   DETAIL_TITLE: "Run details",
   EMPTY: "No QAA runs matched the current filters.",
   ERROR_TITLE: "QAA runs request failed",
+  JIRA_KEY_HINT: "Partial values filter the current page immediately. A full Jira key queries the backend.",
   NEXT: "Next",
   OPEN_IN_LIVE: "Open in Live",
   PREVIOUS: "Previous",
   PR_LINK: "Open PR",
+  STALE_RESULTS: "Showing the last loaded page while the refresh failed.",
   TITLE: "Runs",
 } as const;
 
@@ -47,6 +51,8 @@ const QAA_RUN_STATUS_OPTIONS = Object.values(QaaRunStatus).map((statusValue) => 
   label: QaaRunStatusLabel[statusValue],
   value: statusValue,
 }));
+const FULL_JIRA_KEY_PATTERN = /^[A-Z][A-Z0-9_]*-\d+$/i;
+const RUNS_FILTER_DEBOUNCE_MS = 250;
 
 interface RunsFiltersState {
   createdFrom: string;
@@ -68,45 +74,82 @@ function formatTimestamp(value: string | null | undefined): string {
   return value ? new Date(value).toLocaleString() : "—";
 }
 
+function buildRemoteJiraKey(value: string): string | undefined {
+  const normalizedValue = value.trim().toUpperCase();
+  if (normalizedValue.length === 0 || !FULL_JIRA_KEY_PATTERN.test(normalizedValue)) {
+    return undefined;
+  }
+
+  return normalizedValue;
+}
+
+function buildLocalJiraKeyFilter(value: string): string {
+  const normalizedValue = value.trim().toLowerCase();
+  if (normalizedValue.length === 0 || buildRemoteJiraKey(value)) {
+    return "";
+  }
+
+  return normalizedValue;
+}
+
 export function RunsPanel() {
   const token = useAuthStore((state) => state.token);
   const [filters, setFilters] = useState<RunsFiltersState>(DEFAULT_RUNS_FILTERS_STATE);
+  const [serverFilters, setServerFilters] = useState<RunsFiltersState>(DEFAULT_RUNS_FILTERS_STATE);
   const [cursorStack, setCursorStack] = useState<(string | null)[]>([null]);
   const [cursorIndex, setCursorIndex] = useState(0);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const activateTab = useActivateQaaGeneratorTab();
   const { startRun } = useQaaRunLive();
   const currentCursor = cursorStack[cursorIndex] ?? null;
-  const statusFilterSignature = filters.status.join(",");
+  const serverStatusFilterSignature = serverFilters.status.join(",");
+
+  useEffect(() => {
+    const timerId = window.setTimeout(() => {
+      setServerFilters(filters);
+    }, RUNS_FILTER_DEBOUNCE_MS);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [filters]);
+
+  const runsListParams = useMemo(
+    () => ({
+      createdFrom: serverFilters.createdFrom || undefined,
+      createdTo: serverFilters.createdTo || undefined,
+      cursor: currentCursor,
+      effectiveActor: serverFilters.effectiveActor.trim() || undefined,
+      jiraKey: buildRemoteJiraKey(serverFilters.jiraKey),
+      limit: DEFAULT_QAA_RUNS_PAGE_SIZE,
+      status: serverFilters.status.length > 0 ? serverFilters.status : undefined,
+    }),
+    [
+      currentCursor,
+      serverFilters.createdFrom,
+      serverFilters.createdTo,
+      serverFilters.effectiveActor,
+      serverFilters.jiraKey,
+      serverFilters.status,
+    ]
+  );
 
   useEffect(() => {
     setCursorStack([null]);
     setCursorIndex(0);
   }, [
-    filters.createdFrom,
-    filters.createdTo,
-    filters.effectiveActor,
-    filters.jiraKey,
-    statusFilterSignature,
+    serverFilters.createdFrom,
+    serverFilters.createdTo,
+    serverFilters.effectiveActor,
+    runsListParams.jiraKey,
+    serverStatusFilterSignature,
   ]);
 
-  const runsQuery = useQuery({
+  const runsQuery = useQuery<QaaRunListResponse>({
     enabled: Boolean(token),
-    queryFn: ({ signal }) =>
-      backendClient.listQaaRuns(
-        token ?? "",
-        {
-          createdFrom: filters.createdFrom || undefined,
-          createdTo: filters.createdTo || undefined,
-          cursor: currentCursor,
-          effectiveActor: filters.effectiveActor.trim() || undefined,
-          jiraKey: filters.jiraKey.trim() || undefined,
-          limit: DEFAULT_QAA_RUNS_PAGE_SIZE,
-          status: filters.status.length > 0 ? filters.status : undefined,
-        },
-        signal
-      ),
-    queryKey: [QueryKey.QAA_RUNS, token, filters, currentCursor],
+    placeholderData: (previousData) => previousData,
+    queryFn: ({ signal }) => backendClient.listQaaRuns(token ?? "", runsListParams, signal),
+    queryKey: [QueryKey.QAA_RUNS, token, runsListParams],
   });
 
   const detailQuery = useQuery({
@@ -123,35 +166,26 @@ export function RunsPanel() {
   });
 
   const nextCursor = runsQuery.data?.next_cursor ?? null;
+  const localJiraKeyFilter = buildLocalJiraKeyFilter(filters.jiraKey);
+  const displayedRuns: QaaRunSummary[] =
+    runsQuery.data?.items.filter((run) => {
+      if (localJiraKeyFilter.length === 0) {
+        return true;
+      }
+
+      return run.jira_key.toLowerCase().includes(localJiraKeyFilter);
+    }) ?? [];
 
   function openRunInLive(runId: string): void {
     startRun(runId);
     activateTab(TabId.QAA_LIVE);
   }
 
-  if (runsQuery.isLoading) {
-    return (
-      <Stack align="center" gap="md" py="xl">
-        <Loader size="lg" />
-        <Text c="dimmed">Loading QAA runs.</Text>
-      </Stack>
-    );
-  }
-
-  if (runsQuery.isError) {
-    return (
-      <Alert color="red" icon={<IconAlertCircle size={18} />} title={RUNS_PANEL_COPY.ERROR_TITLE}>
-        <Stack gap="sm">
-          <Text>{runsQuery.error instanceof Error ? runsQuery.error.message : RUNS_PANEL_COPY.ERROR_TITLE}</Text>
-          <Group>
-            <Button leftSection={<IconRotateClockwise size={16} />} onClick={() => void runsQuery.refetch()}>
-              Retry
-            </Button>
-          </Group>
-        </Stack>
-      </Alert>
-    );
-  }
+  const runsErrorMessage =
+    runsQuery.error instanceof Error ? runsQuery.error.message : RUNS_PANEL_COPY.ERROR_TITLE;
+  const showInitialRunsLoader = runsQuery.isLoading && !runsQuery.data;
+  const showInitialRunsError = runsQuery.isError && !runsQuery.data;
+  const showBackgroundRefreshError = runsQuery.isError && Boolean(runsQuery.data);
 
   return (
     <>
@@ -165,7 +199,7 @@ export function RunsPanel() {
           </div>
           <Group>
             <Button
-              disabled={cursorIndex === 0}
+              disabled={cursorIndex === 0 || runsQuery.isFetching}
               onClick={() => {
                 setCursorIndex((current) => Math.max(0, current - 1));
               }}
@@ -174,7 +208,7 @@ export function RunsPanel() {
               {RUNS_PANEL_COPY.PREVIOUS}
             </Button>
             <Button
-              disabled={!nextCursor}
+              disabled={!nextCursor || runsQuery.isFetching}
               onClick={() => {
                 if (!nextCursor) {
                   return;
@@ -195,6 +229,7 @@ export function RunsPanel() {
         <Paper p="md" radius="lg" withBorder>
           <Stack gap="md">
             <TextInput
+              description={RUNS_PANEL_COPY.JIRA_KEY_HINT}
               label="Jira key"
               onChange={(event) => {
                 const { value } = event.currentTarget;
@@ -262,54 +297,90 @@ export function RunsPanel() {
           </Stack>
         </Paper>
 
-        {(runsQuery.data?.items.length ?? 0) === 0 ? (
-          <Paper p="xl" radius="lg" withBorder>
-            <Stack align="center" gap="sm">
-              <Text fw={600}>{RUNS_PANEL_COPY.EMPTY}</Text>
+        {showBackgroundRefreshError ? (
+          <Alert color="orange" icon={<IconAlertCircle size={18} />} title={RUNS_PANEL_COPY.ERROR_TITLE}>
+            <Stack gap="sm">
+              <Text>{runsErrorMessage}</Text>
+              <Text size="sm">{RUNS_PANEL_COPY.STALE_RESULTS}</Text>
+              <Group>
+                <Button leftSection={<IconRotateClockwise size={16} />} onClick={() => void runsQuery.refetch()}>
+                  Retry
+                </Button>
+              </Group>
             </Stack>
-          </Paper>
-        ) : (
-          <Table.ScrollContainer minWidth={960}>
-            <Table highlightOnHover striped withTableBorder>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Jira key</Table.Th>
-                  <Table.Th>Status</Table.Th>
-                  <Table.Th>Actor</Table.Th>
-                  <Table.Th>Created</Table.Th>
-                  <Table.Th>Updated</Table.Th>
-                  <Table.Th>Run ID</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {runsQuery.data?.items.map((run) => (
-                  <Table.Tr
-                    key={run.run_id}
-                    onClick={() => {
-                      setSelectedRunId(run.run_id);
-                    }}
-                    style={{ cursor: "pointer" }}
-                  >
-                    <Table.Td>{run.jira_key}</Table.Td>
-                    <Table.Td>
-                      <Badge color={QaaRunStatusColor[run.status]} variant="light">
-                        {QaaRunStatusLabel[run.status]}
-                      </Badge>
-                    </Table.Td>
-                    <Table.Td>{run.effective_actor ?? "—"}</Table.Td>
-                    <Table.Td>{formatTimestamp(run.created_at)}</Table.Td>
-                    <Table.Td>{formatTimestamp(run.updated_at)}</Table.Td>
-                    <Table.Td>
-                      <Text ff="monospace" size="sm">
-                        {run.run_id}
-                      </Text>
-                    </Table.Td>
+          </Alert>
+        ) : null}
+
+        <Box pos="relative">
+          <LoadingOverlay visible={runsQuery.isFetching && Boolean(runsQuery.data)} zIndex={5} />
+
+          {showInitialRunsLoader ? (
+            <Paper p="xl" radius="lg" withBorder>
+              <Stack align="center" gap="md" py="xl">
+                <Loader size="lg" />
+                <Text c="dimmed">Loading QAA runs.</Text>
+              </Stack>
+            </Paper>
+          ) : showInitialRunsError ? (
+            <Alert color="red" icon={<IconAlertCircle size={18} />} title={RUNS_PANEL_COPY.ERROR_TITLE}>
+              <Stack gap="sm">
+                <Text>{runsErrorMessage}</Text>
+                <Group>
+                  <Button leftSection={<IconRotateClockwise size={16} />} onClick={() => void runsQuery.refetch()}>
+                    Retry
+                  </Button>
+                </Group>
+              </Stack>
+            </Alert>
+          ) : displayedRuns.length === 0 ? (
+            <Paper p="xl" radius="lg" withBorder>
+              <Stack align="center" gap="sm">
+                <Text fw={600}>{RUNS_PANEL_COPY.EMPTY}</Text>
+              </Stack>
+            </Paper>
+          ) : (
+            <Table.ScrollContainer minWidth={960}>
+              <Table highlightOnHover striped withTableBorder>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Jira key</Table.Th>
+                    <Table.Th>Status</Table.Th>
+                    <Table.Th>Actor</Table.Th>
+                    <Table.Th>Created</Table.Th>
+                    <Table.Th>Updated</Table.Th>
+                    <Table.Th>Run ID</Table.Th>
                   </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
-        )}
+                </Table.Thead>
+                <Table.Tbody>
+                  {displayedRuns.map((run) => (
+                    <Table.Tr
+                      key={run.run_id}
+                      onClick={() => {
+                        setSelectedRunId(run.run_id);
+                      }}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <Table.Td>{run.jira_key}</Table.Td>
+                      <Table.Td>
+                        <Badge color={QaaRunStatusColor[run.status]} variant="light">
+                          {QaaRunStatusLabel[run.status]}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>{run.effective_actor ?? "—"}</Table.Td>
+                      <Table.Td>{formatTimestamp(run.created_at)}</Table.Td>
+                      <Table.Td>{formatTimestamp(run.updated_at)}</Table.Td>
+                      <Table.Td>
+                        <Text ff="monospace" size="sm">
+                          {run.run_id}
+                        </Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          )}
+        </Box>
       </Stack>
 
       <Drawer
