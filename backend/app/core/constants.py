@@ -5,6 +5,7 @@ from enum import StrEnum
 
 class PluginId(StrEnum):
     STAGINGS = "stagings"
+    QAA_GENERATOR = "qaa-generator"
     ADMIN = "admin"
 
 
@@ -15,6 +16,7 @@ class OperationType(StrEnum):
     ADOPT = "adopt"
     SYNC = "sync"
     SETUP = "setup"
+    QAA_GENERATE = "qaa_generate"
 
 
 class OperationStatus(StrEnum):
@@ -48,12 +50,20 @@ class RoutePath(StrEnum):
     USER_BY_ID = "/users/{user_id}"
     OPERATIONS = "/operations"
     REPLAY = "/replay"
+    QAA_RUNS = "/qaa/runs"
+    QAA_RUN_BY_ID = "/{run_id}"
+    PAUSE = "/pause"
+    RESUME = "/resume"
+    STOP = "/stop"
+    EVENTS_STREAM = "/events/stream"
+    ARTIFACTS = "/artifacts"
 
 
 class ApiTag(StrEnum):
     AUTH = "auth"
     USERS = "users"
     OPERATIONS = "operations"
+    QAA_GENERATOR = "qaa-generator"
     SYSTEM = "system"
 
 
@@ -66,7 +76,18 @@ class AuthScheme(StrEnum):
 
 
 class HttpHeader(StrEnum):
+    ACCEPT = "Accept"
+    ACTOR = "Actor"
+    AUTHORIZATION = "Authorization"
+    CONTENT_TYPE = "Content-Type"
+    IDEMPOTENCY_KEY = "Idempotency-Key"
+    LAST_EVENT_ID = "Last-Event-ID"
     WWW_AUTHENTICATE = "WWW-Authenticate"
+
+
+class MediaType(StrEnum):
+    JSON = "application/json"
+    TEXT_EVENT_STREAM = "text/event-stream"
 
 
 class JwtAlgorithm(StrEnum):
@@ -84,6 +105,9 @@ class EnvKey(StrEnum):
     JWT_SECRET = "JWT_SECRET"
     JWT_EXPIRE_MINUTES = "JWT_EXPIRE_MINUTES"
     CORS_ORIGINS = "CORS_ORIGINS"
+    QAA_GENERATOR_BASE_URL = "QAA_GENERATOR_BASE_URL"
+    QAA_GENERATOR_SERVICE_TOKEN = "QAA_GENERATOR_SERVICE_TOKEN"
+    QAA_GENERATOR_ACTOR = "QAA_GENERATOR_ACTOR"
 
 
 class EnvFile(StrEnum):
@@ -105,6 +129,21 @@ class HealthStatus(StrEnum):
 
 class HealthFieldName(StrEnum):
     STATUS = "status"
+
+
+class QaaRunProfile(StrEnum):
+    BALANCED = "balanced"
+    CODEX_ONLY = "codex-only"
+    CLAUDE_ONLY = "claude-only"
+
+
+class QaaRunStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    STOPPED = "stopped"
 
 
 class ErrorMessage(StrEnum):
@@ -129,8 +168,8 @@ class DevPassword(StrEnum):
     ADMIN = "admin"
 
 
-OPTIONAL_PLUGIN_IDS = frozenset({PluginId.STAGINGS})
-SYSTEM_PLUGIN_IDS = frozenset({PluginId.ADMIN})
+OPTIONAL_PLUGIN_IDS = (PluginId.STAGINGS, PluginId.QAA_GENERATOR)
+SYSTEM_PLUGIN_IDS = (PluginId.ADMIN,)
 OPTIONAL_PLUGIN_ID_VALUES = tuple(plugin_id.value for plugin_id in OPTIONAL_PLUGIN_IDS)
 SYSTEM_PLUGIN_ID_VALUES = tuple(plugin_id.value for plugin_id in SYSTEM_PLUGIN_IDS)
 
@@ -146,3 +185,7 @@ OPERATIONS_MIN_LIMIT = 1
 OPERATIONS_MAX_LIMIT = 100
 OPERATIONS_DEFAULT_LIMIT = 20
 DEFAULT_OFFSET = 0
+DEFAULT_QAA_GENERATOR_BASE_URL = "http://qaa-generator.default.svc.cluster.local:8080/api/v1"
+DEFAULT_QAA_GENERATOR_SERVICE_TOKEN = ""
+DEFAULT_QAA_GENERATOR_ACTOR = ""
+DEFAULT_QAA_GENERATOR_TIMEOUT_SECONDS = 30.0

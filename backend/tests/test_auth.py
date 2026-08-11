@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from app.core.constants import DevPassword, DevUsername, RoutePath, TokenType
+from app.core.constants import DevPassword, DevUsername, PluginId, RoutePath, TokenType
+
+DEFAULT_OPTIONAL_PLUGIN_IDS = [PluginId.STAGINGS.value, PluginId.QAA_GENERATOR.value]
 
 
 def test_login_supports_admin_and_test_users(client: TestClient) -> None:
@@ -15,7 +17,7 @@ def test_login_supports_admin_and_test_users(client: TestClient) -> None:
     assert admin_body["token_type"] == TokenType.BEARER.value
     assert admin_body["user"]["username"] == DevUsername.ADMIN.value
     assert admin_body["user"]["is_admin"] is True
-    assert admin_body["user"]["enabled_plugins"] == ["stagings"]
+    assert admin_body["user"]["enabled_plugins"] == DEFAULT_OPTIONAL_PLUGIN_IDS
 
     test_response = client.post(
         f"/api/v1{RoutePath.AUTH.value}{RoutePath.LOGIN.value}",
@@ -26,7 +28,7 @@ def test_login_supports_admin_and_test_users(client: TestClient) -> None:
     assert test_body["token_type"] == TokenType.BEARER.value
     assert test_body["user"]["username"] == DevUsername.TEST.value
     assert test_body["user"]["is_admin"] is False
-    assert test_body["user"]["enabled_plugins"] == ["stagings"]
+    assert test_body["user"]["enabled_plugins"] == DEFAULT_OPTIONAL_PLUGIN_IDS
 
 
 def test_me_requires_authentication(client: TestClient) -> None:
@@ -48,4 +50,4 @@ def test_me_returns_authenticated_user(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert response.json()["username"] == DevUsername.ADMIN.value
-    assert response.json()["enabled_plugins"] == ["stagings"]
+    assert response.json()["enabled_plugins"] == DEFAULT_OPTIONAL_PLUGIN_IDS

@@ -9,7 +9,13 @@ from typing import Annotated, Any
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from app.core.constants import EnvFile, EnvKey
+from app.core.constants import (
+    DEFAULT_QAA_GENERATOR_ACTOR,
+    DEFAULT_QAA_GENERATOR_BASE_URL,
+    DEFAULT_QAA_GENERATOR_SERVICE_TOKEN,
+    EnvFile,
+    EnvKey,
+)
 
 
 class Settings(BaseSettings):
@@ -31,6 +37,18 @@ class Settings(BaseSettings):
     cors_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=list,
         alias=EnvKey.CORS_ORIGINS.value,
+    )
+    qaa_generator_base_url: str = Field(
+        default=DEFAULT_QAA_GENERATOR_BASE_URL,
+        alias=EnvKey.QAA_GENERATOR_BASE_URL.value,
+    )
+    qaa_generator_service_token: str = Field(
+        default=DEFAULT_QAA_GENERATOR_SERVICE_TOKEN,
+        alias=EnvKey.QAA_GENERATOR_SERVICE_TOKEN.value,
+    )
+    qaa_generator_actor: str = Field(
+        default=DEFAULT_QAA_GENERATOR_ACTOR,
+        alias=EnvKey.QAA_GENERATOR_ACTOR.value,
     )
 
     @field_validator("cors_origins", mode="before")

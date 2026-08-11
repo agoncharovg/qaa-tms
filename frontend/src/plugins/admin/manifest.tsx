@@ -14,6 +14,7 @@ import { PluginsPage } from "@/plugins/admin/PluginsPage";
 import { UsersPage } from "@/plugins/admin/UsersPage";
 
 const ADMIN_PLUGIN_ROUTE = "/admin" as const;
+const ADMIN_PLUGIN_ORDER = 30 as const;
 
 const adminPlugin = definePlugin({
   adminOnly: false,
@@ -23,7 +24,7 @@ const adminPlugin = definePlugin({
   kind: PluginKind.SYSTEM,
   label: "Administration",
   origin: PluginOrigin.BUILTIN,
-  order: 20,
+  order: ADMIN_PLUGIN_ORDER,
   route: ADMIN_PLUGIN_ROUTE,
   tabs: [
     {

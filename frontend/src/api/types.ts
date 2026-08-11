@@ -9,6 +9,8 @@ import type {
   PreflightKey,
   PluginId,
   Product,
+  QaaRunProfile,
+  QaaRunStatus,
   TabId,
   ViewKey,
 } from "@/constants";
@@ -147,6 +149,56 @@ export interface E2eRunRequest {
 export interface JobCreateResponse {
   jobId: string;
   opId: string;
+}
+
+export interface QaaRunCreateRequest {
+  jira_key: string;
+  dry_run: boolean;
+  skip_pr: boolean;
+  skip_exec: boolean;
+  branch: string | null;
+  profile: QaaRunProfile;
+}
+
+export interface QaaRunSummary {
+  run_id: string;
+  jira_key: string;
+  status: QaaRunStatus;
+  effective_actor?: string | null;
+  profile?: QaaRunProfile | null;
+  dry_run?: boolean;
+  skip_pr?: boolean;
+  skip_exec?: boolean;
+  branch?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface QaaRunRead extends QaaRunSummary {
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QaaRunArtifacts {
+  report_text?: string | null;
+  pr_url?: string | null;
+  archive?: Record<string, unknown> | null;
+}
+
+export interface QaaRunListResponse {
+  items: QaaRunSummary[];
+  next_cursor: string | null;
+}
+
+export interface QaaRunEvent {
+  sequence: number;
+  event_type: string;
+  message: string;
+  payload: Record<string, unknown> | null;
+}
+
+export interface QaaRunControlResponse {
+  run_id: string;
 }
 
 export interface JobRead {

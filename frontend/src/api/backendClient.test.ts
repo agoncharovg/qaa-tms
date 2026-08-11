@@ -4,12 +4,29 @@ import type {
   OperationListResponse,
   OperationRead,
   OperationReplay,
+  QaaRunArtifacts,
+  QaaRunControlResponse,
+  QaaRunListResponse,
+  QaaRunRead,
   User,
   UserCreateRequest,
   UserListResponse,
   UserUpdateRequest,
 } from "@/api/types";
 import { backendClient } from "@/api/backendClient";
+
+function createChunkedStream(chunks: string[]): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks) {
+        controller.enqueue(encoder.encode(chunk));
+      }
+      controller.close();
+    },
+  });
+}
 
 describe("backendClient operations", () => {
   const fetchMock = vi.fn<typeof fetch>();
@@ -305,6 +322,180 @@ describe("backendClient operations", () => {
     expect(fetchMock.mock.calls[1]?.[0]).toBe(
       "http://localhost:8000/api/v1/operations/00000000-0000-0000-0000-000000000002/replay"
     );
+  });
+
+  it("sends qaa-generator JSON requests with the expected URLs and headers", async () => {
+    const qaaRun: QaaRunRead = {
+      branch: "feature/qaa-generator",
+      created_at: "2026-08-11T10:00:00Z",
+      dry_run: false,
+      effective_actor: "email:alice@example.com",
+      jira_key: "QAA-123",
+      profile: "balanced",
+      run_id: "run-123",
+      skip_exec: false,
+      skip_pr: true,
+      status: "queued",
+      updated_at: "2026-08-11T10:00:00Z",
+    };
+    const qaaRuns: QaaRunListResponse = {
+      items: [qaaRun],
+      next_cursor: "cursor-2",
+    };
+    const qaaArtifacts: QaaRunArtifacts = {
+      archive: {
+        filename: "run-123.zip",
+      },
+      pr_url: "https://example.invalid/pr/123",
+      report_text: "Generated report",
+    };
+    const qaaControlResponse: QaaRunControlResponse = {
+      run_id: "run-123",
+    };
+
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(qaaRun), {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          status: 202,
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(qaaRuns), {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(qaaRun), {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(qaaArtifacts), {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(qaaControlResponse), {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          status: 202,
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(qaaControlResponse), {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          status: 202,
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(qaaControlResponse), {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          status: 202,
+        })
+      );
+
+    await backendClient.createQaaRun(
+      "token-123",
+      {
+        branch: "feature/qaa-generator",
+        dry_run: false,
+        jira_key: "QAA-123",
+        profile: "balanced",
+        skip_exec: false,
+        skip_pr: true,
+      }
+    );
+    await backendClient.listQaaRuns("token-123", {
+      createdFrom: "2026-08-11",
+      createdTo: "2026-08-12",
+      cursor: "cursor-1",
+      effectiveActor: "email:alice@example.com",
+      jiraKey: "QAA-123",
+      limit: 20,
+      status: ["running", "paused"],
+    });
+    await backendClient.getQaaRun("token-123", "run-123");
+    await backendClient.getQaaRunArtifacts("token-123", "run-123");
+    await backendClient.pauseQaaRun("token-123", "run-123");
+    await backendClient.resumeQaaRun("token-123", "run-123");
+    await backendClient.stopQaaRun("token-123", "run-123");
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("http://localhost:8000/api/v1/qaa/runs");
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(
+      "http://localhost:8000/api/v1/qaa/runs?jira_key=QAA-123&effective_actor=email%3Aalice%40example.com&created_from=2026-08-11&created_to=2026-08-12&limit=20&cursor=cursor-1&status=running&status=paused"
+    );
+    expect(fetchMock.mock.calls[2]?.[0]).toBe("http://localhost:8000/api/v1/qaa/runs/run-123");
+    expect(fetchMock.mock.calls[3]?.[0]).toBe(
+      "http://localhost:8000/api/v1/qaa/runs/run-123/artifacts"
+    );
+    expect(fetchMock.mock.calls[4]?.[0]).toBe(
+      "http://localhost:8000/api/v1/qaa/runs/run-123/pause"
+    );
+    expect(fetchMock.mock.calls[5]?.[0]).toBe(
+      "http://localhost:8000/api/v1/qaa/runs/run-123/resume"
+    );
+    expect(fetchMock.mock.calls[6]?.[0]).toBe(
+      "http://localhost:8000/api/v1/qaa/runs/run-123/stop"
+    );
+    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("Authorization")).toBe(
+      "Bearer token-123"
+    );
+  });
+
+  it("streams qaa-generator SSE frames over authenticated fetch", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        createChunkedStream([
+          'data: {"sequence":1,"event_type":"stage","message":"started","payload":{}}\n\n',
+          'data: {"sequence":2,"event_type":"stage","message":"done","payload":{}}\n\n',
+        ]),
+        {
+          headers: {
+            "Content-Type": "text/event-stream",
+          },
+        }
+      )
+    );
+
+    const messages: unknown[] = [];
+    await backendClient.streamQaaRun("token-123", "run-123", (message) => {
+      messages.push(message);
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "http://localhost:8000/api/v1/qaa/runs/run-123/events/stream"
+    );
+    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("Authorization")).toBe(
+      "Bearer token-123"
+    );
+    expect(messages).toEqual([
+      {
+        event_type: "stage",
+        message: "started",
+        payload: {},
+        sequence: 1,
+      },
+      {
+        event_type: "stage",
+        message: "done",
+        payload: {},
+        sequence: 2,
+      },
+    ]);
   });
 
   it("returns a helpful message when the backend is unreachable", async () => {

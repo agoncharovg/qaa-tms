@@ -20,7 +20,7 @@ The SPA serves on `http://localhost:3000` and expects the backend on
 Two plugin classes exist in this slice:
 
 - `system`: always visible to authenticated users and never toggleable. `Administration` is the only system plugin.
-- `optional`: visible only when the current user enables it for themselves. `Stagings` is the only optional plugin.
+- `optional`: visible only when the current user enables it for themselves. `Stagings` and `QAA Generator` ship as optional builtin plugins in this build.
 
 Static metadata lives in `src/plugins/catalog.ts`. React view wiring lives in
 `src/plugins/*/manifest.tsx`, discovered statically at build time through Vite
@@ -93,6 +93,19 @@ The `Stagings` optional plugin exposes six tabs:
 The Deploy, Sync, Namespaces, and E2E workflows depend on the local companion app being
 reachable on a probed localhost port, because authenticated agent requests reuse the same
 Bearer token as the central backend.
+
+## QAA Generator workflow
+
+The `QAA Generator` optional plugin is a backend-proxied, centrally reachable workflow and does
+not use the local agent.
+
+- `Generate`: submit `{ jira_key, dry_run, skip_pr, skip_exec, branch?, profile }` to the backend proxy, which re-authenticates to qaa-generator with the service token stored on the server.
+- `Live`: stream one run over authenticated fetch-SSE, inspect its live events, and issue `pause` / `resume` / `stop`.
+- `Runs`: filter the shared run list with cursor pagination, inspect a run and its artifacts inline, and open any run into the Live tab.
+
+The browser never receives the qaa-generator service token. The backend derives the optional
+delegation header as `email:<username>` when the username contains `@`; otherwise it falls back
+to the backend-side `QAA_GENERATOR_ACTOR` setting or omits the header.
 
 ## Docker Compose
 

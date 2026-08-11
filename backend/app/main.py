@@ -5,13 +5,20 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.api.v1 import router as api_v1_router
 from app.core.config import Settings, get_settings
-from app.core.constants import ApiTag, HealthFieldName, HealthStatus, RoutePath
+from app.core.constants import (
+    DEFAULT_QAA_GENERATOR_TIMEOUT_SECONDS,
+    ApiTag,
+    HealthFieldName,
+    HealthStatus,
+    RoutePath,
+)
 from app.db.seed import seed_dev_users
 from app.db.session import create_engine_and_session_maker
 
@@ -22,12 +29,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        qaa_generator_client = httpx.AsyncClient(
+            base_url=resolved_settings.qaa_generator_base_url,
+            timeout=DEFAULT_QAA_GENERATOR_TIMEOUT_SECONDS,
+        )
         app.state.settings = resolved_settings
         app.state.engine = engine
+        app.state.qaa_generator_client = qaa_generator_client
         app.state.session_maker = session_maker
         async with session_maker() as session:
             await seed_dev_users(session)
         yield
+        await qaa_generator_client.aclose()
         await engine.dispose()
 
     app = FastAPI(title="QAA-TMS Backend", lifespan=lifespan)

@@ -59,6 +59,10 @@ function createBootstrapTabsByPlugin(): TabsByPlugin {
       activeTabId: TabId.ADMIN_PLUGINS,
       tabIds: [TabId.ADMIN_PLUGINS],
     },
+    [PluginId.QAA_GENERATOR]: {
+      activeTabId: TabId.QAA_GENERATE,
+      tabIds: [TabId.QAA_GENERATE],
+    },
     [PluginId.STAGINGS]: {
       activeTabId: TabId.STAGINGS_PREFLIGHT,
       tabIds: [TabId.STAGINGS_PREFLIGHT],

@@ -1,5 +1,6 @@
 export const PluginId = {
   STAGINGS: "stagings",
+  QAA_GENERATOR: "qaa-generator",
   ADMIN: "admin",
 } as const;
 
@@ -14,6 +15,7 @@ export type PluginOrigin = (typeof PluginOrigin)[keyof typeof PluginOrigin];
 
 export const IconName = {
   ROCKET: "rocket",
+  SPARKLES: "sparkles",
   SETTINGS: "settings",
 } as const;
 
@@ -52,7 +54,13 @@ export const BackendPath = {
   ME_PLUGINS: "/api/v1/me/plugins",
   USERS: "/api/v1/users",
   OPERATIONS: "/api/v1/operations",
+  QAA_RUNS: "/api/v1/qaa/runs",
   REPLAY: "/replay",
+  PAUSE: "/pause",
+  RESUME: "/resume",
+  STOP: "/stop",
+  EVENTS_STREAM: "/events/stream",
+  ARTIFACTS: "/artifacts",
   HEALTH: "/health",
   READY: "/ready",
 } as const;
@@ -69,6 +77,30 @@ export function buildBackendOperationPath(operationId: string): string {
 
 export function buildBackendOperationReplayPath(operationId: string): string {
   return `${buildBackendOperationPath(operationId)}${BackendPath.REPLAY}`;
+}
+
+export function buildBackendQaaRunPath(runId: string): string {
+  return `${BackendPath.QAA_RUNS}/${encodeURIComponent(runId)}`;
+}
+
+export function buildBackendQaaRunPausePath(runId: string): string {
+  return `${buildBackendQaaRunPath(runId)}${BackendPath.PAUSE}`;
+}
+
+export function buildBackendQaaRunResumePath(runId: string): string {
+  return `${buildBackendQaaRunPath(runId)}${BackendPath.RESUME}`;
+}
+
+export function buildBackendQaaRunStopPath(runId: string): string {
+  return `${buildBackendQaaRunPath(runId)}${BackendPath.STOP}`;
+}
+
+export function buildBackendQaaRunStreamPath(runId: string): string {
+  return `${buildBackendQaaRunPath(runId)}${BackendPath.EVENTS_STREAM}`;
+}
+
+export function buildBackendQaaRunArtifactsPath(runId: string): string {
+  return `${buildBackendQaaRunPath(runId)}${BackendPath.ARTIFACTS}`;
 }
 
 export const AgentPath = {
@@ -185,6 +217,7 @@ export const OperationType = {
   ADOPT: "adopt",
   SYNC: "sync",
   SETUP: "setup",
+  QAA_GENERATE: "qaa_generate",
 } as const;
 
 export type OperationType = (typeof OperationType)[keyof typeof OperationType];
@@ -196,6 +229,7 @@ export const OperationTypeLabel: Record<OperationType, string> = {
   [OperationType.ADOPT]: "Adopt",
   [OperationType.SYNC]: "Sync",
   [OperationType.SETUP]: "Setup",
+  [OperationType.QAA_GENERATE]: "QAA generate",
 };
 
 export const OperationStatus = {
@@ -290,11 +324,13 @@ export type HttpHeader = (typeof HttpHeader)[keyof typeof HttpHeader];
 
 export const MediaType = {
   JSON: "application/json",
+  TEXT_EVENT_STREAM: "text/event-stream",
 } as const;
 
 export type MediaType = (typeof MediaType)[keyof typeof MediaType];
 
 export const HttpStatus = {
+  CONFLICT: 409,
   NO_CONTENT: 204,
 } as const;
 
@@ -307,6 +343,9 @@ export const ViewKey = {
   STAGINGS_NAMESPACES: "stagings-namespaces",
   STAGINGS_SYNC: "stagings-sync",
   STAGINGS_E2E: "stagings-e2e",
+  QAA_GENERATE: "qaa-generate",
+  QAA_LIVE: "qaa-live",
+  QAA_RUNS: "qaa-runs",
   ADMIN_PLUGINS: "admin-plugins",
   ADMIN_USERS: "admin-users",
 } as const;
@@ -320,6 +359,9 @@ export const TabId = {
   STAGINGS_NAMESPACES: "tab-stagings-namespaces",
   STAGINGS_SYNC: "tab-stagings-sync",
   STAGINGS_E2E: "tab-stagings-e2e",
+  QAA_GENERATE: "tab-qaa-generate",
+  QAA_LIVE: "tab-qaa-live",
+  QAA_RUNS: "tab-qaa-runs",
   ADMIN_PLUGINS: "tab-admin-plugins",
   ADMIN_USERS: "tab-admin-users",
 } as const;
@@ -333,6 +375,9 @@ export const TabTitle: Record<TabId, string> = {
   [TabId.STAGINGS_NAMESPACES]: "Namespaces",
   [TabId.STAGINGS_SYNC]: "Sync",
   [TabId.STAGINGS_E2E]: "E2E",
+  [TabId.QAA_GENERATE]: "Generate",
+  [TabId.QAA_LIVE]: "Live",
+  [TabId.QAA_RUNS]: "Runs",
   [TabId.ADMIN_PLUGINS]: "Plugins",
   [TabId.ADMIN_USERS]: "Users",
 };
@@ -349,6 +394,9 @@ export const QueryKey = {
   OPERATIONS: "operations",
   OPERATION_DETAIL: "operation-detail",
   OPERATION_REPLAY: "operation-replay",
+  QAA_RUNS: "qaa-runs",
+  QAA_RUN_DETAIL: "qaa-run-detail",
+  QAA_RUN_ARTIFACTS: "qaa-run-artifacts",
 } as const;
 
 export type QueryKey = (typeof QueryKey)[keyof typeof QueryKey];
@@ -361,7 +409,57 @@ export const AGENT_REQUEST_HEADER = "X-QAA-TMS" as const;
 export const AGENT_REQUEST_HEADER_VALUE = "1" as const;
 export const AUTH_SCHEME_BEARER = "Bearer" as const;
 export const DEFAULT_OPERATIONS_PAGE_SIZE = 20 as const;
+export const DEFAULT_QAA_RUNS_PAGE_SIZE = 20 as const;
 export const DEFAULT_JOB_POLL_INTERVAL_MS = 2000 as const;
 export const DEFAULT_IMAGE_TAG = "latest" as const;
 export const MIN_DEPLOY_STAGE = 0 as const;
 export const MAX_DEPLOY_STAGE = 7 as const;
+
+export const QaaRunStatus = {
+  QUEUED: "queued",
+  RUNNING: "running",
+  PAUSED: "paused",
+  COMPLETED: "completed",
+  FAILED: "failed",
+  STOPPED: "stopped",
+} as const;
+
+export type QaaRunStatus = (typeof QaaRunStatus)[keyof typeof QaaRunStatus];
+
+export const QaaRunStatusLabel: Record<QaaRunStatus, string> = {
+  [QaaRunStatus.QUEUED]: "Queued",
+  [QaaRunStatus.RUNNING]: "Running",
+  [QaaRunStatus.PAUSED]: "Paused",
+  [QaaRunStatus.COMPLETED]: "Completed",
+  [QaaRunStatus.FAILED]: "Failed",
+  [QaaRunStatus.STOPPED]: "Stopped",
+};
+
+export const QaaRunStatusColor: Record<QaaRunStatus, string> = {
+  [QaaRunStatus.QUEUED]: "gray",
+  [QaaRunStatus.RUNNING]: "blue",
+  [QaaRunStatus.PAUSED]: "yellow",
+  [QaaRunStatus.COMPLETED]: "teal",
+  [QaaRunStatus.FAILED]: "red",
+  [QaaRunStatus.STOPPED]: "orange",
+};
+
+export const TERMINAL_QAA_RUN_STATUSES = new Set<QaaRunStatus>([
+  QaaRunStatus.COMPLETED,
+  QaaRunStatus.FAILED,
+  QaaRunStatus.STOPPED,
+]);
+
+export const QaaRunProfile = {
+  BALANCED: "balanced",
+  CODEX_ONLY: "codex-only",
+  CLAUDE_ONLY: "claude-only",
+} as const;
+
+export type QaaRunProfile = (typeof QaaRunProfile)[keyof typeof QaaRunProfile];
+
+export const QaaRunProfileLabel: Record<QaaRunProfile, string> = {
+  [QaaRunProfile.BALANCED]: "Balanced",
+  [QaaRunProfile.CODEX_ONLY]: "Codex only",
+  [QaaRunProfile.CLAUDE_ONLY]: "Claude only",
+};

@@ -1,0 +1,181 @@
+import { useEffect, useRef } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { backendClient } from "@/api/backendClient";
+import { useAuthStore } from "@/store/authStore";
+import { useQaaGeneratorStore } from "@/plugins/qaa-generator/qaaStore";
+import { isTerminalQaaRunStatus } from "@/plugins/qaa-generator/runState";
+import { DEFAULT_JOB_POLL_INTERVAL_MS, QueryKey } from "@/constants";
+
+const QAA_LIVE_COPY = {
+  RUN_REQUIRED: "A QAA run is required.",
+  STREAM_FAILED: "Live QAA run stream failed.",
+} as const;
+
+function invalidateQaaRunQueries(queryClient: ReturnType<typeof useQueryClient>): Promise<unknown> {
+  return queryClient.invalidateQueries({
+    queryKey: [QueryKey.QAA_RUNS],
+  });
+}
+
+export function useQaaRunLive() {
+  const queryClient = useQueryClient();
+  const token = useAuthStore((state) => state.token);
+  const clearLiveRun = useQaaGeneratorStore((state) => state.clearLiveRun);
+  const liveRun = useQaaGeneratorStore((state) => state.liveRun);
+  const reduceLiveRun = useQaaGeneratorStore((state) => state.reduceLiveRun);
+  const startRun = useQaaGeneratorStore((state) => state.startRun);
+  const streamAbortControllerRef = useRef<AbortController | null>(null);
+  const logViewportRef = useRef<HTMLDivElement | null>(null);
+  const currentRunStatus = liveRun?.run?.status;
+  const isRunTerminal = currentRunStatus ? isTerminalQaaRunStatus(currentRunStatus) : false;
+
+  const runQuery = useQuery({
+    enabled: Boolean(token && liveRun?.runId),
+    queryFn: ({ signal }) => backendClient.getQaaRun(token ?? "", liveRun?.runId ?? "", signal),
+    queryKey: [QueryKey.QAA_RUN_DETAIL, token, liveRun?.runId],
+    refetchInterval: (query) => {
+      const nextStatus = query.state.data?.status ?? liveRun?.run?.status;
+      return nextStatus && isTerminalQaaRunStatus(nextStatus)
+        ? false
+        : DEFAULT_JOB_POLL_INTERVAL_MS;
+    },
+  });
+
+  useEffect(() => {
+    if (!runQuery.data) {
+      return;
+    }
+
+    reduceLiveRun({
+      run: runQuery.data,
+      type: "hydrate-run",
+    });
+
+    if (isTerminalQaaRunStatus(runQuery.data.status)) {
+      void invalidateQaaRunQueries(queryClient);
+    }
+  }, [queryClient, reduceLiveRun, runQuery.data]);
+
+  useEffect(() => {
+    const runId = liveRun?.runId;
+    if (!token || !runId || isRunTerminal) {
+      return;
+    }
+
+    const controller = new AbortController();
+    streamAbortControllerRef.current?.abort();
+    streamAbortControllerRef.current = controller;
+
+    void backendClient
+      .streamQaaRun(
+        token,
+        runId,
+        (event) => {
+          reduceLiveRun({
+            event,
+            type: "append-event",
+          });
+          reduceLiveRun({
+            type: "clear-stream-error",
+          });
+        },
+        controller.signal
+      )
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        reduceLiveRun({
+          message: error instanceof Error ? error.message : QAA_LIVE_COPY.STREAM_FAILED,
+          type: "set-stream-error",
+        });
+      });
+
+    return () => {
+      controller.abort();
+      if (streamAbortControllerRef.current === controller) {
+        streamAbortControllerRef.current = null;
+      }
+    };
+  }, [isRunTerminal, liveRun?.runId, queryClient, reduceLiveRun, token]);
+
+  useEffect(() => {
+    if (liveRun && isRunTerminal) {
+      streamAbortControllerRef.current?.abort();
+    }
+  }, [isRunTerminal, liveRun]);
+
+  useEffect(() => {
+    if (logViewportRef.current) {
+      logViewportRef.current.scrollTop = logViewportRef.current.scrollHeight;
+    }
+  }, [liveRun?.events.length]);
+
+  useEffect(() => {
+    return () => {
+      streamAbortControllerRef.current?.abort();
+    };
+  }, []);
+
+  const pauseMutation = useMutation({
+    mutationFn: async () => {
+      if (!token || !liveRun) {
+        throw new Error(QAA_LIVE_COPY.RUN_REQUIRED);
+      }
+
+      return backendClient.pauseQaaRun(token, liveRun.runId);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: [QueryKey.QAA_RUN_DETAIL, token, liveRun?.runId],
+      });
+      await invalidateQaaRunQueries(queryClient);
+    },
+  });
+
+  const resumeMutation = useMutation({
+    mutationFn: async () => {
+      if (!token || !liveRun) {
+        throw new Error(QAA_LIVE_COPY.RUN_REQUIRED);
+      }
+
+      return backendClient.resumeQaaRun(token, liveRun.runId);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: [QueryKey.QAA_RUN_DETAIL, token, liveRun?.runId],
+      });
+      await invalidateQaaRunQueries(queryClient);
+    },
+  });
+
+  const stopMutation = useMutation({
+    mutationFn: async () => {
+      if (!token || !liveRun) {
+        throw new Error(QAA_LIVE_COPY.RUN_REQUIRED);
+      }
+
+      return backendClient.stopQaaRun(token, liveRun.runId);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: [QueryKey.QAA_RUN_DETAIL, token, liveRun?.runId],
+      });
+      await invalidateQaaRunQueries(queryClient);
+    },
+  });
+
+  return {
+    clearLiveRun,
+    isRunTerminal,
+    liveRun,
+    logViewportRef,
+    pauseMutation,
+    resumeMutation,
+    runQuery,
+    startRun,
+    stopMutation,
+  };
+}

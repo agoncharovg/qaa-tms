@@ -37,14 +37,19 @@ function createPluginManifest(overrides: Partial<PluginManifest>): PluginManifes
 
 describe("plugin discovery", () => {
   it("discovers the shipped plugins in deterministic manifest order", () => {
-    expect(PLUGINS.map((plugin) => plugin.id)).toEqual([PluginId.STAGINGS, PluginId.ADMIN]);
+    expect(PLUGINS.map((plugin) => plugin.id)).toEqual([
+      PluginId.STAGINGS,
+      PluginId.QAA_GENERATOR,
+      PluginId.ADMIN,
+    ]);
     expect(new Set(PLUGINS.map((plugin) => plugin.id)).size).toBe(PLUGINS.length);
     expect(new Set(PLUGINS.map((plugin) => plugin.route)).size).toBe(PLUGINS.length);
 
     const viewKeys = PLUGINS.flatMap((plugin) => plugin.tabs.map((tab) => tab.viewKey));
     expect(new Set(viewKeys).size).toBe(viewKeys.length);
     expect(PLUGINS[0]?.requiresAgent).toBe(true);
-    expect(PLUGINS[1]?.kind).toBe(PluginKind.SYSTEM);
+    expect(PLUGINS[1]?.requiresAgent).toBe(false);
+    expect(PLUGINS[2]?.kind).toBe(PluginKind.SYSTEM);
   });
 
   it("rejects duplicate plugin ids", () => {

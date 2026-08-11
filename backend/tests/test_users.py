@@ -6,6 +6,8 @@ from fastapi.testclient import TestClient
 
 from app.core.constants import DevPassword, DevUsername, OperationStatus, OperationType, PluginId
 
+DEFAULT_OPTIONAL_PLUGIN_IDS = [PluginId.STAGINGS.value, PluginId.QAA_GENERATOR.value]
+
 
 def login(client: TestClient, username: str, password: str) -> tuple[str, dict[str, Any]]:
     response = client.post(
@@ -216,9 +218,9 @@ def test_me_returns_enabled_plugins_default_for_seeded_user_and_me_plugins_is_se
     plugins_response = client.get("/api/v1/me/plugins", headers=auth_header(token))
 
     assert me_response.status_code == 200
-    assert me_response.json()["enabled_plugins"] == [PluginId.STAGINGS.value]
+    assert me_response.json()["enabled_plugins"] == DEFAULT_OPTIONAL_PLUGIN_IDS
     assert plugins_response.status_code == 200
-    assert plugins_response.json() == {"enabled_plugins": [PluginId.STAGINGS.value]}
+    assert plugins_response.json() == {"enabled_plugins": DEFAULT_OPTIONAL_PLUGIN_IDS}
 
 
 def test_put_me_plugins_round_trips_and_updates_me(client: TestClient) -> None:
@@ -265,7 +267,7 @@ def test_put_me_plugins_rejects_unknown_and_system_ids_without_mutating_row(
     assert unknown_response.status_code == 422
     assert system_response.status_code == 422
     assert me_response.status_code == 200
-    assert me_response.json()["enabled_plugins"] == [PluginId.STAGINGS.value]
+    assert me_response.json()["enabled_plugins"] == DEFAULT_OPTIONAL_PLUGIN_IDS
 
 
 def test_guardrails_block_self_delete_and_self_demote(client: TestClient) -> None:

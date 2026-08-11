@@ -1,7 +1,8 @@
 # QAA-TMS Backend
 
 The backend is a FastAPI service with async SQLAlchemy, Alembic migrations, JWT stub auth,
-an audit log for agent operations, and per-user plugin enablement for the frontend shell.
+an audit log for agent operations, a qaa-generator proxy for central test-generation runs,
+and per-user plugin enablement for the frontend shell.
 
 `POST /api/v1/operations` supports create-or-update semantics. If the client sends an `id`,
 the backend upserts that operation for the authenticated user. If `id` is omitted, the backend
@@ -12,6 +13,7 @@ creates a new record and returns the generated UUID.
 Plugin ids are backend-local enums in `app/core/constants.py`:
 
 - optional: `stagings`
+- optional: `qaa-generator`
 - system: `admin`
 
 `users.enabled_plugins` is a nullable JSON column added by Alembic revision
@@ -37,6 +39,18 @@ The frontend bootstraps from `GET /api/v1/me`, which now always returns a resolv
 - `GET /api/v1/users/{id}`: admin-only user detail.
 - `PATCH /api/v1/users/{id}`: admin-only partial update for `display_name`, `is_admin`, `auto_login`, and `password`. `username` is immutable.
 - `DELETE /api/v1/users/{id}`: admin-only hard delete with guardrails for self-delete, last-admin removal, and users who already own recorded operations.
+- `POST /api/v1/qaa/runs`: create a qaa-generator run through the backend proxy. The backend adds the service-token `Authorization` header, derives the optional `Actor` header (`email:<username>` when the username contains `@`, otherwise `QAA_GENERATOR_ACTOR`), and records a `qaa_generate` audit operation for the authenticated user.
+- `GET /api/v1/qaa/runs`: list centrally shared qaa-generator runs with cursor pagination and filters.
+- `GET /api/v1/qaa/runs/{run_id}`: fetch one run and opportunistically reconcile the stored audit row to a terminal status when qaa-generator reports one.
+- `POST /api/v1/qaa/runs/{run_id}/pause|resume|stop`: forward run-control actions.
+- `GET /api/v1/qaa/runs/{run_id}/events/stream`: SSE passthrough from qaa-generator to the authenticated SPA client.
+- `GET /api/v1/qaa/runs/{run_id}/artifacts`: read the run artifact metadata and generated report text.
+
+## QAA generator proxy settings
+
+- `QAA_GENERATOR_BASE_URL`: base URL for the upstream service. Default: `http://qaa-generator.default.svc.cluster.local:8080/api/v1`
+- `QAA_GENERATOR_SERVICE_TOKEN`: bearer token the backend sends to qaa-generator. This value never reaches the browser.
+- `QAA_GENERATOR_ACTOR`: fallback `Actor` header value for non-email usernames such as the seeded `test` / `admin` accounts. Leave empty to omit the header in that case.
 
 ## Local run
 
