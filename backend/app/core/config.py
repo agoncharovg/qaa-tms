@@ -12,6 +12,11 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from app.core.constants import (
     DEFAULT_QAA_GENERATOR_ACTOR,
     DEFAULT_QAA_GENERATOR_BASE_URL,
+    DEFAULT_QAA_GENERATOR_PORT_FORWARD_ENABLED,
+    DEFAULT_QAA_GENERATOR_PORT_FORWARD_LOCAL_PORT,
+    DEFAULT_QAA_GENERATOR_PORT_FORWARD_NAMESPACE,
+    DEFAULT_QAA_GENERATOR_PORT_FORWARD_REMOTE_PORT,
+    DEFAULT_QAA_GENERATOR_PORT_FORWARD_RESOURCE,
     DEFAULT_QAA_GENERATOR_SERVICE_TOKEN,
     DEFAULT_QAA_GENERATOR_SUPERUSER_TOKEN,
     EnvFile,
@@ -54,6 +59,26 @@ class Settings(BaseSettings):
     qaa_generator_actor: str = Field(
         default=DEFAULT_QAA_GENERATOR_ACTOR,
         alias=EnvKey.QAA_GENERATOR_ACTOR.value,
+    )
+    qaa_generator_port_forward_enabled: bool = Field(
+        default=DEFAULT_QAA_GENERATOR_PORT_FORWARD_ENABLED,
+        alias=EnvKey.QAA_GENERATOR_PORT_FORWARD_ENABLED.value,
+    )
+    qaa_generator_port_forward_namespace: str = Field(
+        default=DEFAULT_QAA_GENERATOR_PORT_FORWARD_NAMESPACE,
+        alias=EnvKey.QAA_GENERATOR_PORT_FORWARD_NAMESPACE.value,
+    )
+    qaa_generator_port_forward_resource: str = Field(
+        default=DEFAULT_QAA_GENERATOR_PORT_FORWARD_RESOURCE,
+        alias=EnvKey.QAA_GENERATOR_PORT_FORWARD_RESOURCE.value,
+    )
+    qaa_generator_port_forward_local_port: int = Field(
+        default=DEFAULT_QAA_GENERATOR_PORT_FORWARD_LOCAL_PORT,
+        alias=EnvKey.QAA_GENERATOR_PORT_FORWARD_LOCAL_PORT.value,
+    )
+    qaa_generator_port_forward_remote_port: int = Field(
+        default=DEFAULT_QAA_GENERATOR_PORT_FORWARD_REMOTE_PORT,
+        alias=EnvKey.QAA_GENERATOR_PORT_FORWARD_REMOTE_PORT.value,
     )
 
     @field_validator("cors_origins", mode="before")

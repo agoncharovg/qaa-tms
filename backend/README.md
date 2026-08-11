@@ -49,6 +49,11 @@ The frontend bootstraps from `GET /api/v1/me`, which now always returns a resolv
 ## QAA generator proxy settings
 
 - `QAA_GENERATOR_BASE_URL`: base URL for the upstream service. Default: `http://qaa-generator.default.svc.cluster.local:8080/api/v1`
+- `QAA_GENERATOR_PORT_FORWARD_ENABLED`: when `true`, ignore the configured upstream URL locally and talk to qaa-generator through `kubectl port-forward`. Default: `false`
+- `QAA_GENERATOR_PORT_FORWARD_NAMESPACE`: Kubernetes namespace for the local port-forward workaround. Default: `qaa-prod`
+- `QAA_GENERATOR_PORT_FORWARD_RESOURCE`: Kubernetes service resource for the local port-forward workaround. Default: `svc/qaa-generator`
+- `QAA_GENERATOR_PORT_FORWARD_LOCAL_PORT`: local port for the workaround tunnel. Default: `18080`
+- `QAA_GENERATOR_PORT_FORWARD_REMOTE_PORT`: remote service port for the workaround tunnel. Default: `8080`
 - `QAA_GENERATOR_SERVICE_TOKEN`: bearer token the backend sends to qaa-generator. This value never reaches the browser.
 - `QAA_GENERATOR_ACTOR`: fallback `Actor` header value for non-email usernames such as the seeded `test` / `admin` accounts. Leave empty to omit the header in that case.
 
@@ -75,6 +80,8 @@ alembic upgrade head
 ```bash
 uvicorn app.main:app --reload
 ```
+
+If qaa-generator has no ingress yet, enable `QAA_GENERATOR_PORT_FORWARD_ENABLED=true` and keep `kubectl` authenticated; the backend will tunnel `svc/qaa-generator` locally and keep the public API shape unchanged.
 
 The startup sequence seeds the `test` and `admin` users if they do not exist yet.
 
