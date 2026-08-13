@@ -15,7 +15,7 @@ import { viewRegistry } from "@/plugins/registry";
 import { useAuthStore } from "@/store/authStore";
 
 interface WorkspaceContentProps {
-  activePlugin: PluginManifest;
+  activePlugin: PluginManifest | null;
   tab: WorkspaceTabDefinition | null;
 }
 
@@ -72,7 +72,6 @@ function PluginTabView({ plugin, tab }: { plugin: PluginManifest; tab: Workspace
       return null;
 
     case PluginOrigin.LOCAL:
-      // TODO(discuss/06 §5-6): replace this guard with the local iframe transport slice.
       return (
         <Alert icon={<IconInfoCircle size={16} />} title={PluginTabRenderCopy.NO_LOCAL_PLUGIN_TITLE}>
           <Text>{PluginTabRenderCopy.NO_LOCAL_PLUGIN_BODY}</Text>
@@ -88,12 +87,12 @@ function PluginTabView({ plugin, tab }: { plugin: PluginManifest; tab: Workspace
 export function WorkspaceContent({ activePlugin, tab }: WorkspaceContentProps) {
   const currentUser = useAuthStore((state) => state.currentUser);
 
-  if (!tab) {
+  if (!tab || !activePlugin) {
     return (
       <Stack gap="sm" h="100%" justify="center">
         <Title order={3}>No workspace tab is open</Title>
         <Text c="dimmed">
-          Open a tab from the sidebar tree or the top bar to start working inside the {activePlugin.label} plugin.
+          Select a menu item from the sidebar to open it in the workspace.
         </Text>
       </Stack>
     );

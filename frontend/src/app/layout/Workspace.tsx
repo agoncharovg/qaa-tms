@@ -3,22 +3,18 @@ import { AppShell, Paper } from "@mantine/core";
 import { WorkspaceContent } from "@/components/WorkspaceContent";
 import { type PluginId as PluginIdType } from "@/constants";
 import { pluginById } from "@/plugins/registry";
-import { getTabsForPlugin, useUiStore } from "@/store/uiStore";
+import { getOpenWorkspaceTabs, useUiStore } from "@/store/uiStore";
 
 interface WorkspaceProps {
-  activePluginId: PluginIdType;
+  activePluginId?: PluginIdType;
 }
 
-export function Workspace({ activePluginId }: WorkspaceProps) {
-  const tabsByPlugin = useUiStore((state) => state.tabsByPlugin);
-  const activePlugin = pluginById(activePluginId);
-  const activeTabId = tabsByPlugin[activePluginId].activeTabId;
+export function Workspace(_: WorkspaceProps) {
+  const activeWorkspaceTabId = useUiStore((state) => state.activeWorkspaceTabId);
+  const workspaceTabIds = useUiStore((state) => state.workspaceTabIds);
   const activeTab =
-    getTabsForPlugin(activePluginId, tabsByPlugin).find((tab) => tab.id === activeTabId) ?? null;
-
-  if (!activePlugin) {
-    return null;
-  }
+    getOpenWorkspaceTabs(workspaceTabIds).find((tab) => tab.id === activeWorkspaceTabId) ?? null;
+  const activePlugin = pluginById(activeTab?.pluginId);
 
   return (
     <AppShell.Main>
@@ -33,7 +29,7 @@ export function Workspace({ activePluginId }: WorkspaceProps) {
           overflow: "auto",
         }}
       >
-        <WorkspaceContent activePlugin={activePlugin} tab={activeTab} />
+        <WorkspaceContent activePlugin={activePlugin ?? null} tab={activeTab} />
       </Paper>
     </AppShell.Main>
   );

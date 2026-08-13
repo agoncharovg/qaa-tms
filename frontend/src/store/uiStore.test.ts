@@ -7,6 +7,7 @@ import {
   openTabInPluginState,
   readStoredSidebarCollapsed,
   readStoredTabsByPlugin,
+  readStoredWorkspaceTabsState,
   resetUiStoreState,
   switchTabInPluginState,
   useUiStore,
@@ -33,65 +34,75 @@ describe("uiStore", () => {
       TabId.STAGINGS_NAMESPACES
     );
 
-    expect(openedState.tabIds).toEqual([TabId.STAGINGS_PREFLIGHT, TabId.STAGINGS_NAMESPACES]);
+    expect(openedState.tabIds).toEqual([TabId.STAGINGS_NAMESPACES]);
     expect(openedState.activeTabId).toBe(TabId.STAGINGS_NAMESPACES);
 
-    const switchedState = switchTabInPluginState(openedState, TabId.STAGINGS_PREFLIGHT);
+    const reopenedState = openTabInPluginState(openedState, TabId.STAGINGS_PREFLIGHT);
+    const switchedState = switchTabInPluginState(reopenedState, TabId.STAGINGS_NAMESPACES);
 
-    expect(switchedState.activeTabId).toBe(TabId.STAGINGS_PREFLIGHT);
+    expect(switchedState.activeTabId).toBe(TabId.STAGINGS_NAMESPACES);
 
-    const closedState = closeTabInPluginState(switchedState, TabId.STAGINGS_PREFLIGHT);
+    const closedState = closeTabInPluginState(switchedState, TabId.STAGINGS_NAMESPACES);
 
-    expect(closedState.tabIds).toEqual([TabId.STAGINGS_NAMESPACES]);
-    expect(closedState.activeTabId).toBe(TabId.STAGINGS_NAMESPACES);
+    expect(closedState.tabIds).toEqual([TabId.STAGINGS_PREFLIGHT]);
+    expect(closedState.activeTabId).toBe(TabId.STAGINGS_PREFLIGHT);
   });
 
-  it("restores the default tab when a visible plugin was persisted with no open tabs", () => {
-    localStorage.setItem(
-      StorageKey.TABS,
-      JSON.stringify({
-        [PluginId.ADMIN]: {
-          activeTabId: TabId.ADMIN_PLUGINS,
-          tabIds: [TabId.ADMIN_PLUGINS],
-        },
-        [PluginId.STAGINGS]: {
-          activeTabId: null,
-          tabIds: [],
-        },
-      })
+  it("tracks workspace tabs across plugins independently of the active sidebar plugin", () => {
+    useUiStore.getState().openTab(PluginId.ADMIN, TabId.ADMIN_PLUGINS);
+    useUiStore.getState().openTab(PluginId.STAGINGS, TabId.STAGINGS_HISTORY);
+
+    expect(useUiStore.getState().workspaceTabIds).toEqual([
+      TabId.ADMIN_PLUGINS,
+      TabId.STAGINGS_HISTORY,
+    ]);
+    expect(useUiStore.getState().activeWorkspaceTabId).toBe(TabId.STAGINGS_HISTORY);
+
+    useUiStore.getState().switchTab(PluginId.ADMIN, TabId.ADMIN_PLUGINS);
+
+    expect(useUiStore.getState().activeWorkspaceTabId).toBe(TabId.ADMIN_PLUGINS);
+    expect(useUiStore.getState().tabsByPlugin[PluginId.ADMIN].activeTabId).toBe(TabId.ADMIN_PLUGINS);
+    expect(useUiStore.getState().tabsByPlugin[PluginId.STAGINGS].activeTabId).toBe(
+      TabId.STAGINGS_HISTORY
     );
-
-    const sanitized = readStoredTabsByPlugin({
-      enabled_plugins: [PluginId.STAGINGS],
-      is_admin: false,
-    });
-
-    expect(sanitized[PluginId.STAGINGS]).toEqual({
-      activeTabId: TabId.STAGINGS_PREFLIGHT,
-      tabIds: [TabId.STAGINGS_PREFLIGHT],
-    });
   });
 
   it("drops tabs from disabled plugins and admin-only tabs for non-admin users", () => {
     localStorage.setItem(
       StorageKey.TABS,
       JSON.stringify({
-        [PluginId.ADMIN]: {
-          activeTabId: TabId.ADMIN_USERS,
-          tabIds: [TabId.ADMIN_USERS],
+        activeWorkspaceTabId: TabId.QAA_GENERATE,
+        tabsByPlugin: {
+          [PluginId.ADMIN]: {
+            activeTabId: TabId.ADMIN_USERS,
+            tabIds: [TabId.ADMIN_USERS],
+          },
+          [PluginId.JENKINS]: {
+            activeTabId: null,
+            tabIds: [],
+          },
+          [PluginId.KUBER]: {
+            activeTabId: null,
+            tabIds: [],
+          },
+          [PluginId.QAA_GENERATOR]: {
+            activeTabId: TabId.QAA_ADMIN,
+            tabIds: [TabId.QAA_GENERATE, TabId.QAA_ADMIN],
+          },
+          [PluginId.STAGINGS]: {
+            activeTabId: TabId.STAGINGS_HISTORY,
+            tabIds: [TabId.STAGINGS_HISTORY],
+          },
         },
-        [PluginId.QAA_GENERATOR]: {
-          activeTabId: TabId.QAA_ADMIN,
-          tabIds: [TabId.QAA_GENERATE, TabId.QAA_ADMIN],
-        },
-        [PluginId.STAGINGS]: {
-          activeTabId: TabId.STAGINGS_HISTORY,
-          tabIds: [TabId.STAGINGS_HISTORY],
-        },
+        workspaceTabIds: [TabId.ADMIN_USERS, TabId.QAA_GENERATE, TabId.STAGINGS_HISTORY],
       })
     );
 
     const sanitized = readStoredTabsByPlugin({
+      enabled_plugins: [PluginId.QAA_GENERATOR],
+      is_admin: false,
+    });
+    const workspace = readStoredWorkspaceTabsState({
       enabled_plugins: [PluginId.QAA_GENERATOR],
       is_admin: false,
     });
@@ -105,8 +116,12 @@ describe("uiStore", () => {
       tabIds: [TabId.QAA_GENERATE],
     });
     expect(sanitized[PluginId.ADMIN]).toEqual({
-      activeTabId: TabId.ADMIN_PLUGINS,
-      tabIds: [TabId.ADMIN_PLUGINS],
+      activeTabId: null,
+      tabIds: [],
+    });
+    expect(workspace).toEqual({
+      activeWorkspaceTabId: TabId.QAA_GENERATE,
+      workspaceTabIds: [TabId.QAA_GENERATE],
     });
   });
 });

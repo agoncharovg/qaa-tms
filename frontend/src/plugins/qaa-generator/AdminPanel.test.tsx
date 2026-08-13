@@ -16,7 +16,7 @@ vi.mock("@/api/backendClient", () => ({
   backendClient: backendClientMock,
 }));
 
-import { TabBar } from "@/app/layout/TabBar";
+import { Sidebar } from "@/app/layout/Sidebar";
 import { PluginId, TabId } from "@/constants";
 import { AdminPanel } from "@/plugins/qaa-generator/AdminPanel";
 import qaaGeneratorPlugin from "@/plugins/qaa-generator/manifest";
@@ -66,12 +66,12 @@ const qaaUserListResponse: QaaUserListResponse = {
   next_cursor: null,
 };
 
-function renderQaaTabBar() {
+function renderQaaSidebar() {
   return renderWithProviders(
     <MantineProvider forceColorScheme="dark">
       <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
         <AppShell header={{ height: 76 }} navbar={{ breakpoint: "sm", width: 280 }}>
-          <TabBar activePluginId={PluginId.QAA_GENERATOR} />
+          <Sidebar activePluginId={PluginId.QAA_GENERATOR} />
         </AppShell>
       </MemoryRouter>
     </MantineProvider>
@@ -94,7 +94,7 @@ describe("QAA Generator AdminPanel", () => {
     backendClientMock.listQaaUsers.mockResolvedValue(qaaUserListResponse);
   });
 
-  it("keeps the admin tab last and visible to admins in the qaa tab menu", async () => {
+  it("keeps the admin tab last and visible to admins in the sidebar tree", async () => {
     const user = userEvent.setup();
 
     expect(qaaGeneratorPlugin.tabs.at(-1)?.id).toBe(TabId.QAA_ADMIN);
@@ -109,9 +109,9 @@ describe("QAA Generator AdminPanel", () => {
       is_admin: true,
     });
 
-    renderQaaTabBar();
+    renderQaaSidebar();
 
-    await user.click(screen.getByRole("button", { name: "Open tab" }));
+    await user.click(screen.getByRole("button", { name: "QAA Generator" }));
 
     expect(await screen.findByText("Admin")).toBeInTheDocument();
   });
@@ -227,9 +227,9 @@ describe("QAA Generator AdminPanel", () => {
       is_admin: false,
     });
 
-    renderQaaTabBar();
+    renderQaaSidebar();
 
-    await user.click(screen.getByRole("button", { name: "Open tab" }));
+    await user.click(screen.getByRole("button", { name: "QAA Generator" }));
 
     expect(screen.queryByText("Admin")).not.toBeInTheDocument();
 

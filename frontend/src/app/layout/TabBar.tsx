@@ -1,22 +1,21 @@
 import {
   ActionIcon,
   AppShell,
-  Button,
   Group,
-  Menu,
   ScrollArea,
   Tabs,
   Text,
 } from "@mantine/core";
-import { IconPlus, IconX } from "@tabler/icons-react";
+import { IconX } from "@tabler/icons-react";
+import { useNavigate } from "react-router-dom";
 
 import { type PluginId as PluginIdType, type TabId as TabIdType } from "@/constants";
-import { pluginById, visibleTabs } from "@/plugins/registry";
+import { pluginById } from "@/plugins/registry";
 import { useAuthStore } from "@/store/authStore";
-import { getTabsForPlugin, TAB_DEFINITIONS, useUiStore } from "@/store/uiStore";
+import { getOpenWorkspaceTabs, useUiStore } from "@/store/uiStore";
 
 interface TabBarProps {
-  activePluginId: PluginIdType;
+  activePluginId?: PluginIdType;
 }
 
 function TabLabel({
@@ -54,24 +53,24 @@ function TabLabel({
   );
 }
 
-export function TabBar({ activePluginId }: TabBarProps) {
+export function TabBar(_: TabBarProps) {
+  const navigate = useNavigate();
   const currentUser = useAuthStore((state) => state.currentUser);
+  const activeWorkspaceTabId = useUiStore((state) => state.activeWorkspaceTabId);
   const closeTab = useUiStore((state) => state.closeTab);
-  const openTab = useUiStore((state) => state.openTab);
   const switchTab = useUiStore((state) => state.switchTab);
-  const tabsByPlugin = useUiStore((state) => state.tabsByPlugin);
+  const workspaceTabIds = useUiStore((state) => state.workspaceTabIds);
 
-  const activePlugin = pluginById(activePluginId);
-  if (!activePlugin) {
-    return null;
-  }
+  const openTabs = getOpenWorkspaceTabs(workspaceTabIds).filter((tab) => {
+    const plugin = pluginById(tab.pluginId);
+    if (!plugin) {
+      return false;
+    }
 
-  const currentPluginState = tabsByPlugin[activePluginId];
-  const openTabs = getTabsForPlugin(activePluginId, tabsByPlugin).filter((tab) =>
-    visibleTabs(activePlugin, currentUser).some((visibleTab) => visibleTab.id === tab.id)
-  );
-  const availableTabIds = visibleTabs(activePlugin, currentUser).map((tab) => tab.id);
-  const closedTabIds = availableTabIds.filter((tabId) => !currentPluginState.tabIds.includes(tabId));
+    return plugin.tabs.some(
+      (pluginTab) => pluginTab.id === tab.id && (!pluginTab.adminOnly || Boolean(currentUser?.is_admin))
+    );
+  });
 
   return (
     <AppShell.Header px="md" py="sm">
@@ -80,8 +79,19 @@ export function TabBar({ activePluginId }: TabBarProps) {
           {openTabs.length > 0 ? (
             <Tabs
               onChange={(value) => {
-                if (value) {
-                  switchTab(activePluginId, value as TabIdType);
+                if (!value) {
+                  return;
+                }
+
+                const nextTab = openTabs.find((tab) => tab.id === value);
+                if (!nextTab) {
+                  return;
+                }
+
+                switchTab(nextTab.pluginId, value as TabIdType);
+                const plugin = pluginById(nextTab.pluginId);
+                if (plugin) {
+                  navigate(plugin.route);
                 }
               }}
               styles={{
@@ -96,7 +106,7 @@ export function TabBar({ activePluginId }: TabBarProps) {
                   paddingTop: "10px",
                 },
               }}
-              value={currentPluginState.activeTabId}
+              value={activeWorkspaceTabId}
               variant="unstyled"
             >
               <Tabs.List>
@@ -104,7 +114,21 @@ export function TabBar({ activePluginId }: TabBarProps) {
                   <Tabs.Tab key={tab.id} value={tab.id}>
                     <TabLabel
                       isCloseable={tab.closeable}
-                      onClose={() => closeTab(activePluginId, tab.id)}
+                      onClose={() => {
+                        closeTab(tab.pluginId, tab.id);
+                        const nextActiveTabId = useUiStore.getState().activeWorkspaceTabId;
+                        if (!nextActiveTabId) {
+                          return;
+                        }
+
+                        const nextTab = getOpenWorkspaceTabs(useUiStore.getState().workspaceTabIds).find(
+                          (candidate) => candidate.id === nextActiveTabId
+                        );
+                        const plugin = pluginById(nextTab?.pluginId);
+                        if (plugin) {
+                          navigate(plugin.route);
+                        }
+                      }}
                       title={tab.title}
                     />
                   </Tabs.Tab>
@@ -113,30 +137,10 @@ export function TabBar({ activePluginId }: TabBarProps) {
             </Tabs>
           ) : (
             <Text c="dimmed" size="sm">
-              No tabs open in {activePlugin.label}.
+              No workspace tabs are open. Select a menu item from the sidebar.
             </Text>
           )}
         </ScrollArea>
-
-        <Menu position="bottom-end" shadow="md" width={220}>
-          <Menu.Target>
-            <Button leftSection={<IconPlus size={16} />} variant="light">
-              Open tab
-            </Button>
-          </Menu.Target>
-
-          <Menu.Dropdown>
-            {closedTabIds.length > 0 ? (
-              closedTabIds.map((tabId) => (
-                <Menu.Item key={tabId} onClick={() => openTab(activePluginId, tabId)}>
-                  {TAB_DEFINITIONS[tabId].title}
-                </Menu.Item>
-              ))
-            ) : (
-              <Menu.Item disabled>All tabs are already open</Menu.Item>
-            )}
-          </Menu.Dropdown>
-        </Menu>
       </Group>
     </AppShell.Header>
   );

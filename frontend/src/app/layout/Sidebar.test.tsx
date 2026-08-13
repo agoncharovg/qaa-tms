@@ -51,7 +51,7 @@ describe("Sidebar", () => {
     expect(screen.queryByText("Stagings")).not.toBeInTheDocument();
   });
 
-  it("opens a nested tab directly from the sidebar tree", async () => {
+  it("opens a nested tab directly from the sidebar tree and adds it to the global workspace tabs", async () => {
     const user = userEvent.setup();
 
     useAuthStore.setState({
@@ -78,5 +78,7 @@ describe("Sidebar", () => {
 
     expect(useUiStore.getState().tabsByPlugin[PluginId.ADMIN].activeTabId).toBe(TabId.ADMIN_USERS);
     expect(useUiStore.getState().tabsByPlugin[PluginId.ADMIN].tabIds).toContain(TabId.ADMIN_USERS);
+    expect(useUiStore.getState().activeWorkspaceTabId).toBe(TabId.ADMIN_USERS);
+    expect(useUiStore.getState().workspaceTabIds).toContain(TabId.ADMIN_USERS);
   });
 });

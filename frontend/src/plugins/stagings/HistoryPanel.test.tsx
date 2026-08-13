@@ -52,6 +52,7 @@ function seedAuthAndTabs(): void {
   });
   useUiStore.setState((state) => ({
     ...state,
+    activeWorkspaceTabId: TabId.STAGINGS_HISTORY,
     tabsByPlugin: {
       ...state.tabsByPlugin,
       [PluginId.STAGINGS]: {
@@ -59,6 +60,7 @@ function seedAuthAndTabs(): void {
         tabIds: [TabId.STAGINGS_HISTORY, TabId.STAGINGS_DEPLOY],
       },
     },
+    workspaceTabIds: [TabId.STAGINGS_HISTORY, TabId.STAGINGS_DEPLOY],
   }));
 }
 

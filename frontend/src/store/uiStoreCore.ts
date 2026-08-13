@@ -3,19 +3,24 @@ import { create } from "zustand";
 import {
   PluginId,
   StorageKey,
-  TabId,
   type PluginId as PluginIdType,
   type TabId as TabIdType,
 } from "@/constants";
+import { tabDefinitions } from "@/plugins/catalog";
 
 export interface PluginTabState {
   activeTabId: TabIdType | null;
   tabIds: TabIdType[];
 }
 
+export interface WorkspaceTabsState {
+  activeWorkspaceTabId: TabIdType | null;
+  workspaceTabIds: TabIdType[];
+}
+
 export type TabsByPlugin = Record<PluginIdType, PluginTabState>;
 
-interface UiState {
+interface UiState extends WorkspaceTabsState {
   closeTab: (pluginId: PluginIdType, tabId: TabIdType) => void;
   openTab: (pluginId: PluginIdType, tabId: TabIdType) => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -23,6 +28,17 @@ interface UiState {
   switchTab: (pluginId: PluginIdType, tabId: TabIdType) => void;
   tabsByPlugin: TabsByPlugin;
   toggleSidebar: () => void;
+}
+
+interface PersistedUiState extends WorkspaceTabsState {
+  tabsByPlugin: TabsByPlugin;
+}
+
+export function createEmptyPluginState(): PluginTabState {
+  return {
+    activeTabId: null,
+    tabIds: [],
+  };
 }
 
 function isBrowser(): boolean {
@@ -45,36 +61,28 @@ function writeStoredSidebarCollapsed(collapsed: boolean): void {
   window.localStorage.setItem(StorageKey.SIDEBAR_COLLAPSED, String(collapsed));
 }
 
-function writeStoredTabsByPlugin(tabsByPlugin: TabsByPlugin): void {
+export function writeStoredUiState(state: PersistedUiState): void {
   if (!isBrowser()) {
     return;
   }
 
-  window.localStorage.setItem(StorageKey.TABS, JSON.stringify(tabsByPlugin));
+  window.localStorage.setItem(StorageKey.TABS, JSON.stringify(state));
 }
 
-function createBootstrapTabsByPlugin(): TabsByPlugin {
+export function createBootstrapTabsByPlugin(): TabsByPlugin {
   return {
-    [PluginId.ADMIN]: {
-      activeTabId: TabId.ADMIN_PLUGINS,
-      tabIds: [TabId.ADMIN_PLUGINS],
-    },
-    [PluginId.JENKINS]: {
-      activeTabId: TabId.JENKINS_TREE,
-      tabIds: [TabId.JENKINS_TREE],
-    },
-    [PluginId.KUBER]: {
-      activeTabId: TabId.KUBE_CLUSTERS,
-      tabIds: [TabId.KUBE_CLUSTERS],
-    },
-    [PluginId.QAA_GENERATOR]: {
-      activeTabId: TabId.QAA_GENERATE,
-      tabIds: [TabId.QAA_GENERATE],
-    },
-    [PluginId.STAGINGS]: {
-      activeTabId: TabId.STAGINGS_PREFLIGHT,
-      tabIds: [TabId.STAGINGS_PREFLIGHT],
-    },
+    [PluginId.ADMIN]: createEmptyPluginState(),
+    [PluginId.JENKINS]: createEmptyPluginState(),
+    [PluginId.KUBER]: createEmptyPluginState(),
+    [PluginId.QAA_GENERATOR]: createEmptyPluginState(),
+    [PluginId.STAGINGS]: createEmptyPluginState(),
+  };
+}
+
+export function createBootstrapWorkspaceTabsState(): WorkspaceTabsState {
+  return {
+    activeWorkspaceTabId: null,
+    workspaceTabIds: [],
   };
 }
 
@@ -106,10 +114,7 @@ export function closeTabInPluginState(
 
   const nextTabIds = pluginState.tabIds.filter((existingTabId) => existingTabId !== tabId);
   if (nextTabIds.length === 0) {
-    return {
-      activeTabId: null,
-      tabIds: [],
-    };
+    return createEmptyPluginState();
   }
 
   if (pluginState.activeTabId !== tabId) {
@@ -140,16 +145,109 @@ export function switchTabInPluginState(
   };
 }
 
+function openTabInWorkspaceState(
+  workspaceState: WorkspaceTabsState,
+  tabId: TabIdType
+): WorkspaceTabsState {
+  return {
+    activeWorkspaceTabId: tabId,
+    workspaceTabIds: workspaceState.workspaceTabIds.includes(tabId)
+      ? workspaceState.workspaceTabIds
+      : [...workspaceState.workspaceTabIds, tabId],
+  };
+}
+
+function closeTabInWorkspaceState(
+  workspaceState: WorkspaceTabsState,
+  tabId: TabIdType
+): WorkspaceTabsState {
+  const closeIndex = workspaceState.workspaceTabIds.indexOf(tabId);
+  if (closeIndex === -1) {
+    return workspaceState;
+  }
+
+  const nextWorkspaceTabIds = workspaceState.workspaceTabIds.filter(
+    (existingTabId) => existingTabId !== tabId
+  );
+  if (nextWorkspaceTabIds.length === 0) {
+    return createBootstrapWorkspaceTabsState();
+  }
+
+  if (workspaceState.activeWorkspaceTabId !== tabId) {
+    return {
+      activeWorkspaceTabId: workspaceState.activeWorkspaceTabId,
+      workspaceTabIds: nextWorkspaceTabIds,
+    };
+  }
+
+  const fallbackTabId =
+    nextWorkspaceTabIds[closeIndex] ?? nextWorkspaceTabIds[closeIndex - 1] ?? null;
+
+  return {
+    activeWorkspaceTabId: fallbackTabId,
+    workspaceTabIds: nextWorkspaceTabIds,
+  };
+}
+
+function switchTabInWorkspaceState(
+  workspaceState: WorkspaceTabsState,
+  tabId: TabIdType
+): WorkspaceTabsState {
+  return {
+    activeWorkspaceTabId: tabId,
+    workspaceTabIds: workspaceState.workspaceTabIds.includes(tabId)
+      ? workspaceState.workspaceTabIds
+      : [...workspaceState.workspaceTabIds, tabId],
+  };
+}
+
+function syncPluginActiveTab(
+  tabsByPlugin: TabsByPlugin,
+  activeWorkspaceTabId: TabIdType | null
+): TabsByPlugin {
+  if (!activeWorkspaceTabId) {
+    return tabsByPlugin;
+  }
+
+  const definition = tabDefinitions[activeWorkspaceTabId];
+  if (!definition) {
+    return tabsByPlugin;
+  }
+
+  const pluginState = tabsByPlugin[definition.pluginId];
+  if (!pluginState.tabIds.includes(activeWorkspaceTabId)) {
+    return tabsByPlugin;
+  }
+
+  return {
+    ...tabsByPlugin,
+    [definition.pluginId]: switchTabInPluginState(pluginState, activeWorkspaceTabId),
+  };
+}
+
 export const useUiStore = create<UiState>()((set) => ({
+  activeWorkspaceTabId: null,
+
   closeTab(pluginId, tabId) {
     set((state) => {
       const nextTabsByPlugin = {
         ...state.tabsByPlugin,
         [pluginId]: closeTabInPluginState(state.tabsByPlugin[pluginId], tabId),
       };
-      writeStoredTabsByPlugin(nextTabsByPlugin);
+      const nextWorkspaceState = closeTabInWorkspaceState(state, tabId);
+      const syncedTabsByPlugin = syncPluginActiveTab(
+        nextTabsByPlugin,
+        nextWorkspaceState.activeWorkspaceTabId
+      );
+      writeStoredUiState({
+        activeWorkspaceTabId: nextWorkspaceState.activeWorkspaceTabId,
+        tabsByPlugin: syncedTabsByPlugin,
+        workspaceTabIds: nextWorkspaceState.workspaceTabIds,
+      });
       return {
-        tabsByPlugin: nextTabsByPlugin,
+        activeWorkspaceTabId: nextWorkspaceState.activeWorkspaceTabId,
+        tabsByPlugin: syncedTabsByPlugin,
+        workspaceTabIds: nextWorkspaceState.workspaceTabIds,
       };
     });
   },
@@ -160,9 +258,17 @@ export const useUiStore = create<UiState>()((set) => ({
         ...state.tabsByPlugin,
         [pluginId]: openTabInPluginState(state.tabsByPlugin[pluginId], tabId),
       };
-      writeStoredTabsByPlugin(nextTabsByPlugin);
+      const nextWorkspaceState = openTabInWorkspaceState(state, tabId);
+      const syncedTabsByPlugin = syncPluginActiveTab(nextTabsByPlugin, tabId);
+      writeStoredUiState({
+        activeWorkspaceTabId: nextWorkspaceState.activeWorkspaceTabId,
+        tabsByPlugin: syncedTabsByPlugin,
+        workspaceTabIds: nextWorkspaceState.workspaceTabIds,
+      });
       return {
-        tabsByPlugin: nextTabsByPlugin,
+        activeWorkspaceTabId: nextWorkspaceState.activeWorkspaceTabId,
+        tabsByPlugin: syncedTabsByPlugin,
+        workspaceTabIds: nextWorkspaceState.workspaceTabIds,
       };
     });
   },
@@ -178,13 +284,25 @@ export const useUiStore = create<UiState>()((set) => ({
 
   switchTab(pluginId, tabId) {
     set((state) => {
+      if (!state.tabsByPlugin[pluginId].tabIds.includes(tabId)) {
+        return state;
+      }
+
       const nextTabsByPlugin = {
         ...state.tabsByPlugin,
         [pluginId]: switchTabInPluginState(state.tabsByPlugin[pluginId], tabId),
       };
-      writeStoredTabsByPlugin(nextTabsByPlugin);
+      const nextWorkspaceState = switchTabInWorkspaceState(state, tabId);
+      const syncedTabsByPlugin = syncPluginActiveTab(nextTabsByPlugin, tabId);
+      writeStoredUiState({
+        activeWorkspaceTabId: nextWorkspaceState.activeWorkspaceTabId,
+        tabsByPlugin: syncedTabsByPlugin,
+        workspaceTabIds: nextWorkspaceState.workspaceTabIds,
+      });
       return {
-        tabsByPlugin: nextTabsByPlugin,
+        activeWorkspaceTabId: nextWorkspaceState.activeWorkspaceTabId,
+        tabsByPlugin: syncedTabsByPlugin,
+        workspaceTabIds: nextWorkspaceState.workspaceTabIds,
       };
     });
   },
@@ -200,4 +318,6 @@ export const useUiStore = create<UiState>()((set) => ({
       };
     });
   },
+
+  workspaceTabIds: [],
 }));

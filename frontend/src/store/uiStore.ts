@@ -17,12 +17,16 @@ import {
 } from "@/plugins/catalog";
 import {
   closeTabInPluginState,
+  createBootstrapWorkspaceTabsState,
+  createEmptyPluginState,
   openTabInPluginState,
   readStoredSidebarCollapsed,
   switchTabInPluginState,
   type PluginTabState,
   type TabsByPlugin,
+  type WorkspaceTabsState,
   useUiStore,
+  writeStoredUiState,
 } from "@/store/uiStoreCore";
 
 type PluginVisibilityUser = Pick<User, "enabled_plugins" | "is_admin">;
@@ -31,6 +35,10 @@ const DEFAULT_VISIBILITY_USER: PluginVisibilityUser = {
   enabled_plugins: [PluginId.STAGINGS, PluginId.KUBER, PluginId.QAA_GENERATOR, PluginId.JENKINS],
   is_admin: false,
 };
+
+interface PersistedUiState extends WorkspaceTabsState {
+  tabsByPlugin: TabsByPlugin;
+}
 
 function isBrowser(): boolean {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
@@ -44,13 +52,6 @@ function resolveVisibilityUser(user: PluginVisibilityUser | null | undefined): P
   return {
     enabled_plugins: user.enabled_plugins,
     is_admin: user.is_admin,
-  };
-}
-
-function createEmptyPluginState(): PluginTabState {
-  return {
-    activeTabId: null,
-    tabIds: [],
   };
 }
 
@@ -69,15 +70,7 @@ function createDefaultStateForPlugin(
     return createEmptyPluginState();
   }
 
-  const defaultTabId = visibleTabs(plugin, resolvedUser)[0]?.id ?? null;
-  if (!defaultTabId) {
-    return createEmptyPluginState();
-  }
-
-  return {
-    activeTabId: defaultTabId,
-    tabIds: [defaultTabId],
-  };
+  return createEmptyPluginState();
 }
 
 export function createDefaultTabsByPlugin(
@@ -105,14 +98,9 @@ export function sanitizePluginTabs(
   }
 
   const allowedTabs = new Set(visibleTabs(plugin, resolvedUser).map((tab) => tab.id));
-  const defaultState = createDefaultStateForPlugin(pluginId, resolvedUser);
   const tabIds = (value?.tabIds ?? []).filter((tabId): tabId is TabIdType => allowedTabs.has(tabId));
   const activeTabId =
     value?.activeTabId && tabIds.includes(value.activeTabId) ? value.activeTabId : tabIds[0] ?? null;
-
-  if (tabIds.length === 0) {
-    return defaultState;
-  }
 
   return {
     activeTabId,
@@ -129,37 +117,136 @@ function sanitizeTabsByPlugin(
   ) as TabsByPlugin;
 }
 
-export function readStoredTabsByPlugin(
-  user: PluginVisibilityUser | null | undefined = DEFAULT_VISIBILITY_USER
+function sanitizeWorkspaceTabsState(
+  value: Partial<WorkspaceTabsState> | undefined,
+  tabsByPlugin: TabsByPlugin
+): WorkspaceTabsState {
+  const allowedTabIds = new Set(
+    Object.values(tabsByPlugin).flatMap((pluginState) => pluginState.tabIds)
+  );
+  const workspaceTabIds = (value?.workspaceTabIds ?? []).filter(
+    (tabId, index, source): tabId is TabIdType =>
+      allowedTabIds.has(tabId) && source.indexOf(tabId) === index
+  );
+  const activeWorkspaceTabId =
+    value?.activeWorkspaceTabId && workspaceTabIds.includes(value.activeWorkspaceTabId)
+      ? value.activeWorkspaceTabId
+      : workspaceTabIds[0] ?? null;
+
+  if (!activeWorkspaceTabId) {
+    return {
+      activeWorkspaceTabId: null,
+      workspaceTabIds,
+    };
+  }
+
+  const definition = tabDefinitions[activeWorkspaceTabId];
+  if (!definition) {
+    return {
+      activeWorkspaceTabId: null,
+      workspaceTabIds: workspaceTabIds.filter((tabId) => tabId !== activeWorkspaceTabId),
+    };
+  }
+
+  const pluginState = tabsByPlugin[definition.pluginId];
+  if (!pluginState.tabIds.includes(activeWorkspaceTabId)) {
+    return {
+      activeWorkspaceTabId: null,
+      workspaceTabIds: workspaceTabIds.filter((tabId) => tabId !== activeWorkspaceTabId),
+    };
+  }
+
+  return {
+    activeWorkspaceTabId,
+    workspaceTabIds,
+  };
+}
+
+function syncActiveWorkspaceTab(
+  tabsByPlugin: TabsByPlugin,
+  workspaceTabsState: WorkspaceTabsState
 ): TabsByPlugin {
+  if (!workspaceTabsState.activeWorkspaceTabId) {
+    return tabsByPlugin;
+  }
+
+  const definition = tabDefinitions[workspaceTabsState.activeWorkspaceTabId];
+  if (!definition) {
+    return tabsByPlugin;
+  }
+
+  const pluginState = tabsByPlugin[definition.pluginId];
+  if (!pluginState.tabIds.includes(workspaceTabsState.activeWorkspaceTabId)) {
+    return tabsByPlugin;
+  }
+
+  return {
+    ...tabsByPlugin,
+    [definition.pluginId]: switchTabInPluginState(pluginState, workspaceTabsState.activeWorkspaceTabId),
+  };
+}
+
+export function readStoredUiState(
+  user: PluginVisibilityUser | null | undefined = DEFAULT_VISIBILITY_USER
+): PersistedUiState {
   if (!isBrowser()) {
-    return createDefaultTabsByPlugin(user);
+    return {
+      ...createBootstrapWorkspaceTabsState(),
+      tabsByPlugin: createDefaultTabsByPlugin(user),
+    };
   }
 
   const rawValue = window.localStorage.getItem(StorageKey.TABS);
   if (!rawValue) {
-    return createDefaultTabsByPlugin(user);
+    return {
+      ...createBootstrapWorkspaceTabsState(),
+      tabsByPlugin: createDefaultTabsByPlugin(user),
+    };
   }
 
   try {
-    const parsed = JSON.parse(rawValue) as Partial<TabsByPlugin>;
-    return sanitizeTabsByPlugin(parsed, user);
+    const parsed = JSON.parse(rawValue) as Partial<PersistedUiState> & Partial<TabsByPlugin>;
+    if (!("tabsByPlugin" in parsed)) {
+      return {
+        ...createBootstrapWorkspaceTabsState(),
+        tabsByPlugin: createDefaultTabsByPlugin(user),
+      };
+    }
+
+    const sanitizedTabsByPlugin = sanitizeTabsByPlugin(parsed.tabsByPlugin, user);
+    const sanitizedWorkspaceTabsState = sanitizeWorkspaceTabsState(parsed, sanitizedTabsByPlugin);
+
+    return {
+      ...sanitizedWorkspaceTabsState,
+      tabsByPlugin: syncActiveWorkspaceTab(sanitizedTabsByPlugin, sanitizedWorkspaceTabsState),
+    };
   } catch {
-    return createDefaultTabsByPlugin(user);
+    return {
+      ...createBootstrapWorkspaceTabsState(),
+      tabsByPlugin: createDefaultTabsByPlugin(user),
+    };
   }
 }
 
-function writeStoredTabsByPlugin(tabsByPlugin: TabsByPlugin): void {
-  if (!isBrowser()) {
-    return;
-  }
+export function readStoredTabsByPlugin(
+  user: PluginVisibilityUser | null | undefined = DEFAULT_VISIBILITY_USER
+): TabsByPlugin {
+  return readStoredUiState(user).tabsByPlugin;
+}
 
-  window.localStorage.setItem(StorageKey.TABS, JSON.stringify(tabsByPlugin));
+export function readStoredWorkspaceTabsState(
+  user: PluginVisibilityUser | null | undefined = DEFAULT_VISIBILITY_USER
+): WorkspaceTabsState {
+  const { activeWorkspaceTabId, workspaceTabIds } = readStoredUiState(user);
+  return {
+    activeWorkspaceTabId,
+    workspaceTabIds,
+  };
 }
 
 useUiStore.setState({
   sidebarCollapsed: readStoredSidebarCollapsed(),
-  tabsByPlugin: readStoredTabsByPlugin(),
+  ...readStoredUiState(),
 });
 
 export function getTabsForPlugin(
@@ -169,11 +256,24 @@ export function getTabsForPlugin(
   return tabsByPlugin[pluginId].tabIds.map((tabId) => tabDefinitions[tabId]);
 }
 
+export function getOpenWorkspaceTabs(workspaceTabIds: TabIdType[]): WorkspaceTabDefinition[] {
+  return workspaceTabIds.map((tabId) => tabDefinitions[tabId]).filter(Boolean);
+}
+
 export function syncTabsForUser(user: PluginVisibilityUser | null | undefined): void {
-  const nextTabsByPlugin = sanitizeTabsByPlugin(useUiStore.getState().tabsByPlugin, user);
-  writeStoredTabsByPlugin(nextTabsByPlugin);
+  const currentState = useUiStore.getState();
+  const nextTabsByPlugin = sanitizeTabsByPlugin(currentState.tabsByPlugin, user);
+  const nextWorkspaceTabsState = sanitizeWorkspaceTabsState(currentState, nextTabsByPlugin);
+  const syncedTabsByPlugin = syncActiveWorkspaceTab(nextTabsByPlugin, nextWorkspaceTabsState);
+  writeStoredUiState({
+    activeWorkspaceTabId: nextWorkspaceTabsState.activeWorkspaceTabId,
+    tabsByPlugin: syncedTabsByPlugin,
+    workspaceTabIds: nextWorkspaceTabsState.workspaceTabIds,
+  });
   useUiStore.setState({
-    tabsByPlugin: nextTabsByPlugin,
+    activeWorkspaceTabId: nextWorkspaceTabsState.activeWorkspaceTabId,
+    tabsByPlugin: syncedTabsByPlugin,
+    workspaceTabIds: nextWorkspaceTabsState.workspaceTabIds,
   });
 }
 
@@ -191,6 +291,22 @@ export function ensureDefaultTabForPlugin(pluginId: PluginIdType): void {
   useUiStore.getState().openTab(pluginId, defaultTabId);
 }
 
+export function activatePluginWorkspaceTab(pluginId: PluginIdType): TabIdType | null {
+  const pluginState = useUiStore.getState().tabsByPlugin[pluginId];
+  const tabId = pluginState.activeTabId ?? pluginState.tabIds[0] ?? defaultTabIdByPlugin[pluginId] ?? null;
+  if (!tabId) {
+    return null;
+  }
+
+  if (pluginState.tabIds.includes(tabId)) {
+    useUiStore.getState().switchTab(pluginId, tabId);
+  } else {
+    useUiStore.getState().openTab(pluginId, tabId);
+  }
+
+  return tabId;
+}
+
 export function resetUiStoreState(
   user: PluginVisibilityUser | null | undefined = DEFAULT_VISIBILITY_USER
 ): void {
@@ -200,17 +316,20 @@ export function resetUiStoreState(
   }
 
   useUiStore.setState({
+    activeWorkspaceTabId: null,
     sidebarCollapsed: false,
     tabsByPlugin: createDefaultTabsByPlugin(user),
+    workspaceTabIds: [],
   });
 }
 
 export { tabCatalog as PLUGIN_TAB_CATALOG, tabDefinitions as TAB_DEFINITIONS };
 export {
   closeTabInPluginState,
+  createEmptyPluginState,
   openTabInPluginState,
   readStoredSidebarCollapsed,
   switchTabInPluginState,
   useUiStore,
 };
-export type { PluginTabState, TabsByPlugin };
+export type { PluginTabState, TabsByPlugin, WorkspaceTabsState };

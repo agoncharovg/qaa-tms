@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppShell, MantineProvider } from "@mantine/core";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 
@@ -13,7 +13,6 @@ vi.mock("@/api/backendClient", () => ({
 }));
 
 import { Sidebar } from "@/app/layout/Sidebar";
-import { TabBar } from "@/app/layout/TabBar";
 import { PluginId } from "@/constants";
 import { PluginsPage } from "@/plugins/admin/PluginsPage";
 import { renderWithProviders } from "@/test/render";
@@ -27,18 +26,6 @@ function renderAdminSurface() {
         <AppShell header={{ height: 76 }} navbar={{ breakpoint: "sm", width: 280 }}>
           <Sidebar activePluginId={PluginId.ADMIN} />
           <PluginsPage />
-        </AppShell>
-      </MemoryRouter>
-    </MantineProvider>
-  );
-}
-
-function renderAdminTabBar() {
-  return renderWithProviders(
-    <MantineProvider forceColorScheme="dark">
-      <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
-        <AppShell header={{ height: 76 }} navbar={{ breakpoint: "sm", width: 280 }}>
-          <TabBar activePluginId={PluginId.ADMIN} />
         </AppShell>
       </MemoryRouter>
     </MantineProvider>
@@ -99,24 +86,21 @@ describe("PluginsPage", () => {
     });
   });
 
-  it("shows only the Plugins tab to non-admins and exposes Users to admins", async () => {
-    const user = userEvent.setup();
-
-    renderAdminTabBar();
-    expect(screen.getByText("Plugins")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Open tab" }));
+  it("shows only the Plugins tab to non-admins and exposes Users to admins in the sidebar tree", async () => {
+    renderAdminSurface();
+    expect(screen.getByRole("heading", { name: "Plugins" })).toBeInTheDocument();
     expect(screen.queryByText("Users")).not.toBeInTheDocument();
 
-    useAuthStore.setState({
-      currentUser: {
-        ...useAuthStore.getState().currentUser!,
-        is_admin: true,
-      },
+    await act(async () => {
+      useAuthStore.setState({
+        currentUser: {
+          ...useAuthStore.getState().currentUser!,
+          is_admin: true,
+        },
+      });
+      syncTabsForUser(useAuthStore.getState().currentUser);
     });
-    syncTabsForUser(useAuthStore.getState().currentUser);
 
-    renderAdminTabBar();
-    await user.click(screen.getAllByRole("button", { name: "Open tab" })[1]);
     expect(await screen.findByText("Users")).toBeInTheDocument();
   });
 });

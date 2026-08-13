@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { AppShell } from "@mantine/core";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -13,17 +13,19 @@ import {
 } from "@/plugins/registry";
 import { PluginsProvider } from "@/plugins/provider";
 import { useAuthStore } from "@/store/authStore";
-import { syncTabsForUser, useUiStore } from "@/store/uiStore";
+import { activatePluginWorkspaceTab, syncTabsForUser, TAB_DEFINITIONS, useUiStore } from "@/store/uiStore";
 
 export function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const currentUser = useAuthStore((state) => state.currentUser);
+  const activeWorkspaceTabId = useUiStore((state) => state.activeWorkspaceTabId);
   const sidebarCollapsed = useUiStore((state) => state.sidebarCollapsed);
   const enabledOptionalIds = enabledOptionalPluginIdSet(currentUser?.enabled_plugins);
   const activePlugin = pluginByRoute(location.pathname);
   const plugins = visiblePlugins(currentUser, enabledOptionalIds);
   const activePluginVisible = Boolean(activePlugin && plugins.some((plugin) => plugin.id === activePlugin.id));
+  const workspaceBootstrappedRef = useRef(false);
 
   useEffect(() => {
     syncTabsForUser(currentUser);
@@ -37,6 +39,32 @@ export function AppLayout() {
       navigate(plugins[0].route, { replace: true });
     }
   }, [activePlugin, navigate, plugins]);
+
+  useEffect(() => {
+    if (!activePluginVisible || !activePlugin) {
+      return;
+    }
+
+    if (!workspaceBootstrappedRef.current) {
+      if (activeWorkspaceTabId) {
+        workspaceBootstrappedRef.current = true;
+        return;
+      }
+
+      activatePluginWorkspaceTab(activePlugin.id);
+      workspaceBootstrappedRef.current = true;
+      return;
+    }
+
+    if (!activeWorkspaceTabId) {
+      return;
+    }
+
+    const activeWorkspacePluginId = TAB_DEFINITIONS[activeWorkspaceTabId]?.pluginId;
+    if (activeWorkspacePluginId !== activePlugin.id) {
+      activatePluginWorkspaceTab(activePlugin.id);
+    }
+  }, [activePlugin, activePluginVisible, activeWorkspaceTabId]);
 
   if (!currentUser || !activePlugin || !activePluginVisible) {
     return null;
@@ -58,8 +86,8 @@ export function AppLayout() {
           }}
         >
           <Sidebar activePluginId={activePlugin.id} />
-          <TabBar activePluginId={activePlugin.id} />
-          <Workspace activePluginId={activePlugin.id} />
+          <TabBar />
+          <Workspace />
         </AppShell>
       </BuiltinHostApiProvider>
     </PluginsProvider>

@@ -23,7 +23,7 @@ import { RoutePath, type PluginId as PluginIdType } from "@/constants";
 import { resolveIcon } from "@/core/plugins/icons";
 import { enabledOptionalPluginIdSet, visiblePlugins, visibleTabs } from "@/plugins/registry";
 import { useAuthStore } from "@/store/authStore";
-import { useUiStore } from "@/store/uiStore";
+import { activatePluginWorkspaceTab, useUiStore } from "@/store/uiStore";
 
 interface SidebarProps {
   activePluginId: PluginIdType;
@@ -112,7 +112,10 @@ export function Sidebar({ activePluginId }: SidebarProps) {
                 aria-current={isActivePlugin ? "page" : undefined}
                 aria-label={plugin.label}
                 key={plugin.id}
-                onClick={() => navigate(plugin.route)}
+                onClick={() => {
+                  activatePluginWorkspaceTab(plugin.id);
+                  navigate(plugin.route);
+                }}
                 style={buildItemButtonStyle(isActivePlugin, sidebarCollapsed)}
               >
                 <Icon size={18} />
