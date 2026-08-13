@@ -4,6 +4,7 @@ import type { RouteObject } from "react-router-dom";
 import { RequireAuth } from "@/app/guards";
 import { AppLayout } from "@/app/layout/AppLayout";
 import { LoginPage } from "@/app/auth/LoginPage";
+import { GcoreProfilePoc } from "@/app/design-poc/GcoreProfilePoc";
 import { RoutePath } from "@/constants";
 import { enabledOptionalPluginIdSet, PLUGINS, visiblePlugins } from "@/plugins/registry";
 import { useAuthStore } from "@/store/authStore";
@@ -20,6 +21,10 @@ const appRoutes: RouteObject[] = [
   {
     element: <LoginPage />,
     path: RoutePath.LOGIN,
+  },
+  {
+    element: <GcoreProfilePoc />,
+    path: "/design-poc",
   },
   {
     element: (

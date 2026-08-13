@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Sidebar } from "@/app/layout/Sidebar";
 import { TabBar } from "@/app/layout/TabBar";
 import { Workspace } from "@/app/layout/Workspace";
+import { palette } from "@/app/theme/tokens";
 import { BuiltinHostApiProvider } from "@/core/plugins/host";
 import {
   enabledOptionalPluginIdSet,
@@ -74,13 +75,12 @@ export function AppLayout() {
     <PluginsProvider>
       <BuiltinHostApiProvider>
         <AppShell
-          header={{ height: 76 }}
-          navbar={{ breakpoint: "sm", width: sidebarCollapsed ? 92 : 280 }}
+          header={{ height: 60 }}
+          navbar={{ breakpoint: "sm", width: sidebarCollapsed ? 84 : 264 }}
           padding="md"
           styles={{
             main: {
-              background:
-                "radial-gradient(circle at top right, rgba(34, 139, 230, 0.14), transparent 30%), #0b1017",
+              background: palette.page,
               minHeight: "100vh",
             },
           }}

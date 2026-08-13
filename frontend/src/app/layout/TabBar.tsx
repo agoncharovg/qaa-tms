@@ -9,6 +9,7 @@ import {
 import { IconX } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 
+import { palette } from "@/app/theme/tokens";
 import { type PluginId as PluginIdType, type TabId as TabIdType } from "@/constants";
 import { pluginById } from "@/plugins/registry";
 import { useAuthStore } from "@/store/authStore";
@@ -73,7 +74,11 @@ export function TabBar(_: TabBarProps) {
   });
 
   return (
-    <AppShell.Header px="md" py="sm">
+    <AppShell.Header
+      px="md"
+      py="sm"
+      style={{ backgroundColor: palette.surface, borderBottom: `1px solid ${palette.line}` }}
+    >
       <Group h="100%" justify="space-between" wrap="nowrap">
         <ScrollArea scrollbarSize={4} w="100%">
           {openTabs.length > 0 ? (
@@ -99,19 +104,30 @@ export function TabBar(_: TabBarProps) {
                   gap: "8px",
                 },
                 tab: {
-                  backgroundColor: "rgba(255, 255, 255, 0.04)",
-                  border: "1px solid rgba(255, 255, 255, 0.08)",
-                  borderRadius: "12px 12px 0 0",
+                  borderRadius: "10px",
+                  paddingBlock: "6px",
                   paddingInline: "14px",
-                  paddingTop: "10px",
+                },
+                tabLabel: {
+                  fontWeight: 600,
                 },
               }}
               value={activeWorkspaceTabId}
               variant="unstyled"
             >
               <Tabs.List>
-                {openTabs.map((tab) => (
-                  <Tabs.Tab key={tab.id} value={tab.id}>
+                {openTabs.map((tab) => {
+                  const isActive = tab.id === activeWorkspaceTabId;
+                  return (
+                  <Tabs.Tab
+                    key={tab.id}
+                    value={tab.id}
+                    style={{
+                      backgroundColor: isActive ? palette.accentSoft : palette.chip,
+                      border: `1px solid ${isActive ? palette.accent : palette.line}`,
+                      color: isActive ? palette.accent : palette.inkSoft,
+                    }}
+                  >
                     <TabLabel
                       isCloseable={tab.closeable}
                       onClose={() => {
@@ -132,7 +148,8 @@ export function TabBar(_: TabBarProps) {
                       title={tab.title}
                     />
                   </Tabs.Tab>
-                ))}
+                  );
+                })}
               </Tabs.List>
             </Tabs>
           ) : (

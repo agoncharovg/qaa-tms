@@ -14,6 +14,7 @@ import {
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 
+import { palette } from "@/app/theme/tokens";
 import { RoutePath } from "@/constants";
 import { useAuthStore } from "@/store/authStore";
 
@@ -68,14 +69,13 @@ export function LoginPage() {
     <Center
       h="100vh"
       style={{
-        background:
-          "radial-gradient(circle at top left, rgba(34, 139, 230, 0.22), transparent 28%), linear-gradient(135deg, #0b1017 0%, #111a26 100%)",
+        background: `radial-gradient(circle at top left, ${palette.accentSoft}, transparent 34%), ${palette.page}`,
       }}
     >
-      <Paper maw={440} p="xl" radius="xl" shadow="xl" w="100%" withBorder>
+      <Paper maw={440} p="xl" radius="lg" shadow="sm" w="100%" withBorder>
         <Stack gap="lg">
           <Stack gap={4}>
-            <Text c="dimmed" size="sm" tt="uppercase">
+            <Text c={palette.accent} fw={700} size="sm" tt="uppercase">
               QAA-TMS
             </Text>
             <Title order={2}>Sign in</Title>

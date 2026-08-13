@@ -1,5 +1,6 @@
 import { AppShell, Paper } from "@mantine/core";
 
+import { palette } from "@/app/theme/tokens";
 import { WorkspaceContent } from "@/components/WorkspaceContent";
 import { type PluginId as PluginIdType } from "@/constants";
 import { pluginById } from "@/plugins/registry";
@@ -19,13 +20,12 @@ export function Workspace(_: WorkspaceProps) {
   return (
     <AppShell.Main>
       <Paper
-        h="calc(100vh - 116px)"
-        p="md"
-        radius="xl"
-        shadow="sm"
+        h="calc(100vh - 100px)"
+        p="lg"
+        radius="lg"
         style={{
-          backgroundColor: "rgba(7, 12, 18, 0.88)",
-          border: "1px solid rgba(255, 255, 255, 0.06)",
+          backgroundColor: palette.surface,
+          border: `1px solid ${palette.line}`,
           overflow: "auto",
         }}
       >

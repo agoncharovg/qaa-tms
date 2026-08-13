@@ -19,6 +19,7 @@ import {
 import type { CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { palette } from "@/app/theme/tokens";
 import { RoutePath, type PluginId as PluginIdType } from "@/constants";
 import { resolveIcon } from "@/core/plugins/icons";
 import { enabledOptionalPluginIdSet, visiblePlugins, visibleTabs } from "@/plugins/registry";
@@ -32,14 +33,15 @@ interface SidebarProps {
 function buildItemButtonStyle(active: boolean, collapsed: boolean): CSSProperties {
   return {
     alignItems: "center",
-    backgroundColor: active ? "rgba(34, 139, 230, 0.18)" : "transparent",
-    border: "1px solid rgba(255, 255, 255, 0.08)",
-    borderRadius: "12px",
+    backgroundColor: active ? palette.chip : "transparent",
+    border: "1px solid transparent",
+    borderRadius: "10px",
+    color: active ? palette.accent : palette.inkSoft,
     display: "flex",
     gap: "12px",
     justifyContent: collapsed ? "center" : "flex-start",
-    padding: collapsed ? "12px 10px" : "12px 14px",
-    transition: "background-color 150ms ease",
+    padding: collapsed ? "10px 10px" : "10px 12px",
+    transition: "background-color 150ms ease, color 150ms ease",
     width: "100%",
   };
 }
@@ -47,14 +49,14 @@ function buildItemButtonStyle(active: boolean, collapsed: boolean): CSSPropertie
 function buildTabButtonStyle(active: boolean, open: boolean): CSSProperties {
   return {
     alignItems: "center",
-    backgroundColor: active ? "rgba(34, 139, 230, 0.14)" : open ? "rgba(255, 255, 255, 0.03)" : "transparent",
-    border: "1px solid rgba(255, 255, 255, 0.06)",
-    borderRadius: "10px",
-    color: "inherit",
+    backgroundColor: active ? palette.accentSoft : open ? palette.chip : "transparent",
+    border: "1px solid transparent",
+    borderRadius: "8px",
+    color: active ? palette.accent : palette.inkSoft,
     display: "flex",
     justifyContent: "space-between",
-    padding: "9px 12px",
-    transition: "background-color 150ms ease",
+    padding: "8px 10px",
+    transition: "background-color 150ms ease, color 150ms ease",
     width: "100%",
   };
 }
@@ -72,17 +74,33 @@ export function Sidebar({ activePluginId }: SidebarProps) {
   const plugins = visiblePlugins(currentUser, enabledOptionalIds);
 
   return (
-    <AppShell.Navbar p="sm">
-      <Group justify={sidebarCollapsed ? "center" : "space-between"} mb="sm">
+    <AppShell.Navbar
+      p="sm"
+      style={{ backgroundColor: palette.surface, borderRight: `1px solid ${palette.line}` }}
+    >
+      <Group justify={sidebarCollapsed ? "center" : "space-between"} mb="sm" wrap="nowrap">
         {!sidebarCollapsed ? (
-          <Box>
-            <Text fw={700} size="lg">
+          <Group gap="xs" wrap="nowrap">
+            <Box
+              style={{
+                alignItems: "center",
+                backgroundColor: palette.accent,
+                borderRadius: "8px",
+                color: "#fff",
+                display: "flex",
+                fontSize: "16px",
+                fontWeight: 800,
+                height: "28px",
+                justifyContent: "center",
+                width: "28px",
+              }}
+            >
+              Q
+            </Box>
+            <Text c={palette.ink} fw={800} size="lg">
               QAA-TMS
             </Text>
-            <Text c="dimmed" size="sm">
-              Test management shell
-            </Text>
-          </Box>
+          </Group>
         ) : null}
         <Tooltip label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}>
           <ActionIcon
@@ -121,7 +139,9 @@ export function Sidebar({ activePluginId }: SidebarProps) {
                 <Icon size={18} />
                 {!sidebarCollapsed ? (
                   <>
-                    <Text fw={500}>{plugin.label}</Text>
+                    <Text c="inherit" fw={isActivePlugin ? 600 : 500}>
+                      {plugin.label}
+                    </Text>
                     <Box ml="auto">
                       <IconChevronDown
                         size={16}
@@ -153,7 +173,7 @@ export function Sidebar({ activePluginId }: SidebarProps) {
                     ml="md"
                     mt="xs"
                     pl="md"
-                    style={{ borderLeft: "1px solid rgba(255, 255, 255, 0.08)" }}
+                    style={{ borderLeft: `1px solid ${palette.line}` }}
                   >
                     <Stack gap={6}>
                       {pluginTabs.map((tab) => {
@@ -178,20 +198,20 @@ export function Sidebar({ activePluginId }: SidebarProps) {
                                 style={{
                                   borderRadius: "999px",
                                   backgroundColor: isActiveTab
-                                    ? "rgba(116, 192, 252, 1)"
+                                    ? palette.accent
                                     : isOpenTab
-                                      ? "rgba(134, 142, 150, 0.85)"
-                                      : "rgba(255, 255, 255, 0.28)",
+                                      ? palette.dim
+                                      : palette.faint,
                                   flexShrink: 0,
                                 }}
                                 w={6}
                               />
-                              <Text fw={isActiveTab ? 600 : 500} size="sm">
+                              <Text c="inherit" fw={isActiveTab ? 600 : 500} size="sm">
                                 {tab.title}
                               </Text>
                             </Group>
                             {isOpenTab ? (
-                              <Text c="dimmed" size="xs">
+                              <Text c={palette.faint} size="xs">
                                 Open
                               </Text>
                             ) : null}
@@ -232,12 +252,13 @@ export function Sidebar({ activePluginId }: SidebarProps) {
           }}
           style={{
             alignItems: "center",
-            border: "1px solid rgba(255, 255, 255, 0.08)",
-            borderRadius: "12px",
+            border: `1px solid ${palette.line}`,
+            borderRadius: "10px",
+            color: palette.inkSoft,
             display: "flex",
             gap: "12px",
             justifyContent: sidebarCollapsed ? "center" : "flex-start",
-            padding: sidebarCollapsed ? "12px 10px" : "12px 14px",
+            padding: sidebarCollapsed ? "10px 10px" : "10px 12px",
           }}
         >
           <IconLogout size={18} />
