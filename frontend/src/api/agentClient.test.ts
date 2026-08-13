@@ -6,6 +6,8 @@ import type {
   DestroyRequest,
   E2eRunRequest,
   E2eSuitesResponse,
+  JenkinsBuildsResponse,
+  JenkinsTreeResponse,
   JobCreateResponse,
   KubeCommandResult,
   KubeconfigStatus,
@@ -131,6 +133,76 @@ describe("agentClient job creation requests", () => {
       expect(init?.method).toBe("POST");
       expect(headers.get("Authorization")).toBe("Bearer token-123");
       expect(headers.get("Content-Type")).toBe("application/json");
+      expect(headers.get("Accept")).toBe("application/json");
+      expect(headers.get("X-QAA-TMS")).toBe("1");
+    }
+  });
+});
+
+describe("agentClient jenkins requests", () => {
+  const fetchMock = vi.fn<typeof fetch>();
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  it("sends Jenkins tree and builds requests with bearer auth and URL-encoded paths", async () => {
+    const tree: JenkinsTreeResponse = {
+      roots: [
+        {
+          children: [],
+          color: null,
+          kind: "folder",
+          name: "PREPROD",
+          path: "job/.QAA/job/E2E/job/PREPROD",
+          status: null,
+          url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/",
+        },
+      ],
+    };
+    const builds: JenkinsBuildsResponse = {
+      builds: [
+        {
+          allureUrl: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/42/allure/",
+          building: false,
+          durationMs: 120000,
+          number: 42,
+          result: "SUCCESS",
+          timestamp: 1723539600000,
+          url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/42/",
+        },
+      ],
+    };
+
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify(tree), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(builds), { status: 200 }));
+
+    expect(await agentClient.getJenkinsTree(47600, "token-123")).toEqual(tree);
+    expect(
+      await agentClient.getJenkinsBuilds(
+        47600,
+        "token-123",
+        "job/.QAA/job/E2E/job/PREPROD/job/Smoke"
+      )
+    ).toEqual(builds);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const [treeUrl, treeInit] = fetchMock.mock.calls[0] ?? [];
+    const [buildsUrl, buildsInit] = fetchMock.mock.calls[1] ?? [];
+
+    expect(treeUrl).toBe("http://127.0.0.1:47600/jenkins/tree");
+    expect(buildsUrl).toBe(
+      "http://127.0.0.1:47600/jenkins/builds?path=job%2F.QAA%2Fjob%2FE2E%2Fjob%2FPREPROD%2Fjob%2FSmoke"
+    );
+    expect(treeInit?.method).toBe("GET");
+    expect(buildsInit?.method).toBe("GET");
+
+    for (const init of [treeInit, buildsInit]) {
+      const headers = new Headers(init?.headers);
+      expect(headers.get("Authorization")).toBe("Bearer token-123");
       expect(headers.get("Accept")).toBe("application/json");
       expect(headers.get("X-QAA-TMS")).toBe("1");
     }

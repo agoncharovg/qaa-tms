@@ -8,6 +8,8 @@ from enum import StrEnum
 class AgentPath(StrEnum):
     PING = "/ping"
     PREFLIGHT = "/preflight"
+    JENKINS_TREE = "/jenkins/tree"
+    JENKINS_BUILDS = "/jenkins/builds"
     KUBECONFIG_STATUS = "/staging/kubeconfig/status"
     KUBECONFIG_REFRESH = "/staging/kubeconfig/refresh"
     KUBECONFIG_ACTIVATE = "/staging/kubeconfig/activate"
@@ -90,6 +92,14 @@ class EnvKey(StrEnum):
     PORT = "AGENT_PORT"
     CORS_ORIGINS = "AGENT_CORS_ORIGINS"
     BACKEND_URL = "AGENT_BACKEND_URL"
+    JENKINS_URL = "AGENT_JENKINS_URL"
+    JENKINS_USERNAME = "AGENT_JENKINS_USERNAME"
+    JENKINS_TOKEN = "AGENT_JENKINS_TOKEN"
+    JENKINS_ROOT_PATH = "AGENT_JENKINS_ROOT_PATH"
+    JENKINS_ROOT_FOLDERS = "AGENT_JENKINS_ROOT_FOLDERS"
+    JENKINS_REQUEST_TIMEOUT = "AGENT_JENKINS_REQUEST_TIMEOUT"
+    JENKINS_TREE_DEPTH = "AGENT_JENKINS_TREE_DEPTH"
+    JENKINS_STUCK_MIN_IDLE_HOURS = "AGENT_JENKINS_STUCK_MIN_IDLE_HOURS"
     STAGING_BIN = "AGENT_STAGING_BIN"
     STAGINGS_REPO = "AGENT_STAGINGS_REPO"
     KUBECTL_BIN = "AGENT_KUBECTL_BIN"
@@ -192,6 +202,34 @@ class KubectlOutput(StrEnum):
     JSON = "json"
 
 
+class JenkinsNodeKind(StrEnum):
+    FOLDER = "folder"
+    PIPELINE = "pipeline"
+
+
+class JenkinsStatus(StrEnum):
+    PASSED = "passed"
+    FAILED = "failed"
+    DISABLED = "disabled"
+    RUNNING = "running"
+    STUCK = "stuck"
+    NOTBUILT = "notbuilt"
+
+
+class JenkinsColor(StrEnum):
+    BLUE = "blue"
+    RED = "red"
+    YELLOW = "yellow"
+    DISABLED = "disabled"
+    NOTBUILT = "notbuilt"
+    ABORTED = "aborted"
+
+
+class JenkinsApiPath(StrEnum):
+    API_JSON = "api/json"
+    ALLURE_SUFFIX = "allure/"
+
+
 class StagingFlag(StrEnum):
     SERVICES = "--services"
     IMAGE = "--image"
@@ -219,6 +257,9 @@ class ErrorMessage(StrEnum):
     JOB_NOT_FOUND = "Job not found."
     STAGING_BINARY_NOT_INSTALLED = "The staging binary is not installed."
     UNAUTHORIZED = "Unauthorized."
+    JENKINS_NOT_CONFIGURED = "Jenkins is not configured (set AGENT_JENKINS_URL/USERNAME/TOKEN)."
+    JENKINS_UNREACHABLE = "Jenkins is unreachable."
+    JENKINS_PATH_OUT_OF_SCOPE = "Requested job path is outside the allowed .QAA/E2E scope."
     KUBECTL_NOT_INSTALLED = "kubectl is not installed."
     INVALID_KUBE_NAME = "Invalid Kubernetes resource name."
     KUBECONFIG_DOWNLOAD_FAILED = (
@@ -259,6 +300,13 @@ DEFAULT_CORS_ORIGINS = (
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 )
+DEFAULT_JENKINS_URL = "https://jenkins.p.gc.onl"
+DEFAULT_JENKINS_ROOT_PATH = "job/.QAA/job/E2E"
+DEFAULT_JENKINS_ROOT_FOLDERS = ("PREPROD", "PROD")
+DEFAULT_JENKINS_REQUEST_TIMEOUT = 15.0
+DEFAULT_JENKINS_TREE_DEPTH = 5
+DEFAULT_JENKINS_STUCK_MIN_IDLE_HOURS = 6
+DEFAULT_JENKINS_BUILDS_LIMIT = 15
 DEFAULT_STAGING_KUBECONFIG = "~/.kube/ai-staging.yaml"
 DEFAULT_AUTH_CACHE_TTL_SECONDS = 30
 DEFAULT_BACKEND_TIMEOUT_SECONDS = 10.0
@@ -273,6 +321,11 @@ DEFAULT_STAGING_BINARY_NAME = "staging"
 DEFAULT_KUBECTL_BIN = "kubectl"
 DEFAULT_KUBECTL_REQUEST_TIMEOUT = "10s"
 DEFAULT_KUBE_LOG_TAIL = 200
+JENKINS_JOB_PATH_SEGMENT = "job"
+JENKINS_ANIME_SUFFIX = "_anime"
+JENKINS_FOLDER_CLASS = "com.cloudbees.hudson.plugins.folder.Folder"
+JENKINS_TIMER_TRIGGER_CLASS = "hudson.triggers.TimerTrigger"
+JENKINS_SCM_TRIGGER_CLASS = "hudson.triggers.SCMTrigger"
 HTTPS_PORT = 443
 MIN_STAGE = 0
 MAX_STAGE = 7

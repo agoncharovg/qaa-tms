@@ -30,6 +30,8 @@ from app.schemas import (
     E2eRunRequest,
     E2eSuite,
     E2eSuitesResponse,
+    JenkinsBuildsResponse,
+    JenkinsTreeResponse,
     JobCreateResponse,
     JobReadResponse,
     KubeCommandResult,
@@ -52,6 +54,13 @@ from app.schemas import (
     SyncRequest,
 )
 from app.services.e2e import list_e2e_suites
+from app.services.jenkins import (
+    JenkinsNotConfiguredError,
+    JenkinsPathOutOfScopeError,
+    JenkinsUnreachableError,
+    fetch_builds,
+    fetch_tree,
+)
 from app.services.jobs import JobManager, JobNotFoundError
 from app.services.kube import (
     KubectlNotInstalledError,
@@ -98,6 +107,52 @@ async def ping(settings: SettingsDep) -> AgentPingResponse:
 @router.get(AgentPath.PREFLIGHT.value, response_model=list[PreflightItem])
 async def preflight(_: AuthDep, settings: SettingsDep) -> list[PreflightItem]:
     return await collect_preflight(settings)
+
+
+@router.get(AgentPath.JENKINS_TREE.value, response_model=JenkinsTreeResponse)
+async def get_jenkins_tree(
+    _: AuthDep,
+    settings: SettingsDep,
+) -> JenkinsTreeResponse:
+    try:
+        roots = await fetch_tree(settings)
+    except JenkinsNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except JenkinsUnreachableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+    return JenkinsTreeResponse(roots=roots)
+
+
+@router.get(AgentPath.JENKINS_BUILDS.value, response_model=JenkinsBuildsResponse)
+async def get_jenkins_builds(
+    _: AuthDep,
+    settings: SettingsDep,
+    path: str = Query(...),
+) -> JenkinsBuildsResponse:
+    try:
+        builds = await fetch_builds(settings, path)
+    except JenkinsNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except (JenkinsPathOutOfScopeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except JenkinsUnreachableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+    return JenkinsBuildsResponse(builds=builds)
 
 
 @router.get(AgentPath.KUBECONFIG_STATUS.value, response_model=KubeconfigStatus)

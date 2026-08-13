@@ -59,6 +59,10 @@ function createBootstrapTabsByPlugin(): TabsByPlugin {
       activeTabId: TabId.ADMIN_PLUGINS,
       tabIds: [TabId.ADMIN_PLUGINS],
     },
+    [PluginId.JENKINS]: {
+      activeTabId: TabId.JENKINS_TREE,
+      tabIds: [TabId.JENKINS_TREE],
+    },
     [PluginId.KUBER]: {
       activeTabId: TabId.KUBE_CLUSTERS,
       tabIds: [TabId.KUBE_CLUSTERS],

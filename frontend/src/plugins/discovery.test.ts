@@ -41,6 +41,7 @@ describe("plugin discovery", () => {
       PluginId.STAGINGS,
       PluginId.KUBER,
       PluginId.QAA_GENERATOR,
+      PluginId.JENKINS,
       PluginId.ADMIN,
     ]);
     expect(new Set(PLUGINS.map((plugin) => plugin.id)).size).toBe(PLUGINS.length);
@@ -51,7 +52,8 @@ describe("plugin discovery", () => {
     expect(PLUGINS[0]?.requiresAgent).toBe(true);
     expect(PLUGINS[1]?.requiresAgent).toBe(true);
     expect(PLUGINS[2]?.requiresAgent).toBe(false);
-    expect(PLUGINS[3]?.kind).toBe(PluginKind.SYSTEM);
+    expect(PLUGINS[3]?.kind).toBe(PluginKind.OPTIONAL);
+    expect(PLUGINS[4]?.kind).toBe(PluginKind.SYSTEM);
   });
 
   it("rejects duplicate plugin ids", () => {

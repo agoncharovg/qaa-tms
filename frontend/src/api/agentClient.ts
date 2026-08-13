@@ -4,6 +4,8 @@ import {
   AGENT_REQUEST_HEADER,
   AGENT_REQUEST_HEADER_VALUE,
   AgentPath,
+  buildAgentJenkinsBuildsPath,
+  buildAgentJenkinsTreePath,
   AUTH_SCHEME_BEARER,
   buildAgentE2eSuitesPath,
   buildAgentJobCancelPath,
@@ -34,6 +36,8 @@ import type {
   DestroyRequest,
   E2eRunRequest,
   E2eSuitesResponse,
+  JenkinsBuildsResponse,
+  JenkinsTreeResponse,
   JobCreateResponse,
   KubeCommandResult,
   KubeconfigRefreshRequest,
@@ -57,6 +61,16 @@ import type {
   SyncRequest,
 } from "@/api/types";
 import { parseSseStream } from "@/api/sse";
+
+export class AgentRequestError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "AgentRequestError";
+    this.status = status;
+  }
+}
 
 type AgentDiscovery = {
   agent: AgentPingResponse;
@@ -120,7 +134,7 @@ async function readAgentJson<T>(
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
-    throw new Error(payload?.detail ?? "Agent request failed.");
+    throw new AgentRequestError(payload?.detail ?? "Agent request failed.", response.status);
   }
 
   return (await response.json()) as T;
@@ -191,6 +205,35 @@ export async function getPreflight(token: string, signal?: AbortSignal): Promise
     detected: true,
     port: discovery.port,
   };
+}
+
+export function getJenkinsTree(
+  port: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<JenkinsTreeResponse> {
+  return readAgentJson<JenkinsTreeResponse>(
+    port,
+    buildAgentJenkinsTreePath(),
+    { method: HttpMethod.GET },
+    token,
+    signal
+  );
+}
+
+export function getJenkinsBuilds(
+  port: number,
+  token: string,
+  path: string,
+  signal?: AbortSignal
+): Promise<JenkinsBuildsResponse> {
+  return readAgentJson<JenkinsBuildsResponse>(
+    port,
+    buildAgentJenkinsBuildsPath(path),
+    { method: HttpMethod.GET },
+    token,
+    signal
+  );
 }
 
 export function getKubeconfigStatus(
@@ -357,6 +400,9 @@ export const agentClient = {
       signal
     );
   },
+
+  getJenkinsBuilds,
+  getJenkinsTree,
 
   getKubeContexts(
     port: number,

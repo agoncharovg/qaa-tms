@@ -10,6 +10,7 @@ DEFAULT_OPTIONAL_PLUGIN_IDS = [
     PluginId.STAGINGS.value,
     PluginId.KUBER.value,
     PluginId.QAA_GENERATOR.value,
+    PluginId.JENKINS.value,
 ]
 
 

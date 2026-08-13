@@ -11,6 +11,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.core.constants import (
     MAX_STAGE,
     MIN_STAGE,
+    JenkinsNodeKind,
+    JenkinsStatus,
     JobStatus,
     KubeconfigAction,
     KubeconfigReason,
@@ -380,6 +382,53 @@ class KubeCommandResult(BaseModel):
 
     raw: str
     exit_code: int = Field(alias="exitCode")
+
+
+class JenkinsNode(BaseModel):
+    """Jenkins folder or pipeline node."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    name: str
+    path: str
+    url: str
+    kind: JenkinsNodeKind
+    status: JenkinsStatus | None = None
+    color: str | None = None
+    children: list[JenkinsNode] = Field(default_factory=list)
+
+
+JenkinsNode.model_rebuild()
+
+
+class JenkinsTreeResponse(BaseModel):
+    """`/jenkins/tree` response shape."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    roots: list[JenkinsNode] = Field(default_factory=list)
+
+
+class JenkinsBuild(BaseModel):
+    """Jenkins build row."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    number: int
+    result: str | None = None
+    building: bool
+    timestamp: int
+    duration_ms: int = Field(alias="durationMs")
+    url: str
+    allure_url: str = Field(alias="allureUrl")
+
+
+class JenkinsBuildsResponse(BaseModel):
+    """`/jenkins/builds` response shape."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    builds: list[JenkinsBuild] = Field(default_factory=list)
 
 
 class DeployRecipePayload(BaseModel):

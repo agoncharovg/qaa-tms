@@ -2,6 +2,7 @@ export const PluginId = {
   STAGINGS: "stagings",
   KUBER: "kuber",
   QAA_GENERATOR: "qaa-generator",
+  JENKINS: "jenkins",
   ADMIN: "admin",
 } as const;
 
@@ -16,6 +17,7 @@ export type PluginOrigin = (typeof PluginOrigin)[keyof typeof PluginOrigin];
 
 export const IconName = {
   CLUSTER: "cluster",
+  JENKINS: "jenkins",
   ROCKET: "rocket",
   SPARKLES: "sparkles",
   SETTINGS: "settings",
@@ -47,6 +49,7 @@ export const StorageKey = {
   SIDEBAR_COLLAPSED: "qaa-tms.sidebar-collapsed",
   TABS: "qaa-tms.tabs",
   KUBE: "qaa-tms.kube",
+  JENKINS_PINNED: "qaa-tms.jenkins-pinned",
 } as const;
 
 export type StorageKey = (typeof StorageKey)[keyof typeof StorageKey];
@@ -125,6 +128,8 @@ export function buildBackendQaaServiceTokenRevokePath(tokenId: string): string {
 export const AgentPath = {
   PING: "/ping",
   PREFLIGHT: "/preflight",
+  JENKINS_TREE: "/jenkins/tree",
+  JENKINS_BUILDS: "/jenkins/builds",
   KUBECONFIG_STATUS: "/staging/kubeconfig/status",
   KUBECONFIG_REFRESH: "/staging/kubeconfig/refresh",
   KUBECONFIG_ACTIVATE: "/staging/kubeconfig/activate",
@@ -196,6 +201,17 @@ function setOptionalSearchParam(
   }
 
   searchParams.set(key, value);
+}
+
+export function buildAgentJenkinsTreePath(): string {
+  return AgentPath.JENKINS_TREE;
+}
+
+export function buildAgentJenkinsBuildsPath(path: string): string {
+  const params = new URLSearchParams({
+    path,
+  });
+  return `${AgentPath.JENKINS_BUILDS}?${params.toString()}`;
 }
 
 export function buildAgentKubeNamespacesPath(context?: string | null): string {
@@ -475,6 +491,8 @@ export type HttpStatus = (typeof HttpStatus)[keyof typeof HttpStatus];
 
 export const ViewKey = {
   STAGINGS_PREFLIGHT: "stagings-preflight",
+  JENKINS_TREE: "jenkins-tree",
+  JENKINS_BOARD: "jenkins-board",
   STAGINGS_DEPLOY: "stagings-deploy",
   STAGINGS_HISTORY: "stagings-history",
   STAGINGS_NAMESPACES: "stagings-namespaces",
@@ -494,6 +512,8 @@ export type ViewKey = (typeof ViewKey)[keyof typeof ViewKey];
 
 export const TabId = {
   STAGINGS_PREFLIGHT: "tab-stagings-preflight",
+  JENKINS_TREE: "tab-jenkins-tree",
+  JENKINS_BOARD: "tab-jenkins-board",
   STAGINGS_DEPLOY: "tab-stagings-deploy",
   STAGINGS_HISTORY: "tab-stagings-history",
   STAGINGS_NAMESPACES: "tab-stagings-namespaces",
@@ -513,6 +533,8 @@ export type TabId = (typeof TabId)[keyof typeof TabId];
 
 export const TabTitle: Record<TabId, string> = {
   [TabId.STAGINGS_PREFLIGHT]: "Preflight",
+  [TabId.JENKINS_TREE]: "Tree",
+  [TabId.JENKINS_BOARD]: "Pinned",
   [TabId.STAGINGS_DEPLOY]: "Deploy",
   [TabId.STAGINGS_HISTORY]: "History",
   [TabId.STAGINGS_NAMESPACES]: "Namespaces",
@@ -535,6 +557,8 @@ export const QueryKey = {
   AGENT_NAMESPACE_STATUS: "agent-namespace-status",
   AGENT_NAMESPACE_CREDS: "agent-namespace-creds",
   AGENT_E2E_SUITES: "agent-e2e-suites",
+  JENKINS_TREE: "jenkins-tree",
+  JENKINS_BUILDS: "jenkins-builds",
   KUBECONFIG_STATUS: "kubeconfig-status",
   KUBE_CONTEXTS: "kube-contexts",
   KUBE_NAMESPACES: "kube-namespaces",
@@ -566,9 +590,46 @@ export const DEFAULT_QAA_RUNS_PAGE_SIZE = 20 as const;
 export const DEFAULT_JOB_POLL_INTERVAL_MS = 2000 as const;
 export const DEFAULT_KUBECONFIG_STATUS_POLL_MS = 60000 as const;
 export const DEFAULT_KUBE_LOG_TAIL = 200 as const;
+export const DEFAULT_JENKINS_TREE_REFETCH_MS = 30000 as const;
 export const DEFAULT_IMAGE_TAG = "latest" as const;
 export const MIN_DEPLOY_STAGE = 0 as const;
 export const MAX_DEPLOY_STAGE = 7 as const;
+
+export const JenkinsNodeKind = {
+  FOLDER: "folder",
+  PIPELINE: "pipeline",
+} as const;
+
+export type JenkinsNodeKind = (typeof JenkinsNodeKind)[keyof typeof JenkinsNodeKind];
+
+export const JenkinsStatus = {
+  PASSED: "passed",
+  FAILED: "failed",
+  DISABLED: "disabled",
+  RUNNING: "running",
+  STUCK: "stuck",
+  NOTBUILT: "notbuilt",
+} as const;
+
+export type JenkinsStatus = (typeof JenkinsStatus)[keyof typeof JenkinsStatus];
+
+export const JenkinsStatusColor: Record<JenkinsStatus, string> = {
+  [JenkinsStatus.PASSED]: "green",
+  [JenkinsStatus.FAILED]: "red",
+  [JenkinsStatus.DISABLED]: "gray",
+  [JenkinsStatus.RUNNING]: "blue",
+  [JenkinsStatus.STUCK]: "yellow",
+  [JenkinsStatus.NOTBUILT]: "gray",
+};
+
+export const JenkinsStatusLabel: Record<JenkinsStatus, string> = {
+  [JenkinsStatus.PASSED]: "Passed",
+  [JenkinsStatus.FAILED]: "Failed",
+  [JenkinsStatus.DISABLED]: "Disabled",
+  [JenkinsStatus.RUNNING]: "Running",
+  [JenkinsStatus.STUCK]: "Stuck",
+  [JenkinsStatus.NOTBUILT]: "Not built",
+};
 
 export const QaaRunStatus = {
   QUEUED: "queued",

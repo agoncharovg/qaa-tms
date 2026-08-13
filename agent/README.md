@@ -1,8 +1,9 @@
 # QAA-TMS Agent
 
-Headless local HTTP service for staging operations. This is the dev-mode form of
+Headless local HTTP service for staging and Jenkins companion workflows. This is the dev-mode form of
 the future companion app: the browser talks to `127.0.0.1`, the agent runs the
 real `staging` CLI with the engineer's local VPN, kubeconfig, and Docker creds,
+makes authenticated read-only Jenkins API calls with the engineer's own personal token,
 and the agent best-effort pushes audit records to the central backend.
 
 ## Run
@@ -39,6 +40,24 @@ All config uses the `AGENT_` prefix:
 - `AGENT_BACKEND_URL`
   Central backend base URL used for `/api/v1/me` token validation and
   `/api/v1/operations` audit upserts. Default: `http://localhost:8000`.
+- `AGENT_JENKINS_URL`
+  Base Jenkins URL used by the Jenkins explorer plugin. Default: `https://jenkins.p.gc.onl`.
+- `AGENT_JENKINS_USERNAME`
+  The engineer's personal Jenkins username used only by the local companion app.
+- `AGENT_JENKINS_TOKEN`
+  The engineer's personal Jenkins API token used only by the local companion app. Jenkins access
+  still depends on the engineer's own VPN session and Jenkins permissions.
+- `AGENT_JENKINS_ROOT_PATH`
+  Allowed Jenkins subtree. Default: `job/.QAA/job/E2E`.
+- `AGENT_JENKINS_ROOT_FOLDERS`
+  Editable allow-list of child folders under `.QAA/E2E`. Default: `PREPROD,PROD`.
+  More roots can be added later without code changes; a UI editor is future work.
+- `AGENT_JENKINS_REQUEST_TIMEOUT`
+  Timeout for Jenkins API reads. Default: `15`.
+- `AGENT_JENKINS_TREE_DEPTH`
+  Recursive Jenkins jobs depth used for the single tree fetch. Default: `5`.
+- `AGENT_JENKINS_STUCK_MIN_IDLE_HOURS`
+  Idle-age threshold for the Jenkins `STUCK` heuristic. Default: `6`.
 - `AGENT_STAGING_BIN`
   Optional explicit path to the `staging` executable. If unset, the agent uses
   `which staging`.
@@ -84,6 +103,8 @@ Implemented in this slice:
 
 - `GET /ping`
 - `GET /preflight`
+- `GET /jenkins/tree`
+- `GET /jenkins/builds?path=...`
 - `GET /staging/kubeconfig/status`
 - `POST /staging/kubeconfig/refresh`
 - `POST /staging/kubeconfig/activate`
@@ -134,6 +155,12 @@ local watcher process only; the already-triggered remote Jenkins build keeps run
 `GET /e2e/suites?product=...` is a Bearer-guarded read endpoint that shells out to
 `staging e2e-run <placeholder> --product <P> --list-suites`, parses the named suite
 registry, and does not create backend audit records.
+
+The Jenkins routes are read-only local-agent helpers for the builtin `jenkins` plugin.
+`GET /jenkins/tree` fetches the configured `.QAA/E2E` subtree in one recursive Jenkins
+API call, derives shared pipeline statuses on the agent, and never proxies through
+the central backend. `GET /jenkins/builds?path=...` lazily fetches recent builds for
+a validated in-scope pipeline path and returns direct Jenkins URLs plus `{buildUrl}allure/`.
 
 The `kube/*` routes shell out to the engineer's local `kubectl` binary and use
 their real kubeconfig access. Reads are one-shot commands, pod logs stream over

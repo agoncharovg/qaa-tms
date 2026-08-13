@@ -1,5 +1,7 @@
 import type {
   ContentType,
+  JenkinsNodeKind,
+  JenkinsStatus,
   JobStatus,
   JobStreamEvent,
   KubeconfigAction,
@@ -388,6 +390,34 @@ export interface KubeTopResponse {
 export interface KubeCommandResult {
   raw: string;
   exitCode: number;
+}
+
+export interface JenkinsNode {
+  name: string;
+  path: string;
+  url: string;
+  kind: JenkinsNodeKind;
+  status: JenkinsStatus | null;
+  color: string | null;
+  children: JenkinsNode[];
+}
+
+export interface JenkinsTreeResponse {
+  roots: JenkinsNode[];
+}
+
+export interface JenkinsBuild {
+  number: number;
+  result: string | null;
+  building: boolean;
+  timestamp: number;
+  durationMs: number;
+  url: string;
+  allureUrl: string;
+}
+
+export interface JenkinsBuildsResponse {
+  builds: JenkinsBuild[];
 }
 
 export interface JobLogEvent {

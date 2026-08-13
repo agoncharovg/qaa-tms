@@ -7,6 +7,7 @@ class PluginId(StrEnum):
     STAGINGS = "stagings"
     KUBER = "kuber"
     QAA_GENERATOR = "qaa-generator"
+    JENKINS = "jenkins"
     ADMIN = "admin"
 
 
@@ -184,7 +185,7 @@ class DevPassword(StrEnum):
     ADMIN = "admin"
 
 
-OPTIONAL_PLUGIN_IDS = (PluginId.STAGINGS, PluginId.KUBER, PluginId.QAA_GENERATOR)
+OPTIONAL_PLUGIN_IDS = (PluginId.STAGINGS, PluginId.KUBER, PluginId.QAA_GENERATOR, PluginId.JENKINS)
 SYSTEM_PLUGIN_IDS = (PluginId.ADMIN,)
 OPTIONAL_PLUGIN_ID_VALUES = tuple(plugin_id.value for plugin_id in OPTIONAL_PLUGIN_IDS)
 SYSTEM_PLUGIN_ID_VALUES = tuple(plugin_id.value for plugin_id in SYSTEM_PLUGIN_IDS)

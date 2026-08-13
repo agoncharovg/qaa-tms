@@ -20,8 +20,7 @@ The SPA serves on `http://localhost:3000` and expects the backend on
 Two plugin classes exist in this slice:
 
 - `system`: always visible to authenticated users and never toggleable. `Administration` is the only system plugin.
-- `optional`: visible only when the current user enables it for themselves. `Stagings` and `QAA Generator` ship as optional builtin plugins in this build.
-  `Kuber` also ships as an optional builtin plugin in this build.
+- `optional`: visible only when the current user enables it for themselves. `Stagings`, `Kuber`, `QAA Generator`, and `Jenkins` ship as optional builtin plugins in this build.
 
 Static metadata lives in `src/plugins/catalog.ts`. React view wiring lives in
 `src/plugins/*/manifest.tsx`, discovered statically at build time through Vite
@@ -135,6 +134,23 @@ central backend for cluster I/O.
 The plugin requires `kubectl` to be available on the engineer's machine. The
 companion app may optionally override the kubectl path or kubeconfig via its
 `AGENT_KUBECTL_BIN` and `AGENT_KUBECONFIG` settings.
+
+## Jenkins workflow
+
+The `Jenkins` optional plugin talks only to the local companion app and never to the
+central backend for Jenkins I/O. The agent uses the engineer's own Jenkins username
+and personal API token from its local environment, so the browser never receives a shared
+server credential and each engineer sees only what their own Jenkins account can access.
+
+- `Tree`: fetch the live `.QAA/E2E` subtree once from the agent, render the configured
+  roots (default `PREPROD`, `PROD`) as a collapsible status tree, lazy-load recent builds per pipeline,
+  and open the real Jenkins pipeline page or `{buildUrl}allure/` in a browser tab on double-click.
+- `Pinned`: persist pinned Jenkins folders in local storage and render recursive status-count
+  widgets over all descendant pipelines, including nested folders.
+
+The MVP is intentionally scoped to `.QAA/E2E` only. The companion app must be configured
+with `AGENT_JENKINS_URL`, `AGENT_JENKINS_USERNAME`, and `AGENT_JENKINS_TOKEN`, and the
+engineer still needs VPN access to reach Jenkins from their own machine.
 
 ## Docker Compose
 
