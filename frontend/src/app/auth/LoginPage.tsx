@@ -14,12 +14,13 @@ import {
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 
-import { palette } from "@/app/theme/tokens";
+import { usePalette } from "@/app/theme/usePalette";
 import { RoutePath } from "@/constants";
 import { useAuthStore } from "@/store/authStore";
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const palette = usePalette();
   const login = useAuthStore((state) => state.login);
   const token = useAuthStore((state) => state.token);
   const currentUser = useAuthStore((state) => state.currentUser);

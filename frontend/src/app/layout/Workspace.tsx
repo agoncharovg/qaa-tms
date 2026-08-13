@@ -1,6 +1,6 @@
 import { AppShell, Paper } from "@mantine/core";
 
-import { palette } from "@/app/theme/tokens";
+import { usePalette } from "@/app/theme/usePalette";
 import { WorkspaceContent } from "@/components/WorkspaceContent";
 import { type PluginId as PluginIdType } from "@/constants";
 import { pluginById } from "@/plugins/registry";
@@ -11,6 +11,7 @@ interface WorkspaceProps {
 }
 
 export function Workspace(_: WorkspaceProps) {
+  const palette = usePalette();
   const activeWorkspaceTabId = useUiStore((state) => state.activeWorkspaceTabId);
   const workspaceTabIds = useUiStore((state) => state.workspaceTabIds);
   const activeTab =

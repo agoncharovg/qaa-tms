@@ -9,7 +9,7 @@ import {
 import { IconX } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 
-import { palette } from "@/app/theme/tokens";
+import { usePalette } from "@/app/theme/usePalette";
 import { type PluginId as PluginIdType, type TabId as TabIdType } from "@/constants";
 import { pluginById } from "@/plugins/registry";
 import { useAuthStore } from "@/store/authStore";
@@ -56,6 +56,7 @@ function TabLabel({
 
 export function TabBar(_: TabBarProps) {
   const navigate = useNavigate();
+  const palette = usePalette();
   const currentUser = useAuthStore((state) => state.currentUser);
   const activeWorkspaceTabId = useUiStore((state) => state.activeWorkspaceTabId);
   const closeTab = useUiStore((state) => state.closeTab);

@@ -14,12 +14,15 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconLogout,
+  IconMoon,
+  IconSun,
   IconUserCircle,
 } from "@tabler/icons-react";
 import type { CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { palette } from "@/app/theme/tokens";
+import { usePalette } from "@/app/theme/usePalette";
+import type { Palette } from "@/app/theme/tokens";
 import { RoutePath, type PluginId as PluginIdType } from "@/constants";
 import { resolveIcon } from "@/core/plugins/icons";
 import { enabledOptionalPluginIdSet, visiblePlugins, visibleTabs } from "@/plugins/registry";
@@ -30,7 +33,7 @@ interface SidebarProps {
   activePluginId: PluginIdType;
 }
 
-function buildItemButtonStyle(active: boolean, collapsed: boolean): CSSProperties {
+function buildItemButtonStyle(active: boolean, collapsed: boolean, palette: Palette): CSSProperties {
   return {
     alignItems: "center",
     backgroundColor: active ? palette.chip : "transparent",
@@ -46,7 +49,7 @@ function buildItemButtonStyle(active: boolean, collapsed: boolean): CSSPropertie
   };
 }
 
-function buildTabButtonStyle(active: boolean, open: boolean): CSSProperties {
+function buildTabButtonStyle(active: boolean, open: boolean, palette: Palette): CSSProperties {
   return {
     alignItems: "center",
     backgroundColor: active ? palette.accentSoft : open ? palette.chip : "transparent",
@@ -63,11 +66,14 @@ function buildTabButtonStyle(active: boolean, open: boolean): CSSProperties {
 
 export function Sidebar({ activePluginId }: SidebarProps) {
   const navigate = useNavigate();
+  const palette = usePalette();
   const currentUser = useAuthStore((state) => state.currentUser);
   const logout = useAuthStore((state) => state.logout);
   const sidebarCollapsed = useUiStore((state) => state.sidebarCollapsed);
   const tabsByPlugin = useUiStore((state) => state.tabsByPlugin);
   const toggleSidebar = useUiStore((state) => state.toggleSidebar);
+  const toggleColorScheme = useUiStore((state) => state.toggleColorScheme);
+  const colorScheme = useUiStore((state) => state.colorScheme);
   const openTab = useUiStore((state) => state.openTab);
 
   const enabledOptionalIds = enabledOptionalPluginIdSet(currentUser?.enabled_plugins);
@@ -102,18 +108,36 @@ export function Sidebar({ activePluginId }: SidebarProps) {
             </Text>
           </Group>
         ) : null}
-        <Tooltip label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}>
-          <ActionIcon
-            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            color="gray"
-            onClick={toggleSidebar}
-            radius="md"
-            size="lg"
-            variant="subtle"
-          >
-            {sidebarCollapsed ? <IconChevronRight size={18} /> : <IconChevronLeft size={18} />}
-          </ActionIcon>
-        </Tooltip>
+        <Group
+          gap={4}
+          wrap="nowrap"
+          style={{ flexDirection: sidebarCollapsed ? "column" : "row" }}
+        >
+          <Tooltip label={colorScheme === "dark" ? "Light theme" : "Dark theme"}>
+            <ActionIcon
+              aria-label={colorScheme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+              color="gray"
+              onClick={toggleColorScheme}
+              radius="md"
+              size="lg"
+              variant="subtle"
+            >
+              {colorScheme === "dark" ? <IconSun size={18} /> : <IconMoon size={18} />}
+            </ActionIcon>
+          </Tooltip>
+          <Tooltip label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}>
+            <ActionIcon
+              aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              color="gray"
+              onClick={toggleSidebar}
+              radius="md"
+              size="lg"
+              variant="subtle"
+            >
+              {sidebarCollapsed ? <IconChevronRight size={18} /> : <IconChevronLeft size={18} />}
+            </ActionIcon>
+          </Tooltip>
+        </Group>
       </Group>
 
       <Divider mb="sm" />
@@ -134,7 +158,7 @@ export function Sidebar({ activePluginId }: SidebarProps) {
                   activatePluginWorkspaceTab(plugin.id);
                   navigate(plugin.route);
                 }}
-                style={buildItemButtonStyle(isActivePlugin, sidebarCollapsed)}
+                style={buildItemButtonStyle(isActivePlugin, sidebarCollapsed, palette)}
               >
                 <Icon size={18} />
                 {!sidebarCollapsed ? (
@@ -189,7 +213,7 @@ export function Sidebar({ activePluginId }: SidebarProps) {
                               openTab(plugin.id, tab.id);
                               navigate(plugin.route);
                             }}
-                            style={buildTabButtonStyle(isActiveTab, isOpenTab)}
+                            style={buildTabButtonStyle(isActiveTab, isOpenTab, palette)}
                           >
                             <Group gap="xs" wrap="nowrap">
                               <Box

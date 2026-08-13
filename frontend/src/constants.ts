@@ -47,6 +47,7 @@ export const StorageKey = {
   REMEMBER_ME: "qaa-tms.remember-me",
   AUTO_LOGIN: "qaa-tms.auto-login",
   SIDEBAR_COLLAPSED: "qaa-tms.sidebar-collapsed",
+  COLOR_SCHEME: "qaa-tms.color-scheme",
   TABS: "qaa-tms.tabs",
   KUBE: "qaa-tms.kube",
   JENKINS_PINNED: "qaa-tms.jenkins-pinned",

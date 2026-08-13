@@ -20,13 +20,18 @@ export interface WorkspaceTabsState {
 
 export type TabsByPlugin = Record<PluginIdType, PluginTabState>;
 
+export type ColorScheme = "light" | "dark";
+
 interface UiState extends WorkspaceTabsState {
   closeTab: (pluginId: PluginIdType, tabId: TabIdType) => void;
+  colorScheme: ColorScheme;
   openTab: (pluginId: PluginIdType, tabId: TabIdType) => void;
+  setColorScheme: (scheme: ColorScheme) => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   sidebarCollapsed: boolean;
   switchTab: (pluginId: PluginIdType, tabId: TabIdType) => void;
   tabsByPlugin: TabsByPlugin;
+  toggleColorScheme: () => void;
   toggleSidebar: () => void;
 }
 
@@ -51,6 +56,22 @@ export function readStoredSidebarCollapsed(): boolean {
   }
 
   return window.localStorage.getItem(StorageKey.SIDEBAR_COLLAPSED) === "true";
+}
+
+export function readStoredColorScheme(): ColorScheme {
+  if (!isBrowser()) {
+    return "light";
+  }
+
+  return window.localStorage.getItem(StorageKey.COLOR_SCHEME) === "dark" ? "dark" : "light";
+}
+
+function writeStoredColorScheme(scheme: ColorScheme): void {
+  if (!isBrowser()) {
+    return;
+  }
+
+  window.localStorage.setItem(StorageKey.COLOR_SCHEME, scheme);
 }
 
 function writeStoredSidebarCollapsed(collapsed: boolean): void {
@@ -227,6 +248,21 @@ function syncPluginActiveTab(
 
 export const useUiStore = create<UiState>()((set) => ({
   activeWorkspaceTabId: null,
+
+  colorScheme: readStoredColorScheme(),
+
+  setColorScheme(scheme) {
+    writeStoredColorScheme(scheme);
+    set({ colorScheme: scheme });
+  },
+
+  toggleColorScheme() {
+    set((state) => {
+      const nextScheme: ColorScheme = state.colorScheme === "dark" ? "light" : "dark";
+      writeStoredColorScheme(nextScheme);
+      return { colorScheme: nextScheme };
+    });
+  },
 
   closeTab(pluginId, tabId) {
     set((state) => {

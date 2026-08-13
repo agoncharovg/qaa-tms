@@ -5,12 +5,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
 
 import { AppRoutes } from "@/app/routes";
-import { brandColors } from "@/app/theme/tokens";
+import { brandColors, darkShades } from "@/app/theme/tokens";
 import { useAuthStore } from "@/store/authStore";
+import { useUiStore } from "@/store/uiStoreCore";
 
 const theme = createTheme({
   colors: {
     brand: brandColors,
+    dark: darkShades,
   },
   defaultRadius: "md",
   fontFamily:
@@ -38,9 +40,11 @@ function AuthBootstrap() {
 }
 
 export default function App() {
+  const colorScheme = useUiStore((state) => state.colorScheme);
+
   return (
     <QueryClientProvider client={queryClient}>
-      <MantineProvider defaultColorScheme="light" forceColorScheme="light" theme={theme}>
+      <MantineProvider forceColorScheme={colorScheme} theme={theme}>
         <Notifications />
         <BrowserRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
           <AuthBootstrap />

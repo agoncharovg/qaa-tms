@@ -5,7 +5,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Sidebar } from "@/app/layout/Sidebar";
 import { TabBar } from "@/app/layout/TabBar";
 import { Workspace } from "@/app/layout/Workspace";
-import { palette } from "@/app/theme/tokens";
+import { usePalette } from "@/app/theme/usePalette";
 import { BuiltinHostApiProvider } from "@/core/plugins/host";
 import {
   enabledOptionalPluginIdSet,
@@ -19,6 +19,7 @@ import { activatePluginWorkspaceTab, syncTabsForUser, TAB_DEFINITIONS, useUiStor
 export function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
+  const palette = usePalette();
   const currentUser = useAuthStore((state) => state.currentUser);
   const activeWorkspaceTabId = useUiStore((state) => state.activeWorkspaceTabId);
   const sidebarCollapsed = useUiStore((state) => state.sidebarCollapsed);
