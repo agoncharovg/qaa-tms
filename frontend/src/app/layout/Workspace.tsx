@@ -1,4 +1,4 @@
-import { AppShell, Paper } from "@mantine/core";
+import { Paper } from "@mantine/core";
 
 import { usePalette } from "@/app/theme/usePalette";
 import { WorkspaceContent } from "@/components/WorkspaceContent";
@@ -19,19 +19,18 @@ export function Workspace(_: WorkspaceProps) {
   const activePlugin = pluginById(activeTab?.pluginId);
 
   return (
-    <AppShell.Main>
-      <Paper
-        h="calc(100vh - 100px)"
-        p="lg"
-        radius="lg"
-        style={{
-          backgroundColor: palette.surface,
-          border: `1px solid ${palette.line}`,
-          overflow: "auto",
-        }}
-      >
-        <WorkspaceContent activePlugin={activePlugin ?? null} tab={activeTab} />
-      </Paper>
-    </AppShell.Main>
+    <Paper
+      p="lg"
+      radius="lg"
+      style={{
+        backgroundColor: palette.surface,
+        border: `1px solid ${palette.line}`,
+        flex: 1,
+        minHeight: 0,
+        overflow: "auto",
+      }}
+    >
+      <WorkspaceContent activePlugin={activePlugin ?? null} tab={activeTab} />
+    </Paper>
   );
 }

@@ -1,7 +1,7 @@
 import {
   ActionIcon,
-  AppShell,
   Group,
+  Paper,
   ScrollArea,
   Tabs,
   Text,
@@ -75,10 +75,11 @@ export function TabBar(_: TabBarProps) {
   });
 
   return (
-    <AppShell.Header
+    <Paper
       px="md"
       py="sm"
-      style={{ backgroundColor: palette.surface, borderBottom: `1px solid ${palette.line}` }}
+      radius="lg"
+      style={{ backgroundColor: palette.surface, border: `1px solid ${palette.line}` }}
     >
       <Group h="100%" justify="space-between" wrap="nowrap">
         <ScrollArea scrollbarSize={4} w="100%">
@@ -160,6 +161,6 @@ export function TabBar(_: TabBarProps) {
           )}
         </ScrollArea>
       </Group>
-    </AppShell.Header>
+    </Paper>
   );
 }

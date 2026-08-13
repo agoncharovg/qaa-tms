@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import { AppShell } from "@mantine/core";
-import { useLocation, useNavigate } from "react-router-dom";
+import { AppShell, Stack } from "@mantine/core";
+import { Navigate, useLocation } from "react-router-dom";
 
 import { Sidebar } from "@/app/layout/Sidebar";
 import { TabBar } from "@/app/layout/TabBar";
@@ -14,11 +14,11 @@ import {
 } from "@/plugins/registry";
 import { PluginsProvider } from "@/plugins/provider";
 import { useAuthStore } from "@/store/authStore";
+import { RoutePath } from "@/constants";
 import { activatePluginWorkspaceTab, syncTabsForUser, TAB_DEFINITIONS, useUiStore } from "@/store/uiStore";
 
 export function AppLayout() {
   const location = useLocation();
-  const navigate = useNavigate();
   const palette = usePalette();
   const currentUser = useAuthStore((state) => state.currentUser);
   const activeWorkspaceTabId = useUiStore((state) => state.activeWorkspaceTabId);
@@ -32,15 +32,6 @@ export function AppLayout() {
   useEffect(() => {
     syncTabsForUser(currentUser);
   }, [currentUser]);
-
-  useEffect(() => {
-    if (plugins.length === 0) {
-      return;
-    }
-    if (!activePlugin || !plugins.some((plugin) => plugin.id === activePlugin.id)) {
-      navigate(plugins[0].route, { replace: true });
-    }
-  }, [activePlugin, navigate, plugins]);
 
   useEffect(() => {
     if (!activePluginVisible || !activePlugin) {
@@ -68,15 +59,18 @@ export function AppLayout() {
     }
   }, [activePlugin, activePluginVisible, activeWorkspaceTabId]);
 
-  if (!currentUser || !activePlugin || !activePluginVisible) {
-    return null;
+  if (!currentUser) {
+    return <Navigate replace to={RoutePath.LOGIN} />;
+  }
+
+  if (!activePlugin || !activePluginVisible) {
+    return <Navigate replace to={plugins[0]?.route ?? RoutePath.LOGIN} />;
   }
 
   return (
     <PluginsProvider>
       <BuiltinHostApiProvider>
         <AppShell
-          header={{ height: 60 }}
           navbar={{ breakpoint: "sm", width: sidebarCollapsed ? 84 : 264 }}
           padding="md"
           styles={{
@@ -87,8 +81,12 @@ export function AppLayout() {
           }}
         >
           <Sidebar activePluginId={activePlugin.id} />
-          <TabBar />
-          <Workspace />
+          <AppShell.Main>
+            <Stack gap="md" h="calc(100vh - 32px)">
+              <TabBar />
+              <Workspace />
+            </Stack>
+          </AppShell.Main>
         </AppShell>
       </BuiltinHostApiProvider>
     </PluginsProvider>
