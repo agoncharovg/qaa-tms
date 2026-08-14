@@ -9,6 +9,7 @@ from typing import Annotated, Any
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from app.core import env_file
 from app.core.constants import (
     DEFAULT_AGENT_HOST,
     DEFAULT_AGENT_PORT,
@@ -20,13 +21,13 @@ from app.core.constants import (
     DEFAULT_JENKINS_STUCK_MIN_IDLE_HOURS,
     DEFAULT_JENKINS_TREE_DEPTH,
     DEFAULT_JENKINS_URL,
+    DEFAULT_KUBECONFIG,
     DEFAULT_KUBECONFIG_ACTIVE_PATH,
     DEFAULT_KUBECTL_BIN,
     DEFAULT_KUBECTL_REQUEST_TIMEOUT,
     DEFAULT_STAGING_KUBECONFIG,
     DEFAULT_STAGING_KUBECONFIG_MAX_AGE_HOURS,
     DEFAULT_STAGING_KUBECONFIG_URL,
-    EnvFile,
     EnvKey,
     StagingEnvKey,
 )
@@ -36,7 +37,7 @@ class Settings(BaseSettings):
     """Runtime configuration."""
 
     model_config = SettingsConfigDict(
-        env_file=EnvFile.DOT_ENV.value,
+        env_file=str(env_file.AGENT_ENV_FILE),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -91,11 +92,20 @@ class Settings(BaseSettings):
         alias=EnvKey.STAGING_KUBECONFIG_MAX_AGE_HOURS.value,
     )
     kubectl_bin: str = Field(default=DEFAULT_KUBECTL_BIN, alias=EnvKey.KUBECTL_BIN.value)
-    kubeconfig: str = Field(default="", alias=EnvKey.KUBECONFIG.value)
+    kubeconfig: str = Field(default=DEFAULT_KUBECONFIG, alias=EnvKey.KUBECONFIG.value)
     kubectl_request_timeout: str = Field(
         default=DEFAULT_KUBECTL_REQUEST_TIMEOUT,
         alias=EnvKey.KUBECTL_REQUEST_TIMEOUT.value,
     )
+
+    @field_validator("kubeconfig", mode="before")
+    @classmethod
+    def normalize_kubeconfig(cls, value: Any) -> str:
+        if value is None:
+            return DEFAULT_KUBECONFIG
+        if isinstance(value, str) and not value.strip():
+            return DEFAULT_KUBECONFIG
+        return str(value)
 
     @field_validator("host")
     @classmethod
@@ -166,4 +176,4 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Return cached settings."""
 
-    return Settings()
+    return Settings(_env_file=env_file.AGENT_ENV_FILE)

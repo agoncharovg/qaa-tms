@@ -2,13 +2,17 @@ import {
   ActionIcon,
   AppShell,
   Box,
+  Button,
   Divider,
   Group,
+  Menu,
+  Modal,
   Stack,
   Text,
   Tooltip,
   UnstyledButton,
 } from "@mantine/core";
+import { useDisclosure } from "@mantine/hooks";
 import {
   IconChevronDown,
   IconChevronLeft,
@@ -18,20 +22,41 @@ import {
   IconSun,
   IconUserCircle,
 } from "@tabler/icons-react";
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { usePalette } from "@/app/theme/usePalette";
 import type { Palette } from "@/app/theme/tokens";
-import { RoutePath, type PluginId as PluginIdType } from "@/constants";
+import { PluginId, RoutePath, type PluginId as PluginIdType } from "@/constants";
 import { resolveIcon } from "@/core/plugins/icons";
-import { enabledOptionalPluginIdSet, visiblePlugins, visibleTabs } from "@/plugins/registry";
+import {
+  accountVisiblePlugins,
+  enabledOptionalPluginIdSet,
+  pluginById,
+  primaryVisiblePlugins,
+  visibleTabs,
+} from "@/plugins/registry";
 import { useAuthStore } from "@/store/authStore";
 import { activatePluginWorkspaceTab, useUiStore } from "@/store/uiStore";
 
 interface SidebarProps {
   activePluginId: PluginIdType;
 }
+
+const SidebarCopy = {
+  ACCOUNT_MENU: "Account menu",
+  CANCEL: "Cancel",
+  COLLAPSE: "Collapse sidebar",
+  CONFIRM_LOGOUT: "Log out",
+  EXPAND: "Expand sidebar",
+  LIGHT_THEME: "Light theme",
+  LOGOUT_BODY: "You'll need to sign in again to continue.",
+  LOGOUT_TITLE: "Log out",
+  PROFILE: "Profile",
+  SWITCH_TO_DARK: "Switch to dark theme",
+  SWITCH_TO_LIGHT: "Switch to light theme",
+  UNKNOWN_USER: "Unknown user",
+} as const;
 
 function buildItemButtonStyle(active: boolean, collapsed: boolean, palette: Palette): CSSProperties {
   return {
@@ -75,9 +100,28 @@ export function Sidebar({ activePluginId }: SidebarProps) {
   const toggleColorScheme = useUiStore((state) => state.toggleColorScheme);
   const colorScheme = useUiStore((state) => state.colorScheme);
   const openTab = useUiStore((state) => state.openTab);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [logoutConfirmOpened, logoutConfirm] = useDisclosure(false);
 
   const enabledOptionalIds = enabledOptionalPluginIdSet(currentUser?.enabled_plugins);
-  const plugins = visiblePlugins(currentUser, enabledOptionalIds);
+  const plugins = primaryVisiblePlugins(currentUser, enabledOptionalIds);
+  const accountPlugins = accountVisiblePlugins(currentUser, enabledOptionalIds);
+  const profilePlugin = pluginById(PluginId.PROFILE);
+
+  function openProfile(): void {
+    if (!profilePlugin || !accountPlugins.some((plugin) => plugin.id === profilePlugin.id)) {
+      return;
+    }
+
+    setAccountMenuOpen(false);
+    activatePluginWorkspaceTab(profilePlugin.id);
+    navigate(profilePlugin.route);
+  }
+
+  function confirmLogout(): void {
+    setAccountMenuOpen(false);
+    logoutConfirm.open();
+  }
 
   return (
     <AppShell.Navbar
@@ -115,7 +159,11 @@ export function Sidebar({ activePluginId }: SidebarProps) {
         >
           <Tooltip label={colorScheme === "dark" ? "Light theme" : "Dark theme"}>
             <ActionIcon
-              aria-label={colorScheme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+              aria-label={
+                colorScheme === "dark"
+                  ? SidebarCopy.SWITCH_TO_LIGHT
+                  : SidebarCopy.SWITCH_TO_DARK
+              }
               color="gray"
               onClick={toggleColorScheme}
               radius="md"
@@ -125,9 +173,9 @@ export function Sidebar({ activePluginId }: SidebarProps) {
               {colorScheme === "dark" ? <IconSun size={18} /> : <IconMoon size={18} />}
             </ActionIcon>
           </Tooltip>
-          <Tooltip label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}>
+          <Tooltip label={sidebarCollapsed ? SidebarCopy.EXPAND : SidebarCopy.COLLAPSE}>
             <ActionIcon
-              aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-label={sidebarCollapsed ? SidebarCopy.EXPAND : SidebarCopy.COLLAPSE}
               color="gray"
               onClick={toggleSidebar}
               radius="md"
@@ -254,41 +302,132 @@ export function Sidebar({ activePluginId }: SidebarProps) {
       <Divider my="sm" />
 
       <Stack gap="xs">
-        <Group justify={sidebarCollapsed ? "center" : "flex-start"} wrap="nowrap">
-          <IconUserCircle size={18} />
-          {!sidebarCollapsed ? (
-            <Box>
-              <Text fw={500} size="sm">
-                {currentUser?.display_name ?? "Unknown user"}
-              </Text>
-              <Text c="dimmed" size="xs">
-                @{currentUser?.username ?? "guest"}
-              </Text>
-            </Box>
-          ) : null}
-        </Group>
+        {sidebarCollapsed ? (
+          <Menu position="right-start" shadow="md" width={180} withinPortal={false}>
+            <Menu.Target>
+              <UnstyledButton
+                aria-label={SidebarCopy.ACCOUNT_MENU}
+                style={buildItemButtonStyle(activePluginId === PluginId.PROFILE, true, palette)}
+              >
+                <IconUserCircle size={18} />
+              </UnstyledButton>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Item leftSection={<IconUserCircle size={16} />} onClick={openProfile}>
+                {SidebarCopy.PROFILE}
+              </Menu.Item>
+              <Menu.Item color="red" leftSection={<IconLogout size={16} />} onClick={confirmLogout}>
+                {SidebarCopy.CONFIRM_LOGOUT}
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
+        ) : (
+          <>
+            <UnstyledButton
+              aria-label={SidebarCopy.ACCOUNT_MENU}
+              onClick={() => setAccountMenuOpen((currentValue) => !currentValue)}
+              style={buildItemButtonStyle(activePluginId === PluginId.PROFILE, false, palette)}
+            >
+              <IconUserCircle size={18} />
+              <Box>
+                <Text c="inherit" fw={500} size="sm">
+                  {currentUser?.display_name ?? SidebarCopy.UNKNOWN_USER}
+                </Text>
+                <Text c={palette.faint} size="xs">
+                  @{currentUser?.username ?? "guest"}
+                </Text>
+              </Box>
+              <Box ml="auto">
+                <IconChevronDown
+                  size={16}
+                  style={{
+                    opacity: 0.8,
+                    transform: accountMenuOpen ? "rotate(0deg)" : "rotate(-90deg)",
+                    transition: "transform 150ms ease, opacity 150ms ease",
+                  }}
+                />
+              </Box>
+            </UnstyledButton>
 
-        <UnstyledButton
-          aria-label="Log out"
-          onClick={() => {
-            logout();
-            navigate(RoutePath.LOGIN, { replace: true });
-          }}
-          style={{
-            alignItems: "center",
-            border: `1px solid ${palette.line}`,
-            borderRadius: "10px",
-            color: palette.inkSoft,
-            display: "flex",
-            gap: "12px",
-            justifyContent: sidebarCollapsed ? "center" : "flex-start",
-            padding: sidebarCollapsed ? "10px 10px" : "10px 12px",
-          }}
-        >
-          <IconLogout size={18} />
-          {!sidebarCollapsed ? <Text fw={500}>Log out</Text> : null}
-        </UnstyledButton>
+            {accountMenuOpen ? (
+              <Box ml="md" pl="md" style={{ borderLeft: `1px solid ${palette.line}` }}>
+                <Stack gap={6}>
+                  <UnstyledButton
+                    aria-current={activePluginId === PluginId.PROFILE ? "page" : undefined}
+                    aria-label={SidebarCopy.PROFILE}
+                    onClick={openProfile}
+                    style={buildTabButtonStyle(activePluginId === PluginId.PROFILE, false, palette)}
+                  >
+                    <Group gap="xs" wrap="nowrap">
+                      <Box
+                        aria-hidden="true"
+                        h={6}
+                        style={{
+                          borderRadius: "999px",
+                          backgroundColor:
+                            activePluginId === PluginId.PROFILE ? palette.accent : palette.faint,
+                          flexShrink: 0,
+                        }}
+                        w={6}
+                      />
+                      <Text c="inherit" fw={activePluginId === PluginId.PROFILE ? 600 : 500} size="sm">
+                        {SidebarCopy.PROFILE}
+                      </Text>
+                    </Group>
+                  </UnstyledButton>
+                  <UnstyledButton
+                    aria-label={SidebarCopy.CONFIRM_LOGOUT}
+                    onClick={confirmLogout}
+                    style={buildTabButtonStyle(false, false, palette)}
+                  >
+                    <Group gap="xs" wrap="nowrap">
+                      <Box
+                        aria-hidden="true"
+                        h={6}
+                        style={{
+                          borderRadius: "999px",
+                          backgroundColor: palette.faint,
+                          flexShrink: 0,
+                        }}
+                        w={6}
+                      />
+                      <Text c="inherit" fw={500} size="sm">
+                        {SidebarCopy.CONFIRM_LOGOUT}
+                      </Text>
+                    </Group>
+                  </UnstyledButton>
+                </Stack>
+              </Box>
+            ) : null}
+          </>
+        )}
       </Stack>
+
+      <Modal
+        centered
+        onClose={logoutConfirm.close}
+        opened={logoutConfirmOpened}
+        title={SidebarCopy.LOGOUT_TITLE}
+      >
+        <Stack gap="md">
+          <Text>{SidebarCopy.LOGOUT_BODY}</Text>
+          <Group justify="flex-end">
+            <Button onClick={logoutConfirm.close} variant="default">
+              {SidebarCopy.CANCEL}
+            </Button>
+            <Button
+              color="red"
+              onClick={() => {
+                logoutConfirm.close();
+                logout();
+                navigate(RoutePath.LOGIN, { replace: true });
+              }}
+            >
+              {SidebarCopy.CONFIRM_LOGOUT}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </AppShell.Navbar>
   );
 }

@@ -78,6 +78,7 @@ describe("plugin contract", () => {
         created_at: "2026-08-11T00:00:00Z",
         display_name: "Viewer",
         enabled_plugins: [PluginId.QAA_GENERATOR],
+        qaa_generator_token_set: false,
         id: 2,
         is_admin: false,
         updated_at: "2026-08-11T00:00:00Z",

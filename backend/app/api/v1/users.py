@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -21,6 +22,7 @@ from app.models.user import User
 from app.schemas.user import (
     MePluginsResponse,
     MePluginsUpdateRequest,
+    MeUpdateRequest,
     UserCreateRequest,
     UserListResponse,
     UserRead,
@@ -30,6 +32,10 @@ from app.schemas.user import (
 )
 
 router = APIRouter(tags=[ApiTag.USERS.value])
+
+
+class MeUpdateField(StrEnum):
+    QAA_GENERATOR_TOKEN = "qaa_generator_token"
 
 
 async def get_user_or_404(db: AsyncSession, user_id: int) -> User:
@@ -72,6 +78,29 @@ def normalize_enabled_plugins(enabled_plugins: list[str]) -> list[str]:
 
 @router.get(RoutePath.ME.value, response_model=UserRead)
 async def get_me(current_user: CurrentUser) -> UserRead:
+    return to_user_read(current_user)
+
+
+@router.patch(RoutePath.ME.value, response_model=UserRead)
+async def update_me(
+    payload: MeUpdateRequest,
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> UserRead:
+    provided_fields = payload.model_fields_set
+
+    if "display_name" in provided_fields and payload.display_name is not None:
+        current_user.display_name = payload.display_name
+    if "auto_login" in provided_fields and payload.auto_login is not None:
+        current_user.auto_login = payload.auto_login
+    if "password" in provided_fields and payload.password is not None:
+        current_user.password_hash = hash_password(payload.password)
+    if MeUpdateField.QAA_GENERATOR_TOKEN in provided_fields:
+        # Stored for backend-proxied qaa-generator run creation on behalf of this user.
+        current_user.qaa_generator_token = payload.qaa_generator_token or None
+
+    await db.commit()
+    await db.refresh(current_user)
     return to_user_read(current_user)
 
 

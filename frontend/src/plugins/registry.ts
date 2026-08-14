@@ -1,10 +1,13 @@
 export {
+  accountVisiblePlugins,
   enabledOptionalPluginIdSet,
   OPTIONAL_PLUGIN_IDS,
   pluginById,
+  pluginNavSection,
   pluginByRoute,
   PLUGIN_IDS,
   pluginVisible,
+  primaryVisiblePlugins,
   resolveEnabledOptionalPluginIds,
   SYSTEM_PLUGIN_IDS,
   tabById,

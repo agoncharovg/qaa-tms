@@ -1,4 +1,32 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/plugins/admin/UsersPage", () => ({
+  UsersPage: () => null,
+}));
+
+vi.mock("@/plugins/admin/ServerSettingsPage", () => ({
+  ServerSettingsPage: () => null,
+}));
+
+vi.mock("@/plugins/jenkins/JenkinsSection", () => ({
+  JenkinsSection: () => null,
+}));
+
+vi.mock("@/plugins/kuber/KuberSection", () => ({
+  KuberSection: () => null,
+}));
+
+vi.mock("@/plugins/profile/ProfilePage", () => ({
+  ProfilePage: () => null,
+}));
+
+vi.mock("@/plugins/qaa-generator/QaaGeneratorSection", () => ({
+  QaaGeneratorSection: () => null,
+}));
+
+vi.mock("@/plugins/stagings/StagingsSection", () => ({
+  StagingsSection: () => null,
+}));
 
 import {
   CONTRACT_VERSION,
@@ -43,6 +71,7 @@ describe("plugin discovery", () => {
       PluginId.QAA_GENERATOR,
       PluginId.JENKINS,
       PluginId.ADMIN,
+      PluginId.PROFILE,
     ]);
     expect(new Set(PLUGINS.map((plugin) => plugin.id)).size).toBe(PLUGINS.length);
     expect(new Set(PLUGINS.map((plugin) => plugin.route)).size).toBe(PLUGINS.length);
@@ -54,6 +83,7 @@ describe("plugin discovery", () => {
     expect(PLUGINS[2]?.requiresAgent).toBe(false);
     expect(PLUGINS[3]?.kind).toBe(PluginKind.OPTIONAL);
     expect(PLUGINS[4]?.kind).toBe(PluginKind.SYSTEM);
+    expect(PLUGINS[5]?.kind).toBe(PluginKind.SYSTEM);
   });
 
   it("rejects duplicate plugin ids", () => {
@@ -68,9 +98,9 @@ describe("plugin discovery", () => {
           tabs: [
             {
               element: null,
-              id: TabId.ADMIN_PLUGINS,
-              title: TabTitle[TabId.ADMIN_PLUGINS],
-              viewKey: ViewKey.ADMIN_PLUGINS,
+              id: TabId.PROFILE,
+              title: TabTitle[TabId.PROFILE],
+              viewKey: ViewKey.PROFILE,
             },
           ],
         }),
@@ -97,7 +127,7 @@ describe("plugin discovery", () => {
               element: null,
               id: TabId.STAGINGS_PREFLIGHT,
               title: TabTitle[TabId.STAGINGS_PREFLIGHT],
-              viewKey: ViewKey.ADMIN_PLUGINS,
+              viewKey: ViewKey.PROFILE,
             },
           ],
         }),
@@ -105,7 +135,7 @@ describe("plugin discovery", () => {
     ).toThrow(/duplicate tab id/i);
   });
 
-  it("rejects a system plugin that defaults to an admin-only tab", () => {
+  it("rejects a non-admin-only system plugin that defaults to an admin-only tab", () => {
     expect(() =>
       validatePluginManifests([
         createPluginManifest({
@@ -131,5 +161,33 @@ describe("plugin discovery", () => {
         }),
       ])
     ).toThrow(/admin-only tab/i);
+  });
+
+  it("allows an admin-only system plugin to default to an admin-only tab", () => {
+    expect(() =>
+      validatePluginManifests([
+        createPluginManifest({
+          adminOnly: true,
+          contractVersion: CONTRACT_VERSION,
+          icon: IconName.SETTINGS,
+          id: PluginId.ADMIN,
+          kind: PluginKind.SYSTEM,
+          label: "Administration",
+          origin: PluginOrigin.BUILTIN,
+          order: 20,
+          requiresAgent: false,
+          route: "/admin",
+          tabs: [
+            {
+              adminOnly: true,
+              element: null,
+              id: TabId.ADMIN_USERS,
+              title: TabTitle[TabId.ADMIN_USERS],
+              viewKey: ViewKey.ADMIN_USERS,
+            },
+          ],
+        }),
+      ])
+    ).not.toThrow();
   });
 });

@@ -54,6 +54,7 @@ describe("GeneratePanel", () => {
         created_at: "2026-08-11T00:00:00Z",
         display_name: "QAA User",
         enabled_plugins: QAA_ENABLED_PLUGINS,
+        qaa_generator_token_set: true,
         id: 3,
         is_admin: false,
         updated_at: "2026-08-11T00:00:00Z",
@@ -61,6 +62,35 @@ describe("GeneratePanel", () => {
       },
       token: "token-123",
     });
+  });
+
+
+  it("shows a banner and keeps Generate disabled when no personal token is configured", async () => {
+    const user = userEvent.setup();
+    useAuthStore.setState((state) => ({
+      ...state,
+      currentUser: state.currentUser
+        ? {
+            ...state.currentUser,
+            qaa_generator_token_set: false,
+          }
+        : null,
+    }));
+
+    renderWithProviders(<GeneratePanel />);
+
+    expect(screen.getByText("Personal qaa-generator token required")).toBeInTheDocument();
+    const profileSettingsLink = screen.getByRole("link", { name: "Profile / Settings" });
+    expect(profileSettingsLink).toBeInTheDocument();
+    expect(profileSettingsLink).toHaveAttribute("href", "/profile?section=settings");
+
+    await user.type(screen.getByRole("textbox", { name: /Jira key/i }), "QAA-123");
+    const generateButton = screen.getByRole("button", { name: "Generate" });
+    expect(generateButton).toBeDisabled();
+
+    await user.click(generateButton);
+
+    expect(createQaaRunMock).not.toHaveBeenCalled();
   });
 
   it("submits the expected qaa-generator create payload", async () => {

@@ -30,6 +30,12 @@ through `47605` and identifies the agent via `GET /ping`.
 
 All config uses the `AGENT_` prefix:
 
+`Profile -> Settings` is the single editing surface in the SPA for operational config, but
+the values still persist to the real consumer surfaces. Browser overrides stay in
+localStorage, the companion settings below stay in the agent `.env`, and bootstrap-only
+settings such as `AGENT_HOST`, `AGENT_PORT`, `AGENT_CORS_ORIGINS`, and
+`AGENT_BACKEND_URL` remain outside the UI.
+
 - `AGENT_HOST`
   Must stay `127.0.0.1`. Any other value is rejected.
 - `AGENT_PORT`
@@ -102,6 +108,8 @@ the binary seam exists only so tests can exercise the full job and SSE lifecycle
 Implemented in this slice:
 
 - `GET /ping`
+- `GET /settings`
+- `PUT /settings`
 - `GET /preflight`
 - `GET /jenkins/tree`
 - `GET /jenkins/builds?path=...`

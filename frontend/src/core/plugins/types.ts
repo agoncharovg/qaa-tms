@@ -1,6 +1,13 @@
 import type { ReactNode } from "react";
 
-import type { IconName, PluginId, PluginOrigin, TabId, ViewKey } from "@/constants";
+import type {
+  IconName,
+  NavSection,
+  PluginId,
+  PluginOrigin,
+  TabId,
+  ViewKey,
+} from "@/constants";
 import type { MountContext, Unmount } from "@/core/plugins/host";
 
 export const PluginKind = {
@@ -26,6 +33,7 @@ export interface PluginSpec {
   kind: PluginKind;
   origin: PluginOrigin;
   contractVersion: number;
+  navSection?: NavSection;
   adminOnly?: boolean;
   tabs: PluginTabSpec[];
   requiresAgent?: boolean;

@@ -1,7 +1,14 @@
 import { createElement, forwardRef } from "react";
 import type { ComponentPropsWithoutRef } from "react";
 import type { TablerIcon } from "@tabler/icons-react";
-import { IconPuzzle, IconRocket, IconServer, IconSettings, IconSparkles } from "@tabler/icons-react";
+import {
+  IconPuzzle,
+  IconRocket,
+  IconServer,
+  IconSettings,
+  IconSparkles,
+  IconUserCircle,
+} from "@tabler/icons-react";
 
 import { IconName } from "@/constants";
 
@@ -46,6 +53,7 @@ export const ICON_REGISTRY: Record<IconName, TablerIcon> = {
   [IconName.ROCKET]: IconRocket,
   [IconName.SPARKLES]: IconSparkles,
   [IconName.SETTINGS]: IconSettings,
+  [IconName.USER]: IconUserCircle,
 };
 
 export function resolveIcon(name: string): TablerIcon {

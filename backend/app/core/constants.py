@@ -9,6 +9,7 @@ class PluginId(StrEnum):
     QAA_GENERATOR = "qaa-generator"
     JENKINS = "jenkins"
     ADMIN = "admin"
+    PROFILE = "profile"
 
 
 class OperationType(StrEnum):
@@ -51,6 +52,7 @@ class RoutePath(StrEnum):
     LOGIN = "/login"
     ME = "/me"
     ME_PLUGINS = "/me/plugins"
+    SETTINGS = "/settings"
     USERS = "/users"
     USER_BY_ID = "/users/{user_id}"
     OPERATIONS = "/operations"
@@ -186,7 +188,7 @@ class DevPassword(StrEnum):
 
 
 OPTIONAL_PLUGIN_IDS = (PluginId.STAGINGS, PluginId.KUBER, PluginId.QAA_GENERATOR, PluginId.JENKINS)
-SYSTEM_PLUGIN_IDS = (PluginId.ADMIN,)
+SYSTEM_PLUGIN_IDS = (PluginId.ADMIN, PluginId.PROFILE)
 OPTIONAL_PLUGIN_ID_VALUES = tuple(plugin_id.value for plugin_id in OPTIONAL_PLUGIN_IDS)
 SYSTEM_PLUGIN_ID_VALUES = tuple(plugin_id.value for plugin_id in SYSTEM_PLUGIN_IDS)
 

@@ -16,6 +16,7 @@ from app.models.user import User
 
 
 class QaaGeneratorTokenMode(StrEnum):
+    PERSONAL = "personal"
     SERVICE = "service"
     SUPERUSER = "superuser"
 
@@ -32,6 +33,12 @@ class QaaGeneratorServicePath(StrEnum):
 class QaaGeneratorProxyMessage(StrEnum):
     INVALID_RESPONSE = "The qaa-generator service returned an invalid response."
     NETWORK_ERROR = "Cannot reach the qaa-generator service."
+    PERSONAL_TOKEN_MISSING = (
+        "Set your personal qaa-generator token in Profile / Settings before generating."
+    )
+    PERSONAL_TOKEN_REJECTED = (
+        "QAA Generator rejected your personal token. Update it in Profile / Settings."
+    )
     SERVICE_TOKEN_REJECTED = "QAA Generator rejected the configured service token."
     SUPERUSER_TOKEN_NOT_CONFIGURED = "qaa-generator superuser token not configured"
     SUPERUSER_TOKEN_REJECTED = "superuser token rejected by qaa-generator"
@@ -83,7 +90,20 @@ def resolve_actor_value(settings: Settings, user: User) -> str | None:
     return actor or None
 
 
-def resolve_token_value(settings: Settings, token_mode: QaaGeneratorTokenMode) -> str:
+def resolve_token_value(
+    settings: Settings,
+    token_mode: QaaGeneratorTokenMode,
+    *,
+    user: User | None = None,
+) -> str:
+    if token_mode is QaaGeneratorTokenMode.PERSONAL:
+        token = user.qaa_generator_token.strip() if user and user.qaa_generator_token else ""
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_412_PRECONDITION_FAILED,
+                detail=QaaGeneratorProxyMessage.PERSONAL_TOKEN_MISSING.value,
+            )
+        return token
     if token_mode is QaaGeneratorTokenMode.SUPERUSER:
         token = settings.qaa_generator_superuser_token.strip()
         if not token:
@@ -109,7 +129,8 @@ def build_outbound_headers(
     headers = {
         HttpHeader.ACCEPT.value: accept.value,
         HttpHeader.AUTHORIZATION.value: (
-            f"{AuthScheme.BEARER.value} {resolve_token_value(settings, token_mode)}"
+            f"{AuthScheme.BEARER.value} "
+            f"{resolve_token_value(settings, token_mode, user=user)}"
         ),
     }
     actor = resolve_actor_value(settings, user) if user is not None else None
@@ -168,6 +189,14 @@ def map_upstream_status(
         return HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=QaaGeneratorProxyMessage.SUPERUSER_TOKEN_REJECTED.value,
+        )
+    if token_mode is QaaGeneratorTokenMode.PERSONAL and response.status_code in {
+        status.HTTP_401_UNAUTHORIZED,
+        status.HTTP_403_FORBIDDEN,
+    }:
+        return HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=QaaGeneratorProxyMessage.PERSONAL_TOKEN_REJECTED.value,
         )
     if response.status_code == status.HTTP_401_UNAUTHORIZED:
         return HTTPException(

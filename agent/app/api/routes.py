@@ -9,20 +9,26 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import AuthContext, get_job_manager, get_settings, require_auth
+from app.core import env_file
 from app.core.config import Settings
+from app.core.config import get_settings as load_settings
 from app.core.constants import (
     DEFAULT_KUBE_LOG_TAIL,
     AgentPath,
+    EnvKey,
     ErrorMessage,
     HeaderName,
     HeaderValue,
     KubeconfigAction,
     OperationType,
     Product,
+    StagingEnvKey,
 )
 from app.schemas import (
     AdoptRequest,
     AgentPingResponse,
+    AgentSettingsRead,
+    AgentSettingsUpdate,
     DeployFlags,
     DeployRecipePayload,
     DeployRequest,
@@ -52,6 +58,7 @@ from app.schemas import (
     NamespaceStatusResponse,
     PreflightItem,
     SyncRequest,
+    to_agent_settings_read,
 )
 from app.services.e2e import list_e2e_suites
 from app.services.jenkins import (
@@ -98,10 +105,86 @@ AuthDep = Annotated[AuthContext, Depends(require_auth)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 JobManagerDep = Annotated[JobManager, Depends(get_job_manager)]
 
+AGENT_SETTINGS_ENV_KEY_BY_FIELD = {
+    "jenkins_root_folders": EnvKey.JENKINS_ROOT_FOLDERS,
+    "jenkins_root_path": EnvKey.JENKINS_ROOT_PATH,
+    "jenkins_request_timeout": EnvKey.JENKINS_REQUEST_TIMEOUT,
+    "jenkins_stuck_min_idle_hours": EnvKey.JENKINS_STUCK_MIN_IDLE_HOURS,
+    "jenkins_token": EnvKey.JENKINS_TOKEN,
+    "jenkins_tree_depth": EnvKey.JENKINS_TREE_DEPTH,
+    "jenkins_url": EnvKey.JENKINS_URL,
+    "jenkins_username": EnvKey.JENKINS_USERNAME,
+    "kubeconfig": EnvKey.KUBECONFIG,
+    "kubeconfig_active_path": EnvKey.KUBECONFIG_ACTIVE_PATH,
+    "kubectl_bin": EnvKey.KUBECTL_BIN,
+    "kubectl_request_timeout": EnvKey.KUBECTL_REQUEST_TIMEOUT,
+    "staging_bin": EnvKey.STAGING_BIN,
+    "staging_kubeconfig": StagingEnvKey.KUBECONFIG,
+    "staging_kubeconfig_max_age_hours": EnvKey.STAGING_KUBECONFIG_MAX_AGE_HOURS,
+    "staging_kubeconfig_url": EnvKey.STAGING_KUBECONFIG_URL,
+    "stagings_repo": EnvKey.STAGINGS_REPO,
+}
+
+AGENT_SETTINGS_RUNTIME_FIELDS = tuple(AGENT_SETTINGS_ENV_KEY_BY_FIELD)
+CSV_SEPARATOR = ","
+
+
+def serialize_env_value(value: object) -> str:
+    if isinstance(value, list):
+        return CSV_SEPARATOR.join(str(item) for item in value)
+    return str(value)
+
+
+def build_env_updates(payload: AgentSettingsUpdate) -> dict[str, str]:
+    updates: dict[str, str] = {}
+    for field_name in payload.model_fields_set:
+        value = getattr(payload, field_name)
+        if value is None:
+            continue
+        updates[AGENT_SETTINGS_ENV_KEY_BY_FIELD[field_name].value] = serialize_env_value(value)
+    return updates
+
+
+def merge_runtime_settings(current_settings: Settings, refreshed_settings: Settings) -> Settings:
+    return current_settings.model_copy(
+        update={
+            field_name: getattr(refreshed_settings, field_name)
+            for field_name in AGENT_SETTINGS_RUNTIME_FIELDS
+        }
+    )
+
 
 @router.get(AgentPath.PING.value, response_model=AgentPingResponse)
 async def ping(settings: SettingsDep) -> AgentPingResponse:
     return build_ping_response(settings)
+
+
+@router.get(AgentPath.SETTINGS.value, response_model=AgentSettingsRead)
+async def get_companion_settings(_: AuthDep, settings: SettingsDep) -> AgentSettingsRead:
+    return to_agent_settings_read(settings)
+
+
+@router.put(AgentPath.SETTINGS.value, response_model=AgentSettingsRead)
+async def update_companion_settings(
+    payload: AgentSettingsUpdate,
+    request: Request,
+    _: AuthDep,
+    settings: SettingsDep,
+) -> AgentSettingsRead:
+    updates = build_env_updates(payload)
+    if not updates:
+        return to_agent_settings_read(settings)
+
+    env_file.upsert_env_values(env_file.AGENT_ENV_FILE, updates)
+    load_settings.cache_clear()
+    refreshed_settings = load_settings()
+    updated_settings = merge_runtime_settings(settings, refreshed_settings)
+    request.app.state.settings = updated_settings
+    request.app.state.job_manager = JobManager(
+        settings=updated_settings,
+        backend_client=request.app.state.backend_client,
+    )
+    return to_agent_settings_read(updated_settings)
 
 
 @router.get(AgentPath.PREFLIGHT.value, response_model=list[PreflightItem])

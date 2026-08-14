@@ -6,13 +6,13 @@ import { AppLayout } from "@/app/layout/AppLayout";
 import { LoginPage } from "@/app/auth/LoginPage";
 import { GcoreProfilePoc } from "@/app/design-poc/GcoreProfilePoc";
 import { RoutePath } from "@/constants";
-import { enabledOptionalPluginIdSet, PLUGINS, visiblePlugins } from "@/plugins/registry";
+import { enabledOptionalPluginIdSet, PLUGINS, primaryVisiblePlugins } from "@/plugins/registry";
 import { useAuthStore } from "@/store/authStore";
 
 function RootRedirect() {
   const currentUser = useAuthStore((state) => state.currentUser);
   const enabledOptionalIds = enabledOptionalPluginIdSet(currentUser?.enabled_plugins);
-  const firstVisiblePlugin = visiblePlugins(currentUser, enabledOptionalIds)[0];
+  const firstVisiblePlugin = primaryVisiblePlugins(currentUser, enabledOptionalIds)[0];
 
   return <Navigate replace to={firstVisiblePlugin?.route ?? RoutePath.LOGIN} />;
 }

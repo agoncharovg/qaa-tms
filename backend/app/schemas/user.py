@@ -22,6 +22,7 @@ class UserRead(BaseModel):
     is_admin: bool
     auto_login: bool
     enabled_plugins: list[str]
+    qaa_generator_token_set: bool
     created_at: datetime
     updated_at: datetime
 
@@ -34,6 +35,15 @@ class MePluginsUpdateRequest(BaseModel):
 
 class MePluginsResponse(BaseModel):
     enabled_plugins: list[str]
+
+
+class MeUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str | None = None
+    password: str | None = None
+    auto_login: bool | None = None
+    qaa_generator_token: str | None = None
 
 
 class UserCreateRequest(BaseModel):
@@ -68,6 +78,7 @@ def to_user_read(user: User) -> UserRead:
         is_admin=user.is_admin,
         auto_login=user.auto_login,
         enabled_plugins=resolve_enabled_plugins(user.enabled_plugins),
+        qaa_generator_token_set=bool(user.qaa_generator_token),
         created_at=user.created_at,
         updated_at=user.updated_at,
     )

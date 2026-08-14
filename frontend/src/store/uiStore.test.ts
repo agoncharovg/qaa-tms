@@ -49,19 +49,21 @@ describe("uiStore", () => {
   });
 
   it("tracks workspace tabs across plugins independently of the active sidebar plugin", () => {
-    useUiStore.getState().openTab(PluginId.ADMIN, TabId.ADMIN_PLUGINS);
+    useUiStore.getState().openTab(PluginId.QAA_GENERATOR, TabId.QAA_GENERATE);
     useUiStore.getState().openTab(PluginId.STAGINGS, TabId.STAGINGS_HISTORY);
 
     expect(useUiStore.getState().workspaceTabIds).toEqual([
-      TabId.ADMIN_PLUGINS,
+      TabId.QAA_GENERATE,
       TabId.STAGINGS_HISTORY,
     ]);
     expect(useUiStore.getState().activeWorkspaceTabId).toBe(TabId.STAGINGS_HISTORY);
 
-    useUiStore.getState().switchTab(PluginId.ADMIN, TabId.ADMIN_PLUGINS);
+    useUiStore.getState().switchTab(PluginId.QAA_GENERATOR, TabId.QAA_GENERATE);
 
-    expect(useUiStore.getState().activeWorkspaceTabId).toBe(TabId.ADMIN_PLUGINS);
-    expect(useUiStore.getState().tabsByPlugin[PluginId.ADMIN].activeTabId).toBe(TabId.ADMIN_PLUGINS);
+    expect(useUiStore.getState().activeWorkspaceTabId).toBe(TabId.QAA_GENERATE);
+    expect(useUiStore.getState().tabsByPlugin[PluginId.QAA_GENERATOR].activeTabId).toBe(
+      TabId.QAA_GENERATE
+    );
     expect(useUiStore.getState().tabsByPlugin[PluginId.STAGINGS].activeTabId).toBe(
       TabId.STAGINGS_HISTORY
     );
@@ -85,6 +87,10 @@ describe("uiStore", () => {
             activeTabId: null,
             tabIds: [],
           },
+          [PluginId.PROFILE]: {
+            activeTabId: TabId.PROFILE,
+            tabIds: [TabId.PROFILE],
+          },
           [PluginId.QAA_GENERATOR]: {
             activeTabId: TabId.QAA_ADMIN,
             tabIds: [TabId.QAA_GENERATE, TabId.QAA_ADMIN],
@@ -94,7 +100,12 @@ describe("uiStore", () => {
             tabIds: [TabId.STAGINGS_HISTORY],
           },
         },
-        workspaceTabIds: [TabId.ADMIN_USERS, TabId.QAA_GENERATE, TabId.STAGINGS_HISTORY],
+        workspaceTabIds: [
+          TabId.ADMIN_USERS,
+          TabId.PROFILE,
+          TabId.QAA_GENERATE,
+          TabId.STAGINGS_HISTORY,
+        ],
       })
     );
 
@@ -119,9 +130,13 @@ describe("uiStore", () => {
       activeTabId: null,
       tabIds: [],
     });
+    expect(sanitized[PluginId.PROFILE]).toEqual({
+      activeTabId: TabId.PROFILE,
+      tabIds: [TabId.PROFILE],
+    });
     expect(workspace).toEqual({
       activeWorkspaceTabId: TabId.QAA_GENERATE,
-      workspaceTabIds: [TabId.QAA_GENERATE],
+      workspaceTabIds: [TabId.PROFILE, TabId.QAA_GENERATE],
     });
   });
 });

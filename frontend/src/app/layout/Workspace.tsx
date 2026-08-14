@@ -2,15 +2,10 @@ import { Paper } from "@mantine/core";
 
 import { usePalette } from "@/app/theme/usePalette";
 import { WorkspaceContent } from "@/components/WorkspaceContent";
-import { type PluginId as PluginIdType } from "@/constants";
 import { pluginById } from "@/plugins/registry";
 import { getOpenWorkspaceTabs, useUiStore } from "@/store/uiStore";
 
-interface WorkspaceProps {
-  activePluginId?: PluginIdType;
-}
-
-export function Workspace(_: WorkspaceProps) {
+export function Workspace() {
   const palette = usePalette();
   const activeWorkspaceTabId = useUiStore((state) => state.activeWorkspaceTabId);
   const workspaceTabIds = useUiStore((state) => state.workspaceTabIds);

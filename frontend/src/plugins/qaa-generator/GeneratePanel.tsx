@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   Alert,
+  Anchor,
   Button,
   Card,
   Group,
@@ -30,13 +31,17 @@ import { useQaaRunLive } from "@/plugins/qaa-generator/useQaaRunLive";
 import { useUiStore } from "@/store/uiStoreCore";
 
 const GENERATE_PANEL_COPY = {
+  MISSING_TOKEN_LINK_LABEL: "Profile / Settings",
+  MISSING_TOKEN_PREFIX: "Set your personal qaa-generator token in ",
+  MISSING_TOKEN_SUFFIX: " before starting a run.",
+  MISSING_TOKEN_TITLE: "Personal qaa-generator token required",
   BRANCH_DESCRIPTION: "Optional branch override. Leave blank to let qaa-generator decide.",
   CONFLICT_ACTION: "Open existing run",
   CONFLICT_TITLE: "A run for this Jira key is already active",
   EMPTY_JIRA_KEY: "A Jira key is required.",
   ERROR_TITLE: "QAA generation request failed",
   FORM_DESCRIPTION:
-    "Submit a centrally executed qaa-generator run through the backend proxy. The service token stays on the server.",
+    "Submit a centrally executed qaa-generator run through the backend proxy using your stored personal qaa-generator token.",
   JIRA_KEY_PLACEHOLDER: "QAA-123",
   RUN_BUTTON: "Generate",
   TITLE: "Generate tests",
@@ -46,6 +51,7 @@ const GENERATE_PROFILE_OPTIONS = Object.values(QaaRunProfile).map((profile) => (
   label: QaaRunProfileLabel[profile],
   value: profile,
 }));
+const PROFILE_SETTINGS_HREF = "/profile?section=settings" as const;
 
 interface GenerateFormState {
   branch: string;
@@ -99,6 +105,7 @@ function extractConflictRunId(error: unknown): string | null {
 
 export function GeneratePanel() {
   const token = useAuthStore((state) => state.token);
+  const currentUser = useAuthStore((state) => state.currentUser);
   const [formState, setFormState] = useState<GenerateFormState>(DEFAULT_GENERATE_FORM_STATE);
   const [conflictRunId, setConflictRunId] = useState<string | null>(null);
   const activateTab = useActivateQaaGeneratorTab();
@@ -106,11 +113,15 @@ export function GeneratePanel() {
     state.tabsByPlugin[PluginId.QAA_GENERATOR].tabIds.includes(TabId.QAA_LIVE)
   );
   const { startRun } = useQaaRunLive();
+  const hasPersonalToken = currentUser?.qaa_generator_token_set === true;
 
   const createMutation = useMutation({
     mutationFn: async () => {
       if (!token) {
         throw new Error("Authentication is required.");
+      }
+      if (!hasPersonalToken) {
+        throw new Error(`${GENERATE_PANEL_COPY.MISSING_TOKEN_PREFIX}${GENERATE_PANEL_COPY.MISSING_TOKEN_LINK_LABEL}${GENERATE_PANEL_COPY.MISSING_TOKEN_SUFFIX}`);
       }
 
       return backendClient.createQaaRun(token, buildCreatePayload(formState));
@@ -127,7 +138,8 @@ export function GeneratePanel() {
     },
   });
 
-  const createDisabled = createMutation.isPending || formState.jiraKey.trim().length === 0 || !token;
+  const createDisabled =
+    createMutation.isPending || formState.jiraKey.trim().length === 0 || !token || !hasPersonalToken;
 
   return (
     <Card padding="lg" radius="lg" withBorder>
@@ -142,10 +154,25 @@ export function GeneratePanel() {
         <form
           onSubmit={(event) => {
             event.preventDefault();
+            if (createDisabled) {
+              return;
+            }
             createMutation.mutate();
           }}
         >
           <Stack gap="md">
+            {!hasPersonalToken ? (
+              <Alert
+                color="yellow"
+                icon={<IconAlertCircle size={18} />}
+                title={GENERATE_PANEL_COPY.MISSING_TOKEN_TITLE}
+              >
+                {GENERATE_PANEL_COPY.MISSING_TOKEN_PREFIX}
+                <Anchor href={PROFILE_SETTINGS_HREF}>{GENERATE_PANEL_COPY.MISSING_TOKEN_LINK_LABEL}</Anchor>
+                {GENERATE_PANEL_COPY.MISSING_TOKEN_SUFFIX}
+              </Alert>
+            ) : null}
+
             <TextInput
               label="Jira key"
               onChange={(event) => {

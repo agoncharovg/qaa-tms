@@ -26,6 +26,7 @@ export interface User {
   is_admin: boolean;
   auto_login: boolean;
   enabled_plugins: PluginId[];
+  qaa_generator_token_set: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -36,6 +37,13 @@ export interface MePluginsUpdateRequest {
 
 export interface MePluginsResponse {
   enabled_plugins: PluginId[];
+}
+
+export interface MeUpdateRequest {
+  display_name?: string;
+  password?: string;
+  auto_login?: boolean;
+  qaa_generator_token?: string;
 }
 
 export interface UserCreateRequest {
@@ -69,6 +77,30 @@ export interface LoginResponse {
   user: User;
 }
 
+export interface ServerSettingsRead {
+  qaa_generator_base_url: string;
+  qaa_generator_actor: string;
+  qaa_generator_service_token_set: boolean;
+  qaa_generator_superuser_token_set: boolean;
+  qaa_generator_port_forward_enabled: boolean;
+  qaa_generator_port_forward_namespace: string;
+  qaa_generator_port_forward_resource: string;
+  qaa_generator_port_forward_local_port: number;
+  qaa_generator_port_forward_remote_port: number;
+}
+
+export interface ServerSettingsUpdateRequest {
+  qaa_generator_base_url?: string;
+  qaa_generator_actor?: string;
+  qaa_generator_service_token?: string;
+  qaa_generator_superuser_token?: string;
+  qaa_generator_port_forward_enabled?: boolean;
+  qaa_generator_port_forward_namespace?: string;
+  qaa_generator_port_forward_resource?: string;
+  qaa_generator_port_forward_local_port?: number;
+  qaa_generator_port_forward_remote_port?: number;
+}
+
 export interface AgentPingResponse {
   app: string;
   version: string;
@@ -97,6 +129,46 @@ export interface AgentPreflightAvailable {
 }
 
 export type AgentPreflightState = AgentPreflightAvailable | AgentPreflightUnavailable;
+
+export interface AgentSettings {
+  jenkins_url: string;
+  jenkins_username: string;
+  jenkins_token_set: boolean;
+  jenkins_root_path: string;
+  jenkins_root_folders: string[];
+  jenkins_request_timeout: number;
+  jenkins_tree_depth: number;
+  jenkins_stuck_min_idle_hours: number;
+  staging_bin: string | null;
+  stagings_repo: string | null;
+  staging_kubeconfig: string;
+  staging_kubeconfig_url: string;
+  kubeconfig_active_path: string;
+  staging_kubeconfig_max_age_hours: number;
+  kubectl_bin: string;
+  kubeconfig: string;
+  kubectl_request_timeout: string;
+}
+
+export interface AgentSettingsUpdate {
+  jenkins_url?: string;
+  jenkins_username?: string;
+  jenkins_token?: string;
+  jenkins_root_path?: string;
+  jenkins_root_folders?: string[];
+  jenkins_request_timeout?: number;
+  jenkins_tree_depth?: number;
+  jenkins_stuck_min_idle_hours?: number;
+  staging_bin?: string | null;
+  stagings_repo?: string | null;
+  staging_kubeconfig?: string;
+  staging_kubeconfig_url?: string;
+  kubeconfig_active_path?: string;
+  staging_kubeconfig_max_age_hours?: number;
+  kubectl_bin?: string;
+  kubeconfig?: string;
+  kubectl_request_timeout?: string;
+}
 
 export interface KubeconfigStatus {
   path: string;

@@ -7,6 +7,7 @@ from enum import StrEnum
 
 class AgentPath(StrEnum):
     PING = "/ping"
+    SETTINGS = "/settings"
     PREFLIGHT = "/preflight"
     JENKINS_TREE = "/jenkins/tree"
     JENKINS_BUILDS = "/jenkins/builds"
@@ -314,6 +315,7 @@ DEFAULT_COMMAND_TIMEOUT_SECONDS = 5.0
 DEFAULT_CANCEL_WAIT_SECONDS = 5.0
 DEFAULT_STAGING_KUBECONFIG_URL = "https://kubeconf.frn-stg.p.gc.onl/config"
 DEFAULT_KUBECONFIG_ACTIVE_PATH = "~/.kube/config"
+DEFAULT_KUBECONFIG = "~/.kube/config"
 DEFAULT_STAGING_KUBECONFIG_MAX_AGE_HOURS = 48
 DEFAULT_KUBECONFIG_FRESHNESS_SECONDS = DEFAULT_STAGING_KUBECONFIG_MAX_AGE_HOURS * 60 * 60
 KUBECONFIG_REFRESH_GRACE_SECONDS = 300

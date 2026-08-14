@@ -22,6 +22,7 @@ const loginResponse: LoginResponse = {
     created_at: "2026-08-09T00:00:00Z",
     display_name: "Administrator",
     enabled_plugins: ["stagings"],
+    qaa_generator_token_set: false,
     id: 1,
     is_admin: true,
     updated_at: "2026-08-09T00:00:00Z",

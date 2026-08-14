@@ -19,7 +19,7 @@ The SPA serves on `http://localhost:3000` and expects the backend on
 
 Two plugin classes exist in this slice:
 
-- `system`: always visible to authenticated users and never toggleable. `Administration` is the only system plugin.
+- `system`: first-party shell plugins. `Profile` is visible to every authenticated user; `Administration` is visible to admins only. System plugins are never toggleable.
 - `optional`: visible only when the current user enables it for themselves. `Stagings`, `Kuber`, `QAA Generator`, and `Jenkins` ship as optional builtin plugins in this build.
 
 Static metadata lives in `src/plugins/catalog.ts`. React view wiring lives in
@@ -68,16 +68,31 @@ their transport, and their discovery source are explicitly out of scope for this
 The shell keeps `TabId` and `ViewKey` stable, so localStorage tab persistence stays
 compatible while each manifest becomes the source of truth.
 
-## Administration workflow
+## Profile workflow
 
-`Administration` is available to every authenticated user.
+The bottom sidebar account entry opens the `Profile` system plugin plus a logout action with confirmation.
 
+- `Account` tab: self-service update screen for the signed-in user's `display_name`, password, and server-side `auto_login` flag.
 - `Plugins` tab: self-service enable/disable screen for optional plugins. Toggling calls
   `PUT /api/v1/me/plugins`, updates the Zustand auth state immediately, and the sidebar
   reacts without a reload.
-- `Users` tab: admin-only user management surface backed by `/api/v1/users`.
+- `Settings` tab: one editing surface for operational settings, split by the surface that
+  actually consumes each value instead of pretending one physical `.env` file exists:
+  browser overrides go to localStorage, companion settings go to the local agent `.env`,
+  and admin-only server settings go to the backend `.env`.
 
-Non-admin users see only the `Plugins` tab. Admin users can additionally open `Users`.
+`Settings -> Application` writes runtime overrides for `VITE_API_BASE_URL` and
+`VITE_AGENT_PORTS` into localStorage. They are read at module load, so the UI asks for a
+reload after saving. `Settings -> Local companion` talks directly to the agent on
+`127.0.0.1`. `Settings -> Server` is visible to admins only and updates the backend-side
+qaa-generator operational config; changing transport details there still requires a backend
+restart because the outbound client and optional port-forward are created at startup.
+
+## Administration workflow
+
+`Administration` is now admin-only.
+
+- `Users` tab: admin-only user management surface backed by `/api/v1/users`.
 
 ## Stagings workflow
 
@@ -164,5 +179,5 @@ That starts Postgres, the FastAPI backend, and the Vite frontend together for lo
 
 ## Environment variables
 
-- `VITE_API_BASE_URL`: base URL for the FastAPI backend. Default: `http://localhost:8000`
-- `VITE_AGENT_PORTS`: local companion-app probe range. Default: `47600-47605`
+- `VITE_API_BASE_URL`: build-time default base URL for the FastAPI backend. Runtime override available at `Profile -> Settings -> Application`. Default: `http://localhost:8000`
+- `VITE_AGENT_PORTS`: build-time default local companion-app probe range. Runtime override available at `Profile -> Settings -> Application`. Default: `47600-47605`

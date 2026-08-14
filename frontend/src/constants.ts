@@ -4,6 +4,7 @@ export const PluginId = {
   QAA_GENERATOR: "qaa-generator",
   JENKINS: "jenkins",
   ADMIN: "admin",
+  PROFILE: "profile",
 } as const;
 
 export type PluginId = (typeof PluginId)[keyof typeof PluginId];
@@ -15,12 +16,20 @@ export const PluginOrigin = {
 
 export type PluginOrigin = (typeof PluginOrigin)[keyof typeof PluginOrigin];
 
+export const NavSection = {
+  PRIMARY: "primary",
+  ACCOUNT: "account",
+} as const;
+
+export type NavSection = (typeof NavSection)[keyof typeof NavSection];
+
 export const IconName = {
   CLUSTER: "cluster",
   JENKINS: "jenkins",
   ROCKET: "rocket",
   SPARKLES: "sparkles",
   SETTINGS: "settings",
+  USER: "user",
 } as const;
 
 export type IconName = (typeof IconName)[keyof typeof IconName];
@@ -51,6 +60,8 @@ export const StorageKey = {
   TABS: "qaa-tms.tabs",
   KUBE: "qaa-tms.kube",
   JENKINS_PINNED: "qaa-tms.jenkins-pinned",
+  APP_API_BASE_URL: "qaa-tms.api-base-url",
+  APP_AGENT_PORTS: "qaa-tms.agent-ports",
 } as const;
 
 export type StorageKey = (typeof StorageKey)[keyof typeof StorageKey];
@@ -59,6 +70,7 @@ export const BackendPath = {
   AUTH_LOGIN: "/api/v1/auth/login",
   ME: "/api/v1/me",
   ME_PLUGINS: "/api/v1/me/plugins",
+  SETTINGS: "/api/v1/settings",
   USERS: "/api/v1/users",
   OPERATIONS: "/api/v1/operations",
   QAA_RUNS: "/api/v1/qaa/runs",
@@ -128,6 +140,7 @@ export function buildBackendQaaServiceTokenRevokePath(tokenId: string): string {
 
 export const AgentPath = {
   PING: "/ping",
+  SETTINGS: "/settings",
   PREFLIGHT: "/preflight",
   JENKINS_TREE: "/jenkins/tree",
   JENKINS_BUILDS: "/jenkins/builds",
@@ -505,8 +518,9 @@ export const ViewKey = {
   QAA_LIVE: "qaa-live",
   QAA_RUNS: "qaa-runs",
   QAA_ADMIN: "qaa-admin",
-  ADMIN_PLUGINS: "admin-plugins",
   ADMIN_USERS: "admin-users",
+  ADMIN_INTEGRATIONS: "admin-integrations",
+  PROFILE: "profile",
 } as const;
 
 export type ViewKey = (typeof ViewKey)[keyof typeof ViewKey];
@@ -526,8 +540,9 @@ export const TabId = {
   QAA_LIVE: "tab-qaa-live",
   QAA_RUNS: "tab-qaa-runs",
   QAA_ADMIN: "tab-qaa-admin",
-  ADMIN_PLUGINS: "tab-admin-plugins",
   ADMIN_USERS: "tab-admin-users",
+  ADMIN_INTEGRATIONS: "tab-admin-integrations",
+  PROFILE: "tab-profile",
 } as const;
 
 export type TabId = (typeof TabId)[keyof typeof TabId];
@@ -547,12 +562,35 @@ export const TabTitle: Record<TabId, string> = {
   [TabId.QAA_LIVE]: "Live",
   [TabId.QAA_RUNS]: "Runs",
   [TabId.QAA_ADMIN]: "Admin",
-  [TabId.ADMIN_PLUGINS]: "Plugins",
   [TabId.ADMIN_USERS]: "Users",
+  [TabId.ADMIN_INTEGRATIONS]: "qaa-generator",
+  [TabId.PROFILE]: "Profile",
 };
 
+export const ProfileSection = {
+  ACCOUNT: "account",
+  PLUGINS: "plugins",
+  SETTINGS: "settings",
+} as const;
+
+export type ProfileSection = (typeof ProfileSection)[keyof typeof ProfileSection];
+
+export const ProfileSectionLabel: Record<ProfileSection, string> = {
+  [ProfileSection.ACCOUNT]: "Account",
+  [ProfileSection.PLUGINS]: "Plugins",
+  [ProfileSection.SETTINGS]: "Settings",
+};
+
+export const PROFILE_SECTION_ORDER = [
+  ProfileSection.ACCOUNT,
+  ProfileSection.PLUGINS,
+  ProfileSection.SETTINGS,
+] as const;
+
 export const QueryKey = {
+  ME: "me",
   AGENT_PREFLIGHT: "agent-preflight",
+  AGENT_SETTINGS: "agent-settings",
   AGENT_JOB: "agent-job",
   AGENT_NAMESPACES: "agent-namespaces",
   AGENT_NAMESPACE_STATUS: "agent-namespace-status",
@@ -567,6 +605,7 @@ export const QueryKey = {
   KUBE_POD_DESCRIBE: "kube-pod-describe",
   KUBE_TOP: "kube-top",
   ME_PLUGINS: "me-plugins",
+  SERVER_SETTINGS: "server-settings",
   USERS: "users",
   OPERATIONS: "operations",
   OPERATION_DETAIL: "operation-detail",

@@ -45,6 +45,7 @@ describe("BoardPanel", () => {
         created_at: "2026-08-12T00:00:00Z",
         display_name: "Test User",
         enabled_plugins: ["jenkins"],
+        qaa_generator_token_set: false,
         id: 2,
         is_admin: false,
         updated_at: "2026-08-12T00:00:00Z",

@@ -21,7 +21,6 @@ import {
   buildAgentNamespaceDeployRecipePath,
   buildAgentNamespaceLogsPath,
   buildAgentNamespaceStatusPath,
-  DEFAULT_AGENT_PORT_RANGE,
   HttpHeader,
   HttpMethod,
   JobStreamEvent,
@@ -30,6 +29,8 @@ import {
 } from "@/constants";
 import type {
   AdoptRequest,
+  AgentSettings,
+  AgentSettingsUpdate,
   AgentPingResponse,
   AgentPreflightState,
   DeployRequest,
@@ -60,6 +61,7 @@ import type {
   PreflightItem,
   SyncRequest,
 } from "@/api/types";
+import { resolveAgentPortRange } from "@/core/runtimeConfig";
 import { parseSseStream } from "@/api/sse";
 
 export class AgentRequestError extends Error {
@@ -76,32 +78,6 @@ type AgentDiscovery = {
   agent: AgentPingResponse;
   port: number;
 };
-
-function parsePortRange(rawValue: string | undefined): number[] {
-  const value = rawValue?.trim();
-  if (!value) {
-    return [...DEFAULT_AGENT_PORT_RANGE];
-  }
-
-  const rangeSeparator = value.includes("-") ? "-" : value.includes("..") ? ".." : null;
-  if (rangeSeparator) {
-    const [startRaw, endRaw] = value.split(rangeSeparator);
-    const start = Number.parseInt(startRaw, 10);
-    const end = Number.parseInt(endRaw, 10);
-    if (Number.isNaN(start) || Number.isNaN(end) || end < start) {
-      return [...DEFAULT_AGENT_PORT_RANGE];
-    }
-
-    return Array.from({ length: end - start + 1 }, (_, index) => start + index);
-  }
-
-  const ports = value
-    .split(",")
-    .map((part) => Number.parseInt(part.trim(), 10))
-    .filter((port) => Number.isFinite(port));
-
-  return ports.length > 0 ? ports : [...DEFAULT_AGENT_PORT_RANGE];
-}
 
 function buildAgentUrl(port: number, path: string): string {
   return `http://${AGENT_HOST}:${port}${path}`;
@@ -155,18 +131,21 @@ async function probeAgentPort(port: number, signal?: AbortSignal): Promise<Agent
   }
 }
 
-function createJsonBody(body: unknown): Pick<RequestInit, "body" | "headers" | "method"> {
+function createJsonBody(
+  body: unknown,
+  method: HttpMethod = HttpMethod.POST
+): Pick<RequestInit, "body" | "headers" | "method"> {
   return {
     body: JSON.stringify(body),
     headers: {
       [HttpHeader.CONTENT_TYPE]: MediaType.JSON,
     },
-    method: HttpMethod.POST,
+    method,
   };
 }
 
 export function getConfiguredAgentPorts(): number[] {
-  return parsePortRange(import.meta.env.VITE_AGENT_PORTS);
+  return resolveAgentPortRange();
 }
 
 export async function discoverAgent(signal?: AbortSignal): Promise<AgentDiscovery | null> {
@@ -404,6 +383,16 @@ export const agentClient = {
   getJenkinsBuilds,
   getJenkinsTree,
 
+  getSettings(port: number, token: string, signal?: AbortSignal): Promise<AgentSettings> {
+    return readAgentJson<AgentSettings>(
+      port,
+      AgentPath.SETTINGS,
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
   getKubeContexts(
     port: number,
     token: string,
@@ -515,6 +504,21 @@ export const agentClient = {
       port,
       AgentPath.NAMESPACES,
       { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
+  updateSettings(
+    port: number,
+    token: string,
+    payload: AgentSettingsUpdate,
+    signal?: AbortSignal
+  ): Promise<AgentSettings> {
+    return readAgentJson<AgentSettings>(
+      port,
+      AgentPath.SETTINGS,
+      createJsonBody(payload, HttpMethod.PUT),
       token,
       signal
     );

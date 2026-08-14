@@ -193,7 +193,7 @@ async def kube_client(kube_app: Any) -> httpx.AsyncClient:
         yield async_client
 
 
-async def test_get_kube_contexts_defaults_to_active_kubeconfig_path(
+async def test_get_kube_contexts_default_to_explicit_kubeconfig_path(
     fake_kubectl: dict[str, Path],
     backend_recorder: BackendRecorder,
     auth_headers: dict[str, str],
@@ -218,10 +218,10 @@ async def test_get_kube_contexts_defaults_to_active_kubeconfig_path(
             response = await client.get("/kube/contexts", headers=auth_headers)
     assert response.status_code == 200
     invocations = read_invocations(fake_kubectl["record_path"])
-    assert invocations[-1]["kubeconfig"] == str(active_kubeconfig)
+    assert invocations[-1]["kubeconfig"] == str(Path("~/.kube/config").expanduser())
 
 
-async def test_get_kube_contexts_merges_active_and_inherited_kubeconfig(
+async def test_get_kube_contexts_default_kubeconfig_overrides_inherited_kubeconfig(
     fake_kubectl: dict[str, Path],
     backend_recorder: BackendRecorder,
     auth_headers: dict[str, str],
@@ -249,7 +249,7 @@ async def test_get_kube_contexts_merges_active_and_inherited_kubeconfig(
             response = await client.get("/kube/contexts", headers=auth_headers)
     assert response.status_code == 200
     invocations = read_invocations(fake_kubectl["record_path"])
-    assert invocations[-1]["kubeconfig"] == f"{active_kubeconfig}:{inherited_kubeconfig}"
+    assert invocations[-1]["kubeconfig"] == str(Path("~/.kube/config").expanduser())
 
 
 async def test_get_kube_contexts_returns_rows_and_marks_current(

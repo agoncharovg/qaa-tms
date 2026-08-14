@@ -12,6 +12,8 @@ DEFAULT_OPTIONAL_PLUGIN_IDS = [
     PluginId.QAA_GENERATOR.value,
     PluginId.JENKINS.value,
 ]
+QAA_GENERATOR_TOKEN_FIELD = "qaa_generator_token"
+QAA_GENERATOR_TOKEN_SET_FIELD = "qaa_generator_token_set"
 
 
 def login(client: TestClient, username: str, password: str) -> tuple[str, dict[str, Any]]:
@@ -51,6 +53,11 @@ def create_user(
     )
     assert response.status_code == 201
     return cast(dict[str, Any], response.json())
+
+
+def assert_qaa_generator_token_is_masked(payload: dict[str, Any], *, token_set: bool) -> None:
+    assert payload[QAA_GENERATOR_TOKEN_SET_FIELD] is token_set
+    assert QAA_GENERATOR_TOKEN_FIELD not in payload
 
 
 def test_non_admin_user_admin_endpoints_return_403(client: TestClient) -> None:
@@ -108,6 +115,7 @@ def test_admin_can_list_create_get_and_login_as_created_user(client: TestClient)
     assert created_user["is_admin"] is True
     assert created_user["auto_login"] is True
     assert "password_hash" not in created_user
+    assert_qaa_generator_token_is_masked(created_user, token_set=False)
 
     get_response = client.get(
         f"/api/v1/users/{created_user['id']}",
@@ -115,6 +123,7 @@ def test_admin_can_list_create_get_and_login_as_created_user(client: TestClient)
     )
     assert get_response.status_code == 200
     assert get_response.json()["username"] == "jane"
+    assert_qaa_generator_token_is_masked(cast(dict[str, Any], get_response.json()), token_set=False)
 
     list_response = client.get("/api/v1/users", headers=auth_header(admin_token))
     assert list_response.status_code == 200
@@ -125,6 +134,8 @@ def test_admin_can_list_create_get_and_login_as_created_user(client: TestClient)
         "admin",
         "jane",
     ]
+    for user in cast(list[dict[str, Any]], body["items"]):
+        assert_qaa_generator_token_is_masked(user, token_set=False)
 
     login_response = client.post(
         "/api/v1/auth/login",
@@ -224,8 +235,117 @@ def test_me_returns_enabled_plugins_default_for_seeded_user_and_me_plugins_is_se
 
     assert me_response.status_code == 200
     assert me_response.json()["enabled_plugins"] == DEFAULT_OPTIONAL_PLUGIN_IDS
+    assert_qaa_generator_token_is_masked(cast(dict[str, Any], me_response.json()), token_set=False)
     assert plugins_response.status_code == 200
     assert plugins_response.json() == {"enabled_plugins": DEFAULT_OPTIONAL_PLUGIN_IDS}
+
+
+def test_patch_me_updates_display_name_and_auto_login(client: TestClient) -> None:
+    token, _ = login(client, DevUsername.TEST.value, DevPassword.EMPTY.value)
+
+    response = client.patch(
+        "/api/v1/me",
+        headers=auth_header(token),
+        json={"display_name": "Updated Test User", "auto_login": True},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["display_name"] == "Updated Test User"
+    assert response.json()["auto_login"] is True
+    assert_qaa_generator_token_is_masked(cast(dict[str, Any], response.json()), token_set=False)
+
+    me_response = client.get("/api/v1/me", headers=auth_header(token))
+    assert me_response.status_code == 200
+    assert me_response.json()["display_name"] == "Updated Test User"
+    assert me_response.json()["auto_login"] is True
+    assert_qaa_generator_token_is_masked(cast(dict[str, Any], me_response.json()), token_set=False)
+
+
+def test_patch_me_changes_password(client: TestClient) -> None:
+    token, _ = login(client, DevUsername.TEST.value, DevPassword.EMPTY.value)
+
+    response = client.patch(
+        "/api/v1/me",
+        headers=auth_header(token),
+        json={"password": "new-password"},
+    )
+
+    assert response.status_code == 200
+    assert_qaa_generator_token_is_masked(cast(dict[str, Any], response.json()), token_set=False)
+
+    old_login = client.post(
+        "/api/v1/auth/login",
+        json={"username": DevUsername.TEST.value, "password": DevPassword.EMPTY.value},
+    )
+    new_login = client.post(
+        "/api/v1/auth/login",
+        json={"username": DevUsername.TEST.value, "password": "new-password"},
+    )
+    assert old_login.status_code == 401
+    assert new_login.status_code == 200
+
+
+def test_patch_me_sets_and_clears_qaa_generator_token_without_returning_it(
+    client: TestClient,
+) -> None:
+    token, _ = login(client, DevUsername.TEST.value, DevPassword.EMPTY.value)
+
+    set_response = client.patch(
+        "/api/v1/me",
+        headers=auth_header(token),
+        json={QAA_GENERATOR_TOKEN_FIELD: "personal-token"},
+    )
+
+    assert set_response.status_code == 200
+    assert_qaa_generator_token_is_masked(
+        cast(dict[str, Any], set_response.json()),
+        token_set=True,
+    )
+
+    me_response = client.get("/api/v1/me", headers=auth_header(token))
+    assert me_response.status_code == 200
+    assert_qaa_generator_token_is_masked(
+        cast(dict[str, Any], me_response.json()),
+        token_set=True,
+    )
+
+    clear_response = client.patch(
+        "/api/v1/me",
+        headers=auth_header(token),
+        json={QAA_GENERATOR_TOKEN_FIELD: ""},
+    )
+
+    assert clear_response.status_code == 200
+    assert_qaa_generator_token_is_masked(
+        cast(dict[str, Any], clear_response.json()),
+        token_set=False,
+    )
+
+
+def test_patch_me_partial_update_preserves_other_fields(client: TestClient) -> None:
+    token, before = login(client, DevUsername.TEST.value, DevPassword.EMPTY.value)
+
+    response = client.patch(
+        "/api/v1/me",
+        headers=auth_header(token),
+        json={"display_name": "Partial Update"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["display_name"] == "Partial Update"
+    assert response.json()["auto_login"] == before["auto_login"]
+
+
+def test_patch_me_rejects_unknown_fields(client: TestClient) -> None:
+    token, _ = login(client, DevUsername.TEST.value, DevPassword.EMPTY.value)
+
+    response = client.patch(
+        "/api/v1/me",
+        headers=auth_header(token),
+        json={"username": "blocked"},
+    )
+
+    assert response.status_code == 422
 
 
 def test_put_me_plugins_round_trips_and_updates_me(client: TestClient) -> None:

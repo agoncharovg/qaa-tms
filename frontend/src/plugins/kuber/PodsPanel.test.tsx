@@ -44,6 +44,7 @@ describe("PodsPanel", () => {
         created_at: "2026-08-11T00:00:00Z",
         display_name: "Test User",
         enabled_plugins: ["stagings", "kuber", "qaa-generator"],
+        qaa_generator_token_set: false,
         id: 2,
         is_admin: false,
         updated_at: "2026-08-11T00:00:00Z",

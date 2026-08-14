@@ -21,6 +21,7 @@ from app.core.constants import (
 
 QAA_GENERATOR_TEST_BASE_URL = "http://qaa-generator.test/api/v1"
 QAA_GENERATOR_SERVICE_TOKEN = "service-token"
+QAA_GENERATOR_PERSONAL_TOKEN = "personal-token"
 QAA_GENERATOR_FALLBACK_ACTOR = "slack:test-user"
 QAA_GENERATOR_IDEMPOTENCY_KEY = "qaa-idempotency-key"
 QAA_GENERATOR_EMAIL_USERNAME = "alice@example.com"
@@ -141,6 +142,16 @@ def create_email_user(client: TestClient) -> tuple[str, dict[str, Any]]:
     return login(client, QAA_GENERATOR_EMAIL_USERNAME, QAA_GENERATOR_EMAIL_PASSWORD)
 
 
+def set_personal_qaa_generator_token(client: TestClient, token: str, *, auth_token: str) -> None:
+    response = client.patch(
+        "/api/v1/me",
+        headers=auth_header(auth_token),
+        json={"qaa_generator_token": token},
+    )
+    assert response.status_code == 200
+    assert response.json()["qaa_generator_token_set"] is True
+
+
 @pytest.fixture
 def install_qaa_client(
     client: TestClient,
@@ -178,12 +189,13 @@ def test_create_qaa_run_returns_202_and_records_operation(
     install_qaa_client: Callable[[Callable[[httpx.Request], httpx.Response], str], None],
 ) -> None:
     token, _ = login(client, DevUsername.TEST.value, DevPassword.EMPTY.value)
+    set_personal_qaa_generator_token(client, QAA_GENERATOR_PERSONAL_TOKEN, auth_token=token)
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "POST"
         assert request.url.path == UPSTREAM_RUNS_PATH
         assert request.headers[HttpHeader.AUTHORIZATION.value] == (
-            f"Bearer {QAA_GENERATOR_SERVICE_TOKEN}"
+            f"Bearer {QAA_GENERATOR_PERSONAL_TOKEN}"
         )
         assert HttpHeader.ACTOR.value not in request.headers
         assert request.headers[HttpHeader.IDEMPOTENCY_KEY.value] == QAA_GENERATOR_IDEMPOTENCY_KEY
@@ -218,6 +230,7 @@ def test_create_qaa_run_passes_through_conflict_with_existing_run_id(
     install_qaa_client: Callable[[Callable[[httpx.Request], httpx.Response], str], None],
 ) -> None:
     token, _ = login(client, DevUsername.TEST.value, DevPassword.EMPTY.value)
+    set_personal_qaa_generator_token(client, QAA_GENERATOR_PERSONAL_TOKEN, auth_token=token)
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "POST"
@@ -262,24 +275,52 @@ def test_list_qaa_runs_forwards_filters_and_uses_fallback_actor(
     assert response.json() == QAA_LIST_RESPONSE
 
 
+def test_create_qaa_run_requires_personal_token(
+    client: TestClient,
+    install_qaa_client: Callable[[Callable[[httpx.Request], httpx.Response], str], None],
+) -> None:
+    token, _ = login(client, DevUsername.TEST.value, DevPassword.EMPTY.value)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"Unexpected upstream request: {request.method} {request.url.path}")
+
+    install_qaa_client(handler)
+
+    response = client.post(QAA_RUNS_PATH, headers=auth_header(token), json=QAA_CREATE_PAYLOAD)
+
+    assert response.status_code == 412
+    assert response.json() == {
+        "detail": "Set your personal qaa-generator token in Profile / Settings before generating."
+    }
+
+    operations_response = client.get("/api/v1/operations", headers=auth_header(token))
+    assert operations_response.status_code == 200
+    assert operations_response.json()["items"] == []
+
+
 def test_qaa_run_detail_reconciles_operation_and_uses_email_actor(
     client: TestClient,
     install_qaa_client: Callable[[Callable[[httpx.Request], httpx.Response], str], None],
 ) -> None:
     token, _ = create_email_user(client)
+    set_personal_qaa_generator_token(client, QAA_GENERATOR_PERSONAL_TOKEN, auth_token=token)
     request_count = 0
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal request_count
         request_count += 1
+        if request_count == 1:
+            assert request.method == "POST"
+            assert request.url.path == UPSTREAM_RUNS_PATH
+            assert request.headers[HttpHeader.AUTHORIZATION.value] == (
+                f"Bearer {QAA_GENERATOR_PERSONAL_TOKEN}"
+            )
+            assert HttpHeader.ACTOR.value not in request.headers
+            return httpx.Response(status_code=202, json=QAA_CREATE_RESPONSE)
         assert request.headers[HttpHeader.AUTHORIZATION.value] == (
             f"Bearer {QAA_GENERATOR_SERVICE_TOKEN}"
         )
         assert request.headers[HttpHeader.ACTOR.value] == QAA_EMAIL_ACTOR
-        if request_count == 1:
-            assert request.method == "POST"
-            assert request.url.path == UPSTREAM_RUNS_PATH
-            return httpx.Response(status_code=202, json=QAA_CREATE_RESPONSE)
         assert request.method == "GET"
         assert request.url.path == UPSTREAM_RUN_DETAIL_PATH
         return httpx.Response(status_code=200, json=QAA_RUN_DETAIL_RESPONSE)

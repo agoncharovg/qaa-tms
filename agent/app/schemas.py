@@ -8,6 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.config import Settings
 from app.core.constants import (
     MAX_STAGE,
     MIN_STAGE,
@@ -42,6 +43,76 @@ class PreflightItem(BaseModel):
     ok: bool
     detail: str
     how_to: str = Field(alias="howTo")
+
+
+class AgentSettingsRead(BaseModel):
+    """Editable companion settings returned to the authenticated frontend."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    jenkins_url: str
+    jenkins_username: str
+    jenkins_token_set: bool
+    jenkins_root_path: str
+    jenkins_root_folders: list[str]
+    jenkins_request_timeout: float
+    jenkins_tree_depth: int
+    jenkins_stuck_min_idle_hours: int
+    staging_bin: str | None
+    stagings_repo: str | None
+    staging_kubeconfig: str
+    staging_kubeconfig_url: str
+    kubeconfig_active_path: str
+    staging_kubeconfig_max_age_hours: int
+    kubectl_bin: str
+    kubeconfig: str
+    kubectl_request_timeout: str
+
+
+class AgentSettingsUpdate(BaseModel):
+    """Editable companion settings update payload."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    jenkins_url: str | None = None
+    jenkins_username: str | None = None
+    jenkins_token: str | None = None
+    jenkins_root_path: str | None = None
+    jenkins_root_folders: list[str] | None = None
+    jenkins_request_timeout: float | None = None
+    jenkins_tree_depth: int | None = None
+    jenkins_stuck_min_idle_hours: int | None = None
+    staging_bin: str | None = None
+    stagings_repo: str | None = None
+    staging_kubeconfig: str | None = None
+    staging_kubeconfig_url: str | None = None
+    kubeconfig_active_path: str | None = None
+    staging_kubeconfig_max_age_hours: int | None = None
+    kubectl_bin: str | None = None
+    kubeconfig: str | None = None
+    kubectl_request_timeout: str | None = None
+
+
+def to_agent_settings_read(settings: Settings) -> AgentSettingsRead:
+    return AgentSettingsRead(
+        jenkins_url=settings.jenkins_url,
+        jenkins_username=settings.jenkins_username,
+        jenkins_token_set=bool(settings.jenkins_token),
+        jenkins_root_path=settings.jenkins_root_path,
+        jenkins_root_folders=list(settings.jenkins_root_folders),
+        jenkins_request_timeout=settings.jenkins_request_timeout,
+        jenkins_tree_depth=settings.jenkins_tree_depth,
+        jenkins_stuck_min_idle_hours=settings.jenkins_stuck_min_idle_hours,
+        staging_bin=settings.staging_bin,
+        stagings_repo=settings.stagings_repo,
+        staging_kubeconfig=settings.staging_kubeconfig,
+        staging_kubeconfig_url=settings.staging_kubeconfig_url,
+        kubeconfig_active_path=settings.kubeconfig_active_path,
+        staging_kubeconfig_max_age_hours=settings.staging_kubeconfig_max_age_hours,
+        kubectl_bin=settings.kubectl_bin,
+        kubeconfig=settings.kubeconfig,
+        kubectl_request_timeout=settings.kubectl_request_timeout,
+    )
 
 
 class KubeconfigStatus(BaseModel):

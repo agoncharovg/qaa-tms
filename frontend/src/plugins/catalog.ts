@@ -2,6 +2,7 @@ import type { User, WorkspaceTabDefinition } from "@/api/types";
 import { PluginKind, type PluginManifest, type PluginSpec, type PluginTab, type PluginTabSpec } from "@/core/plugins/types";
 import {
   ContentType,
+  NavSection,
   type PluginId as PluginIdType,
   type TabId as TabIdType,
 } from "@/constants";
@@ -71,6 +72,28 @@ export function visiblePlugins(
   enabledOptionalIds: ReadonlySet<PluginIdType>
 ): PluginManifest[] {
   return PLUGINS.filter((plugin) => pluginVisible(plugin, user, enabledOptionalIds));
+}
+
+export function pluginNavSection(plugin: Pick<PluginManifest, "navSection">): NavSection {
+  return plugin.navSection ?? NavSection.PRIMARY;
+}
+
+export function primaryVisiblePlugins(
+  user: Pick<User, "enabled_plugins" | "is_admin"> | null | undefined,
+  enabledOptionalIds: ReadonlySet<PluginIdType>
+): PluginManifest[] {
+  return visiblePlugins(user, enabledOptionalIds).filter(
+    (plugin) => pluginNavSection(plugin) === NavSection.PRIMARY
+  );
+}
+
+export function accountVisiblePlugins(
+  user: Pick<User, "enabled_plugins" | "is_admin"> | null | undefined,
+  enabledOptionalIds: ReadonlySet<PluginIdType>
+): PluginManifest[] {
+  return visiblePlugins(user, enabledOptionalIds).filter(
+    (plugin) => pluginNavSection(plugin) === NavSection.ACCOUNT
+  );
 }
 
 export function visibleTabs(

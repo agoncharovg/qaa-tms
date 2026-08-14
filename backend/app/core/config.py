@@ -9,6 +9,7 @@ from typing import Annotated, Any
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from app.core import env_file
 from app.core.constants import (
     DEFAULT_QAA_GENERATOR_ACTOR,
     DEFAULT_QAA_GENERATOR_BASE_URL,
@@ -19,7 +20,6 @@ from app.core.constants import (
     DEFAULT_QAA_GENERATOR_PORT_FORWARD_RESOURCE,
     DEFAULT_QAA_GENERATOR_SERVICE_TOKEN,
     DEFAULT_QAA_GENERATOR_SUPERUSER_TOKEN,
-    EnvFile,
     EnvKey,
 )
 
@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     """Runtime configuration."""
 
     model_config = SettingsConfigDict(
-        env_file=EnvFile.DOT_ENV.value,
+        env_file=str(env_file.BACKEND_ENV_FILE),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -103,4 +103,4 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    return Settings(_env_file=env_file.BACKEND_ENV_FILE)

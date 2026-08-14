@@ -2,7 +2,7 @@ import { Alert, Button, Group, Loader, Stack, Text } from "@mantine/core";
 import { IconAlertCircle, IconPlugConnectedX, IconRotateClockwise } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 
-import { discoverAgent } from "@/api/agentClient";
+import { discoverAgent, getConfiguredAgentPorts } from "@/api/agentClient";
 import { PluginId, QueryKey, ViewKey, type ViewKey as ViewKeyType } from "@/constants";
 import { ClustersPanel } from "@/plugins/kuber/ClustersPanel";
 import { PodsPanel } from "@/plugins/kuber/PodsPanel";
@@ -70,7 +70,7 @@ export function KuberSection({ mode }: KuberSectionProps) {
         <Stack gap="sm">
           <Text>{KuberSectionCopy.AGENT_UNAVAILABLE_BODY}</Text>
           <Text c="dimmed" size="sm">
-            {KuberSectionCopy.AGENT_UNAVAILABLE_PORTS} {import.meta.env.VITE_AGENT_PORTS ?? "47600-47605"}
+            {KuberSectionCopy.AGENT_UNAVAILABLE_PORTS} {getConfiguredAgentPorts().join(", ")}
           </Text>
           <Group>
             <Button

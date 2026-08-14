@@ -87,6 +87,7 @@ describe("RunsPanel", () => {
         created_at: "2026-08-11T00:00:00Z",
         display_name: "QAA User",
         enabled_plugins: QAA_ENABLED_PLUGINS,
+        qaa_generator_token_set: false,
         id: 3,
         is_admin: false,
         updated_at: "2026-08-11T00:00:00Z",

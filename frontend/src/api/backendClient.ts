@@ -1,7 +1,6 @@
 import {
   AUTH_SCHEME_BEARER,
   BackendPath,
-  DEFAULT_API_BASE_URL,
   buildBackendQaaServiceTokenRevokePath,
   buildBackendQaaUserPath,
   buildBackendQaaUserRegeneratePath,
@@ -23,10 +22,13 @@ import {
 import type {
   LoginRequest,
   LoginResponse,
+  MeUpdateRequest,
   MePluginsResponse,
   OperationListResponse,
   OperationRead,
   OperationReplay,
+  ServerSettingsRead,
+  ServerSettingsUpdateRequest,
   QaaRunArtifacts,
   QaaRunControlResponse,
   QaaRunCreateRequest,
@@ -46,6 +48,7 @@ import type {
   UserListResponse,
   UserUpdateRequest,
 } from "@/api/types";
+import { resolveApiBaseUrl } from "@/core/runtimeConfig";
 import { parseSseStream } from "@/api/sse";
 
 const QAA_LIST_QUERY_PARAM = {
@@ -94,7 +97,7 @@ export class BackendHttpError extends Error {
   }
 }
 
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL).trim();
+const apiBaseUrl = resolveApiBaseUrl().trim();
 
 function buildBackendUrl(path: string): string {
   return new URL(path, apiBaseUrl).toString();
@@ -315,8 +318,40 @@ export const backendClient = {
     return request<User>(BackendPath.ME, { method: HttpMethod.GET }, token, signal);
   },
 
+  updateMe(token: string, payload: MeUpdateRequest, signal?: AbortSignal): Promise<User> {
+    return request<User>(
+      BackendPath.ME,
+      {
+        body: JSON.stringify(payload),
+        method: HttpMethod.PATCH,
+      },
+      token,
+      signal
+    );
+  },
+
   getMyPlugins(token: string, signal?: AbortSignal): Promise<MePluginsResponse> {
     return request<MePluginsResponse>(BackendPath.ME_PLUGINS, { method: HttpMethod.GET }, token, signal);
+  },
+
+  getServerSettings(token: string, signal?: AbortSignal): Promise<ServerSettingsRead> {
+    return request<ServerSettingsRead>(BackendPath.SETTINGS, { method: HttpMethod.GET }, token, signal);
+  },
+
+  updateServerSettings(
+    token: string,
+    payload: ServerSettingsUpdateRequest,
+    signal?: AbortSignal
+  ): Promise<ServerSettingsRead> {
+    return request<ServerSettingsRead>(
+      BackendPath.SETTINGS,
+      {
+        body: JSON.stringify(payload),
+        method: HttpMethod.PUT,
+      },
+      token,
+      signal
+    );
   },
 
   updateMyPlugins(

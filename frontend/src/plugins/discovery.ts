@@ -1,5 +1,5 @@
 import { PluginKind, type PluginManifest, type PluginTab } from "@/core/plugins/types";
-import { PluginOrigin } from "@/constants";
+import { NavSection, PluginOrigin } from "@/constants";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -39,6 +39,9 @@ function isPluginManifest(value: unknown): value is PluginManifest {
     (value.origin === PluginOrigin.BUILTIN || value.origin === PluginOrigin.LOCAL) &&
     typeof value.contractVersion === "number" &&
     Number.isFinite(value.contractVersion) &&
+    (value.navSection === undefined ||
+      value.navSection === NavSection.PRIMARY ||
+      value.navSection === NavSection.ACCOUNT) &&
     (value.adminOnly === undefined || typeof value.adminOnly === "boolean") &&
     (value.requiresAgent === undefined || typeof value.requiresAgent === "boolean") &&
     Array.isArray(value.tabs) &&
@@ -100,7 +103,7 @@ export function validatePluginManifests(manifests: readonly unknown[]): PluginMa
       failDiscovery(`plugin "${plugin.id}" must declare at least one tab.`);
     }
 
-    if (plugin.kind === PluginKind.SYSTEM && plugin.tabs[0]?.adminOnly) {
+    if (plugin.kind === PluginKind.SYSTEM && !plugin.adminOnly && plugin.tabs[0]?.adminOnly) {
       failDiscovery(`system plugin "${plugin.id}" cannot default to an admin-only tab.`);
     }
 

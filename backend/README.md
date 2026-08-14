@@ -15,6 +15,7 @@ Plugin ids are backend-local enums in `app/core/constants.py`:
 - optional: `stagings`
 - optional: `qaa-generator`
 - system: `admin`
+- system: `profile`
 
 `users.enabled_plugins` is a nullable JSON column added by Alembic revision
 `20260811_0002`. `NULL` means the user has never customized plugin visibility yet, so the
@@ -23,6 +24,7 @@ backend resolves it to "all optional plugins enabled" for backward compatibility
 The frontend bootstraps from `GET /api/v1/me`, which now always returns a resolved
 `enabled_plugins` list. Self-service updates use:
 
+- `PATCH /api/v1/me`
 - `GET /api/v1/me/plugins`
 - `PUT /api/v1/me/plugins` with `{ "enabled_plugins": [...] }`
 
@@ -32,8 +34,11 @@ The frontend bootstraps from `GET /api/v1/me`, which now always returns a resolv
 ## API highlights
 
 - `GET /api/v1/me`: return the currently authenticated user, including resolved `enabled_plugins`.
+- `PATCH /api/v1/me`: self-service partial update for `display_name`, `auto_login`, and password.
 - `GET /api/v1/me/plugins`: return the caller's resolved optional-plugin selection.
 - `PUT /api/v1/me/plugins`: persist the caller's explicit optional-plugin selection.
+- `GET /api/v1/settings`: admin-only read of backend operational settings, with qaa-generator secrets exposed only as `*_set` booleans.
+- `PUT /api/v1/settings`: admin-only update of backend operational settings stored in the backend `.env`.
 - `GET /api/v1/users`: admin-only list of all users ordered by `id`.
 - `POST /api/v1/users`: admin-only create endpoint that accepts `{ username, password, display_name, is_admin?, auto_login? }` and returns `UserRead` without exposing `password_hash`.
 - `GET /api/v1/users/{id}`: admin-only user detail.
@@ -48,6 +53,11 @@ The frontend bootstraps from `GET /api/v1/me`, which now always returns a resolv
 
 ## QAA generator proxy settings
 
+`Profile -> Settings` is the single editing surface in the SPA for operational config, but
+the values still persist to the real consumer surfaces. Backend qaa-generator settings stay
+in the backend `.env`; bootstrap-only values such as `DATABASE_URL` and `JWT_SECRET` remain
+outside the UI.
+
 - `QAA_GENERATOR_BASE_URL`: base URL for the upstream service. Default: `http://qaa-generator.default.svc.cluster.local:8080/api/v1`
 - `QAA_GENERATOR_PORT_FORWARD_ENABLED`: when `true`, ignore the configured upstream URL locally and talk to qaa-generator through `kubectl port-forward`. Default: `false`
 - `QAA_GENERATOR_PORT_FORWARD_NAMESPACE`: Kubernetes namespace for the local port-forward workaround. Default: `qaa-prod`
@@ -56,6 +66,10 @@ The frontend bootstraps from `GET /api/v1/me`, which now always returns a resolv
 - `QAA_GENERATOR_PORT_FORWARD_REMOTE_PORT`: remote service port for the workaround tunnel. Default: `8080`
 - `QAA_GENERATOR_SERVICE_TOKEN`: bearer token the backend sends to qaa-generator. This value never reaches the browser.
 - `QAA_GENERATOR_ACTOR`: fallback `Actor` header value for non-email usernames such as the seeded `test` / `admin` accounts. Leave empty to omit the header in that case.
+
+Changing `QAA_GENERATOR_BASE_URL` or any port-forward value through the UI still requires a
+backend restart, because the outbound HTTP client and optional port-forward process are
+created at startup.
 
 ## Local run
 

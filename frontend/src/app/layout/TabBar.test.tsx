@@ -31,7 +31,8 @@ describe("TabBar", () => {
         auto_login: false,
         created_at: "2026-08-13T00:00:00Z",
         display_name: "Test User",
-        enabled_plugins: [PluginId.STAGINGS, PluginId.ADMIN],
+        enabled_plugins: [PluginId.STAGINGS, PluginId.QAA_GENERATOR],
+        qaa_generator_token_set: false,
         id: 1,
         is_admin: true,
         updated_at: "2026-08-13T00:00:00Z",
@@ -44,16 +45,16 @@ describe("TabBar", () => {
   it("shows a global collection of workspace tabs and has no open-tab button", async () => {
     const user = userEvent.setup();
 
-    useUiStore.getState().openTab(PluginId.ADMIN, TabId.ADMIN_PLUGINS);
+    useUiStore.getState().openTab(PluginId.QAA_GENERATOR, TabId.QAA_GENERATE);
     useUiStore.getState().openTab(PluginId.STAGINGS, TabId.STAGINGS_HISTORY);
 
     renderTabBar();
 
     expect(screen.queryByRole("button", { name: /Open tab/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Plugins/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Generate/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /History/i })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("tab", { name: /Plugins/i }));
-    expect(useUiStore.getState().activeWorkspaceTabId).toBe(TabId.ADMIN_PLUGINS);
+    await user.click(screen.getByRole("tab", { name: /Generate/i }));
+    expect(useUiStore.getState().activeWorkspaceTabId).toBe(TabId.QAA_GENERATE);
   });
 });

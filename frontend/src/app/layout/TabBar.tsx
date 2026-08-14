@@ -10,14 +10,10 @@ import { IconX } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 
 import { usePalette } from "@/app/theme/usePalette";
-import { type PluginId as PluginIdType, type TabId as TabIdType } from "@/constants";
+import { type TabId as TabIdType } from "@/constants";
 import { pluginById } from "@/plugins/registry";
 import { useAuthStore } from "@/store/authStore";
 import { getOpenWorkspaceTabs, useUiStore } from "@/store/uiStore";
-
-interface TabBarProps {
-  activePluginId?: PluginIdType;
-}
 
 function TabLabel({
   isCloseable,
@@ -54,7 +50,7 @@ function TabLabel({
   );
 }
 
-export function TabBar(_: TabBarProps) {
+export function TabBar() {
   const navigate = useNavigate();
   const palette = usePalette();
   const currentUser = useAuthStore((state) => state.currentUser);

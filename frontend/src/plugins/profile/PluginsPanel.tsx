@@ -21,7 +21,7 @@ import { PluginKind } from "@/core/plugins/types";
 import { usePluginsContext } from "@/plugins/context";
 import { useAuthStore } from "@/store/authStore";
 
-export function PluginsPage() {
+export function PluginsPanel() {
   const queryClient = useQueryClient();
   const token = useAuthStore((state) => state.token);
   const currentUser = useAuthStore((state) => state.currentUser);
@@ -58,8 +58,11 @@ export function PluginsPage() {
 
   const resolvedCurrentUser = currentUser;
   const optionalPlugins = plugins.filter((plugin) => plugin.kind === PluginKind.OPTIONAL);
-  const systemPlugins = plugins.filter((plugin) => plugin.kind === PluginKind.SYSTEM);
   const enabledOptionalIds = enabledOptionalPluginIdSet(resolvedCurrentUser.enabled_plugins);
+  const systemPlugins = plugins.filter(
+    (plugin) =>
+      plugin.kind === PluginKind.SYSTEM && (!plugin.adminOnly || resolvedCurrentUser.is_admin)
+  );
 
   function handleToggle(pluginId: (typeof optionalPlugins)[number]["id"], checked: boolean): void {
     const currentIds = resolveEnabledOptionalPluginIds(resolvedCurrentUser.enabled_plugins);

@@ -233,15 +233,15 @@ async def create_qaa_run(
 ) -> Response:
     client = get_qaa_client(request)
     settings = get_settings(request)
-    operation = await create_audit_operation(db, current_user, payload)
     headers = build_outbound_headers(
         settings,
         accept=MediaType.JSON,
-        token_mode=QaaGeneratorTokenMode.SERVICE,
+        token_mode=QaaGeneratorTokenMode.PERSONAL,
         user=current_user,
         content_type=MediaType.JSON,
         idempotency_key=idempotency_key,
     )
+    operation = await create_audit_operation(db, current_user, payload)
 
     try:
         result = await request_json(
@@ -249,7 +249,7 @@ async def create_qaa_run(
             method=HttpMethod.POST.value,
             path=QaaGeneratorServicePath.RUNS.value,
             headers=headers,
-            token_mode=QaaGeneratorTokenMode.SERVICE,
+            token_mode=QaaGeneratorTokenMode.PERSONAL,
             json_body=payload.model_dump(mode="json"),
             passthrough_status_codes=PASSTHROUGH_STATUS_CODES,
         )

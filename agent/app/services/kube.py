@@ -153,9 +153,7 @@ def build_kube_env(settings: Settings) -> dict[str, str]:
             continue
         expanded_part = str(Path(part).expanduser())
         part_identity = (
-            os.path.realpath(expanded_part)
-            if Path(expanded_part).exists()
-            else expanded_part
+            os.path.realpath(expanded_part) if Path(expanded_part).exists() else expanded_part
         )
         if part_identity in seen_paths:
             continue

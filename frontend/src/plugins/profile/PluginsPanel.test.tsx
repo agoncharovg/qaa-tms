@@ -14,25 +14,25 @@ vi.mock("@/api/backendClient", () => ({
 
 import { Sidebar } from "@/app/layout/Sidebar";
 import { PluginId } from "@/constants";
-import { PluginsPage } from "@/plugins/admin/PluginsPage";
+import { PluginsPanel } from "@/plugins/profile/PluginsPanel";
 import { renderWithProviders } from "@/test/render";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
 import { resetUiStoreState, syncTabsForUser } from "@/store/uiStore";
 
-function renderAdminSurface() {
+function renderProfileSurface() {
   return renderWithProviders(
     <MantineProvider forceColorScheme="dark">
       <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
         <AppShell header={{ height: 76 }} navbar={{ breakpoint: "sm", width: 280 }}>
-          <Sidebar activePluginId={PluginId.ADMIN} />
-          <PluginsPage />
+          <Sidebar activePluginId={PluginId.PROFILE} />
+          <PluginsPanel />
         </AppShell>
       </MemoryRouter>
     </MantineProvider>
   );
 }
 
-describe("PluginsPage", () => {
+describe("PluginsPanel", () => {
   beforeEach(() => {
     backendClientMock.updateMyPlugins.mockReset();
     localStorage.clear();
@@ -45,6 +45,7 @@ describe("PluginsPage", () => {
         created_at: "2026-08-09T00:00:00Z",
         display_name: "Test User",
         enabled_plugins: ["stagings"],
+        qaa_generator_token_set: false,
         id: 2,
         is_admin: false,
         updated_at: "2026-08-09T00:00:00Z",
@@ -61,10 +62,10 @@ describe("PluginsPage", () => {
       .mockResolvedValueOnce({ enabled_plugins: [] })
       .mockResolvedValueOnce({ enabled_plugins: ["stagings"] });
 
-    renderAdminSurface();
+    renderProfileSurface();
 
     expect(screen.getByRole("button", { name: "Stagings" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Administration is enabled")).toBeDisabled();
+    expect(screen.getByLabelText("Profile is enabled")).toBeDisabled();
     expect(screen.getByLabelText("Toggle Stagings")).toBeChecked();
 
     await user.click(screen.getByLabelText("Toggle Stagings"));
@@ -86,12 +87,12 @@ describe("PluginsPage", () => {
     });
   });
 
-  it("shows only the Plugins tab to non-admins and exposes Users to admins in the sidebar tree", async () => {
-    renderAdminSurface();
+  it("shows the moved profile plugins page and exposes Administration only for admins", async () => {
+    renderProfileSurface();
     expect(screen.getByRole("heading", { name: "Plugins" })).toBeInTheDocument();
-    expect(screen.queryByText("Users")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Administration" })).not.toBeInTheDocument();
 
-    await act(async () => {
+    act(() => {
       useAuthStore.setState({
         currentUser: {
           ...useAuthStore.getState().currentUser!,
@@ -101,6 +102,6 @@ describe("PluginsPage", () => {
       syncTabsForUser(useAuthStore.getState().currentUser);
     });
 
-    expect(await screen.findByText("Users")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Administration" })).toBeInTheDocument();
   });
 });
