@@ -59,6 +59,7 @@ interface TreeNodeRowProps {
 }
 
 const TreePanelCopy = {
+  BUILD_HISTORY: "Build history",
   BUILDS_EMPTY: "No recent builds were returned.",
   EMPTY_BODY: "No Jenkins folders were returned for the configured .QAA/E2E scope.",
   EMPTY_TITLE: "No Jenkins data",
@@ -84,6 +85,8 @@ const TreePanelCopy = {
 } as const;
 
 const TreePanelValue = {
+  BUILD_HISTORY_HEIGHT_PX: 8,
+  BUILD_HISTORY_WIDTH_PX: 108,
   BUILD_STALE_TIME_MS: 30000,
   INDENT_STEP_PX: 24,
   LEFT_BORDER_PX: 2,
@@ -218,13 +221,14 @@ function TreeNodeRow({
   const expanded = expandedPaths.includes(node.path);
   const pinned = pinnedPaths.includes(node.path);
   const buildQuery = useQuery({
-    enabled: Boolean(token && node.kind === "pipeline" && expanded),
+    enabled: Boolean(token && node.kind === "pipeline"),
     queryFn: ({ signal }) => agentClient.getJenkinsBuilds(agentPort, token ?? "", node.path, signal),
     queryKey: [QueryKey.JENKINS_BUILDS, agentPort, token, node.path],
     refetchOnWindowFocus: false,
     retry: false,
     staleTime: TreePanelValue.BUILD_STALE_TIME_MS,
   });
+  const buildHistory = buildQuery.data ? [...buildQuery.data.builds].reverse() : [];
 
   return (
     <Stack gap="xs">
@@ -240,7 +244,7 @@ function TreeNodeRow({
         withBorder
       >
         <Group justify="space-between" wrap="nowrap">
-          <Group gap="sm" wrap="nowrap">
+          <Group gap="sm" style={{ flex: 1, minWidth: 0 }} wrap="nowrap">
             <ActionIcon aria-label={expanded ? TreePanelCopy.COLLAPSE_ALL : TreePanelCopy.EXPAND_ALL} variant="subtle">
               {expanded ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
             </ActionIcon>
@@ -256,9 +260,10 @@ function TreeNodeRow({
                 {node.kind === "folder" ? <IconFolder size={14} /> : <IconGitBranch size={14} />}
               </ThemeIcon>
             </Tooltip>
-            <Text fw={500}>{node.name}</Text>
+            <Text fw={500} truncate="end">{node.name}</Text>
           </Group>
-          <Group gap="xs" wrap="nowrap">
+          <Group gap="xs" style={{ flexShrink: 0 }} wrap="nowrap">
+            {node.kind === "pipeline" && buildHistory.length > 0 ? <BuildHistoryLine builds={buildHistory} /> : null}
             {node.kind === "pipeline" && node.status ? (
               <Badge color={JenkinsStatusColor[node.status]} variant="light">
                 {JenkinsStatusLabel[node.status]}
@@ -338,6 +343,28 @@ function TreeNodeRow({
   );
 }
 
+function BuildHistoryLine({ builds }: { builds: JenkinsBuild[] }) {
+  return (
+    <Group aria-label={TreePanelCopy.BUILD_HISTORY} gap={2} role="group" style={{ width: TreePanelValue.BUILD_HISTORY_WIDTH_PX }} wrap="nowrap">
+      {builds.map((build) => (
+        <Tooltip key={build.url} label={formatBuildHistoryLabel(build)}>
+          <div
+            aria-label={formatBuildHistoryLabel(build)}
+            role="img"
+            style={{
+              backgroundColor: getBuildHistoryColor(build),
+              borderRadius: String(TreePanelValue.BUILD_HISTORY_HEIGHT_PX) + "px",
+              flex: 1,
+              height: TreePanelValue.BUILD_HISTORY_HEIGHT_PX,
+              minWidth: 0,
+            }}
+          />
+        </Tooltip>
+      ))}
+    </Group>
+  );
+}
+
 function BuildRow({ build }: { build: JenkinsBuild }) {
   return (
     <Tooltip label={TreePanelCopy.OPEN_ALLURE}>
@@ -408,6 +435,14 @@ function getBuildColor(build: JenkinsBuild): string {
     return "gray";
   }
   return "red";
+}
+
+function getBuildHistoryColor(build: JenkinsBuild): string {
+  return `var(--mantine-color-${getBuildColor(build)}-6)`;
+}
+
+function formatBuildHistoryLabel(build: JenkinsBuild): string {
+  return "#" + String(build.number) + ": " + getBuildLabel(build);
 }
 
 function getBuildLabel(build: JenkinsBuild): string {

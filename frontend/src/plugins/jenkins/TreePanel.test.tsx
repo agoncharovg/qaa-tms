@@ -94,6 +94,24 @@ describe("TreePanel", () => {
           timestamp: Date.now() - 60000,
           url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/42/",
         },
+        {
+          allureUrl: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/41/allure/",
+          building: false,
+          durationMs: 118000,
+          number: 41,
+          result: "FAILURE",
+          timestamp: Date.now() - 180000,
+          url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/41/",
+        },
+        {
+          allureUrl: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/40/allure/",
+          building: true,
+          durationMs: 30000,
+          number: 40,
+          result: null,
+          timestamp: Date.now() - 300000,
+          url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/40/",
+        },
       ],
     });
 
@@ -105,8 +123,6 @@ describe("TreePanel", () => {
     expect(screen.getByRole("img", { name: "Pipeline" })).toBeInTheDocument();
     expect(screen.getByText("Passed")).toBeInTheDocument();
 
-    await user.click(screen.getByText("Smoke"));
-
     await waitFor(() => {
       expect(agentClientMock.getJenkinsBuilds).toHaveBeenCalledWith(
         47600,
@@ -115,6 +131,11 @@ describe("TreePanel", () => {
         expect.anything()
       );
     });
+
+    expect(screen.getByRole("group", { name: "Build history" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "#42: SUCCESS" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "#41: FAILURE" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "#40: Running" })).toBeInTheDocument();
 
     const [folderPinButton, pipelinePinButton] = screen.getAllByRole("button", { name: "Pin to board" });
 
