@@ -314,8 +314,8 @@ export function UsersPage() {
         opened={createOpened}
         onClose={closeCreateModal}
         title="Create user"
+        centered
         transitionProps={{ duration: 0 }}
-        withinPortal={false}
       >
         <Stack>
           {createMutation.isError ? (
@@ -328,6 +328,7 @@ export function UsersPage() {
 
           <TextInput
             aria-label="Username"
+            autoComplete="off"
             label="Username"
             value={createForm.username}
             onChange={(event) =>
@@ -344,6 +345,7 @@ export function UsersPage() {
           />
           <PasswordInput
             aria-label="Password"
+            autoComplete="new-password"
             description="Blank is allowed and creates an empty-password account."
             label="Password"
             value={createForm.password}
@@ -382,8 +384,8 @@ export function UsersPage() {
         opened={Boolean(editingUser && editForm)}
         onClose={closeEditModal}
         title="Edit user"
+        centered
         transitionProps={{ duration: 0 }}
-        withinPortal={false}
       >
         <Stack>
           {updateMutation.isError ? (
@@ -449,6 +451,7 @@ export function UsersPage() {
           />
           <PasswordInput
             aria-label="New password"
+            autoComplete="new-password"
             description="Leave reset disabled to keep the current password. Enable it and submit an empty value to reset to an empty password."
             disabled={!editForm?.resetPassword}
             label="New password"
@@ -474,8 +477,8 @@ export function UsersPage() {
         opened={Boolean(deletingUser)}
         onClose={closeDeleteModal}
         title="Delete user"
+        centered
         transitionProps={{ duration: 0 }}
-        withinPortal={false}
       >
         <Stack>
           {deleteMutation.isError ? (
