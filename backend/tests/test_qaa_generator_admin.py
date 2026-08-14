@@ -30,6 +30,9 @@ QAA_ADMIN_USERS_PATH = f"/api/v1{RoutePath.QAA_ADMIN_USERS.value}"
 QAA_ADMIN_USER_DETAIL_PATH = f"{QAA_ADMIN_USERS_PATH}/{QAA_ADMIN_USER_ID}"
 QAA_ADMIN_USER_REGENERATE_PATH = f"{QAA_ADMIN_USER_DETAIL_PATH}{RoutePath.REGENERATE.value}"
 QAA_ADMIN_SERVICE_TOKENS_PATH = f"/api/v1{RoutePath.QAA_ADMIN_SERVICE_TOKENS.value}"
+QAA_ADMIN_SERVICE_TOKEN_REGENERATE_PATH = (
+    f"{QAA_ADMIN_SERVICE_TOKENS_PATH}/{QAA_ADMIN_TOKEN_ID}{RoutePath.SERVICE_TOKEN_REGENERATE.value}"
+)
 QAA_ADMIN_SERVICE_TOKEN_REVOKE_PATH = (
     f"{QAA_ADMIN_SERVICE_TOKENS_PATH}/{QAA_ADMIN_TOKEN_ID}{RoutePath.REVOKE.value}"
 )
@@ -37,6 +40,9 @@ UPSTREAM_QAA_USERS_PATH = "/api/v1/users"
 UPSTREAM_QAA_USER_DETAIL_PATH = f"{UPSTREAM_QAA_USERS_PATH}/{QAA_ADMIN_USER_ID}"
 UPSTREAM_QAA_USER_REGENERATE_PATH = f"{UPSTREAM_QAA_USER_DETAIL_PATH}{RoutePath.REGENERATE.value}"
 UPSTREAM_QAA_SERVICE_TOKENS_PATH = "/api/v1/service-tokens"
+UPSTREAM_QAA_SERVICE_TOKEN_REGENERATE_PATH = (
+    f"{UPSTREAM_QAA_SERVICE_TOKENS_PATH}/{QAA_ADMIN_TOKEN_ID}{RoutePath.SERVICE_TOKEN_REGENERATE.value}"
+)
 UPSTREAM_QAA_SERVICE_TOKEN_REVOKE_PATH = (
     f"{UPSTREAM_QAA_SERVICE_TOKENS_PATH}/{QAA_ADMIN_TOKEN_ID}{RoutePath.REVOKE.value}"
 )
@@ -107,6 +113,7 @@ ADMIN_ROUTE_CASES = (
     (METHOD_DELETE, QAA_ADMIN_USER_DETAIL_PATH, None),
     (METHOD_POST, QAA_ADMIN_USER_REGENERATE_PATH, None),
     (METHOD_POST, QAA_ADMIN_SERVICE_TOKENS_PATH, QAA_ADMIN_SERVICE_TOKEN_CREATE_PAYLOAD),
+    (METHOD_POST, QAA_ADMIN_SERVICE_TOKEN_REGENERATE_PATH, None),
     (METHOD_POST, QAA_ADMIN_SERVICE_TOKEN_REVOKE_PATH, None),
 )
 
@@ -397,6 +404,26 @@ def test_create_and_revoke_qaa_service_tokens_use_superuser_routes(
         UPSTREAM_QAA_SERVICE_TOKEN_REVOKE_PATH,
     ]
     assert_operations_do_not_contain_secret(client, token, QAA_ADMIN_SERVICE_TOKEN)
+
+
+def test_regenerate_qaa_service_token_relays_plaintext_token_and_no_secret_audit(
+    client: TestClient,
+    install_qaa_client: Callable[[Callable[[httpx.Request], httpx.Response]], None],
+) -> None:
+    token, _ = login(client, DevUsername.ADMIN.value, DevPassword.ADMIN.value)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == METHOD_POST
+        assert request.url.path == UPSTREAM_QAA_SERVICE_TOKEN_REGENERATE_PATH
+        return httpx.Response(status_code=200, json=QAA_ADMIN_REGENERATE_RESPONSE)
+
+    install_qaa_client(handler)
+
+    response = client.post(QAA_ADMIN_SERVICE_TOKEN_REGENERATE_PATH, headers=auth_header(token))
+
+    assert response.status_code == 200
+    assert response.json() == QAA_ADMIN_REGENERATE_RESPONSE
+    assert_operations_do_not_contain_secret(client, token, QAA_ADMIN_REGENERATED_TOKEN)
 
 
 def test_upstream_superuser_403_surfaces_clear_error(

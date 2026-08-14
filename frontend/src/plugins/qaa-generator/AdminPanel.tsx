@@ -70,6 +70,7 @@ const QaaAdminPanelCopy = {
   NO_USERS: "No QAA generator users were returned.",
   REGENERATE_ACTION: "Regenerate token",
   REGENERATE_ERROR: "Unable to regenerate the QAA generator user token.",
+  REGENERATE_SERVICE_ERROR: "Unable to regenerate the QAA generator service token.",
   RETRY_ACTION: "Retry",
   REVOKE_SERVICE_ACTION: "Revoke",
   REVOKE_SERVICE_CONFIRM_HELP: "This revokes the active service token shown below.",
@@ -77,6 +78,7 @@ const QaaAdminPanelCopy = {
   REVOKE_SERVICE_ERROR: "Unable to revoke the service token.",
   REVOKE_SERVICE_SUBMIT_ACTION: "Revoke token",
   SERVICE_NAME_LABEL: "Service name",
+  SERVICE_REGENERATED_TOKEN_MODAL_TITLE: "Copy the regenerated QAA generator service token",
   SERVICES_SUBTITLE: "Manage service subjects and revoke the active service token shown for each row.",
   SERVICES_TAB: "Services",
   TABLE_ACTIONS: "Actions",
@@ -401,6 +403,24 @@ export function AdminPanel() {
     },
   });
 
+  const regenerateServiceTokenMutation = useMutation({
+    mutationFn: async (tokenId: string) => {
+      if (!token) {
+        throw new Error("Authentication is required.");
+      }
+
+      const response = await backendClient.regenerateQaaServiceToken(token, tokenId);
+      setTokenModal({
+        title: QaaAdminPanelCopy.SERVICE_REGENERATED_TOKEN_MODAL_TITLE,
+        token: response.token,
+      });
+      return tokenId;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: [QueryKey.QAA_USERS] });
+    },
+  });
+
   if (!currentUser?.is_admin) {
     return null;
   }
@@ -468,6 +488,7 @@ export function AdminPanel() {
     createUserMutation.reset();
     regenerateTokenMutation.reset();
     createServiceMutation.reset();
+    regenerateServiceTokenMutation.reset();
   }
 
   function submitCreateUser(): void {
@@ -685,6 +706,27 @@ export function AdminPanel() {
                     <Table.Td>{formatOptionalText(tokenId)}</Table.Td>
                     <Table.Td>
                       <Group gap="xs">
+                        <Button
+                          aria-label={`${QaaAdminPanelCopy.REGENERATE_ACTION} ${service.id}`}
+                          color="yellow"
+                          disabled={!tokenId}
+                          leftSection={<IconKey size={14} />}
+                          loading={
+                            regenerateServiceTokenMutation.isPending &&
+                            regenerateServiceTokenMutation.variables === tokenId
+                          }
+                          onClick={() => {
+                            if (!tokenId) {
+                              return;
+                            }
+
+                            regenerateServiceTokenMutation.mutate(tokenId);
+                          }}
+                          size="xs"
+                          variant="light"
+                        >
+                          {QaaAdminPanelCopy.REGENERATE_ACTION}
+                        </Button>
                         <Button
                           aria-label={`${QaaAdminPanelCopy.REVOKE_SERVICE_ACTION} ${service.id}`}
                           color="red"

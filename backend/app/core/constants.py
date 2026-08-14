@@ -69,6 +69,7 @@ class RoutePath(StrEnum):
     QAA_ADMIN_SERVICE_TOKENS = "/qaa/admin/service-tokens"
     QAA_ADMIN_SERVICE_TOKEN_BY_ID = "/{token_id}"
     REGENERATE = "/tokens/regenerate"
+    SERVICE_TOKEN_REGENERATE = "/regenerate"
     REVOKE = "/revoke"
 
 

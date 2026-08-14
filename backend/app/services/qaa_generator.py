@@ -75,6 +75,10 @@ def build_qaa_service_token_revoke_path(token_id: str, suffix: str) -> str:
     return f"{QaaGeneratorServicePath.SERVICE_TOKEN_BY_ID.value.format(token_id=token_id)}{suffix}"
 
 
+def build_qaa_service_token_regenerate_path(token_id: str, suffix: str) -> str:
+    return f"{QaaGeneratorServicePath.SERVICE_TOKEN_BY_ID.value.format(token_id=token_id)}{suffix}"
+
+
 def resolve_token_value(
     settings: Settings,
     token_mode: QaaGeneratorTokenMode,

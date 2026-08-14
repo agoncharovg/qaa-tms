@@ -9,6 +9,7 @@ const backendClientMock = vi.hoisted(() => ({
   createQaaUser: vi.fn(),
   deleteQaaUser: vi.fn(),
   listQaaUsers: vi.fn(),
+  regenerateQaaServiceToken: vi.fn(),
   regenerateQaaUserToken: vi.fn(),
   revokeQaaServiceToken: vi.fn(),
   updateQaaUser: vi.fn(),
@@ -136,6 +137,7 @@ describe("QAA generator AdminPanel", () => {
     backendClientMock.createQaaUser.mockReset();
     backendClientMock.deleteQaaUser.mockReset();
     backendClientMock.listQaaUsers.mockReset();
+    backendClientMock.regenerateQaaServiceToken.mockReset();
     backendClientMock.regenerateQaaUserToken.mockReset();
     backendClientMock.revokeQaaServiceToken.mockReset();
     backendClientMock.updateQaaUser.mockReset();
@@ -302,6 +304,41 @@ describe("QAA generator AdminPanel", () => {
     await waitFor(() => {
       expect(countListCallsForKind(QaaSubjectKind.SERVICE)).toBe(2);
     });
+  });
+
+  it("regenerates a service token by token_id and opens the copy-once modal", async () => {
+    const user = userEvent.setup();
+    backendClientMock.regenerateQaaServiceToken.mockResolvedValue({
+      token: QAA_SERVICE_TOKEN,
+    });
+
+    setAdminState();
+    renderWithProviders(<AdminPanel />);
+
+    await screen.findByText("Alice Example");
+    await user.click(screen.getByRole("tab", { name: "Services" }));
+    await screen.findByText("qaa-bot");
+
+    expect(countListCallsForKind(QaaSubjectKind.SERVICE)).toBe(1);
+
+    await user.click(screen.getByRole("button", { name: `Regenerate token ${QAA_SERVICE_SUBJECT_ID}` }));
+
+    await waitFor(() => {
+      expect(backendClientMock.regenerateQaaServiceToken).toHaveBeenCalledWith(
+        ADMIN_TOKEN,
+        QAA_SERVICE_TOKEN_ID
+      );
+    });
+    expect(backendClientMock.regenerateQaaServiceToken).not.toHaveBeenCalledWith(
+      ADMIN_TOKEN,
+      QAA_SERVICE_SUBJECT_ID
+    );
+    await waitFor(() => {
+      expect(countListCallsForKind(QaaSubjectKind.SERVICE)).toBe(2);
+    });
+
+    expect(await screen.findByText("Copy the regenerated QAA generator service token")).toBeInTheDocument();
+    expect(screen.getByDisplayValue(QAA_SERVICE_TOKEN)).toBeInTheDocument();
   });
 
   it("edits and deletes qaa-generator users from the shared table", async () => {

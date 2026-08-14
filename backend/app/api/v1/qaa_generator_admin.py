@@ -22,6 +22,7 @@ from app.services.qaa_generator import (
     QaaGeneratorServicePath,
     QaaGeneratorTokenMode,
     build_outbound_headers,
+    build_qaa_service_token_regenerate_path,
     build_qaa_service_token_revoke_path,
     build_qaa_user_path,
     build_qaa_user_token_regenerate_path,
@@ -225,6 +226,28 @@ async def create_qaa_service_token(
         headers=build_admin_headers(get_settings(request)),
         token_mode=QaaGeneratorTokenMode.SUPERUSER,
         json_body=payload.model_dump(mode="json"),
+    )
+    return build_proxy_response(result)
+
+
+@router.post(
+    f"{RoutePath.QAA_ADMIN_SERVICE_TOKENS.value}{RoutePath.QAA_ADMIN_SERVICE_TOKEN_BY_ID.value}{RoutePath.SERVICE_TOKEN_REGENERATE.value}"
+)
+async def regenerate_qaa_service_token(
+    token_id: str,
+    request: Request,
+    _: AdminUser,
+) -> Response:
+    client = get_qaa_client(request)
+    result = await request_json(
+        client,
+        method=HttpMethod.POST.value,
+        path=build_qaa_service_token_regenerate_path(
+            token_id,
+            RoutePath.SERVICE_TOKEN_REGENERATE.value,
+        ),
+        headers=build_admin_headers(get_settings(request)),
+        token_mode=QaaGeneratorTokenMode.SUPERUSER,
     )
     return build_proxy_response(result)
 

@@ -83,6 +83,7 @@ export const BackendPath = {
   EVENTS_STREAM: "/events/stream",
   ARTIFACTS: "/artifacts",
   REGENERATE: "/tokens/regenerate",
+  SERVICE_TOKEN_REGENERATE: "/regenerate",
   REVOKE: "/revoke",
   HEALTH: "/health",
   READY: "/ready",
@@ -136,6 +137,10 @@ export function buildBackendQaaUserRegeneratePath(userId: string): string {
 
 export function buildBackendQaaServiceTokenRevokePath(tokenId: string): string {
   return `${BackendPath.QAA_ADMIN_SERVICE_TOKENS}/${encodeURIComponent(tokenId)}${BackendPath.REVOKE}`;
+}
+
+export function buildBackendQaaServiceTokenRegeneratePath(tokenId: string): string {
+  return `${BackendPath.QAA_ADMIN_SERVICE_TOKENS}/${encodeURIComponent(tokenId)}${BackendPath.SERVICE_TOKEN_REGENERATE}`;
 }
 
 export const AgentPath = {

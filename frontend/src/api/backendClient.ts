@@ -1,6 +1,7 @@
 import {
   AUTH_SCHEME_BEARER,
   BackendPath,
+  buildBackendQaaServiceTokenRegeneratePath,
   buildBackendQaaServiceTokenRevokePath,
   buildBackendQaaUserPath,
   buildBackendQaaUserRegeneratePath,
@@ -551,6 +552,19 @@ export const backendClient = {
   ): Promise<QaaServiceTokenRevokeResponse> {
     return request<QaaServiceTokenRevokeResponse>(
       buildBackendQaaServiceTokenRevokePath(tokenId),
+      { method: HttpMethod.POST },
+      token,
+      signal
+    );
+  },
+
+  regenerateQaaServiceToken(
+    token: string,
+    tokenId: string,
+    signal?: AbortSignal
+  ): Promise<QaaUserTokenRegenerateResponse> {
+    return request<QaaUserTokenRegenerateResponse>(
+      buildBackendQaaServiceTokenRegeneratePath(tokenId),
       { method: HttpMethod.POST },
       token,
       signal
