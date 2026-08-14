@@ -192,3 +192,44 @@ this brief. Leave the Users Delete button as-is; note it for a separate follow-u
 `GET /users?kind=service` on qaa-generator returns items with keys including
 `kind` and `token_id`; `kind=bogus` → 400. (Confirmed live on 1.2.2 in both
 `qaa-ed-prod` and `qaa-frn-prod`.)
+
+---
+
+## Addendum — Services "Regenerate token" row action (upstream LIVE in 1.2.3)
+
+Give each Services row a **Regenerate token** action mirroring the Users table's
+regenerate. Upstream endpoint is **live and verified** on qaa-generator 1.2.3
+(both clusters): `POST /service-tokens/{token_id}/regenerate` — revokes the
+subject's active tokens and issues a fresh **service**-kind token, returning the
+plaintext **once** (`{"token": "..."}`); `404` unknown token id, `409` if the
+token is not a service token.
+
+**Path nuance (do not get this wrong):** the service regenerate suffix is
+**`/regenerate`** appended after `{token_id}`, NOT `/tokens/regenerate`. The
+existing `RoutePath.REGENERATE` / `BackendPath.REGENERATE` (`/tokens/regenerate`)
+is the *user* path (`/users/{id}/tokens/regenerate`) — do **not** reuse it for
+services. Add a distinct suffix (e.g. `QAA_ADMIN_SERVICE_TOKEN_REGENERATE` /
+`SERVICE_TOKEN_REGENERATE = "/regenerate"`).
+
+1. **Backend proxy** (`backend/app/api/v1/qaa_generator_admin.py`): add
+   `POST {QAA_ADMIN_SERVICE_TOKENS}{QAA_ADMIN_SERVICE_TOKEN_BY_ID}/regenerate`
+   forwarding to the upstream `/service-tokens/{token_id}/regenerate`. Add the
+   route-path suffix constant in `backend/app/core/constants.py` and a builder
+   in `backend/app/services/qaa_generator.py` (e.g.
+   `build_qaa_service_token_regenerate_path`, mirroring
+   `build_qaa_service_token_revoke_path`). Superuser token mode, `AdminUser` gate,
+   like the revoke route.
+2. **Frontend API** (`frontend/src/constants.ts`, `frontend/src/api/backendClient.ts`):
+   add `BackendPath.SERVICE_TOKEN_REGENERATE = "/regenerate"` (distinct from
+   `REGENERATE`), `buildBackendQaaServiceTokenRegeneratePath(tokenId)`, and
+   `regenerateQaaServiceToken(token, tokenId): Promise<QaaUserTokenRegenerateResponse>`
+   (POST; reuse the `{ token }` response type).
+3. **Services table** (`AdminPanel.tsx`): add a **Regenerate token** button per
+   row next to Revoke, styled like the Users regenerate (yellow, `IconKey`,
+   per-row `loading`), `disabled={!token_id}`. On success show the shared
+   copy-once `tokenModal` with the new plaintext token and invalidate
+   `[QueryKey.QAA_USERS]`. A confirm step is nice-to-have but not required.
+4. **Tests**: extend `AdminPanel.test.tsx` (Services row Regenerate calls
+   `regenerateQaaServiceToken` with the row's `token_id` and opens the copy-once
+   modal) and `test_qaa_generator_admin.py` (regenerate route forwards to the
+   upstream `/service-tokens/{token_id}/regenerate` path).
