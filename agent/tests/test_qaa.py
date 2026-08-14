@@ -38,7 +38,9 @@ def build_me_response() -> httpx.Response:
 
 
 @pytest.fixture
-def install_backend_client(app: Any) -> Generator[Callable[[Callable[[httpx.Request], httpx.Response]], None], None, None]:
+def install_backend_client(
+    app: Any,
+) -> Generator[Callable[[Callable[[httpx.Request], httpx.Response]], None], None, None]:
     installed_clients: list[tuple[httpx.AsyncClient, httpx.AsyncClient]] = []
 
     def install(handler: Callable[[httpx.Request], httpx.Response]) -> None:
@@ -133,7 +135,9 @@ async def test_qaa_event_stream_proxies_last_event_id_and_body(
         if request.url.path == BackendPath.ME.value:
             return build_me_response()
         assert request.method == "GET"
-        assert request.url.path == f"{BackendPath.QAA_RUNS.value}/{RUN_ID}{AgentPath.QAA_EVENTS_STREAM.value}"
+        assert request.url.path == (
+            f"{BackendPath.QAA_RUNS.value}/{RUN_ID}{AgentPath.QAA_EVENTS_STREAM.value}"
+        )
         assert request.headers[HeaderName.LAST_EVENT_ID.value] == LAST_EVENT_ID
         assert request.headers[HeaderName.X_QAA_GENERATOR_TOKEN.value] == QAA_TOKEN
         return httpx.Response(
@@ -152,5 +156,7 @@ async def test_qaa_event_stream_proxies_last_event_id_and_body(
         body = "".join([chunk async for chunk in response.aiter_text()])
 
     assert response.status_code == 200
-    assert response.headers[HeaderName.CONTENT_TYPE.value].startswith(HeaderValue.EVENT_STREAM.value)
+    assert response.headers[HeaderName.CONTENT_TYPE.value].startswith(
+        HeaderValue.EVENT_STREAM.value
+    )
     assert body == SSE_BODY

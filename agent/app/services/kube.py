@@ -84,6 +84,15 @@ class KubeResource(StrEnum):
     POD = "pod"
 
 
+class KubeEnvKey(StrEnum):
+    KUBECONFIG = "KUBECONFIG"
+
+
+class KubeconfigGlob(StrEnum):
+    YAML = "*.yaml"
+    YML = "*.yml"
+
+
 MAX_KUBE_NAME_LENGTH = 253
 CONTROL_CHARACTER_LIMIT = 32
 DELETE_CHARACTER_CODE = 127
@@ -128,30 +137,35 @@ def build_kube_env(settings: Settings) -> dict[str, str]:
 
     explicit_kubeconfig = settings.kubeconfig.strip()
     if explicit_kubeconfig:
-        expanded_parts = [
-            str(Path(part).expanduser())
-            for part in explicit_kubeconfig.split(os.pathsep)
-            if part.strip()
-        ]
-        return {"KUBECONFIG": os.pathsep.join(expanded_parts)}
+        expanded_parts: list[str] = []
+        explicit_seen_paths: set[str] = set()
+        for raw_part in explicit_kubeconfig.split(os.pathsep):
+            _append_unique_kubeconfig_parts(expanded_parts, explicit_seen_paths, raw_part)
+        if not expanded_parts:
+            return {}
+        return {KubeEnvKey.KUBECONFIG.value: os.pathsep.join(expanded_parts)}
 
-    active_kubeconfig = str(Path(settings.kubeconfig_active_path).expanduser())
-    inherited_kubeconfig = os.environ.get("KUBECONFIG", "").strip()
-    if not inherited_kubeconfig:
-        return {"KUBECONFIG": active_kubeconfig}
-
-    kubeconfig_parts = [active_kubeconfig]
-    active_identity = (
-        os.path.realpath(active_kubeconfig)
-        if Path(active_kubeconfig).exists()
-        else active_kubeconfig
+    inherited_kubeconfig = os.environ.get(KubeEnvKey.KUBECONFIG.value, "").strip()
+    kubeconfig_parts: list[str] = []
+    merged_seen_paths: set[str] = set()
+    _append_unique_kubeconfig_parts(
+        kubeconfig_parts,
+        merged_seen_paths,
+        settings.kubeconfig_active_path,
     )
-    seen_paths = {active_identity}
     for raw_part in inherited_kubeconfig.split(os.pathsep):
-        part = raw_part.strip()
-        if not part:
-            continue
-        expanded_part = str(Path(part).expanduser())
+        _append_unique_kubeconfig_parts(kubeconfig_parts, merged_seen_paths, raw_part)
+    if not kubeconfig_parts:
+        return {}
+    return {KubeEnvKey.KUBECONFIG.value: os.pathsep.join(kubeconfig_parts)}
+
+
+def _append_unique_kubeconfig_parts(
+    kubeconfig_parts: list[str],
+    seen_paths: set[str],
+    raw_part: str,
+) -> None:
+    for expanded_part in _expand_kubeconfig_part(raw_part):
         part_identity = (
             os.path.realpath(expanded_part) if Path(expanded_part).exists() else expanded_part
         )
@@ -160,7 +174,20 @@ def build_kube_env(settings: Settings) -> dict[str, str]:
         kubeconfig_parts.append(expanded_part)
         seen_paths.add(part_identity)
 
-    return {"KUBECONFIG": os.pathsep.join(kubeconfig_parts)}
+
+def _expand_kubeconfig_part(raw: str) -> list[str]:
+    stripped = raw.strip()
+    if not stripped:
+        return []
+
+    part = Path(stripped).expanduser()
+    if not part.is_dir():
+        return [str(part)]
+
+    matches: list[Path] = []
+    for pattern in KubeconfigGlob:
+        matches.extend(part.glob(pattern.value))
+    return [str(match) for match in sorted(matches, key=str)]
 
 
 def validate_kube_name(value: str) -> str:

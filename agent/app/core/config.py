@@ -21,7 +21,6 @@ from app.core.constants import (
     DEFAULT_JENKINS_STUCK_MIN_IDLE_HOURS,
     DEFAULT_JENKINS_TREE_DEPTH,
     DEFAULT_JENKINS_URL,
-    DEFAULT_KUBECONFIG,
     DEFAULT_KUBECONFIG_ACTIVE_PATH,
     DEFAULT_KUBECTL_BIN,
     DEFAULT_KUBECTL_REQUEST_TIMEOUT,
@@ -93,7 +92,7 @@ class Settings(BaseSettings):
         alias=EnvKey.STAGING_KUBECONFIG_MAX_AGE_HOURS.value,
     )
     kubectl_bin: str = Field(default=DEFAULT_KUBECTL_BIN, alias=EnvKey.KUBECTL_BIN.value)
-    kubeconfig: str = Field(default=DEFAULT_KUBECONFIG, alias=EnvKey.KUBECONFIG.value)
+    kubeconfig: str = Field(default="", alias=EnvKey.KUBECONFIG.value)
     kubectl_request_timeout: str = Field(
         default=DEFAULT_KUBECTL_REQUEST_TIMEOUT,
         alias=EnvKey.KUBECTL_REQUEST_TIMEOUT.value,
@@ -103,9 +102,9 @@ class Settings(BaseSettings):
     @classmethod
     def normalize_kubeconfig(cls, value: Any) -> str:
         if value is None:
-            return DEFAULT_KUBECONFIG
+            return ""
         if isinstance(value, str) and not value.strip():
-            return DEFAULT_KUBECONFIG
+            return ""
         return str(value)
 
     @field_validator("host")

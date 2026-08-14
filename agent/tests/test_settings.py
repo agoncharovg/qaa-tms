@@ -29,7 +29,7 @@ def write_agent_env(path: Path) -> None:
                 "AGENT_KUBECONFIG_ACTIVE_PATH=~/.kube/config",
                 "AGENT_STAGING_KUBECONFIG_MAX_AGE_HOURS=48",
                 "AGENT_KUBECTL_BIN=kubectl",
-                "AGENT_KUBECONFIG=~/.kube/config",
+                "AGENT_KUBECONFIG=",
                 "AGENT_KUBECTL_REQUEST_TIMEOUT=10s",
                 "",
             ]
@@ -56,7 +56,9 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
     write_agent_env(env_path)
     monkeypatch.setattr(env_file, "AGENT_ENV_FILE", env_path)
     get_settings.cache_clear()
-    client._transport.app.state.settings.qaa_generator_token = "initial-qaa-token"
+    initial_settings = get_settings()
+    client._transport.app.state.settings = initial_settings
+    client._transport.app.state.job_manager._settings = initial_settings
 
     get_response = await client.get("/settings", headers=auth_headers)
 
