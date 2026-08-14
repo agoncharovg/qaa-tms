@@ -8,7 +8,6 @@ FRONTEND_DIR="$ROOT_DIR/frontend"
 AGENT_DIR="$ROOT_DIR/agent"
 TMP_BASE="${TMPDIR:-/tmp}/qaa-tms"
 DB_SERVICE_NAME="db"
-BACKEND_SERVICE_NAME="backend"
 BACKEND_SQLITE_PATH="$BACKEND_DIR/.qaa-tms-dev.db"
 
 BACKEND_PID_FILE="$TMP_BASE-backend.pid"
@@ -189,10 +188,10 @@ resolve_backend_runtime() {
     return
   fi
 
-  BACKEND_RUNTIME_MODE="postgres-docker"
-  BACKEND_RUNTIME_DATABASE_URL=""
-  BACKEND_RUNTIME_DESCRIPTION="Docker Compose backend on the compose network"
-  echo "Host cannot complete a PostgreSQL session to 127.0.0.1:5432; backend will run in Docker on the compose network instead of falling back to SQLite."
+  BACKEND_RUNTIME_MODE="sqlite"
+  BACKEND_RUNTIME_DATABASE_URL="sqlite+aiosqlite:///$BACKEND_SQLITE_PATH"
+  BACKEND_RUNTIME_DESCRIPTION="Local backend on SQLite at $BACKEND_SQLITE_PATH"
+  echo "Host cannot complete a PostgreSQL session to 127.0.0.1:5432; falling back to a local backend on SQLite at $BACKEND_SQLITE_PATH"
 }
 
 prepare_sqlite_backend() {
@@ -244,67 +243,12 @@ pid_is_live() {
   kill -0 "$pid" >/dev/null 2>&1
 }
 
-backend_compose_service_running() {
-  local service_id
-
-  service_id="$(cd "$ROOT_DIR" && docker compose ps --status running -q "$BACKEND_SERVICE_NAME")"
-  [[ -n "$service_id" ]]
-}
-
-stop_stale_local_backend() {
-  local pid
-  local attempt
-
-  if ! pid_is_live "$BACKEND_PID_FILE"; then
-    return
-  fi
-
-  pid="$(<"$BACKEND_PID_FILE")"
-  echo "Stopping stale local backend process $pid so Docker Compose can bind port 8000..."
-  kill "$pid" >/dev/null 2>&1 || true
-
-  for ((attempt = 1; attempt <= 10; attempt += 1)); do
-    if ! kill -0 "$pid" >/dev/null 2>&1; then
-      break
-    fi
-    sleep 1
-  done
-
-  if kill -0 "$pid" >/dev/null 2>&1; then
-    echo "error: local backend process $pid is still running; stop it and rerun." >&2
-    exit 1
-  fi
-
-  rm -f "$BACKEND_PID_FILE"
-}
-
 http_is_ready() {
   local url="$1"
   curl -fsS "$url" >/dev/null 2>&1
 }
 
 start_backend() {
-  if [[ "$BACKEND_RUNTIME_MODE" == "postgres-docker" ]]; then
-    if backend_compose_service_running && http_is_ready "http://127.0.0.1:8000/ready"; then
-      echo "Backend already responds on http://127.0.0.1:8000/ready via Docker Compose"
-      return
-    fi
-
-    stop_stale_local_backend
-
-    if http_is_ready "http://127.0.0.1:8000/ready"; then
-      echo "error: port 8000 is already occupied by a non-managed process; stop it and rerun." >&2
-      exit 1
-    fi
-
-    echo "Starting backend with Docker Compose..."
-    (
-      cd "$ROOT_DIR"
-      docker compose up -d "$BACKEND_SERVICE_NAME"
-    )
-    return
-  fi
-
   if http_is_ready "http://127.0.0.1:8000/ready"; then
     echo "Backend already responds on http://127.0.0.1:8000/ready"
     return
@@ -403,35 +347,23 @@ print_summary() {
   echo "  backend-mode: $BACKEND_RUNTIME_DESCRIPTION"
   if [[ "$BACKEND_RUNTIME_MODE" == "sqlite" ]]; then
     echo "  backend-db-file: $BACKEND_SQLITE_PATH"
-  elif [[ "$BACKEND_RUNTIME_MODE" == "postgres-docker" ]]; then
-    echo "  db:       compose network (db:5432)"
   else
     echo "  db:       localhost:5432"
   fi
   echo
   echo "Logs:"
-  if [[ "$BACKEND_RUNTIME_MODE" == "postgres-docker" ]]; then
-    echo "  backend:  docker compose logs -f backend"
-  else
-    echo "  backend:  $BACKEND_LOG_FILE"
-  fi
+  echo "  backend:  $BACKEND_LOG_FILE"
   echo "  frontend: $FRONTEND_LOG_FILE"
   echo "  agent:    $AGENT_LOG_FILE"
   echo
   echo "Pids:"
-  if [[ "$BACKEND_RUNTIME_MODE" == "postgres-docker" ]]; then
-    echo "  backend:  docker compose service"
-  else
-    echo "  backend:  $BACKEND_PID_FILE"
-  fi
+  echo "  backend:  $BACKEND_PID_FILE"
   echo "  frontend: $FRONTEND_PID_FILE"
   echo "  agent:    $AGENT_PID_FILE"
   echo
   echo "To stop everything:"
   echo "  docker compose down"
-  if [[ "$BACKEND_RUNTIME_MODE" != "postgres-docker" ]]; then
-    echo "  kill \$(cat \"$BACKEND_PID_FILE\")"
-  fi
+  echo "  kill \$(cat \"$BACKEND_PID_FILE\")"
   echo "  kill \$(cat \"$FRONTEND_PID_FILE\")"
   echo "  kill \$(cat \"$AGENT_PID_FILE\")"
 }
