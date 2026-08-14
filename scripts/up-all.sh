@@ -8,6 +8,7 @@ FRONTEND_DIR="$ROOT_DIR/frontend"
 AGENT_DIR="$ROOT_DIR/agent"
 TMP_BASE="${TMPDIR:-/tmp}/qaa-tms"
 DB_SERVICE_NAME="db"
+BACKEND_SERVICE_NAME="backend"
 BACKEND_SQLITE_PATH="$BACKEND_DIR/.qaa-tms-dev.db"
 
 BACKEND_PID_FILE="$TMP_BASE-backend.pid"
@@ -19,6 +20,7 @@ AGENT_LOG_FILE="$TMP_BASE-agent.log"
 
 BACKEND_RUNTIME_MODE=""
 BACKEND_RUNTIME_DATABASE_URL=""
+BACKEND_RUNTIME_DESCRIPTION=""
 
 require_command() {
   local command_name="$1"
@@ -147,29 +149,50 @@ wait_for_db_container() {
 }
 
 postgres_host_is_reachable() {
-  if command -v pg_isready >/dev/null 2>&1; then
-    pg_isready -h 127.0.0.1 -p 5432 -U "${POSTGRES_USER:-qaa_tms}" -d "${POSTGRES_DB:-qaa_tms}" >/dev/null 2>&1
-    return
-  fi
-
+  BACKEND_DB_HOST="127.0.0.1" \
+  BACKEND_DB_PORT="5432" \
+  BACKEND_DB_NAME="${POSTGRES_DB:-qaa_tms}" \
+  BACKEND_DB_USER="${POSTGRES_USER:-qaa_tms}" \
+  BACKEND_DB_PASSWORD="${POSTGRES_PASSWORD:-qaa_tms}" \
   "$BACKEND_DIR/.venv/bin/python" - <<'PY' >/dev/null 2>&1
-import socket
-s = socket.create_connection(("127.0.0.1", 5432), timeout=3)
-s.close()
+import asyncio
+import os
+
+import asyncpg
+
+
+async def main() -> None:
+    conn = await asyncpg.connect(
+        host=os.environ["BACKEND_DB_HOST"],
+        port=int(os.environ["BACKEND_DB_PORT"]),
+        database=os.environ["BACKEND_DB_NAME"],
+        user=os.environ["BACKEND_DB_USER"],
+        password=os.environ["BACKEND_DB_PASSWORD"],
+        timeout=5,
+    )
+    try:
+        await conn.fetchval("select 1")
+    finally:
+        await conn.close()
+
+
+asyncio.run(main())
 PY
 }
 
 resolve_backend_runtime() {
   if postgres_host_is_reachable; then
-    BACKEND_RUNTIME_MODE="postgres"
+    BACKEND_RUNTIME_MODE="postgres-local"
     BACKEND_RUNTIME_DATABASE_URL=""
+    BACKEND_RUNTIME_DESCRIPTION="PostgreSQL via 127.0.0.1:5432"
     echo "Backend will use PostgreSQL on 127.0.0.1:5432"
     return
   fi
 
-  BACKEND_RUNTIME_MODE="sqlite"
-  BACKEND_RUNTIME_DATABASE_URL="sqlite+aiosqlite:///$BACKEND_SQLITE_PATH"
-  echo "Backend cannot reach PostgreSQL on 127.0.0.1:5432; falling back to SQLite at $BACKEND_SQLITE_PATH"
+  BACKEND_RUNTIME_MODE="postgres-docker"
+  BACKEND_RUNTIME_DATABASE_URL=""
+  BACKEND_RUNTIME_DESCRIPTION="Docker Compose backend on the compose network"
+  echo "Host cannot complete a PostgreSQL session to 127.0.0.1:5432; backend will run in Docker on the compose network instead of falling back to SQLite."
 }
 
 prepare_sqlite_backend() {
@@ -221,12 +244,67 @@ pid_is_live() {
   kill -0 "$pid" >/dev/null 2>&1
 }
 
+backend_compose_service_running() {
+  local service_id
+
+  service_id="$(cd "$ROOT_DIR" && docker compose ps --status running -q "$BACKEND_SERVICE_NAME")"
+  [[ -n "$service_id" ]]
+}
+
+stop_stale_local_backend() {
+  local pid
+  local attempt
+
+  if ! pid_is_live "$BACKEND_PID_FILE"; then
+    return
+  fi
+
+  pid="$(<"$BACKEND_PID_FILE")"
+  echo "Stopping stale local backend process $pid so Docker Compose can bind port 8000..."
+  kill "$pid" >/dev/null 2>&1 || true
+
+  for ((attempt = 1; attempt <= 10; attempt += 1)); do
+    if ! kill -0 "$pid" >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+
+  if kill -0 "$pid" >/dev/null 2>&1; then
+    echo "error: local backend process $pid is still running; stop it and rerun." >&2
+    exit 1
+  fi
+
+  rm -f "$BACKEND_PID_FILE"
+}
+
 http_is_ready() {
   local url="$1"
   curl -fsS "$url" >/dev/null 2>&1
 }
 
 start_backend() {
+  if [[ "$BACKEND_RUNTIME_MODE" == "postgres-docker" ]]; then
+    if backend_compose_service_running && http_is_ready "http://127.0.0.1:8000/ready"; then
+      echo "Backend already responds on http://127.0.0.1:8000/ready via Docker Compose"
+      return
+    fi
+
+    stop_stale_local_backend
+
+    if http_is_ready "http://127.0.0.1:8000/ready"; then
+      echo "error: port 8000 is already occupied by a non-managed process; stop it and rerun." >&2
+      exit 1
+    fi
+
+    echo "Starting backend with Docker Compose..."
+    (
+      cd "$ROOT_DIR"
+      docker compose up -d "$BACKEND_SERVICE_NAME"
+    )
+    return
+  fi
+
   if http_is_ready "http://127.0.0.1:8000/ready"; then
     echo "Backend already responds on http://127.0.0.1:8000/ready"
     return
@@ -242,7 +320,7 @@ start_backend() {
   echo "Starting backend locally..."
   (
     cd "$BACKEND_DIR"
-    if [[ "$BACKEND_RUNTIME_MODE" == "postgres" ]]; then
+    if [[ "$BACKEND_RUNTIME_MODE" == "postgres-local" ]]; then
       nohup sh -c '.venv/bin/alembic upgrade head && exec .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000' \
         >"$BACKEND_LOG_FILE" 2>&1 &
     else
@@ -321,26 +399,39 @@ print_summary() {
   echo "  frontend: http://localhost:3000"
   echo "  backend:  http://localhost:8000"
   echo "  agent:    http://127.0.0.1:47600"
-  echo "  backend-db-mode: $BACKEND_RUNTIME_MODE"
+  echo "  backend-runtime: $BACKEND_RUNTIME_MODE"
+  echo "  backend-mode: $BACKEND_RUNTIME_DESCRIPTION"
   if [[ "$BACKEND_RUNTIME_MODE" == "sqlite" ]]; then
     echo "  backend-db-file: $BACKEND_SQLITE_PATH"
+  elif [[ "$BACKEND_RUNTIME_MODE" == "postgres-docker" ]]; then
+    echo "  db:       compose network (db:5432)"
   else
     echo "  db:       localhost:5432"
   fi
   echo
   echo "Logs:"
-  echo "  backend:  $BACKEND_LOG_FILE"
+  if [[ "$BACKEND_RUNTIME_MODE" == "postgres-docker" ]]; then
+    echo "  backend:  docker compose logs -f backend"
+  else
+    echo "  backend:  $BACKEND_LOG_FILE"
+  fi
   echo "  frontend: $FRONTEND_LOG_FILE"
   echo "  agent:    $AGENT_LOG_FILE"
   echo
   echo "Pids:"
-  echo "  backend:  $BACKEND_PID_FILE"
+  if [[ "$BACKEND_RUNTIME_MODE" == "postgres-docker" ]]; then
+    echo "  backend:  docker compose service"
+  else
+    echo "  backend:  $BACKEND_PID_FILE"
+  fi
   echo "  frontend: $FRONTEND_PID_FILE"
   echo "  agent:    $AGENT_PID_FILE"
   echo
   echo "To stop everything:"
   echo "  docker compose down"
-  echo "  kill \$(cat \"$BACKEND_PID_FILE\")"
+  if [[ "$BACKEND_RUNTIME_MODE" != "postgres-docker" ]]; then
+    echo "  kill \$(cat \"$BACKEND_PID_FILE\")"
+  fi
   echo "  kill \$(cat \"$FRONTEND_PID_FILE\")"
   echo "  kill \$(cat \"$AGENT_PID_FILE\")"
 }

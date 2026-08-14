@@ -54,6 +54,7 @@ class AgentSettingsRead(BaseModel):
     jenkins_username: str
     jenkins_token_set: bool
     jenkins_root_path: str
+    qaa_generator_token_set: bool
     jenkins_root_folders: list[str]
     jenkins_request_timeout: float
     jenkins_tree_depth: int
@@ -78,6 +79,7 @@ class AgentSettingsUpdate(BaseModel):
     jenkins_username: str | None = None
     jenkins_token: str | None = None
     jenkins_root_path: str | None = None
+    qaa_generator_token: str | None = None
     jenkins_root_folders: list[str] | None = None
     jenkins_request_timeout: float | None = None
     jenkins_tree_depth: int | None = None
@@ -99,6 +101,7 @@ def to_agent_settings_read(settings: Settings) -> AgentSettingsRead:
         jenkins_username=settings.jenkins_username,
         jenkins_token_set=bool(settings.jenkins_token),
         jenkins_root_path=settings.jenkins_root_path,
+        qaa_generator_token_set=bool(settings.qaa_generator_token),
         jenkins_root_folders=list(settings.jenkins_root_folders),
         jenkins_request_timeout=settings.jenkins_request_timeout,
         jenkins_tree_depth=settings.jenkins_tree_depth,
@@ -113,6 +116,19 @@ def to_agent_settings_read(settings: Settings) -> AgentSettingsRead:
         kubeconfig=settings.kubeconfig,
         kubectl_request_timeout=settings.kubectl_request_timeout,
     )
+
+
+class QaaRunCreateRequest(BaseModel):
+    """QAA run create body forwarded through the local companion."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    jira_key: str
+    dry_run: bool = False
+    skip_pr: bool = False
+    skip_exec: bool = False
+    branch: str | None = None
+    profile: Literal["balanced", "codex-only", "claude-only"] = "balanced"
 
 
 class KubeconfigStatus(BaseModel):

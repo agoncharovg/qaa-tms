@@ -20,7 +20,7 @@ const qaaGeneratorPlugin = definePlugin({
   id: PluginId.QAA_GENERATOR,
   icon: IconName.SPARKLES,
   kind: PluginKind.OPTIONAL,
-  label: "QAA Generator",
+  label: "QAA generator",
   origin: PluginOrigin.BUILTIN,
   order: QAA_GENERATOR_PLUGIN_ORDER,
   requiresAgent: false,

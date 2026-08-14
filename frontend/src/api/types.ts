@@ -26,7 +26,7 @@ export interface User {
   is_admin: boolean;
   auto_login: boolean;
   enabled_plugins: PluginId[];
-  qaa_generator_token_set: boolean;
+  qaa_generator_token_set?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -43,7 +43,6 @@ export interface MeUpdateRequest {
   display_name?: string;
   password?: string;
   auto_login?: boolean;
-  qaa_generator_token?: string;
 }
 
 export interface UserCreateRequest {
@@ -79,8 +78,6 @@ export interface LoginResponse {
 
 export interface ServerSettingsRead {
   qaa_generator_base_url: string;
-  qaa_generator_actor: string;
-  qaa_generator_service_token_set: boolean;
   qaa_generator_superuser_token_set: boolean;
   qaa_generator_port_forward_enabled: boolean;
   qaa_generator_port_forward_namespace: string;
@@ -91,8 +88,6 @@ export interface ServerSettingsRead {
 
 export interface ServerSettingsUpdateRequest {
   qaa_generator_base_url?: string;
-  qaa_generator_actor?: string;
-  qaa_generator_service_token?: string;
   qaa_generator_superuser_token?: string;
   qaa_generator_port_forward_enabled?: boolean;
   qaa_generator_port_forward_namespace?: string;
@@ -135,6 +130,7 @@ export interface AgentSettings {
   jenkins_username: string;
   jenkins_token_set: boolean;
   jenkins_root_path: string;
+  qaa_generator_token_set: boolean;
   jenkins_root_folders: string[];
   jenkins_request_timeout: number;
   jenkins_tree_depth: number;
@@ -155,6 +151,7 @@ export interface AgentSettingsUpdate {
   jenkins_username?: string;
   jenkins_token?: string;
   jenkins_root_path?: string;
+  qaa_generator_token?: string;
   jenkins_root_folders?: string[];
   jenkins_request_timeout?: number;
   jenkins_tree_depth?: number;

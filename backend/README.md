@@ -44,18 +44,18 @@ The frontend bootstraps from `GET /api/v1/me`, which now always returns a resolv
 - `GET /api/v1/users/{id}`: admin-only user detail.
 - `PATCH /api/v1/users/{id}`: admin-only partial update for `display_name`, `is_admin`, `auto_login`, and `password`. `username` is immutable.
 - `DELETE /api/v1/users/{id}`: admin-only hard delete with guardrails for self-delete, last-admin removal, and users who already own recorded operations.
-- `POST /api/v1/qaa/runs`: create a qaa-generator run through the backend proxy. The backend adds the service-token `Authorization` header, derives the optional `Actor` header (`email:<username>` when the username contains `@`, otherwise `QAA_GENERATOR_ACTOR`), and records a `qaa_generate` audit operation for the authenticated user.
-- `GET /api/v1/qaa/runs`: list centrally shared qaa-generator runs with cursor pagination and filters.
-- `GET /api/v1/qaa/runs/{run_id}`: fetch one run and opportunistically reconcile the stored audit row to a terminal status when qaa-generator reports one.
+- `POST /api/v1/qaa/runs`: create a QAA generator run through the backend proxy. The backend expects the caller's personal QAA generator token in `X-QAA-Generator-Token`, forwards it upstream as bearer auth, and records a `qaa_generate` audit operation for the authenticated user.
+- `GET /api/v1/qaa/runs`: list centrally shared QAA generator runs with cursor pagination and filters.
+- `GET /api/v1/qaa/runs/{run_id}`: fetch one run and opportunistically reconcile the stored audit row to a terminal status when QAA generator reports one.
 - `POST /api/v1/qaa/runs/{run_id}/pause|resume|stop`: forward run-control actions.
-- `GET /api/v1/qaa/runs/{run_id}/events/stream`: SSE passthrough from qaa-generator to the authenticated SPA client.
+- `GET /api/v1/qaa/runs/{run_id}/events/stream`: SSE passthrough from QAA generator to the authenticated SPA client.
 - `GET /api/v1/qaa/runs/{run_id}/artifacts`: read the run artifact metadata and generated report text.
 
 ## QAA generator proxy settings
 
 `Profile -> Settings` is the single editing surface in the SPA for operational config, but
-the values still persist to the real consumer surfaces. Backend qaa-generator settings stay
-in the backend `.env`; bootstrap-only values such as `DATABASE_URL` and `JWT_SECRET` remain
+the values still persist to the real consumer surfaces. Backend QAA generator transport and superuser settings stay
+in the backend `.env`; per-user QAA generator tokens live only in the local companion `.env`; bootstrap-only values such as `DATABASE_URL` and `JWT_SECRET` remain
 outside the UI.
 
 - `QAA_GENERATOR_BASE_URL`: base URL for the upstream service. Default: `http://qaa-generator.default.svc.cluster.local:8080/api/v1`
@@ -64,8 +64,7 @@ outside the UI.
 - `QAA_GENERATOR_PORT_FORWARD_RESOURCE`: Kubernetes service resource for the local port-forward workaround. Default: `svc/qaa-generator`
 - `QAA_GENERATOR_PORT_FORWARD_LOCAL_PORT`: local port for the workaround tunnel. Default: `18080`
 - `QAA_GENERATOR_PORT_FORWARD_REMOTE_PORT`: remote service port for the workaround tunnel. Default: `8080`
-- `QAA_GENERATOR_SERVICE_TOKEN`: bearer token the backend sends to qaa-generator. This value never reaches the browser.
-- `QAA_GENERATOR_ACTOR`: fallback `Actor` header value for non-email usernames such as the seeded `test` / `admin` accounts. Leave empty to omit the header in that case.
+- `QAA_GENERATOR_SUPERUSER_TOKEN`: bearer token the backend sends only for admin calls to QAA generator. This value never reaches the browser.
 
 Changing `QAA_GENERATOR_BASE_URL` or any port-forward value through the UI still requires a
 backend restart, because the outbound HTTP client and optional port-forward process are

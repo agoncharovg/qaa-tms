@@ -23,12 +23,10 @@ import { QueryKey } from "@/constants";
 import { useAuthStore } from "@/store/authStore";
 
 const ServerSettingsPageCopy = {
-  ACTOR_LABEL: "Actor",
-  BASE_URL_LABEL: "qaa-generator base URL",
-  CLEAR_SERVICE_TOKEN: "Clear service token",
+  BASE_URL_LABEL: "QAA generator base URL",
   CLEAR_SUPERUSER_TOKEN: "Clear superuser token",
   DESCRIPTION:
-    "Edit the backend-held qaa-generator integration settings. Transport changes still require a backend restart.",
+    "Edit the backend-held QAA generator transport and superuser settings. Transport changes still require a backend restart.",
   LOAD_ERROR: "Server settings failed to load",
   LOADING: "Loading server settings.",
   LOCAL_PORT_LABEL: "Port-forward local port",
@@ -39,10 +37,9 @@ const ServerSettingsPageCopy = {
   RESOURCE_LABEL: "Port-forward resource",
   SAVE: "Save server settings",
   SECRET_SET: "•••• set",
-  SERVICE_TOKEN_LABEL: "Service token",
   SUCCESS: "Settings saved.",
   SUPERUSER_TOKEN_LABEL: "Superuser token",
-  TITLE: "qaa-generator",
+  TITLE: "QAA generator",
   UPDATE_FAILED: "Save failed",
   UPDATE_REQUIRED: "Authentication is required.",
 } as const;
@@ -64,7 +61,6 @@ const TITLE_TEXT = {
 
 const SECRET_INPUT_AUTOCOMPLETE = "new-password" as const;
 const SECRET_INPUT_NAME = {
-  SERVICE_TOKEN: "qaa-generator-service-token",
   SUPERUSER_TOKEN: "qaa-generator-superuser-token",
 } as const;
 
@@ -74,16 +70,12 @@ type Notice = {
 };
 
 type ServerFormState = {
-  actor: string;
   baseUrl: string;
   localPort: string;
   namespace: string;
   portForwardEnabled: boolean;
   remotePort: string;
   resource: string;
-  serviceToken: string;
-  serviceTokenDirty: boolean;
-  serviceTokenSet: boolean;
   superuserToken: string;
   superuserTokenDirty: boolean;
   superuserTokenSet: boolean;
@@ -91,16 +83,12 @@ type ServerFormState = {
 
 function buildServerFormState(settings: ServerSettingsRead): ServerFormState {
   return {
-    actor: settings.qaa_generator_actor,
     baseUrl: settings.qaa_generator_base_url,
     localPort: String(settings.qaa_generator_port_forward_local_port),
     namespace: settings.qaa_generator_port_forward_namespace,
     portForwardEnabled: settings.qaa_generator_port_forward_enabled,
     remotePort: String(settings.qaa_generator_port_forward_remote_port),
     resource: settings.qaa_generator_port_forward_resource,
-    serviceToken: EMPTY_VALUE,
-    serviceTokenDirty: false,
-    serviceTokenSet: settings.qaa_generator_service_token_set,
     superuserToken: EMPTY_VALUE,
     superuserTokenDirty: false,
     superuserTokenSet: settings.qaa_generator_superuser_token_set,
@@ -234,7 +222,6 @@ export function ServerSettingsPage() {
 
     setNotice(null);
     const payload: ServerSettingsUpdateRequest = {
-      qaa_generator_actor: form.actor,
       qaa_generator_base_url: form.baseUrl,
       qaa_generator_port_forward_enabled: form.portForwardEnabled,
       qaa_generator_port_forward_local_port: parseNumberField(form.localPort, TITLE_TEXT.LOCAL_PORT),
@@ -242,9 +229,6 @@ export function ServerSettingsPage() {
       qaa_generator_port_forward_remote_port: parseNumberField(form.remotePort, TITLE_TEXT.REMOTE_PORT),
       qaa_generator_port_forward_resource: form.resource,
     };
-    if (form.serviceTokenDirty) {
-      payload.qaa_generator_service_token = form.serviceToken;
-    }
     if (form.superuserTokenDirty) {
       payload.qaa_generator_superuser_token = form.superuserToken;
     }
@@ -287,22 +271,6 @@ export function ServerSettingsPage() {
                 onChange={(event) => setField("baseUrl", event.currentTarget.value)}
                 value={form.baseUrl}
               />
-              <TextInput
-                label={ServerSettingsPageCopy.ACTOR_LABEL}
-                onChange={(event) => setField("actor", event.currentTarget.value)}
-                value={form.actor}
-              />
-              <PasswordInput
-                autoComplete={SECRET_INPUT_AUTOCOMPLETE}
-                description={form.serviceTokenSet ? ServerSettingsPageCopy.SECRET_SET : ServerSettingsPageCopy.NOT_SET}
-                label={ServerSettingsPageCopy.SERVICE_TOKEN_LABEL}
-                name={SECRET_INPUT_NAME.SERVICE_TOKEN}
-                onChange={(event) => {
-                  setField("serviceToken", event.currentTarget.value);
-                  setField("serviceTokenDirty", true);
-                }}
-                value={form.serviceToken}
-              />
               <PasswordInput
                 autoComplete={SECRET_INPUT_AUTOCOMPLETE}
                 description={
@@ -343,28 +311,16 @@ export function ServerSettingsPage() {
               />
             </SimpleGrid>
             <Group justify="space-between">
-              <Group>
-                <Button
-                  onClick={() => {
-                    setField("serviceToken", EMPTY_VALUE);
-                    setField("serviceTokenDirty", true);
-                    setField("serviceTokenSet", false);
-                  }}
-                  variant="default"
-                >
-                  {ServerSettingsPageCopy.CLEAR_SERVICE_TOKEN}
-                </Button>
-                <Button
-                  onClick={() => {
-                    setField("superuserToken", EMPTY_VALUE);
-                    setField("superuserTokenDirty", true);
-                    setField("superuserTokenSet", false);
-                  }}
-                  variant="default"
-                >
-                  {ServerSettingsPageCopy.CLEAR_SUPERUSER_TOKEN}
-                </Button>
-              </Group>
+              <Button
+                onClick={() => {
+                  setField("superuserToken", EMPTY_VALUE);
+                  setField("superuserTokenDirty", true);
+                  setField("superuserTokenSet", false);
+                }}
+                variant="default"
+              >
+                {ServerSettingsPageCopy.CLEAR_SUPERUSER_TOKEN}
+              </Button>
               <Button loading={updateMutation.isPending} onClick={saveSettings}>
                 {ServerSettingsPageCopy.SAVE}
               </Button>

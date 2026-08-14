@@ -16,6 +16,7 @@ def write_agent_env(path: Path) -> None:
                 "AGENT_JENKINS_URL=https://initial.jenkins",
                 "AGENT_JENKINS_USERNAME=initial-user",
                 "AGENT_JENKINS_TOKEN=initial-token",
+                "AGENT_QAA_GENERATOR_TOKEN=initial-qaa-token",
                 "AGENT_JENKINS_ROOT_PATH=job/.QAA/job/E2E",
                 "AGENT_JENKINS_ROOT_FOLDERS=PREPROD,PROD",
                 "AGENT_JENKINS_REQUEST_TIMEOUT=15",
@@ -55,14 +56,17 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
     write_agent_env(env_path)
     monkeypatch.setattr(env_file, "AGENT_ENV_FILE", env_path)
     get_settings.cache_clear()
+    client._transport.app.state.settings.qaa_generator_token = "initial-qaa-token"
 
     get_response = await client.get("/settings", headers=auth_headers)
 
     assert get_response.status_code == 200
     body = get_response.json()
     assert body["jenkins_token_set"] is True
+    assert body["qaa_generator_token_set"] is True
     assert body["jenkins_root_folders"] == ["PREPROD", "PROD"]
     assert "jenkins_token" not in body
+    assert "qaa_generator_token" not in body
     assert "host" not in body
     assert "backend_url" not in body
 
@@ -73,6 +77,7 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
             "jenkins_url": "https://updated.jenkins",
             "jenkins_username": "updated-user",
             "jenkins_token": "",
+            "qaa_generator_token": "",
             "jenkins_root_path": "job/.QAA/job/E2E/job/UPDATED",
             "jenkins_root_folders": ["UPDATED", "MORE"],
             "jenkins_request_timeout": 22,
@@ -95,6 +100,7 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
     assert updated["jenkins_url"] == "https://updated.jenkins"
     assert updated["jenkins_username"] == "updated-user"
     assert updated["jenkins_token_set"] is False
+    assert updated["qaa_generator_token_set"] is False
     assert updated["jenkins_root_folders"] == ["UPDATED", "MORE"]
     assert updated["staging_bin"] == "/opt/staging"
     assert updated["kubectl_request_timeout"] == "20s"
@@ -103,11 +109,11 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
     assert runtime_settings.jenkins_url == "https://updated.jenkins"
     assert runtime_settings.jenkins_username == "updated-user"
     assert runtime_settings.jenkins_token == ""
+    assert runtime_settings.qaa_generator_token == ""
     assert runtime_settings.jenkins_root_folders == ["UPDATED", "MORE"]
-    assert (
-        client._transport.app.state.job_manager._settings.jenkins_url == "https://updated.jenkins"
-    )
+    assert client._transport.app.state.job_manager._settings.jenkins_url == "https://updated.jenkins"
 
     serialized_env = env_path.read_text(encoding="utf-8")
     assert "AGENT_JENKINS_TOKEN=\n" in serialized_env
+    assert "AGENT_QAA_GENERATOR_TOKEN=\n" in serialized_env
     assert "AGENT_JENKINS_ROOT_FOLDERS=UPDATED,MORE\n" in serialized_env

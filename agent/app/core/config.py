@@ -69,6 +69,7 @@ class Settings(BaseSettings):
         default=DEFAULT_JENKINS_TREE_DEPTH,
         alias=EnvKey.JENKINS_TREE_DEPTH.value,
     )
+    qaa_generator_token: str = Field(default="", alias=EnvKey.QAA_GENERATOR_TOKEN.value)
     jenkins_stuck_min_idle_hours: int = Field(
         default=DEFAULT_JENKINS_STUCK_MIN_IDLE_HOURS,
         alias=EnvKey.JENKINS_STUCK_MIN_IDLE_HOURS.value,

@@ -20,7 +20,7 @@ import {
 import { IconAlertCircle, IconPlayerPlay, IconRotateClockwise } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 
-import { backendClient } from "@/api/backendClient";
+import { qaaAgentClient } from "@/api/qaaAgentClient";
 import type { QaaRunListResponse, QaaRunSummary } from "@/api/types";
 import {
   DEFAULT_QAA_RUNS_PAGE_SIZE,
@@ -39,6 +39,9 @@ const RUNS_PANEL_COPY = {
   EMPTY: "No QAA runs matched the current filters.",
   ERROR_TITLE: "QAA runs request failed",
   JIRA_KEY_HINT: "Partial values filter the current page immediately. A full Jira key queries the backend.",
+  MISSING_TOKEN_PREFIX: "Set your personal qaa-generator token in ",
+  MISSING_TOKEN_SUFFIX: " before browsing runs.",
+  MISSING_TOKEN_TITLE: "Personal qaa-generator token required",
   NEXT: "Next",
   OPEN_IN_LIVE: "Open in Live",
   PREVIOUS: "Previous",
@@ -52,6 +55,7 @@ const QAA_RUN_STATUS_OPTIONS = Object.values(QaaRunStatus).map((statusValue) => 
   value: statusValue,
 }));
 const FULL_JIRA_KEY_PATTERN = /^[A-Z][A-Z0-9_]*-\d+$/i;
+const PROFILE_SETTINGS_HREF = "/profile?section=settings" as const;
 const RUNS_FILTER_DEBOUNCE_MS = 250;
 
 interface RunsFiltersState {
@@ -60,6 +64,11 @@ interface RunsFiltersState {
   effectiveActor: string;
   jiraKey: string;
   status: string[];
+}
+
+interface RunsPanelProps {
+  agentPort: number;
+  hasPersonalToken: boolean;
 }
 
 const DEFAULT_RUNS_FILTERS_STATE: RunsFiltersState = {
@@ -92,7 +101,7 @@ function buildLocalJiraKeyFilter(value: string): string {
   return normalizedValue;
 }
 
-export function RunsPanel() {
+export function RunsPanel({ agentPort, hasPersonalToken }: RunsPanelProps) {
   const token = useAuthStore((state) => state.token);
   const [filters, setFilters] = useState<RunsFiltersState>(DEFAULT_RUNS_FILTERS_STATE);
   const [serverFilters, setServerFilters] = useState<RunsFiltersState>(DEFAULT_RUNS_FILTERS_STATE);
@@ -100,7 +109,7 @@ export function RunsPanel() {
   const [cursorIndex, setCursorIndex] = useState(0);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const activateTab = useActivateQaaGeneratorTab();
-  const { startRun } = useQaaRunLive();
+  const { startRun } = useQaaRunLive(agentPort, hasPersonalToken);
   const currentCursor = cursorStack[cursorIndex] ?? null;
   const serverStatusFilterSignature = serverFilters.status.join(",");
 
@@ -146,23 +155,23 @@ export function RunsPanel() {
   ]);
 
   const runsQuery = useQuery<QaaRunListResponse>({
-    enabled: Boolean(token),
+    enabled: Boolean(token) && hasPersonalToken,
     placeholderData: (previousData) => previousData,
-    queryFn: ({ signal }) => backendClient.listQaaRuns(token ?? "", runsListParams, signal),
-    queryKey: [QueryKey.QAA_RUNS, token, runsListParams],
+    queryFn: ({ signal }) => qaaAgentClient.listQaaRuns(agentPort, token ?? "", runsListParams, signal),
+    queryKey: [QueryKey.QAA_RUNS, agentPort, token, runsListParams],
   });
 
   const detailQuery = useQuery({
-    enabled: Boolean(token && selectedRunId),
-    queryFn: ({ signal }) => backendClient.getQaaRun(token ?? "", selectedRunId ?? "", signal),
-    queryKey: [QueryKey.QAA_RUN_DETAIL, token, selectedRunId],
+    enabled: Boolean(token && selectedRunId && hasPersonalToken),
+    queryFn: ({ signal }) => qaaAgentClient.getQaaRun(agentPort, token ?? "", selectedRunId ?? "", signal),
+    queryKey: [QueryKey.QAA_RUN_DETAIL, agentPort, token, selectedRunId],
   });
 
   const artifactsQuery = useQuery({
-    enabled: Boolean(token && selectedRunId),
+    enabled: Boolean(token && selectedRunId && hasPersonalToken),
     queryFn: ({ signal }) =>
-      backendClient.getQaaRunArtifacts(token ?? "", selectedRunId ?? "", signal),
-    queryKey: [QueryKey.QAA_RUN_ARTIFACTS, token, selectedRunId],
+      qaaAgentClient.getQaaRunArtifacts(agentPort, token ?? "", selectedRunId ?? "", signal),
+    queryKey: [QueryKey.QAA_RUN_ARTIFACTS, agentPort, token, selectedRunId],
   });
 
   const nextCursor = runsQuery.data?.next_cursor ?? null;
@@ -199,7 +208,7 @@ export function RunsPanel() {
           </div>
           <Group>
             <Button
-              disabled={cursorIndex === 0 || runsQuery.isFetching}
+              disabled={cursorIndex === 0 || runsQuery.isFetching || !hasPersonalToken}
               onClick={() => {
                 setCursorIndex((current) => Math.max(0, current - 1));
               }}
@@ -208,7 +217,7 @@ export function RunsPanel() {
               {RUNS_PANEL_COPY.PREVIOUS}
             </Button>
             <Button
-              disabled={!nextCursor || runsQuery.isFetching}
+              disabled={!nextCursor || runsQuery.isFetching || !hasPersonalToken}
               onClick={() => {
                 if (!nextCursor) {
                   return;
@@ -226,84 +235,83 @@ export function RunsPanel() {
           </Group>
         </Group>
 
+        {!hasPersonalToken ? (
+          <Alert color="yellow" icon={<IconAlertCircle size={18} />} title={RUNS_PANEL_COPY.MISSING_TOKEN_TITLE}>
+            {RUNS_PANEL_COPY.MISSING_TOKEN_PREFIX}
+            <Anchor href={PROFILE_SETTINGS_HREF}>Profile / Settings</Anchor>
+            {RUNS_PANEL_COPY.MISSING_TOKEN_SUFFIX}
+          </Alert>
+        ) : null}
+
         <Paper p="md" radius="lg" withBorder>
           <Stack gap="md">
             <TextInput
               description={RUNS_PANEL_COPY.JIRA_KEY_HINT}
               label="Jira key"
               onChange={(event) => {
-                const { value } = event.currentTarget;
-                setFilters((current) => ({
-                  ...current,
-                  jiraKey: value,
-                }));
+                const value = event.currentTarget.value;
+                setFilters((current) => ({ ...current, jiraKey: value }));
               }}
               placeholder="QAA-123"
               value={filters.jiraKey}
             />
 
             <MultiSelect
+              clearable
               data={QAA_RUN_STATUS_OPTIONS}
               label="Status"
               onChange={(value) => {
-                setFilters((current) => ({
-                  ...current,
-                  status: value,
-                }));
+                setFilters((current) => ({ ...current, status: value }));
               }}
               placeholder="Any status"
               value={filters.status}
             />
 
-            <TextInput
-              label="Effective actor"
-              onChange={(event) => {
-                const { value } = event.currentTarget;
-                setFilters((current) => ({
-                  ...current,
-                  effectiveActor: value,
-                }));
-              }}
-              placeholder="email:user@example.com"
-              value={filters.effectiveActor}
-            />
-
             <Group grow>
+              <TextInput
+                label="Effective actor"
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setFilters((current) => ({ ...current, effectiveActor: value }));
+                }}
+                placeholder="email:user@example.com"
+                value={filters.effectiveActor}
+              />
               <TextInput
                 label="Created from"
                 onChange={(event) => {
-                  const { value } = event.currentTarget;
-                  setFilters((current) => ({
-                    ...current,
-                    createdFrom: value,
-                  }));
+                  const value = event.currentTarget.value;
+                  setFilters((current) => ({ ...current, createdFrom: value }));
                 }}
-                type="date"
+                placeholder="2026-08-11T10:00:00+00:00"
                 value={filters.createdFrom}
               />
               <TextInput
                 label="Created to"
                 onChange={(event) => {
-                  const { value } = event.currentTarget;
-                  setFilters((current) => ({
-                    ...current,
-                    createdTo: value,
-                  }));
+                  const value = event.currentTarget.value;
+                  setFilters((current) => ({ ...current, createdTo: value }));
                 }}
-                type="date"
+                placeholder="2026-08-11T11:00:00+00:00"
                 value={filters.createdTo}
               />
             </Group>
           </Stack>
         </Paper>
 
-        {showBackgroundRefreshError ? (
-          <Alert color="orange" icon={<IconAlertCircle size={18} />} title={RUNS_PANEL_COPY.ERROR_TITLE}>
+        {showInitialRunsLoader ? (
+          <Stack align="center" gap="sm" py="xl">
+            <Loader size="lg" />
+            <Text c="dimmed">Loading QAA runs.</Text>
+          </Stack>
+        ) : null}
+
+        {showInitialRunsError ? (
+          <Alert color="red" icon={<IconAlertCircle size={18} />} title={RUNS_PANEL_COPY.ERROR_TITLE}>
             <Stack gap="sm">
               <Text>{runsErrorMessage}</Text>
-              <Text size="sm">{RUNS_PANEL_COPY.STALE_RESULTS}</Text>
               <Group>
-                <Button leftSection={<IconRotateClockwise size={16} />} onClick={() => void runsQuery.refetch()}>
+                <Button leftSection={<IconRotateClockwise size={16} />} onClick={() => void runsQuery.refetch()} variant="light">
                   Retry
                 </Button>
               </Group>
@@ -311,176 +319,139 @@ export function RunsPanel() {
           </Alert>
         ) : null}
 
-        <Box pos="relative">
-          <LoadingOverlay visible={runsQuery.isFetching && Boolean(runsQuery.data)} zIndex={5} />
+        {showBackgroundRefreshError ? (
+          <Alert color="yellow" icon={<IconAlertCircle size={18} />} title={RUNS_PANEL_COPY.ERROR_TITLE}>
+            <Text>{RUNS_PANEL_COPY.STALE_RESULTS}</Text>
+            <Text c="dimmed" size="sm">
+              {runsErrorMessage}
+            </Text>
+          </Alert>
+        ) : null}
 
-          {showInitialRunsLoader ? (
-            <Paper p="xl" radius="lg" withBorder>
-              <Stack align="center" gap="md" py="xl">
-                <Loader size="lg" />
-                <Text c="dimmed">Loading QAA runs.</Text>
-              </Stack>
-            </Paper>
-          ) : showInitialRunsError ? (
-            <Alert color="red" icon={<IconAlertCircle size={18} />} title={RUNS_PANEL_COPY.ERROR_TITLE}>
-              <Stack gap="sm">
-                <Text>{runsErrorMessage}</Text>
-                <Group>
-                  <Button leftSection={<IconRotateClockwise size={16} />} onClick={() => void runsQuery.refetch()}>
-                    Retry
-                  </Button>
-                </Group>
-              </Stack>
-            </Alert>
-          ) : displayedRuns.length === 0 ? (
-            <Paper p="xl" radius="lg" withBorder>
-              <Stack align="center" gap="sm">
-                <Text fw={600}>{RUNS_PANEL_COPY.EMPTY}</Text>
-              </Stack>
-            </Paper>
-          ) : (
-            <Table.ScrollContainer minWidth={960}>
-              <Table highlightOnHover striped withTableBorder>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>Jira key</Table.Th>
-                    <Table.Th>Status</Table.Th>
-                    <Table.Th>Actor</Table.Th>
-                    <Table.Th>Created</Table.Th>
-                    <Table.Th>Updated</Table.Th>
-                    <Table.Th>Run ID</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {displayedRuns.map((run) => (
-                    <Table.Tr
-                      key={run.run_id}
-                      onClick={() => {
-                        setSelectedRunId(run.run_id);
-                      }}
-                      style={{ cursor: "pointer" }}
-                    >
-                      <Table.Td>{run.jira_key}</Table.Td>
-                      <Table.Td>
-                        <Badge color={QaaRunStatusColor[run.status]} variant="light">
-                          {QaaRunStatusLabel[run.status]}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td>{run.effective_actor ?? "—"}</Table.Td>
-                      <Table.Td>{formatTimestamp(run.created_at)}</Table.Td>
-                      <Table.Td>{formatTimestamp(run.updated_at)}</Table.Td>
-                      <Table.Td>
-                        <Text ff="monospace" size="sm">
-                          {run.run_id}
-                        </Text>
-                      </Table.Td>
+        {!showInitialRunsLoader && !showInitialRunsError ? (
+          <Box pos="relative">
+            <LoadingOverlay visible={runsQuery.isFetching && Boolean(runsQuery.data)} zIndex={1} />
+            {displayedRuns.length === 0 ? (
+              <Alert title={RUNS_PANEL_COPY.TITLE}>{RUNS_PANEL_COPY.EMPTY}</Alert>
+            ) : (
+              <Table.ScrollContainer minWidth={920}>
+                <Table highlightOnHover striped withTableBorder>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Run ID</Table.Th>
+                      <Table.Th>Jira key</Table.Th>
+                      <Table.Th>Status</Table.Th>
+                      <Table.Th>Effective actor</Table.Th>
+                      <Table.Th>Updated</Table.Th>
                     </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            </Table.ScrollContainer>
-          )}
-        </Box>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {displayedRuns.map((run) => (
+                      <Table.Tr key={run.run_id} onClick={() => setSelectedRunId(run.run_id)} style={{ cursor: "pointer" }}>
+                        <Table.Td>{run.run_id}</Table.Td>
+                        <Table.Td>{run.jira_key}</Table.Td>
+                        <Table.Td>
+                          <Badge color={QaaRunStatusColor[run.status]} variant="light">
+                            {QaaRunStatusLabel[run.status]}
+                          </Badge>
+                        </Table.Td>
+                        <Table.Td>{run.effective_actor ?? "—"}</Table.Td>
+                        <Table.Td>{formatTimestamp(run.updated_at)}</Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
+            )}
+          </Box>
+        ) : null}
       </Stack>
 
       <Drawer
-        onClose={() => {
-          setSelectedRunId(null);
-        }}
-        opened={Boolean(selectedRunId)}
+        onClose={() => setSelectedRunId(null)}
+        opened={selectedRunId !== null}
         padding="lg"
         position="right"
         size="xl"
         title={RUNS_PANEL_COPY.DETAIL_TITLE}
       >
-        {detailQuery.isLoading ? (
-          <Stack align="center" gap="md" py="xl">
-            <Loader size="lg" />
-            <Text c="dimmed">Loading run details.</Text>
-          </Stack>
-        ) : detailQuery.isError ? (
-          <Alert color="red" icon={<IconAlertCircle size={18} />} title={RUNS_PANEL_COPY.ERROR_TITLE}>
-            <Text>{detailQuery.error instanceof Error ? detailQuery.error.message : RUNS_PANEL_COPY.ERROR_TITLE}</Text>
-          </Alert>
-        ) : detailQuery.data ? (
-          <Stack gap="lg">
-            <Group justify="space-between">
-              <div>
-                <Title order={4}>{detailQuery.data.jira_key}</Title>
-                <Text c="dimmed" size="sm">
-                  {detailQuery.data.run_id}
-                </Text>
-              </div>
-              <Button
-                leftSection={<IconPlayerPlay size={16} />}
-                onClick={() => openRunInLive(detailQuery.data.run_id)}
-                variant="light"
-              >
-                {RUNS_PANEL_COPY.OPEN_IN_LIVE}
-              </Button>
-            </Group>
+        <Stack gap="lg">
+          {detailQuery.isLoading ? (
+            <Stack align="center" gap="sm" py="xl">
+              <Loader size="lg" />
+              <Text c="dimmed">Loading run details.</Text>
+            </Stack>
+          ) : null}
 
-            <Group>
-              <Badge color={QaaRunStatusColor[detailQuery.data.status]} variant="light">
-                {QaaRunStatusLabel[detailQuery.data.status]}
-              </Badge>
-              <Text c="dimmed" size="sm">
-                Actor: {detailQuery.data.effective_actor ?? "—"}
-              </Text>
-            </Group>
+          {detailQuery.data ? (
+            <Paper p="md" radius="lg" withBorder>
+              <Stack gap="sm">
+                <Group justify="space-between">
+                  <Title order={4}>{detailQuery.data.jira_key}</Title>
+                  <Badge color={QaaRunStatusColor[detailQuery.data.status]} variant="light">
+                    {QaaRunStatusLabel[detailQuery.data.status]}
+                  </Badge>
+                </Group>
+                <Text size="sm">Run ID: {detailQuery.data.run_id}</Text>
+                <Text size="sm">Actor: {detailQuery.data.effective_actor ?? "—"}</Text>
+                <Text size="sm">Created: {formatTimestamp(detailQuery.data.created_at)}</Text>
+                <Text size="sm">Updated: {formatTimestamp(detailQuery.data.updated_at)}</Text>
+                <Group>
+                  <Button leftSection={<IconPlayerPlay size={16} />} onClick={() => openRunInLive(detailQuery.data.run_id)} variant="light">
+                    {RUNS_PANEL_COPY.OPEN_IN_LIVE}
+                  </Button>
+                  {artifactsQuery.data?.pr_url ? (
+                    <Button component="a" href={artifactsQuery.data.pr_url} rel="noreferrer" target="_blank" variant="default">
+                      {RUNS_PANEL_COPY.PR_LINK}
+                    </Button>
+                  ) : null}
+                </Group>
+              </Stack>
+            </Paper>
+          ) : null}
 
-            <Paper p="md" radius="md" withBorder>
-              <Stack gap="xs">
-                <Text fw={600}>Run payload</Text>
+          {detailQuery.isError ? (
+            <Alert color="red" icon={<IconAlertCircle size={18} />} title={RUNS_PANEL_COPY.ERROR_TITLE}>
+              <Text>{detailQuery.error instanceof Error ? detailQuery.error.message : RUNS_PANEL_COPY.ERROR_TITLE}</Text>
+            </Alert>
+          ) : null}
+
+          {artifactsQuery.isLoading ? (
+            <Stack align="center" gap="sm" py="xl">
+              <Loader size="lg" />
+              <Text c="dimmed">Loading artifacts.</Text>
+            </Stack>
+          ) : null}
+
+          {artifactsQuery.isError ? (
+            <Alert color="red" icon={<IconAlertCircle size={18} />} title="Artifacts request failed">
+              <Text>{artifactsQuery.error instanceof Error ? artifactsQuery.error.message : "Artifacts request failed"}</Text>
+            </Alert>
+          ) : null}
+
+          {artifactsQuery.data ? (
+            <Paper p="md" radius="lg" withBorder>
+              <Stack gap="sm">
+                <Title order={4}>Artifacts</Title>
+                <Text size="sm">PR URL: {artifactsQuery.data.pr_url ?? "—"}</Text>
+                <Text size="sm">Report</Text>
                 <Box
                   bg="rgba(2, 6, 12, 0.95)"
                   c="gray.1"
-                  p="sm"
+                  p="md"
                   style={{
+                    border: "1px solid rgba(255, 255, 255, 0.08)",
                     borderRadius: "12px",
                     fontFamily: "monospace",
                     whiteSpace: "pre-wrap",
                   }}
                 >
-                  {JSON.stringify(detailQuery.data, null, 2)}
+                  {artifactsQuery.data.report_text ?? "No report text returned."}
                 </Box>
               </Stack>
             </Paper>
-
-            {artifactsQuery.isLoading ? (
-              <Group gap="sm">
-                <Loader size="sm" />
-                <Text c="dimmed" size="sm">
-                  Loading artifacts.
-                </Text>
-              </Group>
-            ) : artifactsQuery.data ? (
-              <Paper p="md" radius="md" withBorder>
-                <Stack gap="xs">
-                  <Text fw={600}>Artifacts</Text>
-                  {artifactsQuery.data.pr_url ? (
-                    <Anchor href={artifactsQuery.data.pr_url} rel="noreferrer" target="_blank">
-                      {RUNS_PANEL_COPY.PR_LINK}
-                    </Anchor>
-                  ) : null}
-                  <Text size="sm">{artifactsQuery.data.report_text ?? "No report text returned."}</Text>
-                  <Box
-                    bg="rgba(2, 6, 12, 0.95)"
-                    c="gray.1"
-                    p="sm"
-                    style={{
-                      borderRadius: "12px",
-                      fontFamily: "monospace",
-                      whiteSpace: "pre-wrap",
-                    }}
-                  >
-                    {JSON.stringify(artifactsQuery.data.archive ?? {}, null, 2)}
-                  </Box>
-                </Stack>
-              </Paper>
-            ) : null}
-          </Stack>
-        ) : null}
+          ) : null}
+        </Stack>
       </Drawer>
     </>
   );

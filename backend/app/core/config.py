@@ -11,14 +11,12 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from app.core import env_file
 from app.core.constants import (
-    DEFAULT_QAA_GENERATOR_ACTOR,
     DEFAULT_QAA_GENERATOR_BASE_URL,
     DEFAULT_QAA_GENERATOR_PORT_FORWARD_ENABLED,
     DEFAULT_QAA_GENERATOR_PORT_FORWARD_LOCAL_PORT,
     DEFAULT_QAA_GENERATOR_PORT_FORWARD_NAMESPACE,
     DEFAULT_QAA_GENERATOR_PORT_FORWARD_REMOTE_PORT,
     DEFAULT_QAA_GENERATOR_PORT_FORWARD_RESOURCE,
-    DEFAULT_QAA_GENERATOR_SERVICE_TOKEN,
     DEFAULT_QAA_GENERATOR_SUPERUSER_TOKEN,
     EnvKey,
 )
@@ -48,17 +46,9 @@ class Settings(BaseSettings):
         default=DEFAULT_QAA_GENERATOR_BASE_URL,
         alias=EnvKey.QAA_GENERATOR_BASE_URL.value,
     )
-    qaa_generator_service_token: str = Field(
-        default=DEFAULT_QAA_GENERATOR_SERVICE_TOKEN,
-        alias=EnvKey.QAA_GENERATOR_SERVICE_TOKEN.value,
-    )
     qaa_generator_superuser_token: str = Field(
         default=DEFAULT_QAA_GENERATOR_SUPERUSER_TOKEN,
         alias=EnvKey.QAA_GENERATOR_SUPERUSER_TOKEN.value,
-    )
-    qaa_generator_actor: str = Field(
-        default=DEFAULT_QAA_GENERATOR_ACTOR,
-        alias=EnvKey.QAA_GENERATOR_ACTOR.value,
     )
     qaa_generator_port_forward_enabled: bool = Field(
         default=DEFAULT_QAA_GENERATOR_PORT_FORWARD_ENABLED,

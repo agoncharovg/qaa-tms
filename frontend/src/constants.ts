@@ -563,7 +563,7 @@ export const TabTitle: Record<TabId, string> = {
   [TabId.QAA_RUNS]: "Runs",
   [TabId.QAA_ADMIN]: "Admin",
   [TabId.ADMIN_USERS]: "Users",
-  [TabId.ADMIN_INTEGRATIONS]: "qaa-generator",
+  [TabId.ADMIN_INTEGRATIONS]: "QAA generator",
   [TabId.PROFILE]: "Profile",
 };
 

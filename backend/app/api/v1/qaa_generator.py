@@ -76,6 +76,10 @@ TERMINAL_QAA_TO_OPERATION_STATUS = {
     QaaRunStatus.FAILED: OperationStatus.FAILED,
     QaaRunStatus.STOPPED: OperationStatus.ABORTED,
 }
+QaaPersonalTokenHeader = Annotated[
+    str | None,
+    Header(alias=HttpHeader.X_QAA_GENERATOR_TOKEN.value),
+]
 
 
 def utcnow() -> datetime:
@@ -223,21 +227,40 @@ def build_list_params(
     return params
 
 
+def build_personal_headers(
+    request: Request,
+    *,
+    personal_token: str | None,
+    accept: MediaType,
+    content_type: MediaType | None = None,
+    idempotency_key: str | None = None,
+    last_event_id: str | None = None,
+) -> dict[str, str]:
+    return build_outbound_headers(
+        get_settings(request),
+        accept=accept,
+        token_mode=QaaGeneratorTokenMode.PERSONAL,
+        personal_token=personal_token,
+        content_type=content_type,
+        idempotency_key=idempotency_key,
+        last_event_id=last_event_id,
+    )
+
+
 @router.post(ROOT_ROUTE_PATH)
 async def create_qaa_run(
     payload: QaaRunCreateRequest,
     request: Request,
     current_user: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
+    qaa_generator_token: QaaPersonalTokenHeader = None,
     idempotency_key: Annotated[str | None, Header(alias=HttpHeader.IDEMPOTENCY_KEY.value)] = None,
 ) -> Response:
     client = get_qaa_client(request)
-    settings = get_settings(request)
-    headers = build_outbound_headers(
-        settings,
+    headers = build_personal_headers(
+        request,
+        personal_token=qaa_generator_token,
         accept=MediaType.JSON,
-        token_mode=QaaGeneratorTokenMode.PERSONAL,
-        user=current_user,
         content_type=MediaType.JSON,
         idempotency_key=idempotency_key,
     )
@@ -282,6 +305,7 @@ async def create_qaa_run(
 async def list_qaa_runs(
     request: Request,
     current_user: CurrentUser,
+    qaa_generator_token: QaaPersonalTokenHeader = None,
     jira_key: str | None = None,
     status_: Annotated[
         list[QaaRunStatus] | None,
@@ -293,20 +317,18 @@ async def list_qaa_runs(
     limit: int | None = None,
     cursor: str | None = None,
 ) -> Response:
+    del current_user
     client = get_qaa_client(request)
-    settings = get_settings(request)
-    headers = build_outbound_headers(
-        settings,
-        accept=MediaType.JSON,
-        token_mode=QaaGeneratorTokenMode.SERVICE,
-        user=current_user,
-    )
     result = await request_json(
         client,
         method=HttpMethod.GET.value,
         path=QaaGeneratorServicePath.RUNS.value,
-        headers=headers,
-        token_mode=QaaGeneratorTokenMode.SERVICE,
+        headers=build_personal_headers(
+            request,
+            personal_token=qaa_generator_token,
+            accept=MediaType.JSON,
+        ),
+        token_mode=QaaGeneratorTokenMode.PERSONAL,
         params=build_list_params(
             jira_key=jira_key,
             status_values=status_,
@@ -326,21 +348,19 @@ async def get_qaa_run(
     request: Request,
     current_user: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
+    qaa_generator_token: QaaPersonalTokenHeader = None,
 ) -> Response:
     client = get_qaa_client(request)
-    settings = get_settings(request)
-    headers = build_outbound_headers(
-        settings,
-        accept=MediaType.JSON,
-        token_mode=QaaGeneratorTokenMode.SERVICE,
-        user=current_user,
-    )
     result = await request_json(
         client,
         method=HttpMethod.GET.value,
         path=build_qaa_run_path(run_id),
-        headers=headers,
-        token_mode=QaaGeneratorTokenMode.SERVICE,
+        headers=build_personal_headers(
+            request,
+            personal_token=qaa_generator_token,
+            accept=MediaType.JSON,
+        ),
+        token_mode=QaaGeneratorTokenMode.PERSONAL,
     )
     await reconcile_qaa_operation(
         db,
@@ -356,21 +376,20 @@ async def get_qaa_run_artifacts(
     run_id: str,
     request: Request,
     current_user: CurrentUser,
+    qaa_generator_token: QaaPersonalTokenHeader = None,
 ) -> Response:
+    del current_user
     client = get_qaa_client(request)
-    settings = get_settings(request)
-    headers = build_outbound_headers(
-        settings,
-        accept=MediaType.JSON,
-        token_mode=QaaGeneratorTokenMode.SERVICE,
-        user=current_user,
-    )
     result = await request_json(
         client,
         method=HttpMethod.GET.value,
         path=build_qaa_run_artifacts_path(run_id, RoutePath.ARTIFACTS.value),
-        headers=headers,
-        token_mode=QaaGeneratorTokenMode.SERVICE,
+        headers=build_personal_headers(
+            request,
+            personal_token=qaa_generator_token,
+            accept=MediaType.JSON,
+        ),
+        token_mode=QaaGeneratorTokenMode.PERSONAL,
     )
     return build_proxy_response(result)
 
@@ -379,24 +398,21 @@ async def handle_qaa_run_action(
     *,
     run_id: str,
     request: Request,
-    current_user: User,
+    personal_token: str | None,
     suffix: RoutePath,
 ) -> Response:
     client = get_qaa_client(request)
-    settings = get_settings(request)
-    headers = build_outbound_headers(
-        settings,
-        accept=MediaType.JSON,
-        token_mode=QaaGeneratorTokenMode.SERVICE,
-        user=current_user,
-        content_type=MediaType.JSON,
-    )
     result = await request_json(
         client,
         method=HttpMethod.POST.value,
         path=build_qaa_run_artifacts_path(run_id, suffix.value),
-        headers=headers,
-        token_mode=QaaGeneratorTokenMode.SERVICE,
+        headers=build_personal_headers(
+            request,
+            personal_token=personal_token,
+            accept=MediaType.JSON,
+            content_type=MediaType.JSON,
+        ),
+        token_mode=QaaGeneratorTokenMode.PERSONAL,
         passthrough_status_codes=PASSTHROUGH_STATUS_CODES,
     )
     return build_proxy_response(result)
@@ -407,11 +423,13 @@ async def pause_qaa_run(
     run_id: str,
     request: Request,
     current_user: CurrentUser,
+    qaa_generator_token: QaaPersonalTokenHeader = None,
 ) -> Response:
+    del current_user
     return await handle_qaa_run_action(
         run_id=run_id,
         request=request,
-        current_user=current_user,
+        personal_token=qaa_generator_token,
         suffix=RoutePath.PAUSE,
     )
 
@@ -421,11 +439,13 @@ async def resume_qaa_run(
     run_id: str,
     request: Request,
     current_user: CurrentUser,
+    qaa_generator_token: QaaPersonalTokenHeader = None,
 ) -> Response:
+    del current_user
     return await handle_qaa_run_action(
         run_id=run_id,
         request=request,
-        current_user=current_user,
+        personal_token=qaa_generator_token,
         suffix=RoutePath.RESUME,
     )
 
@@ -435,11 +455,13 @@ async def stop_qaa_run(
     run_id: str,
     request: Request,
     current_user: CurrentUser,
+    qaa_generator_token: QaaPersonalTokenHeader = None,
 ) -> Response:
+    del current_user
     return await handle_qaa_run_action(
         run_id=run_id,
         request=request,
-        current_user=current_user,
+        personal_token=qaa_generator_token,
         suffix=RoutePath.STOP,
     )
 
@@ -449,22 +471,21 @@ async def stream_qaa_run_events(
     run_id: str,
     request: Request,
     current_user: CurrentUser,
+    qaa_generator_token: QaaPersonalTokenHeader = None,
     last_event_id: Annotated[str | None, Header(alias=HttpHeader.LAST_EVENT_ID.value)] = None,
 ) -> StreamingResponse:
+    del current_user
     client = get_qaa_client(request)
-    settings = get_settings(request)
-    headers = build_outbound_headers(
-        settings,
-        accept=MediaType.TEXT_EVENT_STREAM,
-        token_mode=QaaGeneratorTokenMode.SERVICE,
-        user=current_user,
-        last_event_id=last_event_id,
-    )
     upstream_response = await open_event_stream(
         client,
         path=build_qaa_run_artifacts_path(run_id, RoutePath.EVENTS_STREAM.value),
-        headers=headers,
-        token_mode=QaaGeneratorTokenMode.SERVICE,
+        headers=build_personal_headers(
+            request,
+            personal_token=qaa_generator_token,
+            accept=MediaType.TEXT_EVENT_STREAM,
+            last_event_id=last_event_id,
+        ),
+        token_mode=QaaGeneratorTokenMode.PERSONAL,
     )
 
     async def iterate_stream() -> AsyncIterator[bytes]:

@@ -37,6 +37,12 @@ class AgentPath(StrEnum):
     JOBS = "/jobs"
     STREAM = "/stream"
     CANCEL = "/cancel"
+    QAA_RUNS = "/qaa/runs"
+    QAA_ARTIFACTS = "/artifacts"
+    QAA_EVENTS_STREAM = "/events/stream"
+    QAA_PAUSE = "/pause"
+    QAA_RESUME = "/resume"
+    QAA_STOP = "/stop"
 
 
 class PreflightKey(StrEnum):
@@ -106,6 +112,7 @@ class EnvKey(StrEnum):
     KUBECTL_BIN = "AGENT_KUBECTL_BIN"
     KUBECONFIG = "AGENT_KUBECONFIG"
     KUBECTL_REQUEST_TIMEOUT = "AGENT_KUBECTL_REQUEST_TIMEOUT"
+    QAA_GENERATOR_TOKEN = "AGENT_QAA_GENERATOR_TOKEN"
     STAGING_KUBECONFIG_URL = "AGENT_STAGING_KUBECONFIG_URL"
     KUBECONFIG_ACTIVE_PATH = "AGENT_KUBECONFIG_ACTIVE_PATH"
     STAGING_KUBECONFIG_MAX_AGE_HOURS = "AGENT_STAGING_KUBECONFIG_MAX_AGE_HOURS"
@@ -121,6 +128,9 @@ class HeaderName(StrEnum):
     CACHE_CONTROL = "Cache-Control"
     CONNECTION = "Connection"
     CONTENT_TYPE = "Content-Type"
+    IDEMPOTENCY_KEY = "Idempotency-Key"
+    LAST_EVENT_ID = "Last-Event-ID"
+    X_QAA_GENERATOR_TOKEN = "X-QAA-Generator-Token"
     X_QAA_TMS = "X-QAA-TMS"
 
 
@@ -137,6 +147,7 @@ class HeaderValue(StrEnum):
 class BackendPath(StrEnum):
     ME = "/api/v1/me"
     OPERATIONS = "/api/v1/operations"
+    QAA_RUNS = "/api/v1/qaa/runs"
 
 
 class RequiredTool(StrEnum):

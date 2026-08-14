@@ -21,8 +21,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { agentClient, discoverAgent, getConfiguredAgentPorts } from "@/api/agentClient";
-import { backendClient } from "@/api/backendClient";
-import type { AgentSettings, AgentSettingsUpdate, User } from "@/api/types";
+import type { AgentSettings, AgentSettingsUpdate } from "@/api/types";
 import { usePalette } from "@/app/theme/usePalette";
 import { PluginId, QueryKey, type PluginId as PluginIdType } from "@/constants";
 import { usePluginsContext } from "@/plugins/context";
@@ -54,9 +53,9 @@ const SettingsPanelCopy = {
   LOADING: "Loading settings.",
   NOT_SET: "Not set",
   QAA_GENERATOR_DESCRIPTION:
-    "Your personal qaa-generator token is stored on your backend user record because the backend proxies runs on your behalf.",
+    "Your personal qaa-generator token is written to the local companion `.env` on this machine.",
   QAA_GENERATOR_SAVE: "Save qaa-generator token",
-  QAA_GENERATOR_TITLE: "qaa-generator",
+  QAA_GENERATOR_TITLE: "QAA generator",
   QAA_GENERATOR_TOKEN_LABEL: "Personal token",
   SECTION_DESCRIPTION:
     "Edit only the personal credentials required by the plugins enabled for your account.",
@@ -131,10 +130,10 @@ function buildAgentFormState(settings: AgentSettings): AgentFormState {
   };
 }
 
-function buildQaaGeneratorFormState(user: User): QaaGeneratorFormState {
+function buildQaaGeneratorFormState(settings: AgentSettings): QaaGeneratorFormState {
   return {
     token: EMPTY_VALUE,
-    tokenSet: user.qaa_generator_token_set,
+    tokenSet: settings.qaa_generator_token_set,
   };
 }
 
@@ -201,7 +200,6 @@ export function SettingsPanel() {
   const queryClient = useQueryClient();
   const { enabledOptionalPluginIdSet } = usePluginsContext();
   const currentUser = useAuthStore((state) => state.currentUser);
-  const setCurrentUser = useAuthStore((state) => state.setCurrentUser);
   const token = useAuthStore((state) => state.token);
   const enabledPluginIds = currentUser
     ? enabledOptionalPluginIdSet(currentUser.enabled_plugins)
@@ -210,7 +208,7 @@ export function SettingsPanel() {
   const showStagings = enabledPluginIds.has(PluginId.STAGINGS);
   const showKuber = enabledPluginIds.has(PluginId.KUBER);
   const showQaaGenerator = enabledPluginIds.has(PluginId.QAA_GENERATOR);
-  const hasEnabledAgentPlugins = showJenkins || showStagings || showKuber;
+  const hasEnabledAgentPlugins = showJenkins || showStagings || showKuber || showQaaGenerator;
   const hasVisiblePluginSettings = hasEnabledAgentPlugins || showQaaGenerator;
 
   const [agentForm, setAgentForm] = useState<AgentFormState | null>(null);
@@ -238,14 +236,9 @@ export function SettingsPanel() {
   useEffect(() => {
     if (agentSettingsQuery.data) {
       setAgentForm(buildAgentFormState(agentSettingsQuery.data));
+      setQaaGeneratorForm(buildQaaGeneratorFormState(agentSettingsQuery.data));
     }
   }, [agentSettingsQuery.data]);
-
-  useEffect(() => {
-    if (currentUser) {
-      setQaaGeneratorForm(buildQaaGeneratorFormState(currentUser));
-    }
-  }, [currentUser]);
 
   const jenkinsUpdateMutation = useMutation({
     mutationFn: async (payload: AgentSettingsUpdate) => {
@@ -321,22 +314,21 @@ export function SettingsPanel() {
 
   const qaaGeneratorUpdateMutation = useMutation({
     mutationFn: async (qaaGeneratorToken: string) => {
-      if (!token) {
+      if (!token || !discoveryQuery.data) {
         throw new Error(SettingsPanelCopy.UPDATE_REQUIRED);
       }
 
-      return backendClient.updateMe(token, {
+      return agentClient.updateSettings(discoveryQuery.data.port, token, {
         qaa_generator_token: qaaGeneratorToken,
       });
     },
-    onSuccess: async (updatedUser) => {
-      setCurrentUser(updatedUser);
-      setQaaGeneratorForm(buildQaaGeneratorFormState(updatedUser));
+    onSuccess: async (updatedSettings) => {
+      setQaaGeneratorForm(buildQaaGeneratorFormState(updatedSettings));
       setQaaGeneratorNotice({
         message: SettingsPanelCopy.UPDATE_SUCCESS,
         status: NoticeStatus.SUCCESS,
       });
-      await queryClient.invalidateQueries({ queryKey: [QueryKey.ME] });
+      await queryClient.invalidateQueries({ queryKey: [QueryKey.AGENT_SETTINGS] });
     },
     onError: (error) => {
       setQaaGeneratorNotice({

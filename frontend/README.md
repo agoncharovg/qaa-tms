@@ -118,21 +118,16 @@ Bearer token as the central backend.
 
 ## QAA Generator workflow
 
-The `QAA Generator` optional plugin is a backend-proxied, centrally reachable workflow and does
-not use the local agent.
+The `QAA Generator` optional plugin now uses the local companion for all non-admin flows.
 
-- `Generate`: submit `{ jira_key, dry_run, skip_pr, skip_exec, branch?, profile }` to the backend proxy, which re-authenticates to qaa-generator with the service token stored on the server.
-- `Live`: stream one run over authenticated fetch-SSE, inspect its live events, and issue `pause` / `resume` / `stop`.
+- `Generate`: submit `{ jira_key, dry_run, skip_pr, skip_exec, branch?, profile }` to the local companion.
+- `Live`: stream one run over authenticated fetch-SSE, inspect its live events, and issue `pause` / `resume` / `stop` through the companion.
 - `Runs`: filter the shared run list with cursor pagination, inspect a run and its artifacts inline, and open any run into the Live tab.
-- `Admin`: admin-only tab, always kept last in the plugin tab order, for qaa-generator user lookup/create, user-token regeneration, and service-token create/revoke. The backend calls qaa-generator with its separate `QAA_GENERATOR_SUPERUSER_TOKEN`; the browser never receives either qaa-generator token.
+- `Admin`: admin-only tab, always kept last in the plugin tab order, for QAA generator user lookup/create, user-token regeneration, and service registration / revoke.
 
-The browser never receives the qaa-generator service token. The backend derives the optional
-delegation header as `email:<username>` when the username contains `@`; otherwise it falls back
-to the backend-side `QAA_GENERATOR_ACTOR` setting or omits the header.
+Generate, Live, and Runs require the user's personal QAA generator token in the local companion `.env` (`AGENT_QAA_GENERATOR_TOKEN`). The backend never stores that token in the TMS database. Admin calls use the backend-held `QAA_GENERATOR_SUPERUSER_TOKEN` only.
 
-Plaintext qaa-generator tokens returned by the admin workflows are shown exactly once in a copy
-modal. They are not persisted in local storage, Zustand, or React Query list caches, and they are
-not written to the backend operations audit.
+Plaintext QAA generator user and service tokens returned by the admin workflows are shown exactly once in a copy modal. They are not persisted in local storage, Zustand, or React Query list caches, and they are not written to the backend operations audit.
 
 ## Kuber workflow
 

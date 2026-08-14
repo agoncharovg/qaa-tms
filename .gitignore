@@ -31,3 +31,5 @@ target/
 
 # Local data
 *.log
+*.db
+.qaa-tms-dev.db

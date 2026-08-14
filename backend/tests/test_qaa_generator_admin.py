@@ -13,7 +13,6 @@ from app.core.constants import DevPassword, DevUsername, HttpHeader, RoutePath
 
 QAA_GENERATOR_TEST_BASE_URL = "http://qaa-generator.test/api/v1"
 QAA_GENERATOR_SUPERUSER_TOKEN = "superuser-token"
-QAA_GENERATOR_SERVICE_TOKEN = "service-token"
 QAA_ADMIN_EMAIL = "alice@example.com"
 QAA_ADMIN_SLACK_USER_ID = "U123456"
 QAA_ADMIN_USER_ID = "user-123"
@@ -137,7 +136,6 @@ def install_qaa_client(
         )
         client.app.state.qaa_generator_client = qaa_client
         client.app.state.settings.qaa_generator_base_url = QAA_GENERATOR_TEST_BASE_URL
-        client.app.state.settings.qaa_generator_service_token = QAA_GENERATOR_SERVICE_TOKEN
         client.app.state.settings.qaa_generator_superuser_token = QAA_GENERATOR_SUPERUSER_TOKEN
         installed_clients.append((original_client, qaa_client))
 
@@ -188,7 +186,6 @@ def test_admin_list_qaa_users_uses_superuser_token(
         assert request.headers[HttpHeader.AUTHORIZATION.value] == (
             f"{AUTH_SCHEME_BEARER} {QAA_GENERATOR_SUPERUSER_TOKEN}"
         )
-        assert HttpHeader.ACTOR.value not in request.headers
         assert request.url.params.get("email") == QAA_ADMIN_EMAIL
         assert request.url.params.get("slack_user_id") == QAA_ADMIN_SLACK_USER_ID
         assert request.url.params.get("limit") == QAA_ADMIN_LOOKUP_LIMIT

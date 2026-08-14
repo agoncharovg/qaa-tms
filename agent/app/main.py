@@ -10,6 +10,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.qaa import router as qaa_router
 from app.api.routes import router
 from app.core.config import Settings, get_settings
 from app.core.constants import DEFAULT_BACKEND_TIMEOUT_SECONDS, HeaderName
@@ -55,6 +56,7 @@ def create_app(
         ],
     )
     app.include_router(router)
+    app.include_router(qaa_router)
     return app
 
 

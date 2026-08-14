@@ -7,8 +7,8 @@ const getQaaRunMock = vi.hoisted(() => vi.fn());
 const getQaaRunArtifactsMock = vi.hoisted(() => vi.fn());
 const startRunMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/api/backendClient", () => ({
-  backendClient: {
+vi.mock("@/api/qaaAgentClient", () => ({
+  qaaAgentClient: {
     getQaaRun: getQaaRunMock,
     getQaaRunArtifacts: getQaaRunArtifactsMock,
     listQaaRuns: listQaaRunsMock,
@@ -57,6 +57,7 @@ const SECOND_QAA_RUNS_PAGE = {
 
 function expectInitialRunsRequest(): void {
   expect(listQaaRunsMock).toHaveBeenCalledWith(
+    47600,
     "token-123",
     {
       createdFrom: undefined,
@@ -87,7 +88,6 @@ describe("RunsPanel", () => {
         created_at: "2026-08-11T00:00:00Z",
         display_name: "QAA User",
         enabled_plugins: QAA_ENABLED_PLUGINS,
-        qaa_generator_token_set: false,
         id: 3,
         is_admin: false,
         updated_at: "2026-08-11T00:00:00Z",
@@ -97,7 +97,7 @@ describe("RunsPanel", () => {
     });
 
     listQaaRunsMock.mockImplementation(
-      (_token: string, params: { cursor?: string | null }) => {
+      (_port: number, _token: string, params: { cursor?: string | null }) => {
         if (params.cursor === "cursor-2") {
           return Promise.resolve(SECOND_QAA_RUNS_PAGE);
         }
@@ -105,7 +105,7 @@ describe("RunsPanel", () => {
         return Promise.resolve(FIRST_QAA_RUNS_PAGE);
       }
     );
-    getQaaRunMock.mockImplementation((_token: string, runId: string) => {
+    getQaaRunMock.mockImplementation((_port: number, _token: string, runId: string) => {
       return Promise.resolve({
         created_at: "2026-08-11T10:00:00Z",
         effective_actor: "email:user@example.com",
@@ -126,7 +126,7 @@ describe("RunsPanel", () => {
     listQaaRunsMock.mockReset();
     listQaaRunsMock.mockReturnValue(new Promise(() => {}));
 
-    renderWithProviders(<RunsPanel />);
+    renderWithProviders(<RunsPanel agentPort={47600} hasPersonalToken />);
 
     expect(screen.getByRole("textbox", { name: /Jira key/i })).toBeInTheDocument();
     expect(screen.getByText("Loading QAA runs.")).toBeInTheDocument();
@@ -135,7 +135,7 @@ describe("RunsPanel", () => {
   it("keeps partial jira filtering local and only queries the backend for full keys", async () => {
     const user = userEvent.setup();
 
-    renderWithProviders(<RunsPanel />);
+    renderWithProviders(<RunsPanel agentPort={47600} hasPersonalToken />);
 
     expect(await screen.findByText("QAA-123")).toBeInTheDocument();
     expectInitialRunsRequest();
@@ -154,6 +154,7 @@ describe("RunsPanel", () => {
 
     await waitFor(() => {
       expect(listQaaRunsMock).toHaveBeenLastCalledWith(
+        47600,
         "token-123",
         {
           createdFrom: undefined,
@@ -172,7 +173,7 @@ describe("RunsPanel", () => {
   it("advances with the cursor and opens a run in Live", async () => {
     const user = userEvent.setup();
 
-    renderWithProviders(<RunsPanel />);
+    renderWithProviders(<RunsPanel agentPort={47600} hasPersonalToken />);
 
     expect(await screen.findByText("QAA-123")).toBeInTheDocument();
     expectInitialRunsRequest();
@@ -180,6 +181,7 @@ describe("RunsPanel", () => {
     await user.click(await screen.findByRole("button", { name: "Next" }));
     await waitFor(() => {
       expect(listQaaRunsMock).toHaveBeenLastCalledWith(
+        47600,
         "token-123",
         {
           createdFrom: undefined,

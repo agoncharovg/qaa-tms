@@ -28,37 +28,58 @@ type UserFormState = {
   description: string;
 };
 
+type ServiceFormState = {
+  name: string;
+  tokenId: string;
+};
+
 type TokenModalState = {
   title: string;
   token: string;
 };
 
+type InlineNotice = {
+  color: "red" | "teal";
+  message: string;
+  title: string;
+};
+
 const QaaAdminPanelCopy = {
-  ADMIN_TITLE: "QAA Generator Admin",
-  ADMIN_SUBTITLE: "Manage qaa-generator users with the backend-held superuser token.",
+  ADMIN_TITLE: "QAA generator",
+  ADMIN_SUBTITLE: "Manage QAA generator users and service registrations with the backend-held superuser token.",
   COPY_ACTION: "Copy token",
   COPIED_ACTION: "Copied",
   COPY_ONCE_WARNING:
     "This plaintext token is shown once. Copy it now. It is never stored in the SPA or written to the operations audit.",
   CREATE_USER_ACTION: "Create user",
-  CREATE_USER_ERROR: "Unable to create the qaa-generator user.",
-  CREATE_USER_MODAL_TITLE: "Create qaa-generator user",
+  CREATE_USER_ERROR: "Unable to create the QAA generator user.",
+  CREATE_USER_MODAL_TITLE: "Create QAA generator user",
   CREATE_USER_SUBTITLE: "Provide at least one identifier.",
   DELETE_ACTION: "Delete",
   DELETE_CONFIRMATION_HELP: "Type the identifier below to confirm permanent deletion.",
   DELETE_CONFIRMATION_LABEL: "Confirmation",
-  DELETE_CONFIRMATION_TITLE: "Delete qaa-generator user",
-  DELETE_ERROR: "Unable to delete the qaa-generator user.",
+  DELETE_CONFIRMATION_TITLE: "Delete QAA generator user",
+  DELETE_ERROR: "Unable to delete the QAA generator user.",
   DELETE_SUBMIT_ACTION: "Delete user",
   DETAIL_NOT_SET: "Not set",
   EDIT_ACTION: "Edit",
-  EDIT_MODAL_TITLE: "Edit qaa-generator user",
+  EDIT_MODAL_TITLE: "Edit QAA generator user",
   EDIT_SUBMIT_ACTION: "Save changes",
   EDIT_SUBTITLE: "Clear a field to remove it. Keep at least one identifier.",
-  LOADING_USERS: "Loading qaa-generator users.",
-  NO_USERS: "No qaa-generator users were returned.",
+  LOADING_USERS: "Loading QAA generator users.",
+  NO_USERS: "No QAA generator users were returned.",
+  REGISTER_SERVICE_ACTION: "Register service",
+  REGISTER_SERVICE_ERROR: "Unable to register the service.",
   REGENERATE_ACTION: "Regenerate token",
-  REGENERATE_ERROR: "Unable to regenerate the qaa-generator user token.",
+  REGENERATE_ERROR: "Unable to regenerate the QAA generator user token.",
+  REVOKE_SERVICE_ACTION: "Revoke service token",
+  REVOKE_SERVICE_ERROR: "Unable to revoke the service token.",
+  SERVICE_NAME_LABEL: "Service name",
+  SERVICE_REGISTERED: "Service registered.",
+  SERVICE_REGISTER_SUBTITLE:
+    "Register external services such as qaa-bot and issue a service token. Revoke uses a token id from qaa-generator.",
+  SERVICE_REVOKED: "Service token revoked.",
+  SERVICES_SECTION: "Services",
   TABLE_ACTIONS: "Actions",
   TABLE_CREATED: "Created",
   TABLE_DESCRIPTION: "Description",
@@ -66,9 +87,11 @@ const QaaAdminPanelCopy = {
   TABLE_NAME: "Name",
   TABLE_SLACK: "Slack user id",
   TOKEN_FIELD_LABEL: "Plaintext token",
-  UPDATE_ERROR: "Unable to update the qaa-generator user.",
-  USER_CREATED_TOKEN_MODAL_TITLE: "Copy the new qaa-generator user token",
-  USER_REGENERATED_TOKEN_MODAL_TITLE: "Copy the regenerated qaa-generator user token",
+  TOKEN_ID_LABEL: "Token id",
+  UPDATE_ERROR: "Unable to update the QAA generator user.",
+  USER_CREATED_TOKEN_MODAL_TITLE: "Copy the new QAA generator user token",
+  USER_REGENERATED_TOKEN_MODAL_TITLE: "Copy the regenerated QAA generator user token",
+  USER_SERVICE_TOKEN_MODAL_TITLE: "Copy the new QAA generator service token",
   USERS_SECTION: "Users",
   USERS_SUBTITLE: "Every user can be edited, deleted, or issued a fresh token from one table.",
 } as const;
@@ -82,6 +105,11 @@ const USER_FORM_INITIAL_STATE: UserFormState = {
   email: "",
   name: "",
   slackUserId: "",
+};
+
+const SERVICE_FORM_INITIAL_STATE: ServiceFormState = {
+  name: "",
+  tokenId: "",
 };
 
 function formatOptionalText(value: string | null | undefined): string {
@@ -111,7 +139,11 @@ function toUserFormState(user: QaaUser): UserFormState {
 }
 
 function hasUserIdentifier(form: UserFormState): boolean {
-  return form.email.trim().length > 0 || form.slackUserId.trim().length > 0;
+  return (
+    form.email.trim().length > 0 ||
+    form.slackUserId.trim().length > 0 ||
+    form.name.trim().length > 0
+  );
 }
 
 function buildQaaUserCreatePayload(form: UserFormState): QaaUserCreateRequest {
@@ -212,6 +244,8 @@ export function AdminPanel() {
   const [editUserForm, setEditUserForm] = useState<UserFormState>(USER_FORM_INITIAL_STATE);
   const [deletingUser, setDeletingUser] = useState<QaaUser | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [serviceForm, setServiceForm] = useState<ServiceFormState>(SERVICE_FORM_INITIAL_STATE);
+  const [serviceNotice, setServiceNotice] = useState<InlineNotice | null>(null);
   const [tokenModal, setTokenModal] = useState<TokenModalState | null>(null);
 
   const usersQuery = useQuery({
@@ -296,6 +330,60 @@ export function AdminPanel() {
     },
   });
 
+  const registerServiceMutation = useMutation({
+    mutationFn: async (name: string) => {
+      if (!token) {
+        throw new Error("Authentication is required.");
+      }
+
+      return backendClient.createQaaServiceToken(token, { name });
+    },
+    onSuccess: (response) => {
+      setServiceForm((current) => ({ ...current, name: "" }));
+      setServiceNotice({
+        color: "teal",
+        message: QaaAdminPanelCopy.SERVICE_REGISTERED,
+        title: QaaAdminPanelCopy.SERVICES_SECTION,
+      });
+      setTokenModal({
+        title: QaaAdminPanelCopy.USER_SERVICE_TOKEN_MODAL_TITLE,
+        token: response.token,
+      });
+    },
+    onError: (error) => {
+      setServiceNotice({
+        color: "red",
+        message: error instanceof Error ? error.message : QaaAdminPanelCopy.REGISTER_SERVICE_ERROR,
+        title: QaaAdminPanelCopy.SERVICES_SECTION,
+      });
+    },
+  });
+
+  const revokeServiceMutation = useMutation({
+    mutationFn: async (tokenId: string) => {
+      if (!token) {
+        throw new Error("Authentication is required.");
+      }
+
+      return backendClient.revokeQaaServiceToken(token, tokenId);
+    },
+    onSuccess: () => {
+      setServiceForm((current) => ({ ...current, tokenId: "" }));
+      setServiceNotice({
+        color: "teal",
+        message: QaaAdminPanelCopy.SERVICE_REVOKED,
+        title: QaaAdminPanelCopy.SERVICES_SECTION,
+      });
+    },
+    onError: (error) => {
+      setServiceNotice({
+        color: "red",
+        message: error instanceof Error ? error.message : QaaAdminPanelCopy.REVOKE_SERVICE_ERROR,
+        title: QaaAdminPanelCopy.SERVICES_SECTION,
+      });
+    },
+  });
+
   if (!currentUser?.is_admin) {
     return null;
   }
@@ -340,6 +428,7 @@ export function AdminPanel() {
     setTokenModal(null);
     createUserMutation.reset();
     regenerateTokenMutation.reset();
+    registerServiceMutation.reset();
   }
 
   function submitCreateUser(): void {
@@ -363,6 +452,26 @@ export function AdminPanel() {
     }
 
     deleteUserMutation.mutate(deletingUser.id);
+  }
+
+  function submitRegisterService(): void {
+    const serviceName = serviceForm.name.trim();
+    if (!serviceName) {
+      return;
+    }
+
+    setServiceNotice(null);
+    registerServiceMutation.mutate(serviceName);
+  }
+
+  function submitRevokeService(): void {
+    const tokenId = serviceForm.tokenId.trim();
+    if (!tokenId) {
+      return;
+    }
+
+    setServiceNotice(null);
+    revokeServiceMutation.mutate(tokenId);
   }
 
   const deleteIdentifier = deletingUser ? resolveUserIdentifier(deletingUser) : "";
@@ -481,6 +590,51 @@ export function AdminPanel() {
         </Table.ScrollContainer>
       ) : null}
 
+      <div>
+        <Title order={3}>{QaaAdminPanelCopy.SERVICES_SECTION}</Title>
+        <Text c="dimmed">{QaaAdminPanelCopy.SERVICE_REGISTER_SUBTITLE}</Text>
+      </div>
+
+      {serviceNotice ? (
+        <Alert color={serviceNotice.color} icon={<IconAlertCircle size={18} />} title={serviceNotice.title}>
+          {serviceNotice.message}
+        </Alert>
+      ) : null}
+
+      <Stack gap="md">
+        <TextInput
+          label={QaaAdminPanelCopy.SERVICE_NAME_LABEL}
+          onChange={(event) => setServiceForm((current) => ({ ...current, name: event.currentTarget.value }))}
+          value={serviceForm.name}
+        />
+        <Group justify="flex-end">
+          <Button
+            leftSection={<IconPlus size={16} />}
+            loading={registerServiceMutation.isPending}
+            onClick={submitRegisterService}
+          >
+            {QaaAdminPanelCopy.REGISTER_SERVICE_ACTION}
+          </Button>
+        </Group>
+
+        <TextInput
+          label={QaaAdminPanelCopy.TOKEN_ID_LABEL}
+          onChange={(event) => setServiceForm((current) => ({ ...current, tokenId: event.currentTarget.value }))}
+          value={serviceForm.tokenId}
+        />
+        <Group justify="flex-end">
+          <Button
+            color="red"
+            leftSection={<IconTrash size={16} />}
+            loading={revokeServiceMutation.isPending}
+            onClick={submitRevokeService}
+            variant="light"
+          >
+            {QaaAdminPanelCopy.REVOKE_SERVICE_ACTION}
+          </Button>
+        </Group>
+      </Stack>
+
       <Modal
         opened={createUserOpened}
         onClose={closeCreateUserModal}
@@ -557,12 +711,10 @@ export function AdminPanel() {
         transitionProps={{ duration: 0 }}
       >
         <Stack>
-          <Text>
-            Delete <strong>{deleteIdentifier}</strong>.
-          </Text>
           <Text c="dimmed" size="sm">
             {QaaAdminPanelCopy.DELETE_CONFIRMATION_HELP}
           </Text>
+          <Text fw={600}>{deleteIdentifier}</Text>
 
           {deleteUserMutation.isError ? (
             <Alert color="red" icon={<IconAlertCircle size={18} />} title={QaaAdminPanelCopy.DELETE_ERROR}>
@@ -573,10 +725,9 @@ export function AdminPanel() {
           ) : null}
 
           <TextInput
-            aria-label={QaaAdminPanelCopy.DELETE_CONFIRMATION_LABEL}
             label={QaaAdminPanelCopy.DELETE_CONFIRMATION_LABEL}
-            value={deleteConfirmation}
             onChange={(event) => setDeleteConfirmation(event.currentTarget.value)}
+            value={deleteConfirmation}
           />
 
           <Group justify="flex-end">
@@ -595,24 +746,25 @@ export function AdminPanel() {
       <Modal
         opened={tokenModal !== null}
         onClose={closeTokenModal}
-        title={tokenModal?.title ?? QaaAdminPanelCopy.TOKEN_FIELD_LABEL}
+        title={tokenModal?.title}
         centered
         transitionProps={{ duration: 0 }}
       >
         <Stack>
-          <Alert color="yellow" title={QaaAdminPanelCopy.COPY_ONCE_WARNING}>
-            {QaaAdminPanelCopy.COPY_ONCE_WARNING}
+          <Alert color="yellow" icon={<IconAlertCircle size={18} />} title={QaaAdminPanelCopy.COPY_ONCE_WARNING}>
+            <Text>{QaaAdminPanelCopy.COPY_ONCE_WARNING}</Text>
           </Alert>
+
           <TextInput
-            aria-label={QaaAdminPanelCopy.TOKEN_FIELD_LABEL}
             label={QaaAdminPanelCopy.TOKEN_FIELD_LABEL}
             readOnly
             value={tokenModal?.token ?? ""}
           />
+
           <Group justify="flex-end">
             <CopyButton timeout={QAA_COPY_TIMEOUT_MS} value={tokenModal?.token ?? ""}>
               {({ copied, copy }) => (
-                <Button leftSection={<IconCopy size={16} />} onClick={copy} variant="light">
+                <Button leftSection={<IconCopy size={16} />} onClick={copy}>
                   {copied ? QaaAdminPanelCopy.COPIED_ACTION : QaaAdminPanelCopy.COPY_ACTION}
                 </Button>
               )}

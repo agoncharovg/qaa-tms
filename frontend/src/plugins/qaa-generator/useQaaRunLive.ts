@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { backendClient } from "@/api/backendClient";
+import { qaaAgentClient } from "@/api/qaaAgentClient";
 import { useAuthStore } from "@/store/authStore";
 import { useQaaGeneratorStore } from "@/plugins/qaa-generator/qaaStore";
 import { isTerminalQaaRunStatus } from "@/plugins/qaa-generator/runState";
@@ -10,6 +10,7 @@ import { DEFAULT_JOB_POLL_INTERVAL_MS, QueryKey } from "@/constants";
 const QAA_LIVE_COPY = {
   RUN_REQUIRED: "A QAA run is required.",
   STREAM_FAILED: "Live QAA run stream failed.",
+  TOKEN_REQUIRED: "Set your personal qaa-generator token in Profile / Settings.",
 } as const;
 
 function invalidateQaaRunQueries(queryClient: ReturnType<typeof useQueryClient>): Promise<unknown> {
@@ -18,7 +19,7 @@ function invalidateQaaRunQueries(queryClient: ReturnType<typeof useQueryClient>)
   });
 }
 
-export function useQaaRunLive() {
+export function useQaaRunLive(agentPort: number, hasPersonalToken: boolean) {
   const queryClient = useQueryClient();
   const token = useAuthStore((state) => state.token);
   const clearLiveRun = useQaaGeneratorStore((state) => state.clearLiveRun);
@@ -31,9 +32,9 @@ export function useQaaRunLive() {
   const isRunTerminal = currentRunStatus ? isTerminalQaaRunStatus(currentRunStatus) : false;
 
   const runQuery = useQuery({
-    enabled: Boolean(token && liveRun?.runId),
-    queryFn: ({ signal }) => backendClient.getQaaRun(token ?? "", liveRun?.runId ?? "", signal),
-    queryKey: [QueryKey.QAA_RUN_DETAIL, token, liveRun?.runId],
+    enabled: Boolean(token && liveRun?.runId && hasPersonalToken),
+    queryFn: ({ signal }) => qaaAgentClient.getQaaRun(agentPort, token ?? "", liveRun?.runId ?? "", signal),
+    queryKey: [QueryKey.QAA_RUN_DETAIL, agentPort, token, liveRun?.runId],
     refetchInterval: (query) => {
       const nextStatus = query.state.data?.status ?? liveRun?.run?.status;
       return nextStatus && isTerminalQaaRunStatus(nextStatus)
@@ -59,7 +60,7 @@ export function useQaaRunLive() {
 
   useEffect(() => {
     const runId = liveRun?.runId;
-    if (!token || !runId || isRunTerminal) {
+    if (!token || !runId || isRunTerminal || !hasPersonalToken) {
       return;
     }
 
@@ -67,8 +68,9 @@ export function useQaaRunLive() {
     streamAbortControllerRef.current?.abort();
     streamAbortControllerRef.current = controller;
 
-    void backendClient
+    void qaaAgentClient
       .streamQaaRun(
+        agentPort,
         token,
         runId,
         (event) => {
@@ -99,7 +101,7 @@ export function useQaaRunLive() {
         streamAbortControllerRef.current = null;
       }
     };
-  }, [isRunTerminal, liveRun?.runId, queryClient, reduceLiveRun, token]);
+  }, [agentPort, hasPersonalToken, isRunTerminal, liveRun?.runId, reduceLiveRun, token]);
 
   useEffect(() => {
     if (liveRun && isRunTerminal) {
@@ -124,12 +126,15 @@ export function useQaaRunLive() {
       if (!token || !liveRun) {
         throw new Error(QAA_LIVE_COPY.RUN_REQUIRED);
       }
+      if (!hasPersonalToken) {
+        throw new Error(QAA_LIVE_COPY.TOKEN_REQUIRED);
+      }
 
-      return backendClient.pauseQaaRun(token, liveRun.runId);
+      return qaaAgentClient.pauseQaaRun(agentPort, token, liveRun.runId);
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: [QueryKey.QAA_RUN_DETAIL, token, liveRun?.runId],
+        queryKey: [QueryKey.QAA_RUN_DETAIL, agentPort, token, liveRun?.runId],
       });
       await invalidateQaaRunQueries(queryClient);
     },
@@ -140,12 +145,15 @@ export function useQaaRunLive() {
       if (!token || !liveRun) {
         throw new Error(QAA_LIVE_COPY.RUN_REQUIRED);
       }
+      if (!hasPersonalToken) {
+        throw new Error(QAA_LIVE_COPY.TOKEN_REQUIRED);
+      }
 
-      return backendClient.resumeQaaRun(token, liveRun.runId);
+      return qaaAgentClient.resumeQaaRun(agentPort, token, liveRun.runId);
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: [QueryKey.QAA_RUN_DETAIL, token, liveRun?.runId],
+        queryKey: [QueryKey.QAA_RUN_DETAIL, agentPort, token, liveRun?.runId],
       });
       await invalidateQaaRunQueries(queryClient);
     },
@@ -156,12 +164,15 @@ export function useQaaRunLive() {
       if (!token || !liveRun) {
         throw new Error(QAA_LIVE_COPY.RUN_REQUIRED);
       }
+      if (!hasPersonalToken) {
+        throw new Error(QAA_LIVE_COPY.TOKEN_REQUIRED);
+      }
 
-      return backendClient.stopQaaRun(token, liveRun.runId);
+      return qaaAgentClient.stopQaaRun(agentPort, token, liveRun.runId);
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: [QueryKey.QAA_RUN_DETAIL, token, liveRun?.runId],
+        queryKey: [QueryKey.QAA_RUN_DETAIL, agentPort, token, liveRun?.runId],
       });
       await invalidateQaaRunQueries(queryClient);
     },

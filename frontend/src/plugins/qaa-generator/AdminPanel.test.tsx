@@ -5,10 +5,12 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 
 const backendClientMock = vi.hoisted(() => ({
+  createQaaServiceToken: vi.fn(),
   createQaaUser: vi.fn(),
   deleteQaaUser: vi.fn(),
   listQaaUsers: vi.fn(),
   regenerateQaaUserToken: vi.fn(),
+  revokeQaaServiceToken: vi.fn(),
   updateQaaUser: vi.fn(),
 }));
 
@@ -29,13 +31,13 @@ const QAA_ENABLED_PLUGINS = [PluginId.QAA_GENERATOR];
 const ADMIN_TOKEN = "token-123";
 const QAA_USER_ID = "user-123";
 const QAA_USER_TOKEN = "plain-user-token";
+const QAA_SERVICE_TOKEN = "plain-service-token";
 
 const adminUser: User = {
   auto_login: false,
   created_at: "2026-08-11T00:00:00Z",
   display_name: "Administrator",
   enabled_plugins: QAA_ENABLED_PLUGINS,
-  qaa_generator_token_set: false,
   id: 1,
   is_admin: true,
   updated_at: "2026-08-11T00:00:00Z",
@@ -47,7 +49,6 @@ const viewerUser: User = {
   created_at: "2026-08-11T00:00:00Z",
   display_name: "Viewer",
   enabled_plugins: QAA_ENABLED_PLUGINS,
-  qaa_generator_token_set: false,
   id: 2,
   is_admin: false,
   updated_at: "2026-08-11T00:00:00Z",
@@ -80,12 +81,14 @@ function renderQaaSidebar() {
   );
 }
 
-describe("QAA Generator AdminPanel", () => {
+describe("QAA generator AdminPanel", () => {
   beforeEach(() => {
+    backendClientMock.createQaaServiceToken.mockReset();
     backendClientMock.createQaaUser.mockReset();
     backendClientMock.deleteQaaUser.mockReset();
     backendClientMock.listQaaUsers.mockReset();
     backendClientMock.regenerateQaaUserToken.mockReset();
+    backendClientMock.revokeQaaServiceToken.mockReset();
     backendClientMock.updateQaaUser.mockReset();
     localStorage.clear();
     resetAuthStoreState();
@@ -113,7 +116,7 @@ describe("QAA Generator AdminPanel", () => {
 
     renderQaaSidebar();
 
-    await user.click(screen.getByRole("button", { name: "QAA Generator" }));
+    await user.click(screen.getByRole("button", { name: "QAA generator" }));
 
     expect(await screen.findByText("Admin")).toBeInTheDocument();
   });
@@ -137,8 +140,7 @@ describe("QAA Generator AdminPanel", () => {
     renderWithProviders(<AdminPanel />);
 
     expect(await screen.findByText("Alice Example")).toBeInTheDocument();
-    expect(screen.queryByText("Service tokens")).not.toBeInTheDocument();
-    expect(screen.queryByText("Lookup")).not.toBeInTheDocument();
+    expect(screen.getByText("Services")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Create user" }));
     await user.type(screen.getByLabelText("Email"), "alice@example.com");
@@ -158,8 +160,46 @@ describe("QAA Generator AdminPanel", () => {
       );
     });
 
-    expect(await screen.findByText("Copy the new qaa-generator user token")).toBeInTheDocument();
+    expect(await screen.findByText("Copy the new QAA generator user token")).toBeInTheDocument();
     expect(screen.getByDisplayValue(QAA_USER_TOKEN)).toBeInTheDocument();
+  });
+
+  it("registers and revokes QAA generator service tokens", async () => {
+    const user = userEvent.setup();
+    backendClientMock.createQaaServiceToken.mockResolvedValue({
+      token: QAA_SERVICE_TOKEN,
+      user: {
+        id: "service-user-1",
+        name: "qaa-bot",
+      },
+    });
+    backendClientMock.revokeQaaServiceToken.mockResolvedValue({ revoked: true });
+
+    useAuthStore.setState({
+      currentUser: adminUser,
+      token: ADMIN_TOKEN,
+    });
+
+    renderWithProviders(<AdminPanel />);
+    await screen.findByText("Services");
+
+    await user.type(screen.getByLabelText("Service name"), "qaa-bot");
+    await user.click(screen.getByRole("button", { name: "Register service" }));
+
+    await waitFor(() => {
+      expect(backendClientMock.createQaaServiceToken).toHaveBeenCalledWith(ADMIN_TOKEN, {
+        name: "qaa-bot",
+      });
+    });
+    expect(await screen.findByText("Copy the new QAA generator service token")).toBeInTheDocument();
+    expect(screen.getByDisplayValue(QAA_SERVICE_TOKEN)).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Token id"), "svc-123");
+    await user.click(screen.getByRole("button", { name: "Revoke service token" }));
+
+    await waitFor(() => {
+      expect(backendClientMock.revokeQaaServiceToken).toHaveBeenCalledWith(ADMIN_TOKEN, "svc-123");
+    });
   });
 
   it("edits and deletes qaa-generator users from the shared table", async () => {
@@ -231,11 +271,11 @@ describe("QAA Generator AdminPanel", () => {
 
     renderQaaSidebar();
 
-    await user.click(screen.getByRole("button", { name: "QAA Generator" }));
+    await user.click(screen.getByRole("button", { name: "QAA generator" }));
 
     expect(screen.queryByText("Admin")).not.toBeInTheDocument();
 
     const panelRender = renderWithProviders(<AdminPanel />);
-    expect(panelRender.queryByText("QAA Generator Admin")).not.toBeInTheDocument();
+    expect(panelRender.queryByRole("heading", { name: "QAA generator" })).not.toBeInTheDocument();
   });
 });

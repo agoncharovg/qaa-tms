@@ -12,12 +12,10 @@ from fastapi import HTTPException, status
 
 from app.core.config import Settings
 from app.core.constants import AuthScheme, HttpHeader, MediaType
-from app.models.user import User
 
 
 class QaaGeneratorTokenMode(StrEnum):
     PERSONAL = "personal"
-    SERVICE = "service"
     SUPERUSER = "superuser"
 
 
@@ -33,13 +31,10 @@ class QaaGeneratorServicePath(StrEnum):
 class QaaGeneratorProxyMessage(StrEnum):
     INVALID_RESPONSE = "The qaa-generator service returned an invalid response."
     NETWORK_ERROR = "Cannot reach the qaa-generator service."
-    PERSONAL_TOKEN_MISSING = (
-        "Set your personal qaa-generator token in Profile / Settings before generating."
-    )
+    PERSONAL_TOKEN_MISSING = "Set your personal qaa-generator token in Profile / Settings."
     PERSONAL_TOKEN_REJECTED = (
         "QAA Generator rejected your personal token. Update it in Profile / Settings."
     )
-    SERVICE_TOKEN_REJECTED = "QAA Generator rejected the configured service token."
     SUPERUSER_TOKEN_NOT_CONFIGURED = "qaa-generator superuser token not configured"
     SUPERUSER_TOKEN_REJECTED = "superuser token rejected by qaa-generator"
     UPSTREAM_ERROR = "The qaa-generator service request failed."
@@ -51,8 +46,6 @@ class QaaGeneratorPayloadField(StrEnum):
     MESSAGE = "message"
 
 
-QAA_GENERATOR_EMAIL_ACTOR_PREFIX = "email:"
-QAA_GENERATOR_EMAIL_GUARD = "@"
 PASSTHROUGH_STATUS_CODES = frozenset({status.HTTP_409_CONFLICT})
 
 
@@ -82,22 +75,14 @@ def build_qaa_service_token_revoke_path(token_id: str, suffix: str) -> str:
     return f"{QaaGeneratorServicePath.SERVICE_TOKEN_BY_ID.value.format(token_id=token_id)}{suffix}"
 
 
-def resolve_actor_value(settings: Settings, user: User) -> str | None:
-    if QAA_GENERATOR_EMAIL_GUARD in user.username:
-        return f"{QAA_GENERATOR_EMAIL_ACTOR_PREFIX}{user.username}"
-
-    actor = settings.qaa_generator_actor.strip()
-    return actor or None
-
-
 def resolve_token_value(
     settings: Settings,
     token_mode: QaaGeneratorTokenMode,
     *,
-    user: User | None = None,
+    personal_token: str | None = None,
 ) -> str:
     if token_mode is QaaGeneratorTokenMode.PERSONAL:
-        token = user.qaa_generator_token.strip() if user and user.qaa_generator_token else ""
+        token = personal_token.strip() if personal_token else ""
         if not token:
             raise HTTPException(
                 status_code=status.HTTP_412_PRECONDITION_FAILED,
@@ -113,7 +98,7 @@ def resolve_token_value(
             )
         return token
 
-    return settings.qaa_generator_service_token
+    raise RuntimeError(f"Unsupported qaa-generator token mode: {token_mode.value}")
 
 
 def build_outbound_headers(
@@ -121,7 +106,7 @@ def build_outbound_headers(
     *,
     accept: MediaType,
     token_mode: QaaGeneratorTokenMode,
-    user: User | None = None,
+    personal_token: str | None = None,
     content_type: MediaType | None = None,
     idempotency_key: str | None = None,
     last_event_id: str | None = None,
@@ -130,12 +115,9 @@ def build_outbound_headers(
         HttpHeader.ACCEPT.value: accept.value,
         HttpHeader.AUTHORIZATION.value: (
             f"{AuthScheme.BEARER.value} "
-            f"{resolve_token_value(settings, token_mode, user=user)}"
+            f"{resolve_token_value(settings, token_mode, personal_token=personal_token)}"
         ),
     }
-    actor = resolve_actor_value(settings, user) if user is not None else None
-    if actor is not None and token_mode is QaaGeneratorTokenMode.SERVICE:
-        headers[HttpHeader.ACTOR.value] = actor
     if content_type is not None:
         headers[HttpHeader.CONTENT_TYPE.value] = content_type.value
     if idempotency_key:
@@ -197,11 +179,6 @@ def map_upstream_status(
         return HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=QaaGeneratorProxyMessage.PERSONAL_TOKEN_REJECTED.value,
-        )
-    if response.status_code == status.HTTP_401_UNAUTHORIZED:
-        return HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=message or QaaGeneratorProxyMessage.SERVICE_TOKEN_REJECTED.value,
         )
     if response.status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR:
         return HTTPException(

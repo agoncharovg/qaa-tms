@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from enum import StrEnum
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -32,10 +31,6 @@ from app.schemas.user import (
 )
 
 router = APIRouter(tags=[ApiTag.USERS.value])
-
-
-class MeUpdateField(StrEnum):
-    QAA_GENERATOR_TOKEN = "qaa_generator_token"
 
 
 async def get_user_or_404(db: AsyncSession, user_id: int) -> User:
@@ -95,9 +90,6 @@ async def update_me(
         current_user.auto_login = payload.auto_login
     if "password" in provided_fields and payload.password is not None:
         current_user.password_hash = hash_password(payload.password)
-    if MeUpdateField.QAA_GENERATOR_TOKEN in provided_fields:
-        # Stored for backend-proxied qaa-generator run creation on behalf of this user.
-        current_user.qaa_generator_token = payload.qaa_generator_token or None
 
     await db.commit()
     await db.refresh(current_user)

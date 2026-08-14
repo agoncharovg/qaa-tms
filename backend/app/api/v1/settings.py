@@ -34,22 +34,16 @@ BOOL_ENV_VALUE = {
 }
 
 SERVER_SETTINGS_ENV_KEY_BY_FIELD = {
-    "qaa_generator_actor": EnvKey.QAA_GENERATOR_ACTOR,
     "qaa_generator_base_url": EnvKey.QAA_GENERATOR_BASE_URL,
     "qaa_generator_port_forward_enabled": EnvKey.QAA_GENERATOR_PORT_FORWARD_ENABLED,
     "qaa_generator_port_forward_local_port": EnvKey.QAA_GENERATOR_PORT_FORWARD_LOCAL_PORT,
     "qaa_generator_port_forward_namespace": EnvKey.QAA_GENERATOR_PORT_FORWARD_NAMESPACE,
     "qaa_generator_port_forward_remote_port": EnvKey.QAA_GENERATOR_PORT_FORWARD_REMOTE_PORT,
     "qaa_generator_port_forward_resource": EnvKey.QAA_GENERATOR_PORT_FORWARD_RESOURCE,
-    "qaa_generator_service_token": EnvKey.QAA_GENERATOR_SERVICE_TOKEN,
     "qaa_generator_superuser_token": EnvKey.QAA_GENERATOR_SUPERUSER_TOKEN,
 }
 
-SERVER_SETTINGS_RUNTIME_FIELDS = tuple(
-    field_name
-    for field_name in SERVER_SETTINGS_ENV_KEY_BY_FIELD
-    if field_name not in {"qaa_generator_service_token", "qaa_generator_superuser_token"}
-) + ("qaa_generator_service_token", "qaa_generator_superuser_token")
+SERVER_SETTINGS_RUNTIME_FIELDS = tuple(SERVER_SETTINGS_ENV_KEY_BY_FIELD)
 
 
 def get_runtime_settings(request: Request) -> Settings:

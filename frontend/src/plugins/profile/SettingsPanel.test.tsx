@@ -9,10 +9,6 @@ const agentClientMock = vi.hoisted(() => ({
   updateSettings: vi.fn(),
 }));
 
-const backendClientMock = vi.hoisted(() => ({
-  updateMe: vi.fn(),
-}));
-
 vi.mock("@/api/agentClient", () => ({
   agentClient: {
     getSettings: agentClientMock.getSettings,
@@ -20,10 +16,6 @@ vi.mock("@/api/agentClient", () => ({
   },
   discoverAgent: agentClientMock.discoverAgent,
   getConfiguredAgentPorts: agentClientMock.getConfiguredAgentPorts,
-}));
-
-vi.mock("@/api/backendClient", () => ({
-  backendClient: backendClientMock,
 }));
 
 import { SettingsPanel } from "@/plugins/profile/SettingsPanel";
@@ -36,6 +28,7 @@ const agentSettingsResponse = {
   jenkins_url: "https://jenkins.example",
   jenkins_username: "agent-user",
   jenkins_token_set: true,
+  qaa_generator_token_set: false,
   jenkins_root_path: "job/.QAA/job/E2E",
   jenkins_root_folders: ["PREPROD", "PROD"],
   jenkins_request_timeout: 15,
@@ -58,7 +51,6 @@ function createCurrentUser(enabledPlugins: User["enabled_plugins"]): User {
     created_at: "2026-08-13T00:00:00Z",
     display_name: "Test User",
     enabled_plugins: enabledPlugins,
-    qaa_generator_token_set: false,
     id: 2,
     is_admin: false,
     updated_at: "2026-08-13T00:00:00Z",
@@ -74,7 +66,6 @@ describe("SettingsPanel", () => {
     agentClientMock.getConfiguredAgentPorts.mockReset();
     agentClientMock.getSettings.mockReset();
     agentClientMock.updateSettings.mockReset();
-    backendClientMock.updateMe.mockReset();
     agentClientMock.getConfiguredAgentPorts.mockReturnValue([47600, 47601]);
   });
 
@@ -91,8 +82,7 @@ describe("SettingsPanel", () => {
     expect(screen.getByRole("heading", { name: "Jenkins" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Stagings" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Kuber" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "qaa-generator" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Application" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "QAA generator" })).not.toBeInTheDocument();
   });
 
   it("saves each companion-backed plugin with a partial payload", async () => {
@@ -153,35 +143,43 @@ describe("SettingsPanel", () => {
     });
   });
 
-  it("renders qaa-generator personal token settings and saves them through updateMe", async () => {
+  it("renders QAA generator personal token settings and saves them through the companion", async () => {
     const user = userEvent.setup();
-    const updatedUser = {
-      ...createCurrentUser([PluginId.QAA_GENERATOR]),
-      qaa_generator_token_set: true,
-    };
 
     useAuthStore.setState({
       currentUser: createCurrentUser([PluginId.QAA_GENERATOR]),
       token: "token-123",
     });
-    backendClientMock.updateMe.mockResolvedValue(updatedUser);
+    agentClientMock.discoverAgent.mockResolvedValue({
+      agent: {
+        app: "qaa-tms-agent",
+        os: "linux",
+        stagingsInstalled: true,
+        stagingsSha: "abc123",
+        version: "0.1.0",
+      },
+      port: 47600,
+    });
+    agentClientMock.getSettings.mockResolvedValue(agentSettingsResponse);
+    agentClientMock.updateSettings.mockResolvedValue({
+      ...agentSettingsResponse,
+      qaa_generator_token_set: true,
+    });
 
     renderWithProviders(<SettingsPanel />);
 
-    expect(screen.getByRole("heading", { name: "qaa-generator" })).toBeInTheDocument();
-    expect(agentClientMock.discoverAgent).not.toHaveBeenCalled();
-    expect(screen.queryByRole("heading", { name: "Application" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "QAA generator" })).toBeInTheDocument();
 
     await user.type(screen.getByLabelText("Personal token"), "personal-token");
     await user.click(screen.getByRole("button", { name: "Save qaa-generator token" }));
 
     await waitFor(() => {
-      expect(backendClientMock.updateMe).toHaveBeenCalledWith("token-123", {
+      expect(agentClientMock.updateSettings).toHaveBeenCalledWith(47600, "token-123", {
         qaa_generator_token: "personal-token",
       });
     });
     await waitFor(() => {
-      expect(useAuthStore.getState().currentUser?.qaa_generator_token_set).toBe(true);
+      expect(screen.getAllByText("Settings saved.").length).toBeGreaterThan(0);
     });
   });
 });

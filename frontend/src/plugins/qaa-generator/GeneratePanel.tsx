@@ -15,7 +15,8 @@ import {
 import { IconAlertCircle, IconPlayerPlay } from "@tabler/icons-react";
 import { useMutation } from "@tanstack/react-query";
 
-import { BackendHttpError, backendClient } from "@/api/backendClient";
+import { AgentRequestError } from "@/api/agentClient";
+import { qaaAgentClient } from "@/api/qaaAgentClient";
 import type { QaaRunCreateRequest } from "@/api/types";
 import {
   HttpStatus,
@@ -41,7 +42,7 @@ const GENERATE_PANEL_COPY = {
   EMPTY_JIRA_KEY: "A Jira key is required.",
   ERROR_TITLE: "QAA generation request failed",
   FORM_DESCRIPTION:
-    "Submit a centrally executed qaa-generator run through the backend proxy using your stored personal qaa-generator token.",
+    "Submit a centrally executed QAA generator run through the local companion using your locally stored personal token.",
   JIRA_KEY_PLACEHOLDER: "QAA-123",
   RUN_BUTTON: "Generate",
   TITLE: "Generate tests",
@@ -60,6 +61,11 @@ interface GenerateFormState {
   profile: QaaRunProfileType;
   skipExec: boolean;
   skipPr: boolean;
+}
+
+interface GeneratePanelProps {
+  agentPort: number;
+  hasPersonalToken: boolean;
 }
 
 const DEFAULT_GENERATE_FORM_STATE: GenerateFormState = {
@@ -93,27 +99,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function extractConflictRunId(error: unknown): string | null {
-  if (!(error instanceof BackendHttpError) || error.status !== HttpStatus.CONFLICT) {
+  if (!(error instanceof AgentRequestError) || error.status !== HttpStatus.CONFLICT) {
     return null;
   }
-  if (!isRecord(error.payload)) {
+  const payload = (error as AgentRequestError & { payload?: unknown }).payload;
+  if (!isRecord(payload)) {
     return null;
   }
-  const runId = error.payload.run_id;
+  const runId = payload.run_id;
   return typeof runId === "string" ? runId : null;
 }
 
-export function GeneratePanel() {
+export function GeneratePanel({ agentPort, hasPersonalToken }: GeneratePanelProps) {
   const token = useAuthStore((state) => state.token);
-  const currentUser = useAuthStore((state) => state.currentUser);
   const [formState, setFormState] = useState<GenerateFormState>(DEFAULT_GENERATE_FORM_STATE);
   const [conflictRunId, setConflictRunId] = useState<string | null>(null);
   const activateTab = useActivateQaaGeneratorTab();
   const liveTabOpen = useUiStore((state) =>
     state.tabsByPlugin[PluginId.QAA_GENERATOR].tabIds.includes(TabId.QAA_LIVE)
   );
-  const { startRun } = useQaaRunLive();
-  const hasPersonalToken = currentUser?.qaa_generator_token_set === true;
+  const { startRun } = useQaaRunLive(agentPort, hasPersonalToken);
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -124,7 +129,7 @@ export function GeneratePanel() {
         throw new Error(`${GENERATE_PANEL_COPY.MISSING_TOKEN_PREFIX}${GENERATE_PANEL_COPY.MISSING_TOKEN_LINK_LABEL}${GENERATE_PANEL_COPY.MISSING_TOKEN_SUFFIX}`);
       }
 
-      return backendClient.createQaaRun(token, buildCreatePayload(formState));
+      return qaaAgentClient.createQaaRun(agentPort, token, buildCreatePayload(formState));
     },
     onMutate: () => {
       setConflictRunId(null);
@@ -265,6 +270,7 @@ export function GeneratePanel() {
                   {conflictRunId ? (
                     <Group>
                       <Button
+                        leftSection={<IconPlayerPlay size={16} />}
                         onClick={() => {
                           startRun(conflictRunId);
                           activateTab(TabId.QAA_LIVE);
@@ -273,9 +279,6 @@ export function GeneratePanel() {
                       >
                         {GENERATE_PANEL_COPY.CONFLICT_ACTION}
                       </Button>
-                      <Text c="dimmed" size="sm">
-                        {GENERATE_PANEL_COPY.CONFLICT_TITLE}: {conflictRunId}
-                      </Text>
                     </Group>
                   ) : null}
                 </Stack>
@@ -284,10 +287,9 @@ export function GeneratePanel() {
 
             <Group justify="space-between">
               <Text c="dimmed" size="sm">
-                {liveTabOpen ? "The Live tab will switch to the new run." : "The Live tab will open for the new run."}
+                {liveTabOpen ? "Live tab already open." : "The run will open in Live after submission."}
               </Text>
               <Button
-                disabled={createDisabled}
                 leftSection={<IconPlayerPlay size={16} />}
                 loading={createMutation.isPending}
                 type="submit"

@@ -28,8 +28,8 @@ class QaaUserCreateRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_identifier_presence(self) -> QaaUserCreateRequest:
-        if self.email is None and self.slack_user_id is None:
-            raise ValueError("At least one of email or slack_user_id is required.")
+        if self.email is None and self.slack_user_id is None and self.name is None:
+            raise ValueError("At least one of email, slack_user_id, or name is required.")
         return self
 
 

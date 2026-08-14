@@ -108,6 +108,7 @@ JobManagerDep = Annotated[JobManager, Depends(get_job_manager)]
 AGENT_SETTINGS_ENV_KEY_BY_FIELD = {
     "jenkins_root_folders": EnvKey.JENKINS_ROOT_FOLDERS,
     "jenkins_root_path": EnvKey.JENKINS_ROOT_PATH,
+    "qaa_generator_token": EnvKey.QAA_GENERATOR_TOKEN,
     "jenkins_request_timeout": EnvKey.JENKINS_REQUEST_TIMEOUT,
     "jenkins_stuck_min_idle_hours": EnvKey.JENKINS_STUCK_MIN_IDLE_HOURS,
     "jenkins_token": EnvKey.JENKINS_TOKEN,
