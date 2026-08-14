@@ -100,6 +100,10 @@ describe("TreePanel", () => {
     renderWithProviders(<TreePanel agentPort={47600} />);
 
     expect(await screen.findByText("PREPROD")).toBeInTheDocument();
+    expect(await screen.findByText("Smoke")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Folder" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Pipeline" })).toBeInTheDocument();
+    expect(screen.getByText("Passed")).toBeInTheDocument();
 
     await user.click(screen.getByText("Smoke"));
 

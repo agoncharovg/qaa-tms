@@ -10,6 +10,7 @@ import {
   Paper,
   Stack,
   Text,
+  ThemeIcon,
   Title,
   Tooltip,
 } from "@mantine/core";
@@ -17,6 +18,8 @@ import {
   IconAlertCircle,
   IconChevronDown,
   IconChevronRight,
+  IconFolder,
+  IconGitBranch,
   IconMaximize,
   IconMinimize,
   IconPin,
@@ -69,6 +72,8 @@ const TreePanelCopy = {
   COLLAPSE_ALL: "Collapse all",
   LOADING_BUILDS: "Loading recent builds.",
   LOADING_TREE: "Loading Jenkins tree.",
+  NODE_KIND_FOLDER: "Folder",
+  NODE_KIND_PIPELINE: "Pipeline",
   OPEN_ALLURE: "Open Allure report",
   PIN: "Pin to board",
   REFRESH: "Refresh",
@@ -239,26 +244,40 @@ function TreeNodeRow({
             <ActionIcon aria-label={expanded ? TreePanelCopy.COLLAPSE_ALL : TreePanelCopy.EXPAND_ALL} variant="subtle">
               {expanded ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
             </ActionIcon>
+            <Tooltip label={node.kind === "folder" ? TreePanelCopy.NODE_KIND_FOLDER : TreePanelCopy.NODE_KIND_PIPELINE}>
+              <ThemeIcon
+                aria-label={node.kind === "folder" ? TreePanelCopy.NODE_KIND_FOLDER : TreePanelCopy.NODE_KIND_PIPELINE}
+                color={node.kind === "folder" ? "gray" : "cyan"}
+                radius="xl"
+                role="img"
+                size="md"
+                variant="light"
+              >
+                {node.kind === "folder" ? <IconFolder size={14} /> : <IconGitBranch size={14} />}
+              </ThemeIcon>
+            </Tooltip>
+            <Text fw={500}>{node.name}</Text>
+          </Group>
+          <Group gap="xs" wrap="nowrap">
             {node.kind === "pipeline" && node.status ? (
               <Badge color={JenkinsStatusColor[node.status]} variant="light">
                 {JenkinsStatusLabel[node.status]}
               </Badge>
             ) : null}
-            <Text fw={500}>{node.name}</Text>
+            <Tooltip label={pinned ? TreePanelCopy.UNPIN : TreePanelCopy.PIN}>
+              <ActionIcon
+                aria-label={pinned ? TreePanelCopy.UNPIN : TreePanelCopy.PIN}
+                color={pinned ? "yellow" : "gray"}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onPinToggle(node.path);
+                }}
+                variant="light"
+              >
+                {pinned ? <IconPinnedOff size={16} /> : <IconPin size={16} />}
+              </ActionIcon>
+            </Tooltip>
           </Group>
-          <Tooltip label={pinned ? TreePanelCopy.UNPIN : TreePanelCopy.PIN}>
-            <ActionIcon
-              aria-label={pinned ? TreePanelCopy.UNPIN : TreePanelCopy.PIN}
-              color={pinned ? "yellow" : "gray"}
-              onClick={(event) => {
-                event.stopPropagation();
-                onPinToggle(node.path);
-              }}
-              variant="light"
-            >
-              {pinned ? <IconPinnedOff size={16} /> : <IconPin size={16} />}
-            </ActionIcon>
-          </Tooltip>
         </Group>
       </Paper>
 
