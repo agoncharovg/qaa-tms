@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from app.core.config import Settings
-from app.core.constants import DEFAULT_KUBECONFIG, EnvKey
+from app.core.constants import EnvKey
 
 
 @pytest.mark.parametrize(
@@ -31,21 +31,21 @@ def test_cors_origins_loads_from_env(
     assert settings.cors_origins == expected
 
 
-def test_kubeconfig_uses_default_path_when_env_missing(
+def test_kubeconfig_is_empty_when_env_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv(EnvKey.KUBECONFIG.value, raising=False)
 
     settings = Settings(_env_file=None)
 
-    assert settings.kubeconfig == DEFAULT_KUBECONFIG
+    assert settings.kubeconfig == ""
 
 
-def test_kubeconfig_uses_default_path_when_env_is_empty(
+def test_kubeconfig_is_empty_when_env_is_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(EnvKey.KUBECONFIG.value, "")
 
     settings = Settings(_env_file=None)
 
-    assert settings.kubeconfig == DEFAULT_KUBECONFIG
+    assert settings.kubeconfig == ""

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import textwrap
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,7 @@ from conftest import BackendRecorder, parse_sse_events
 
 from app.core.config import Settings
 from app.main import create_app
+from app.services.kube import build_kube_env
 
 KUBE_CONTEXT = "team/dev"
 KUBE_NAMESPACE = "qa-demo"
@@ -193,7 +195,26 @@ async def kube_client(kube_app: Any) -> httpx.AsyncClient:
         yield async_client
 
 
-async def test_get_kube_contexts_default_to_explicit_kubeconfig_path(
+def test_build_kube_env_expands_directory_kubeconfig_parts(
+    tmp_path: Path,
+) -> None:
+    kubeconfig_dir = tmp_path / "kubeconfigs"
+    kubeconfig_dir.mkdir()
+    first_kubeconfig = kubeconfig_dir / "a.yaml"
+    second_kubeconfig = kubeconfig_dir / "b.yaml"
+    ignored_file = kubeconfig_dir / "notes.txt"
+    first_kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")
+    second_kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")
+    ignored_file.write_text("ignore me\n", encoding="utf-8")
+
+    settings = Settings(_env_file=None, AGENT_KUBECONFIG=str(kubeconfig_dir))
+
+    assert build_kube_env(settings) == {
+        "KUBECONFIG": os.pathsep.join([str(first_kubeconfig), str(second_kubeconfig)])
+    }
+
+
+async def test_get_kube_contexts_default_to_active_kubeconfig_path(
     fake_kubectl: dict[str, Path],
     backend_recorder: BackendRecorder,
     auth_headers: dict[str, str],
@@ -218,10 +239,10 @@ async def test_get_kube_contexts_default_to_explicit_kubeconfig_path(
             response = await client.get("/kube/contexts", headers=auth_headers)
     assert response.status_code == 200
     invocations = read_invocations(fake_kubectl["record_path"])
-    assert invocations[-1]["kubeconfig"] == str(Path("~/.kube/config").expanduser())
+    assert invocations[-1]["kubeconfig"] == str(active_kubeconfig)
 
 
-async def test_get_kube_contexts_default_kubeconfig_overrides_inherited_kubeconfig(
+async def test_get_kube_contexts_merge_active_and_inherited_kubeconfigs(
     fake_kubectl: dict[str, Path],
     backend_recorder: BackendRecorder,
     auth_headers: dict[str, str],
@@ -249,7 +270,9 @@ async def test_get_kube_contexts_default_kubeconfig_overrides_inherited_kubeconf
             response = await client.get("/kube/contexts", headers=auth_headers)
     assert response.status_code == 200
     invocations = read_invocations(fake_kubectl["record_path"])
-    assert invocations[-1]["kubeconfig"] == str(Path("~/.kube/config").expanduser())
+    assert invocations[-1]["kubeconfig"] == os.pathsep.join(
+        [str(active_kubeconfig), str(inherited_kubeconfig)]
+    )
 
 
 async def test_get_kube_contexts_returns_rows_and_marks_current(

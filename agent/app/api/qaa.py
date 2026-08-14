@@ -97,7 +97,10 @@ async def proxy_backend_json(
         params=tuple(params) if params is not None else None,
         json=json_body,
     )
-    return JSONResponse(content=await read_response_payload(response), status_code=response.status_code)
+    return JSONResponse(
+        content=await read_response_payload(response),
+        status_code=response.status_code,
+    )
 
 
 @router.post(AgentPath.QAA_RUNS.value)
@@ -184,17 +187,32 @@ async def handle_qaa_run_action(
 
 
 @router.post(f"{AgentPath.QAA_RUNS.value}/{{run_id}}{AgentPath.QAA_PAUSE.value}")
-async def pause_qaa_run(run_id: str, request: Request, auth: AuthDep, settings: SettingsDep) -> JSONResponse:
+async def pause_qaa_run(
+    run_id: str,
+    request: Request,
+    auth: AuthDep,
+    settings: SettingsDep,
+) -> JSONResponse:
     return await handle_qaa_run_action(run_id, request, auth, settings, AgentPath.QAA_PAUSE)
 
 
 @router.post(f"{AgentPath.QAA_RUNS.value}/{{run_id}}{AgentPath.QAA_RESUME.value}")
-async def resume_qaa_run(run_id: str, request: Request, auth: AuthDep, settings: SettingsDep) -> JSONResponse:
+async def resume_qaa_run(
+    run_id: str,
+    request: Request,
+    auth: AuthDep,
+    settings: SettingsDep,
+) -> JSONResponse:
     return await handle_qaa_run_action(run_id, request, auth, settings, AgentPath.QAA_RESUME)
 
 
 @router.post(f"{AgentPath.QAA_RUNS.value}/{{run_id}}{AgentPath.QAA_STOP.value}")
-async def stop_qaa_run(run_id: str, request: Request, auth: AuthDep, settings: SettingsDep) -> JSONResponse:
+async def stop_qaa_run(
+    run_id: str,
+    request: Request,
+    auth: AuthDep,
+    settings: SettingsDep,
+) -> JSONResponse:
     return await handle_qaa_run_action(run_id, request, auth, settings, AgentPath.QAA_STOP)
 
 
@@ -221,7 +239,10 @@ async def stream_qaa_run_events(
     if not response.is_success:
         payload = await read_response_payload(response)
         await response.aclose()
-        raise HTTPException(status_code=response.status_code, detail=extract_error_detail(payload, "QAA stream failed."))
+        raise HTTPException(
+            status_code=response.status_code,
+            detail=extract_error_detail(payload, "QAA stream failed."),
+        )
 
     async def iterate_stream() -> AsyncIterator[bytes]:
         try:
