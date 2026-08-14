@@ -173,7 +173,10 @@ def test_create_qaa_run_returns_202_and_records_operation(
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "POST"
         assert request.url.path == UPSTREAM_RUNS_PATH
-        assert request.headers[HttpHeader.AUTHORIZATION.value] == f"Bearer {QAA_GENERATOR_PERSONAL_TOKEN}"
+        assert (
+            request.headers[HttpHeader.AUTHORIZATION.value]
+            == f"Bearer {QAA_GENERATOR_PERSONAL_TOKEN}"
+        )
         assert request.headers[HttpHeader.IDEMPOTENCY_KEY.value] == QAA_GENERATOR_IDEMPOTENCY_KEY
         assert json.loads(request.content.decode("utf-8")) == QAA_CREATE_PAYLOAD
         return httpx.Response(status_code=202, json=QAA_CREATE_RESPONSE)
@@ -211,7 +214,10 @@ def test_create_qaa_run_passes_through_conflict_with_existing_run_id(
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "POST"
         assert request.url.path == UPSTREAM_RUNS_PATH
-        assert request.headers[HttpHeader.AUTHORIZATION.value] == f"Bearer {QAA_GENERATOR_PERSONAL_TOKEN}"
+        assert (
+            request.headers[HttpHeader.AUTHORIZATION.value]
+            == f"Bearer {QAA_GENERATOR_PERSONAL_TOKEN}"
+        )
         return httpx.Response(status_code=409, json=QAA_CONFLICT_RESPONSE)
 
     install_qaa_client(handler)
@@ -235,7 +241,10 @@ def test_list_qaa_runs_forwards_filters_and_uses_personal_token(
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "GET"
         assert request.url.path == UPSTREAM_RUNS_PATH
-        assert request.headers[HttpHeader.AUTHORIZATION.value] == f"Bearer {QAA_GENERATOR_PERSONAL_TOKEN}"
+        assert (
+            request.headers[HttpHeader.AUTHORIZATION.value]
+            == f"Bearer {QAA_GENERATOR_PERSONAL_TOKEN}"
+        )
         assert request.url.params.get("jira_key") == QAA_JIRA_KEY
         assert request.url.params.get("effective_actor") == f"email:{QAA_GENERATOR_EMAIL_USERNAME}"
         assert request.url.params.get("created_from") == QAA_CREATED_FROM
@@ -290,7 +299,10 @@ def test_qaa_run_detail_reconciles_operation_with_personal_token(
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal request_count
         request_count += 1
-        assert request.headers[HttpHeader.AUTHORIZATION.value] == f"Bearer {QAA_GENERATOR_PERSONAL_TOKEN}"
+        assert (
+            request.headers[HttpHeader.AUTHORIZATION.value]
+            == f"Bearer {QAA_GENERATOR_PERSONAL_TOKEN}"
+        )
         if request_count == 1:
             assert request.method == "POST"
             assert request.url.path == UPSTREAM_RUNS_PATH
@@ -330,7 +342,10 @@ def test_qaa_run_artifacts_and_controls_forward_methods_paths_with_personal_toke
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen_requests.append((request.method, request.url.path))
-        assert request.headers[HttpHeader.AUTHORIZATION.value] == f"Bearer {QAA_GENERATOR_PERSONAL_TOKEN}"
+        assert (
+            request.headers[HttpHeader.AUTHORIZATION.value]
+            == f"Bearer {QAA_GENERATOR_PERSONAL_TOKEN}"
+        )
         if request.url.path == UPSTREAM_RUN_ARTIFACTS_PATH:
             return httpx.Response(status_code=200, json=QAA_RUN_ARTIFACTS_RESPONSE)
         return httpx.Response(status_code=202, json=QAA_RUN_CONTROL_RESPONSE)
@@ -341,9 +356,15 @@ def test_qaa_run_artifacts_and_controls_forward_methods_paths_with_personal_toke
         QAA_RUN_ARTIFACTS_PATH,
         headers=auth_headers(token, QAA_GENERATOR_PERSONAL_TOKEN),
     )
-    pause_response = client.post(QAA_RUN_PAUSE_PATH, headers=auth_headers(token, QAA_GENERATOR_PERSONAL_TOKEN))
-    resume_response = client.post(QAA_RUN_RESUME_PATH, headers=auth_headers(token, QAA_GENERATOR_PERSONAL_TOKEN))
-    stop_response = client.post(QAA_RUN_STOP_PATH, headers=auth_headers(token, QAA_GENERATOR_PERSONAL_TOKEN))
+    pause_response = client.post(
+        QAA_RUN_PAUSE_PATH, headers=auth_headers(token, QAA_GENERATOR_PERSONAL_TOKEN)
+    )
+    resume_response = client.post(
+        QAA_RUN_RESUME_PATH, headers=auth_headers(token, QAA_GENERATOR_PERSONAL_TOKEN)
+    )
+    stop_response = client.post(
+        QAA_RUN_STOP_PATH, headers=auth_headers(token, QAA_GENERATOR_PERSONAL_TOKEN)
+    )
 
     assert artifacts_response.status_code == 200
     assert artifacts_response.json() == QAA_RUN_ARTIFACTS_RESPONSE
@@ -370,7 +391,10 @@ def test_qaa_run_events_stream_passthrough_relays_frames_and_headers(
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "GET"
         assert request.url.path == UPSTREAM_RUN_EVENTS_PATH
-        assert request.headers[HttpHeader.AUTHORIZATION.value] == f"Bearer {QAA_GENERATOR_PERSONAL_TOKEN}"
+        assert (
+            request.headers[HttpHeader.AUTHORIZATION.value]
+            == f"Bearer {QAA_GENERATOR_PERSONAL_TOKEN}"
+        )
         assert request.headers[HttpHeader.ACCEPT.value] == MediaType.TEXT_EVENT_STREAM.value
         assert request.headers[HttpHeader.LAST_EVENT_ID.value] == QAA_LAST_EVENT_ID
         return httpx.Response(
@@ -393,7 +417,9 @@ def test_qaa_run_events_stream_passthrough_relays_frames_and_headers(
         body = "".join(response.iter_text())
 
     assert response.status_code == 200
-    assert response.headers[HttpHeader.CONTENT_TYPE.value].startswith(MediaType.TEXT_EVENT_STREAM.value)
+    assert response.headers[HttpHeader.CONTENT_TYPE.value].startswith(
+        MediaType.TEXT_EVENT_STREAM.value
+    )
     assert body == QAA_EVENTS_STREAM_BODY
 
 

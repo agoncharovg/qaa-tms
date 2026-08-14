@@ -14,6 +14,7 @@ import {
   HttpMethod,
   HttpStatus,
   MediaType,
+  QaaSubjectKind,
   buildBackendOperationPath,
   buildBackendOperationReplayPath,
   type PluginId,
@@ -63,6 +64,7 @@ const QAA_LIST_QUERY_PARAM = {
 
 const QAA_USERS_QUERY_PARAM = {
   EMAIL: "email",
+  KIND: "kind",
   LIMIT: "limit",
   OFFSET: "offset",
   SLACK_USER_ID: "slack_user_id",
@@ -80,6 +82,7 @@ interface QaaRunsListParams {
 
 interface QaaUsersListParams {
   email?: string;
+  kind?: (typeof QaaSubjectKind)[keyof typeof QaaSubjectKind];
   slackUserId?: string;
   limit?: number;
   offset?: number;
@@ -267,6 +270,9 @@ function buildQaaUsersListPath(params: QaaUsersListParams): string {
 
   if (params.email) {
     searchParams.set(QAA_USERS_QUERY_PARAM.EMAIL, params.email);
+  }
+  if (params.kind) {
+    searchParams.set(QAA_USERS_QUERY_PARAM.KIND, params.kind);
   }
   if (params.slackUserId) {
     searchParams.set(QAA_USERS_QUERY_PARAM.SLACK_USER_ID, params.slackUserId);

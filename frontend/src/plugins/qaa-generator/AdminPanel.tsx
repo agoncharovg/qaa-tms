@@ -8,6 +8,7 @@ import {
   Modal,
   Stack,
   Table,
+  Tabs,
   Text,
   TextInput,
   Textarea,
@@ -18,7 +19,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { backendClient } from "@/api/backendClient";
 import type { QaaUser, QaaUserCreateRequest, QaaUserUpdateRequest } from "@/api/types";
-import { QueryKey } from "@/constants";
+import { QaaAdminSubTab, QaaSubjectKind, QueryKey } from "@/constants";
 import { useAuthStore } from "@/store/authStore";
 
 type UserFormState = {
@@ -28,29 +29,24 @@ type UserFormState = {
   description: string;
 };
 
-type ServiceFormState = {
-  name: string;
-  tokenId: string;
-};
-
 type TokenModalState = {
   title: string;
   token: string;
 };
 
-type InlineNotice = {
-  color: "red" | "teal";
-  message: string;
-  title: string;
-};
+type QaaAdminSubTabValue = (typeof QaaAdminSubTab)[keyof typeof QaaAdminSubTab];
 
 const QaaAdminPanelCopy = {
   ADMIN_TITLE: "QAA generator",
   ADMIN_SUBTITLE: "Manage QAA generator users and service registrations with the backend-held superuser token.",
-  COPY_ACTION: "Copy token",
   COPIED_ACTION: "Copied",
+  COPY_ACTION: "Copy token",
   COPY_ONCE_WARNING:
     "This plaintext token is shown once. Copy it now. It is never stored in the SPA or written to the operations audit.",
+  CREATE_SERVICE_ACTION: "Create service",
+  CREATE_SERVICE_ERROR: "Unable to create the QAA generator service.",
+  CREATE_SERVICE_MODAL_TITLE: "Create QAA generator service",
+  CREATE_SERVICE_SUBTITLE: "Register external services such as qaa-bot and issue a service token.",
   CREATE_USER_ACTION: "Create user",
   CREATE_USER_ERROR: "Unable to create the QAA generator user.",
   CREATE_USER_MODAL_TITLE: "Create QAA generator user",
@@ -66,34 +62,37 @@ const QaaAdminPanelCopy = {
   EDIT_MODAL_TITLE: "Edit QAA generator user",
   EDIT_SUBMIT_ACTION: "Save changes",
   EDIT_SUBTITLE: "Clear a field to remove it. Keep at least one identifier.",
+  LOAD_SERVICES_ERROR_TITLE: "Failed to load services",
+  LOAD_USERS_ERROR_TITLE: "Failed to load users",
+  LOADING_SERVICES: "Loading QAA generator services.",
   LOADING_USERS: "Loading QAA generator users.",
+  NO_SERVICES: "No QAA generator services were returned.",
   NO_USERS: "No QAA generator users were returned.",
-  REGISTER_SERVICE_ACTION: "Register service",
-  REGISTER_SERVICE_ERROR: "Unable to register the service.",
   REGENERATE_ACTION: "Regenerate token",
   REGENERATE_ERROR: "Unable to regenerate the QAA generator user token.",
-  REVOKE_SERVICE_ACTION: "Revoke service token",
+  RETRY_ACTION: "Retry",
+  REVOKE_SERVICE_ACTION: "Revoke",
+  REVOKE_SERVICE_CONFIRM_HELP: "This revokes the active service token shown below.",
+  REVOKE_SERVICE_CONFIRM_TITLE: "Revoke QAA generator service token",
   REVOKE_SERVICE_ERROR: "Unable to revoke the service token.",
+  REVOKE_SERVICE_SUBMIT_ACTION: "Revoke token",
   SERVICE_NAME_LABEL: "Service name",
-  SERVICE_REGISTERED: "Service registered.",
-  SERVICE_REGISTER_SUBTITLE:
-    "Register external services such as qaa-bot and issue a service token. Revoke uses a token id from qaa-generator.",
-  SERVICE_REVOKED: "Service token revoked.",
-  SERVICES_SECTION: "Services",
+  SERVICES_SUBTITLE: "Manage service subjects and revoke the active service token shown for each row.",
+  SERVICES_TAB: "Services",
   TABLE_ACTIONS: "Actions",
   TABLE_CREATED: "Created",
   TABLE_DESCRIPTION: "Description",
   TABLE_EMAIL: "Email",
   TABLE_NAME: "Name",
   TABLE_SLACK: "Slack user id",
+  TABLE_TOKEN_ID: "Token id",
   TOKEN_FIELD_LABEL: "Plaintext token",
-  TOKEN_ID_LABEL: "Token id",
   UPDATE_ERROR: "Unable to update the QAA generator user.",
   USER_CREATED_TOKEN_MODAL_TITLE: "Copy the new QAA generator user token",
   USER_REGENERATED_TOKEN_MODAL_TITLE: "Copy the regenerated QAA generator user token",
   USER_SERVICE_TOKEN_MODAL_TITLE: "Copy the new QAA generator service token",
-  USERS_SECTION: "Users",
   USERS_SUBTITLE: "Every user can be edited, deleted, or issued a fresh token from one table.",
+  USERS_TAB: "Users",
 } as const;
 
 const QAA_USERS_DEFAULT_LIMIT = 50 as const;
@@ -107,13 +106,31 @@ const USER_FORM_INITIAL_STATE: UserFormState = {
   slackUserId: "",
 };
 
-const SERVICE_FORM_INITIAL_STATE: ServiceFormState = {
-  name: "",
-  tokenId: "",
-};
+const QAA_ADMIN_SUB_TABS = [
+  {
+    label: QaaAdminPanelCopy.USERS_TAB,
+    value: QaaAdminSubTab.USERS,
+  },
+  {
+    label: QaaAdminPanelCopy.SERVICES_TAB,
+    value: QaaAdminSubTab.SERVICES,
+  },
+] as const;
 
-function formatOptionalText(value: string | null | undefined): string {
-  return value && value.trim().length > 0 ? value : QaaAdminPanelCopy.DETAIL_NOT_SET;
+function readOptionalText(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  return value.trim().length > 0 ? value : null;
+}
+
+function formatOptionalText(value: unknown): string {
+  return readOptionalText(value) ?? QaaAdminPanelCopy.DETAIL_NOT_SET;
+}
+
+function resolveServiceTokenId(user: QaaUser | null): string | null {
+  return readOptionalText(user?.token_id);
 }
 
 function formatDate(value: string | null | undefined): string {
@@ -131,10 +148,10 @@ function formatDate(value: string | null | undefined): string {
 
 function toUserFormState(user: QaaUser): UserFormState {
   return {
-    description: typeof user.description === "string" ? user.description : "",
-    email: typeof user.email === "string" ? user.email : "",
-    name: typeof user.name === "string" ? user.name : "",
-    slackUserId: typeof user.slack_user_id === "string" ? user.slack_user_id : "",
+    description: readOptionalText(user.description) ?? "",
+    email: readOptionalText(user.email) ?? "",
+    name: readOptionalText(user.name) ?? "",
+    slackUserId: readOptionalText(user.slack_user_id) ?? "",
   };
 }
 
@@ -238,28 +255,48 @@ export function AdminPanel() {
   const token = useAuthStore((state) => state.token);
   const currentUser = useAuthStore((state) => state.currentUser);
 
+  const [activeSubTab, setActiveSubTab] = useState<QaaAdminSubTabValue>(QaaAdminSubTab.USERS);
   const [createUserOpened, setCreateUserOpened] = useState(false);
   const [createUserForm, setCreateUserForm] = useState<UserFormState>(USER_FORM_INITIAL_STATE);
   const [editingUser, setEditingUser] = useState<QaaUser | null>(null);
   const [editUserForm, setEditUserForm] = useState<UserFormState>(USER_FORM_INITIAL_STATE);
   const [deletingUser, setDeletingUser] = useState<QaaUser | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
-  const [serviceForm, setServiceForm] = useState<ServiceFormState>(SERVICE_FORM_INITIAL_STATE);
-  const [serviceNotice, setServiceNotice] = useState<InlineNotice | null>(null);
+  const [createServiceOpened, setCreateServiceOpened] = useState(false);
+  const [createServiceName, setCreateServiceName] = useState("");
+  const [serviceToRevoke, setServiceToRevoke] = useState<QaaUser | null>(null);
   const [tokenModal, setTokenModal] = useState<TokenModalState | null>(null);
 
+  const qaaAdminEnabled = Boolean(token) && Boolean(currentUser?.is_admin);
+
   const usersQuery = useQuery({
-    enabled: Boolean(token) && Boolean(currentUser?.is_admin),
+    enabled: qaaAdminEnabled && activeSubTab === QaaAdminSubTab.USERS,
     queryFn: ({ signal }) =>
       backendClient.listQaaUsers(
         token ?? "",
         {
+          kind: QaaSubjectKind.USER,
           limit: QAA_USERS_DEFAULT_LIMIT,
           offset: QAA_USERS_DEFAULT_OFFSET,
         },
         signal
       ),
-    queryKey: [QueryKey.QAA_USERS, token],
+    queryKey: [QueryKey.QAA_USERS, token, QaaSubjectKind.USER],
+  });
+
+  const servicesQuery = useQuery({
+    enabled: qaaAdminEnabled && activeSubTab === QaaAdminSubTab.SERVICES,
+    queryFn: ({ signal }) =>
+      backendClient.listQaaUsers(
+        token ?? "",
+        {
+          kind: QaaSubjectKind.SERVICE,
+          limit: QAA_USERS_DEFAULT_LIMIT,
+          offset: QAA_USERS_DEFAULT_OFFSET,
+        },
+        signal
+      ),
+    queryKey: [QueryKey.QAA_USERS, token, QaaSubjectKind.SERVICE],
   });
 
   const createUserMutation = useMutation({
@@ -281,6 +318,7 @@ export function AdminPanel() {
       await queryClient.invalidateQueries({ queryKey: [QueryKey.QAA_USERS] });
     },
   });
+
 
   const updateUserMutation = useMutation({
     mutationFn: async ({ payload, userId }: { payload: QaaUserUpdateRequest; userId: string }) => {
@@ -330,7 +368,7 @@ export function AdminPanel() {
     },
   });
 
-  const registerServiceMutation = useMutation({
+  const createServiceMutation = useMutation({
     mutationFn: async (name: string) => {
       if (!token) {
         throw new Error("Authentication is required.");
@@ -338,24 +376,14 @@ export function AdminPanel() {
 
       return backendClient.createQaaServiceToken(token, { name });
     },
-    onSuccess: (response) => {
-      setServiceForm((current) => ({ ...current, name: "" }));
-      setServiceNotice({
-        color: "teal",
-        message: QaaAdminPanelCopy.SERVICE_REGISTERED,
-        title: QaaAdminPanelCopy.SERVICES_SECTION,
-      });
+    onSuccess: async (response) => {
+      setCreateServiceOpened(false);
+      setCreateServiceName("");
       setTokenModal({
         title: QaaAdminPanelCopy.USER_SERVICE_TOKEN_MODAL_TITLE,
         token: response.token,
       });
-    },
-    onError: (error) => {
-      setServiceNotice({
-        color: "red",
-        message: error instanceof Error ? error.message : QaaAdminPanelCopy.REGISTER_SERVICE_ERROR,
-        title: QaaAdminPanelCopy.SERVICES_SECTION,
-      });
+      await queryClient.invalidateQueries({ queryKey: [QueryKey.QAA_USERS] });
     },
   });
 
@@ -367,20 +395,9 @@ export function AdminPanel() {
 
       return backendClient.revokeQaaServiceToken(token, tokenId);
     },
-    onSuccess: () => {
-      setServiceForm((current) => ({ ...current, tokenId: "" }));
-      setServiceNotice({
-        color: "teal",
-        message: QaaAdminPanelCopy.SERVICE_REVOKED,
-        title: QaaAdminPanelCopy.SERVICES_SECTION,
-      });
-    },
-    onError: (error) => {
-      setServiceNotice({
-        color: "red",
-        message: error instanceof Error ? error.message : QaaAdminPanelCopy.REVOKE_SERVICE_ERROR,
-        title: QaaAdminPanelCopy.SERVICES_SECTION,
-      });
+    onSuccess: async () => {
+      setServiceToRevoke(null);
+      await queryClient.invalidateQueries({ queryKey: [QueryKey.QAA_USERS] });
     },
   });
 
@@ -424,11 +441,33 @@ export function AdminPanel() {
     setDeleteConfirmation("");
   }
 
+  function openCreateServiceModal(): void {
+    createServiceMutation.reset();
+    setCreateServiceName("");
+    setCreateServiceOpened(true);
+  }
+
+  function closeCreateServiceModal(): void {
+    createServiceMutation.reset();
+    setCreateServiceName("");
+    setCreateServiceOpened(false);
+  }
+
+  function openRevokeServiceModal(service: QaaUser): void {
+    revokeServiceMutation.reset();
+    setServiceToRevoke(service);
+  }
+
+  function closeRevokeServiceModal(): void {
+    revokeServiceMutation.reset();
+    setServiceToRevoke(null);
+  }
+
   function closeTokenModal(): void {
     setTokenModal(null);
     createUserMutation.reset();
     regenerateTokenMutation.reset();
-    registerServiceMutation.reset();
+    createServiceMutation.reset();
   }
 
   function submitCreateUser(): void {
@@ -454,45 +493,39 @@ export function AdminPanel() {
     deleteUserMutation.mutate(deletingUser.id);
   }
 
-  function submitRegisterService(): void {
-    const serviceName = serviceForm.name.trim();
+  function submitCreateService(): void {
+    const serviceName = createServiceName.trim();
     if (!serviceName) {
       return;
     }
 
-    setServiceNotice(null);
-    registerServiceMutation.mutate(serviceName);
+    createServiceMutation.mutate(serviceName);
   }
 
   function submitRevokeService(): void {
-    const tokenId = serviceForm.tokenId.trim();
+    const tokenId = resolveServiceTokenId(serviceToRevoke);
     if (!tokenId) {
       return;
     }
 
-    setServiceNotice(null);
     revokeServiceMutation.mutate(tokenId);
   }
 
   const deleteIdentifier = deletingUser ? resolveUserIdentifier(deletingUser) : "";
   const deleteConfirmationMatches = deleteConfirmation.trim() === deleteIdentifier;
+  const serviceTokenId = resolveServiceTokenId(serviceToRevoke);
 
-  return (
-    <Stack gap="lg">
+  const usersPanel = (
+    <Stack gap="md">
       <Group justify="space-between" align="flex-start">
         <div>
-          <Title order={2}>{QaaAdminPanelCopy.ADMIN_TITLE}</Title>
-          <Text c="dimmed">{QaaAdminPanelCopy.ADMIN_SUBTITLE}</Text>
+          <Title order={3}>{QaaAdminPanelCopy.USERS_TAB}</Title>
+          <Text c="dimmed">{QaaAdminPanelCopy.USERS_SUBTITLE}</Text>
         </div>
         <Button leftSection={<IconPlus size={16} />} onClick={openCreateUserModal}>
           {QaaAdminPanelCopy.CREATE_USER_ACTION}
         </Button>
       </Group>
-
-      <div>
-        <Title order={3}>{QaaAdminPanelCopy.USERS_SECTION}</Title>
-        <Text c="dimmed">{QaaAdminPanelCopy.USERS_SUBTITLE}</Text>
-      </div>
 
       {usersQuery.isLoading ? (
         <Stack align="center" gap="sm" py="xl">
@@ -502,14 +535,16 @@ export function AdminPanel() {
       ) : null}
 
       {usersQuery.isError ? (
-        <Alert color="red" icon={<IconAlertCircle size={18} />} title={QaaAdminPanelCopy.USERS_SECTION}>
+        <Alert color="red" icon={<IconAlertCircle size={18} />} title={QaaAdminPanelCopy.LOAD_USERS_ERROR_TITLE}>
           <Stack gap="sm">
             <Text>
-              {usersQuery.error instanceof Error ? usersQuery.error.message : QaaAdminPanelCopy.USERS_SECTION}
+              {usersQuery.error instanceof Error
+                ? usersQuery.error.message
+                : QaaAdminPanelCopy.LOAD_USERS_ERROR_TITLE}
             </Text>
             <Group>
               <Button onClick={() => void usersQuery.refetch()} variant="light">
-                Retry
+                {QaaAdminPanelCopy.RETRY_ACTION}
               </Button>
             </Group>
           </Stack>
@@ -517,7 +552,7 @@ export function AdminPanel() {
       ) : null}
 
       {!usersQuery.isLoading && !usersQuery.isError && (usersQuery.data?.items.length ?? 0) === 0 ? (
-        <Alert title={QaaAdminPanelCopy.USERS_SECTION}>{QaaAdminPanelCopy.NO_USERS}</Alert>
+        <Alert title={QaaAdminPanelCopy.USERS_TAB}>{QaaAdminPanelCopy.NO_USERS}</Alert>
       ) : null}
 
       {!usersQuery.isLoading && !usersQuery.isError && (usersQuery.data?.items.length ?? 0) > 0 ? (
@@ -536,19 +571,11 @@ export function AdminPanel() {
             <Table.Tbody>
               {usersQuery.data?.items.map((user) => (
                 <Table.Tr key={user.id}>
-                  <Table.Td>{formatOptionalText(typeof user.name === "string" ? user.name : null)}</Table.Td>
-                  <Table.Td>{formatOptionalText(typeof user.email === "string" ? user.email : null)}</Table.Td>
-                  <Table.Td>
-                    {formatOptionalText(
-                      typeof user.slack_user_id === "string" ? user.slack_user_id : null
-                    )}
-                  </Table.Td>
-                  <Table.Td>
-                    {formatOptionalText(
-                      typeof user.description === "string" ? user.description : null
-                    )}
-                  </Table.Td>
-                  <Table.Td>{formatDate(typeof user.created_at === "string" ? user.created_at : null)}</Table.Td>
+                  <Table.Td>{formatOptionalText(user.name)}</Table.Td>
+                  <Table.Td>{formatOptionalText(user.email)}</Table.Td>
+                  <Table.Td>{formatOptionalText(user.slack_user_id)}</Table.Td>
+                  <Table.Td>{formatOptionalText(user.description)}</Table.Td>
+                  <Table.Td>{formatDate(readOptionalText(user.created_at))}</Table.Td>
                   <Table.Td>
                     <Group gap="xs">
                       <Button
@@ -589,51 +616,134 @@ export function AdminPanel() {
           </Table>
         </Table.ScrollContainer>
       ) : null}
+    </Stack>
+  );
 
-      <div>
-        <Title order={3}>{QaaAdminPanelCopy.SERVICES_SECTION}</Title>
-        <Text c="dimmed">{QaaAdminPanelCopy.SERVICE_REGISTER_SUBTITLE}</Text>
-      </div>
 
-      {serviceNotice ? (
-        <Alert color={serviceNotice.color} icon={<IconAlertCircle size={18} />} title={serviceNotice.title}>
-          {serviceNotice.message}
+  const servicesPanel = (
+    <Stack gap="md">
+      <Group justify="space-between" align="flex-start">
+        <div>
+          <Title order={3}>{QaaAdminPanelCopy.SERVICES_TAB}</Title>
+          <Text c="dimmed">{QaaAdminPanelCopy.SERVICES_SUBTITLE}</Text>
+        </div>
+        <Button leftSection={<IconPlus size={16} />} onClick={openCreateServiceModal}>
+          {QaaAdminPanelCopy.CREATE_SERVICE_ACTION}
+        </Button>
+      </Group>
+
+      {servicesQuery.isLoading ? (
+        <Stack align="center" gap="sm" py="xl">
+          <Loader size="lg" />
+          <Text c="dimmed">{QaaAdminPanelCopy.LOADING_SERVICES}</Text>
+        </Stack>
+      ) : null}
+
+      {servicesQuery.isError ? (
+        <Alert
+          color="red"
+          icon={<IconAlertCircle size={18} />}
+          title={QaaAdminPanelCopy.LOAD_SERVICES_ERROR_TITLE}
+        >
+          <Stack gap="sm">
+            <Text>
+              {servicesQuery.error instanceof Error
+                ? servicesQuery.error.message
+                : QaaAdminPanelCopy.LOAD_SERVICES_ERROR_TITLE}
+            </Text>
+            <Group>
+              <Button onClick={() => void servicesQuery.refetch()} variant="light">
+                {QaaAdminPanelCopy.RETRY_ACTION}
+              </Button>
+            </Group>
+          </Stack>
         </Alert>
       ) : null}
 
-      <Stack gap="md">
-        <TextInput
-          label={QaaAdminPanelCopy.SERVICE_NAME_LABEL}
-          onChange={(event) => setServiceForm((current) => ({ ...current, name: event.currentTarget.value }))}
-          value={serviceForm.name}
-        />
-        <Group justify="flex-end">
-          <Button
-            leftSection={<IconPlus size={16} />}
-            loading={registerServiceMutation.isPending}
-            onClick={submitRegisterService}
-          >
-            {QaaAdminPanelCopy.REGISTER_SERVICE_ACTION}
-          </Button>
-        </Group>
+      {!servicesQuery.isLoading && !servicesQuery.isError && (servicesQuery.data?.items.length ?? 0) === 0 ? (
+        <Alert title={QaaAdminPanelCopy.SERVICES_TAB}>{QaaAdminPanelCopy.NO_SERVICES}</Alert>
+      ) : null}
 
-        <TextInput
-          label={QaaAdminPanelCopy.TOKEN_ID_LABEL}
-          onChange={(event) => setServiceForm((current) => ({ ...current, tokenId: event.currentTarget.value }))}
-          value={serviceForm.tokenId}
-        />
-        <Group justify="flex-end">
-          <Button
-            color="red"
-            leftSection={<IconTrash size={16} />}
-            loading={revokeServiceMutation.isPending}
-            onClick={submitRevokeService}
-            variant="light"
-          >
-            {QaaAdminPanelCopy.REVOKE_SERVICE_ACTION}
-          </Button>
-        </Group>
-      </Stack>
+      {!servicesQuery.isLoading && !servicesQuery.isError && (servicesQuery.data?.items.length ?? 0) > 0 ? (
+        <Table.ScrollContainer minWidth={820}>
+          <Table highlightOnHover striped withTableBorder>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>{QaaAdminPanelCopy.TABLE_NAME}</Table.Th>
+                <Table.Th>{QaaAdminPanelCopy.TABLE_CREATED}</Table.Th>
+                <Table.Th>{QaaAdminPanelCopy.TABLE_TOKEN_ID}</Table.Th>
+                <Table.Th>{QaaAdminPanelCopy.TABLE_ACTIONS}</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {servicesQuery.data?.items.map((service) => {
+                const tokenId = resolveServiceTokenId(service);
+                return (
+                  <Table.Tr key={service.id}>
+                    <Table.Td>{formatOptionalText(service.name)}</Table.Td>
+                    <Table.Td>{formatDate(readOptionalText(service.created_at))}</Table.Td>
+                    <Table.Td>{formatOptionalText(tokenId)}</Table.Td>
+                    <Table.Td>
+                      <Group gap="xs">
+                        <Button
+                          aria-label={`${QaaAdminPanelCopy.REVOKE_SERVICE_ACTION} ${service.id}`}
+                          color="red"
+                          disabled={!tokenId}
+                          leftSection={<IconTrash size={14} />}
+                          onClick={() => openRevokeServiceModal(service)}
+                          size="xs"
+                          variant="light"
+                        >
+                          {QaaAdminPanelCopy.REVOKE_SERVICE_ACTION}
+                        </Button>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
+                );
+              })}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      ) : null}
+    </Stack>
+  );
+
+  const subTabPanels: Record<QaaAdminSubTabValue, JSX.Element> = {
+    [QaaAdminSubTab.USERS]: usersPanel,
+    [QaaAdminSubTab.SERVICES]: servicesPanel,
+  };
+
+  return (
+    <Stack gap="lg">
+      <div>
+        <Title order={2}>{QaaAdminPanelCopy.ADMIN_TITLE}</Title>
+        <Text c="dimmed">{QaaAdminPanelCopy.ADMIN_SUBTITLE}</Text>
+      </div>
+
+      <Tabs
+        onChange={(value) => {
+          if (!value) {
+            return;
+          }
+
+          setActiveSubTab(value as QaaAdminSubTabValue);
+        }}
+        value={activeSubTab}
+      >
+        <Tabs.List>
+          {QAA_ADMIN_SUB_TABS.map((tab) => (
+            <Tabs.Tab key={tab.value} value={tab.value}>
+              {tab.label}
+            </Tabs.Tab>
+          ))}
+        </Tabs.List>
+
+        {QAA_ADMIN_SUB_TABS.map((tab) => (
+          <Tabs.Panel key={tab.value} pt="md" value={tab.value}>
+            {subTabPanels[tab.value]}
+          </Tabs.Panel>
+        ))}
+      </Tabs>
 
       <Modal
         opened={createUserOpened}
@@ -738,6 +848,89 @@ export function AdminPanel() {
               onClick={submitDeleteUser}
             >
               {QaaAdminPanelCopy.DELETE_SUBMIT_ACTION}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+
+      <Modal
+        opened={createServiceOpened}
+        onClose={closeCreateServiceModal}
+        title={QaaAdminPanelCopy.CREATE_SERVICE_MODAL_TITLE}
+        centered
+        transitionProps={{ duration: 0 }}
+      >
+        <Stack>
+          <Text c="dimmed" size="sm">
+            {QaaAdminPanelCopy.CREATE_SERVICE_SUBTITLE}
+          </Text>
+
+          {createServiceMutation.isError ? (
+            <Alert color="red" icon={<IconAlertCircle size={18} />} title={QaaAdminPanelCopy.CREATE_SERVICE_ERROR}>
+              {createServiceMutation.error instanceof Error
+                ? createServiceMutation.error.message
+                : QaaAdminPanelCopy.CREATE_SERVICE_ERROR}
+            </Alert>
+          ) : null}
+
+          <TextInput
+            aria-label={QaaAdminPanelCopy.SERVICE_NAME_LABEL}
+            label={QaaAdminPanelCopy.SERVICE_NAME_LABEL}
+            onChange={(event) => setCreateServiceName(event.currentTarget.value)}
+            value={createServiceName}
+          />
+
+          <Group justify="flex-end">
+            <Button
+              disabled={createServiceName.trim().length === 0}
+              loading={createServiceMutation.isPending}
+              onClick={submitCreateService}
+            >
+              {QaaAdminPanelCopy.CREATE_SERVICE_ACTION}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={serviceToRevoke !== null}
+        onClose={closeRevokeServiceModal}
+        title={QaaAdminPanelCopy.REVOKE_SERVICE_CONFIRM_TITLE}
+        centered
+        transitionProps={{ duration: 0 }}
+      >
+        <Stack>
+          <Text c="dimmed" size="sm">
+            {QaaAdminPanelCopy.REVOKE_SERVICE_CONFIRM_HELP}
+          </Text>
+
+          <div>
+            <Text fw={600}>{QaaAdminPanelCopy.TABLE_NAME}</Text>
+            <Text>{formatOptionalText(serviceToRevoke?.name)}</Text>
+          </div>
+
+          <div>
+            <Text fw={600}>{QaaAdminPanelCopy.TABLE_TOKEN_ID}</Text>
+            <Text>{formatOptionalText(serviceTokenId)}</Text>
+          </div>
+
+          {revokeServiceMutation.isError ? (
+            <Alert color="red" icon={<IconAlertCircle size={18} />} title={QaaAdminPanelCopy.REVOKE_SERVICE_ERROR}>
+              {revokeServiceMutation.error instanceof Error
+                ? revokeServiceMutation.error.message
+                : QaaAdminPanelCopy.REVOKE_SERVICE_ERROR}
+            </Alert>
+          ) : null}
+
+          <Group justify="flex-end">
+            <Button
+              color="red"
+              disabled={!serviceTokenId}
+              loading={revokeServiceMutation.isPending}
+              onClick={submitRevokeService}
+            >
+              {QaaAdminPanelCopy.REVOKE_SERVICE_SUBMIT_ACTION}
             </Button>
           </Group>
         </Stack>

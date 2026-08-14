@@ -19,10 +19,13 @@ QAA_ADMIN_USER_ID = "user-123"
 QAA_ADMIN_TOKEN_ID = "svc-123"
 QAA_ADMIN_LOOKUP_LIMIT = "25"
 QAA_ADMIN_LOOKUP_OFFSET = "0"
+QAA_ADMIN_KIND_BOGUS = "bogus"
+QAA_ADMIN_KIND_SERVICE = "service"
 QAA_ADMIN_CREATED_TOKEN = "plain-user-token"
 QAA_ADMIN_REGENERATED_TOKEN = "rotated-user-token"
 QAA_ADMIN_SERVICE_TOKEN = "plain-service-token"
 QAA_ADMIN_ERROR_DETAIL = "User not found."
+QAA_ADMIN_VALIDATION_ERROR_DETAIL = "validation_error"
 QAA_ADMIN_USERS_PATH = f"/api/v1{RoutePath.QAA_ADMIN_USERS.value}"
 QAA_ADMIN_USER_DETAIL_PATH = f"{QAA_ADMIN_USERS_PATH}/{QAA_ADMIN_USER_ID}"
 QAA_ADMIN_USER_REGENERATE_PATH = f"{QAA_ADMIN_USER_DETAIL_PATH}{RoutePath.REGENERATE.value}"
@@ -187,6 +190,7 @@ def test_admin_list_qaa_users_uses_superuser_token(
             f"{AUTH_SCHEME_BEARER} {QAA_GENERATOR_SUPERUSER_TOKEN}"
         )
         assert request.url.params.get("email") == QAA_ADMIN_EMAIL
+        assert request.url.params.get("kind") == QAA_ADMIN_KIND_SERVICE
         assert request.url.params.get("slack_user_id") == QAA_ADMIN_SLACK_USER_ID
         assert request.url.params.get("limit") == QAA_ADMIN_LOOKUP_LIMIT
         assert request.url.params.get("offset") == QAA_ADMIN_LOOKUP_OFFSET
@@ -199,6 +203,7 @@ def test_admin_list_qaa_users_uses_superuser_token(
         headers=auth_header(token),
         params={
             "email": QAA_ADMIN_EMAIL,
+            "kind": QAA_ADMIN_KIND_SERVICE,
             "slack_user_id": QAA_ADMIN_SLACK_USER_ID,
             "limit": QAA_ADMIN_LOOKUP_LIMIT,
             "offset": QAA_ADMIN_LOOKUP_OFFSET,
@@ -217,6 +222,30 @@ def test_missing_superuser_token_returns_501_without_calling_upstream(client: Te
 
     assert response.status_code == 501
     assert response.json()["detail"] == SUPERUSER_NOT_CONFIGURED_DETAIL
+
+
+def test_bad_kind_passthrough_keeps_upstream_400(
+    client: TestClient,
+    install_qaa_client: Callable[[Callable[[httpx.Request], httpx.Response]], None],
+) -> None:
+    token, _ = login(client, DevUsername.ADMIN.value, DevPassword.ADMIN.value)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == METHOD_GET
+        assert request.url.path == UPSTREAM_QAA_USERS_PATH
+        assert request.url.params.get("kind") == QAA_ADMIN_KIND_BOGUS
+        return httpx.Response(status_code=400, json={"detail": QAA_ADMIN_VALIDATION_ERROR_DETAIL})
+
+    install_qaa_client(handler)
+
+    response = client.get(
+        QAA_ADMIN_USERS_PATH,
+        headers=auth_header(token),
+        params={"kind": QAA_ADMIN_KIND_BOGUS},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == QAA_ADMIN_VALIDATION_ERROR_DETAIL
 
 
 def test_create_qaa_user_relays_plaintext_token_and_keeps_operations_secret_free(

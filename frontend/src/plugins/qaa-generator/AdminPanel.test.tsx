@@ -18,20 +18,24 @@ vi.mock("@/api/backendClient", () => ({
   backendClient: backendClientMock,
 }));
 
+import type { QaaUserListResponse, User } from "@/api/types";
 import { Sidebar } from "@/app/layout/Sidebar";
-import { PluginId, TabId } from "@/constants";
+import { PluginId, QaaSubjectKind, TabId } from "@/constants";
 import { AdminPanel } from "@/plugins/qaa-generator/AdminPanel";
 import qaaGeneratorPlugin from "@/plugins/qaa-generator/manifest";
-import { renderWithProviders } from "@/test/render";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
 import { resetUiStoreState } from "@/store/uiStore";
-import type { QaaUserListResponse, User } from "@/api/types";
+import { renderWithProviders } from "@/test/render";
 
 const QAA_ENABLED_PLUGINS = [PluginId.QAA_GENERATOR];
 const ADMIN_TOKEN = "token-123";
 const QAA_USER_ID = "user-123";
+const QAA_SERVICE_SUBJECT_ID = "service-user-1";
+const QAA_SERVICE_TOKEN_ID = "svc-token-123";
 const QAA_USER_TOKEN = "plain-user-token";
 const QAA_SERVICE_TOKEN = "plain-service-token";
+const QAA_USERS_DEFAULT_LIMIT = 50;
+const QAA_USERS_DEFAULT_OFFSET = 0;
 
 const adminUser: User = {
   auto_login: false,
@@ -62,8 +66,22 @@ const qaaUserListResponse: QaaUserListResponse = {
       description: "Owns generator runs",
       email: "alice@example.com",
       id: QAA_USER_ID,
+      kind: QaaSubjectKind.USER,
       name: "Alice Example",
       slack_user_id: "U123",
+    },
+  ],
+  next_cursor: null,
+};
+
+const qaaServiceListResponse: QaaUserListResponse = {
+  items: [
+    {
+      created_at: "2026-08-11T12:00:00Z",
+      id: QAA_SERVICE_SUBJECT_ID,
+      kind: QaaSubjectKind.SERVICE,
+      name: "qaa-bot",
+      token_id: QAA_SERVICE_TOKEN_ID,
     },
   ],
   next_cursor: null,
@@ -81,6 +99,37 @@ function renderQaaSidebar() {
   );
 }
 
+function setAdminState(): void {
+  useAuthStore.setState({
+    currentUser: adminUser,
+    token: ADMIN_TOKEN,
+  });
+  resetUiStoreState({
+    enabled_plugins: QAA_ENABLED_PLUGINS,
+    is_admin: true,
+  });
+}
+
+function mockQaaLists({
+  serviceResponse = qaaServiceListResponse,
+  userResponse = qaaUserListResponse,
+}: {
+  serviceResponse?: QaaUserListResponse;
+  userResponse?: QaaUserListResponse;
+} = {}): void {
+  backendClientMock.listQaaUsers.mockImplementation(
+    (_token: string, params: { kind?: string }) =>
+      params.kind === QaaSubjectKind.SERVICE ? serviceResponse : userResponse
+  );
+}
+
+function countListCallsForKind(kind: string): number {
+  return backendClientMock.listQaaUsers.mock.calls.filter((call) => {
+    const params = call[1] as { kind?: string };
+    return params.kind === kind;
+  }).length;
+}
+
 describe("QAA generator AdminPanel", () => {
   beforeEach(() => {
     backendClientMock.createQaaServiceToken.mockReset();
@@ -96,7 +145,7 @@ describe("QAA generator AdminPanel", () => {
       enabled_plugins: QAA_ENABLED_PLUGINS,
       is_admin: false,
     });
-    backendClientMock.listQaaUsers.mockResolvedValue(qaaUserListResponse);
+    mockQaaLists();
   });
 
   it("keeps the admin tab last and visible to admins in the sidebar tree", async () => {
@@ -105,15 +154,7 @@ describe("QAA generator AdminPanel", () => {
     expect(qaaGeneratorPlugin.tabs.at(-1)?.id).toBe(TabId.QAA_ADMIN);
     expect(qaaGeneratorPlugin.tabs.at(-1)?.adminOnly).toBe(true);
 
-    useAuthStore.setState({
-      currentUser: adminUser,
-      token: ADMIN_TOKEN,
-    });
-    resetUiStoreState({
-      enabled_plugins: QAA_ENABLED_PLUGINS,
-      is_admin: true,
-    });
-
+    setAdminState();
     renderQaaSidebar();
 
     await user.click(screen.getByRole("button", { name: "QAA generator" }));
@@ -121,26 +162,29 @@ describe("QAA generator AdminPanel", () => {
     expect(await screen.findByText("Admin")).toBeInTheDocument();
   });
 
-  it("creates a qaa user and shows the plaintext token only in the copy-once modal", async () => {
+  it("requests kind=user on the Users tab and shows the copy-once user token modal", async () => {
     const user = userEvent.setup();
     backendClientMock.createQaaUser.mockResolvedValue({
       token: QAA_USER_TOKEN,
       user: qaaUserListResponse.items[0],
     });
 
-    useAuthStore.setState({
-      currentUser: adminUser,
-      token: ADMIN_TOKEN,
-    });
-    resetUiStoreState({
-      enabled_plugins: QAA_ENABLED_PLUGINS,
-      is_admin: true,
-    });
-
+    setAdminState();
     renderWithProviders(<AdminPanel />);
 
     expect(await screen.findByText("Alice Example")).toBeInTheDocument();
-    expect(screen.getByText("Services")).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(backendClientMock.listQaaUsers).toHaveBeenCalledWith(
+        ADMIN_TOKEN,
+        {
+          kind: QaaSubjectKind.USER,
+          limit: QAA_USERS_DEFAULT_LIMIT,
+          offset: QAA_USERS_DEFAULT_OFFSET,
+        },
+        expect.any(AbortSignal)
+      );
+    });
 
     await user.click(screen.getByRole("button", { name: "Create user" }));
     await user.type(screen.getByLabelText("Email"), "alice@example.com");
@@ -149,56 +193,114 @@ describe("QAA generator AdminPanel", () => {
     await user.click(screen.getAllByRole("button", { name: "Create user" })[1]);
 
     await waitFor(() => {
-      expect(backendClientMock.createQaaUser).toHaveBeenCalledWith(
-        ADMIN_TOKEN,
-        {
-          description: "Owns generator runs",
-          email: "alice@example.com",
-          name: "Alice Example",
-          slack_user_id: undefined,
-        }
-      );
+      expect(backendClientMock.createQaaUser).toHaveBeenCalledWith(ADMIN_TOKEN, {
+        description: "Owns generator runs",
+        email: "alice@example.com",
+        name: "Alice Example",
+        slack_user_id: undefined,
+      });
     });
 
     expect(await screen.findByText("Copy the new QAA generator user token")).toBeInTheDocument();
     expect(screen.getByDisplayValue(QAA_USER_TOKEN)).toBeInTheDocument();
   });
 
-  it("registers and revokes QAA generator service tokens", async () => {
+  it("requests kind=service on the Services tab and renders the token id column", async () => {
+    const user = userEvent.setup();
+
+    setAdminState();
+    renderWithProviders(<AdminPanel />);
+
+    await screen.findByText("Alice Example");
+    await user.click(screen.getByRole("tab", { name: "Services" }));
+
+    expect(await screen.findByText("qaa-bot")).toBeInTheDocument();
+    expect(screen.getByText(QAA_SERVICE_TOKEN_ID)).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(backendClientMock.listQaaUsers).toHaveBeenCalledWith(
+        ADMIN_TOKEN,
+        {
+          kind: QaaSubjectKind.SERVICE,
+          limit: QAA_USERS_DEFAULT_LIMIT,
+          offset: QAA_USERS_DEFAULT_OFFSET,
+        },
+        expect.any(AbortSignal)
+      );
+    });
+  });
+
+
+  it("creates a service from the Services tab and refetches the filtered list", async () => {
     const user = userEvent.setup();
     backendClientMock.createQaaServiceToken.mockResolvedValue({
       token: QAA_SERVICE_TOKEN,
       user: {
-        id: "service-user-1",
+        id: QAA_SERVICE_SUBJECT_ID,
         name: "qaa-bot",
       },
     });
-    backendClientMock.revokeQaaServiceToken.mockResolvedValue({ revoked: true });
-
-    useAuthStore.setState({
-      currentUser: adminUser,
-      token: ADMIN_TOKEN,
+    mockQaaLists({
+      serviceResponse: {
+        items: [],
+        next_cursor: null,
+      },
     });
 
+    setAdminState();
     renderWithProviders(<AdminPanel />);
-    await screen.findByText("Services");
 
+    await screen.findByText("Alice Example");
+    await user.click(screen.getByRole("tab", { name: "Services" }));
+    await screen.findByText("No QAA generator services were returned.");
+
+    expect(countListCallsForKind(QaaSubjectKind.SERVICE)).toBe(1);
+
+    await user.click(screen.getByRole("button", { name: "Create service" }));
     await user.type(screen.getByLabelText("Service name"), "qaa-bot");
-    await user.click(screen.getByRole("button", { name: "Register service" }));
+    await user.click(screen.getAllByRole("button", { name: "Create service" })[1]);
 
     await waitFor(() => {
       expect(backendClientMock.createQaaServiceToken).toHaveBeenCalledWith(ADMIN_TOKEN, {
         name: "qaa-bot",
       });
     });
+    await waitFor(() => {
+      expect(countListCallsForKind(QaaSubjectKind.SERVICE)).toBe(2);
+    });
+
     expect(await screen.findByText("Copy the new QAA generator service token")).toBeInTheDocument();
     expect(screen.getByDisplayValue(QAA_SERVICE_TOKEN)).toBeInTheDocument();
+  });
 
-    await user.type(screen.getByLabelText("Token id"), "svc-123");
-    await user.click(screen.getByRole("button", { name: "Revoke service token" }));
+  it("revokes a service by token_id and refetches the filtered list", async () => {
+    const user = userEvent.setup();
+    backendClientMock.revokeQaaServiceToken.mockResolvedValue({ revoked: true });
+
+    setAdminState();
+    renderWithProviders(<AdminPanel />);
+
+    await screen.findByText("Alice Example");
+    await user.click(screen.getByRole("tab", { name: "Services" }));
+    await screen.findByText("qaa-bot");
+
+    expect(countListCallsForKind(QaaSubjectKind.SERVICE)).toBe(1);
+
+    await user.click(screen.getByRole("button", { name: `Revoke ${QAA_SERVICE_SUBJECT_ID}` }));
+    await user.click(screen.getByRole("button", { name: "Revoke token" }));
 
     await waitFor(() => {
-      expect(backendClientMock.revokeQaaServiceToken).toHaveBeenCalledWith(ADMIN_TOKEN, "svc-123");
+      expect(backendClientMock.revokeQaaServiceToken).toHaveBeenCalledWith(
+        ADMIN_TOKEN,
+        QAA_SERVICE_TOKEN_ID
+      );
+    });
+    expect(backendClientMock.revokeQaaServiceToken).not.toHaveBeenCalledWith(
+      ADMIN_TOKEN,
+      QAA_SERVICE_SUBJECT_ID
+    );
+    await waitFor(() => {
+      expect(countListCallsForKind(QaaSubjectKind.SERVICE)).toBe(2);
     });
   });
 
@@ -211,15 +313,7 @@ describe("QAA generator AdminPanel", () => {
     });
     backendClientMock.deleteQaaUser.mockResolvedValue(undefined);
 
-    useAuthStore.setState({
-      currentUser: adminUser,
-      token: ADMIN_TOKEN,
-    });
-    resetUiStoreState({
-      enabled_plugins: QAA_ENABLED_PLUGINS,
-      is_admin: true,
-    });
-
+    setAdminState();
     renderWithProviders(<AdminPanel />);
     await screen.findByText("Alice Example");
 
@@ -233,16 +327,12 @@ describe("QAA generator AdminPanel", () => {
     await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
-      expect(backendClientMock.updateQaaUser).toHaveBeenCalledWith(
-        ADMIN_TOKEN,
-        QAA_USER_ID,
-        {
-          description: "Updated owner",
-          email: "alice@example.com",
-          name: "Alice Updated",
-          slack_user_id: "U123",
-        }
-      );
+      expect(backendClientMock.updateQaaUser).toHaveBeenCalledWith(ADMIN_TOKEN, QAA_USER_ID, {
+        description: "Updated owner",
+        email: "alice@example.com",
+        name: "Alice Updated",
+        slack_user_id: "U123",
+      });
     });
 
     await user.click(screen.getByRole("button", { name: `Delete ${QAA_USER_ID}` }));

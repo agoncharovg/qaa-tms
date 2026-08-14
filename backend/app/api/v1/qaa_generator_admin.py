@@ -40,6 +40,7 @@ class HttpMethod(StrEnum):
 
 class QaaAdminListQueryParam(StrEnum):
     EMAIL = "email"
+    KIND = "kind"
     LIMIT = "limit"
     OFFSET = "offset"
     SLACK_USER_ID = "slack_user_id"
@@ -62,6 +63,7 @@ def build_proxy_response(result: QaaGeneratorJsonResponse) -> Response:
 def build_list_params(
     *,
     email: str | None,
+    kind: str | None,
     slack_user_id: str | None,
     limit: int | None,
     offset: int | None,
@@ -69,6 +71,8 @@ def build_list_params(
     params: list[tuple[str, str]] = []
     if email:
         params.append((QaaAdminListQueryParam.EMAIL.value, email))
+    if kind:
+        params.append((QaaAdminListQueryParam.KIND.value, kind))
     if slack_user_id:
         params.append((QaaAdminListQueryParam.SLACK_USER_ID.value, slack_user_id))
     if limit is not None:
@@ -91,6 +95,7 @@ async def list_qaa_users(
     request: Request,
     _: AdminUser,
     email: str | None = None,
+    kind: str | None = Query(default=None),
     slack_user_id: str | None = None,
     limit: int | None = Query(default=None, ge=1),
     offset: int | None = Query(default=None, ge=0),
@@ -104,6 +109,7 @@ async def list_qaa_users(
         token_mode=QaaGeneratorTokenMode.SUPERUSER,
         params=build_list_params(
             email=email,
+            kind=kind,
             slack_user_id=slack_user_id,
             limit=limit,
             offset=offset,

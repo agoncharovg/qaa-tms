@@ -311,6 +311,8 @@ export interface QaaUser {
   slack_user_id?: string | null;
   name?: string | null;
   description?: string | null;
+  kind?: string | null;
+  token_id?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
   [key: string]: unknown;

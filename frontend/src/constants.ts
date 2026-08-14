@@ -618,6 +618,20 @@ export const QueryKey = {
 
 export type QueryKey = (typeof QueryKey)[keyof typeof QueryKey];
 
+export const QaaAdminSubTab = {
+  USERS: "users",
+  SERVICES: "services",
+} as const;
+
+export type QaaAdminSubTab = (typeof QaaAdminSubTab)[keyof typeof QaaAdminSubTab];
+
+export const QaaSubjectKind = {
+  USER: "user",
+  SERVICE: "service",
+} as const;
+
+export type QaaSubjectKind = (typeof QaaSubjectKind)[keyof typeof QaaSubjectKind];
+
 export const AGENT_HOST = "127.0.0.1" as const;
 export const DEFAULT_AGENT_PORT_RANGE = [47600, 47601, 47602, 47603, 47604, 47605] as const;
 export const DEFAULT_API_BASE_URL = "http://localhost:8000" as const;
