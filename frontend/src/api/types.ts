@@ -132,6 +132,7 @@ export interface AgentSettings {
   jenkins_root_path: string;
   qaa_generator_token_set: boolean;
   jenkins_root_folders: string[];
+  jenkins_history_limit: number;
   jenkins_request_timeout: number;
   jenkins_tree_depth: number;
   jenkins_stuck_min_idle_hours: number;
@@ -153,6 +154,7 @@ export interface AgentSettingsUpdate {
   jenkins_root_path?: string;
   qaa_generator_token?: string;
   jenkins_root_folders?: string[];
+  jenkins_history_limit?: number;
   jenkins_request_timeout?: number;
   jenkins_tree_depth?: number;
   jenkins_stuck_min_idle_hours?: number;
@@ -470,10 +472,12 @@ export interface JenkinsNode {
   kind: JenkinsNodeKind;
   status: JenkinsStatus | null;
   color: string | null;
+  builds: JenkinsBuild[];
   children: JenkinsNode[];
 }
 
 export interface JenkinsTreeResponse {
+  signature: string;
   roots: JenkinsNode[];
 }
 
@@ -489,6 +493,44 @@ export interface JenkinsBuild {
 
 export interface JenkinsBuildsResponse {
   builds: JenkinsBuild[];
+}
+
+export interface JenkinsScopeResponse {
+  signature: string;
+  rootPath: string;
+  rootFolders: string[];
+  treeDepth: number;
+  historyLimit: number;
+}
+
+export interface JenkinsTreeCacheRead {
+  roots: JenkinsNode[];
+  signature: string;
+  fetchedAt: string | null;
+  stale: boolean;
+  refreshLease: string | null;
+}
+
+export interface JenkinsTreeCachePut {
+  signature: string;
+  roots: JenkinsNode[];
+  refreshLease: string | null;
+}
+
+export interface JenkinsBuildsCacheRead {
+  builds: JenkinsBuild[];
+  signature: string;
+  path: string;
+  fetchedAt: string | null;
+  stale: boolean;
+  refreshLease: string | null;
+}
+
+export interface JenkinsBuildsCachePut {
+  signature: string;
+  path: string;
+  builds: JenkinsBuild[];
+  refreshLease: string | null;
 }
 
 export interface JobLogEvent {

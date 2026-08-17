@@ -50,6 +50,9 @@ class RoutePath(StrEnum):
     READY = "/ready"
     AUTH = "/auth"
     LOGIN = "/login"
+    JENKINS = "/jenkins"
+    TREE = "/tree"
+    BUILDS = "/builds"
     ME = "/me"
     ME_PLUGINS = "/me/plugins"
     SETTINGS = "/settings"
@@ -75,6 +78,7 @@ class RoutePath(StrEnum):
 
 class ApiTag(StrEnum):
     AUTH = "auth"
+    JENKINS = "jenkins"
     USERS = "users"
     OPERATIONS = "operations"
     QAA_GENERATOR = "qaa-generator"
@@ -138,6 +142,20 @@ class DatabaseDialect(StrEnum):
 
 class PasswordHashScheme(StrEnum):
     SHA256 = "sha256$"
+
+
+class JenkinsNodeKind(StrEnum):
+    FOLDER = "folder"
+    PIPELINE = "pipeline"
+
+
+class JenkinsStatus(StrEnum):
+    PASSED = "passed"
+    FAILED = "failed"
+    DISABLED = "disabled"
+    RUNNING = "running"
+    STUCK = "stuck"
+    NOTBUILT = "notbuilt"
 
 
 class HealthStatus(StrEnum):
@@ -211,3 +229,6 @@ DEFAULT_QAA_GENERATOR_PORT_FORWARD_NAMESPACE = "qaa-prod"
 DEFAULT_QAA_GENERATOR_PORT_FORWARD_RESOURCE = "svc/qaa-generator"
 DEFAULT_QAA_GENERATOR_PORT_FORWARD_LOCAL_PORT = 18080
 DEFAULT_QAA_GENERATOR_PORT_FORWARD_REMOTE_PORT = 8080
+JENKINS_TREE_CACHE_TTL_SECONDS = 900
+JENKINS_BUILDS_CACHE_TTL_SECONDS = 60
+JENKINS_REFRESH_LEASE_TTL_SECONDS = 30

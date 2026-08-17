@@ -149,8 +149,10 @@ describe("agentClient jenkins requests", () => {
 
   it("sends Jenkins tree and builds requests with bearer auth and URL-encoded paths", async () => {
     const tree: JenkinsTreeResponse = {
+      signature: "scope-1234",
       roots: [
         {
+          builds: [],
           children: [],
           color: null,
           kind: "folder",

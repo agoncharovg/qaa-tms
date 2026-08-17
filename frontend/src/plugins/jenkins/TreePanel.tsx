@@ -26,20 +26,20 @@ import {
   IconPinnedOff,
   IconRefresh,
 } from "@tabler/icons-react";
-import { useQuery } from "@tanstack/react-query";
 
-import { AgentRequestError, agentClient } from "@/api/agentClient";
+import { AgentRequestError } from "@/api/agentClient";
 import type { JenkinsBuild, JenkinsNode } from "@/api/types";
 import {
-  DEFAULT_JENKINS_TREE_REFETCH_MS,
+  JenkinsNodeKind,
   JenkinsStatusColor,
   JenkinsStatusLabel,
   PluginId,
-  QueryKey,
   TabId,
 } from "@/constants";
 import { useJenkinsStore } from "@/plugins/jenkins/jenkinsStore";
 import { collectExpandableNodePaths } from "@/plugins/jenkins/treeUtils";
+import { useJenkinsBuilds } from "@/plugins/jenkins/useJenkinsBuilds";
+import { useJenkinsTree } from "@/plugins/jenkins/useJenkinsTree";
 import { useAuthStore } from "@/store/authStore";
 import { useUiStore } from "@/store/uiStoreCore";
 
@@ -51,10 +51,12 @@ interface TreeNodeRowProps {
   agentPort: number;
   depth: number;
   expandedPaths: string[];
+  isActive: boolean;
   node: JenkinsNode;
   onPinToggle: (path: string) => void;
   onToggle: (path: string) => void;
   pinnedPaths: string[];
+  signature: string | null;
   token: string | null;
 }
 
@@ -87,7 +89,6 @@ const TreePanelCopy = {
 const TreePanelValue = {
   BUILD_HISTORY_HEIGHT_PX: 8,
   BUILD_HISTORY_WIDTH_PX: 108,
-  BUILD_STALE_TIME_MS: 30000,
   INDENT_STEP_PX: 24,
   LEFT_BORDER_PX: 2,
 } as const;
@@ -106,24 +107,21 @@ export function TreePanel({ agentPort }: TreePanelProps) {
   const unpin = useJenkinsStore((state) => state.unpin);
   const isActive = useUiStore((state) => state.tabsByPlugin[PluginId.JENKINS].activeTabId === TabId.JENKINS_TREE);
   const [expandedPaths, setExpandedPaths] = useState<string[]>([]);
-
-  const treeQuery = useQuery({
-    enabled: Boolean(token),
-    queryFn: ({ signal }) => agentClient.getJenkinsTree(agentPort, token ?? "", signal),
-    queryKey: [QueryKey.JENKINS_TREE, agentPort, token],
-    refetchInterval: isActive ? DEFAULT_JENKINS_TREE_REFETCH_MS : false,
-    refetchOnWindowFocus: false,
-    retry: false,
+  const treeState = useJenkinsTree({
+    agentPort,
+    enabled: true,
+    isActive,
+    token,
   });
 
   useEffect(() => {
-    if (expandedPaths.length > 0 || !treeQuery.data?.roots.length) {
+    if (expandedPaths.length > 0 || treeState.roots.length === 0) {
       return;
     }
-    setExpandedPaths(treeQuery.data.roots.map((root) => root.path));
-  }, [expandedPaths.length, treeQuery.data]);
+    setExpandedPaths(treeState.roots.map((root) => root.path));
+  }, [expandedPaths.length, treeState.roots]);
 
-  if (treeQuery.isLoading) {
+  if (treeState.isLoading) {
     return (
       <Stack align="center" gap="md" py="xl">
         <Loader size="lg" />
@@ -132,11 +130,11 @@ export function TreePanel({ agentPort }: TreePanelProps) {
     );
   }
 
-  if (treeQuery.isError) {
-    return renderTreeError(treeQuery.error);
+  if (treeState.error && treeState.roots.length === 0) {
+    return renderTreeError(treeState.error);
   }
 
-  if ((treeQuery.data?.roots.length ?? 0) === 0) {
+  if (treeState.roots.length === 0) {
     return (
       <Paper p="xl" radius="lg" withBorder>
         <Stack gap="sm">
@@ -159,7 +157,7 @@ export function TreePanel({ agentPort }: TreePanelProps) {
         <Group>
           <Button
             leftSection={<IconMaximize size={16} />}
-            onClick={() => setExpandedPaths(collectExpandableNodePaths(treeQuery.data?.roots ?? []))}
+            onClick={() => setExpandedPaths(collectExpandableNodePaths(treeState.roots))}
             variant="light"
           >
             {TreePanelCopy.EXPAND_ALL}
@@ -171,19 +169,24 @@ export function TreePanel({ agentPort }: TreePanelProps) {
           >
             {TreePanelCopy.COLLAPSE_ALL}
           </Button>
-          <Button leftSection={<IconRefresh size={16} />} onClick={() => void treeQuery.refetch()}>
+          <Button
+            leftSection={<IconRefresh size={16} />}
+            loading={treeState.isRefreshing}
+            onClick={() => void treeState.refetch()}
+          >
             {TreePanelCopy.REFRESH}
           </Button>
         </Group>
       </Group>
 
       <Stack gap="xs">
-        {treeQuery.data?.roots.map((node) => (
+        {treeState.roots.map((node) => (
           <TreeNodeRow
             key={node.path}
             agentPort={agentPort}
             depth={0}
             expandedPaths={expandedPaths}
+            isActive={isActive}
             node={node}
             onPinToggle={(path) => {
               if (pinnedPaths.includes(path)) {
@@ -200,6 +203,7 @@ export function TreePanel({ agentPort }: TreePanelProps) {
               );
             }}
             pinnedPaths={pinnedPaths}
+            signature={treeState.signature}
             token={token}
           />
         ))}
@@ -212,23 +216,25 @@ function TreeNodeRow({
   agentPort,
   depth,
   expandedPaths,
+  isActive,
   node,
   onPinToggle,
   onToggle,
   pinnedPaths,
+  signature,
   token,
 }: TreeNodeRowProps) {
   const expanded = expandedPaths.includes(node.path);
   const pinned = pinnedPaths.includes(node.path);
-  const buildQuery = useQuery({
-    enabled: Boolean(token && node.kind === "pipeline"),
-    queryFn: ({ signal }) => agentClient.getJenkinsBuilds(agentPort, token ?? "", node.path, signal),
-    queryKey: [QueryKey.JENKINS_BUILDS, agentPort, token, node.path],
-    refetchOnWindowFocus: false,
-    retry: false,
-    staleTime: TreePanelValue.BUILD_STALE_TIME_MS,
+  const buildsState = useJenkinsBuilds({
+    agentPort,
+    enabled: expanded && isActive && node.kind === JenkinsNodeKind.PIPELINE,
+    path: node.path,
+    signature,
+    token,
   });
-  const buildHistory = buildQuery.data ? [...buildQuery.data.builds].reverse() : [];
+  const buildHistory = [...node.builds].reverse();
+  const expandedBuilds = buildsState.fetchedAt ? buildsState.builds : node.builds;
 
   return (
     <Stack gap="xs">
@@ -248,23 +254,39 @@ function TreeNodeRow({
             <ActionIcon aria-label={expanded ? TreePanelCopy.COLLAPSE_ALL : TreePanelCopy.EXPAND_ALL} variant="subtle">
               {expanded ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
             </ActionIcon>
-            <Tooltip label={node.kind === "folder" ? TreePanelCopy.NODE_KIND_FOLDER : TreePanelCopy.NODE_KIND_PIPELINE}>
+            <Tooltip
+              label={
+                node.kind === JenkinsNodeKind.FOLDER
+                  ? TreePanelCopy.NODE_KIND_FOLDER
+                  : TreePanelCopy.NODE_KIND_PIPELINE
+              }
+            >
               <ThemeIcon
-                aria-label={node.kind === "folder" ? TreePanelCopy.NODE_KIND_FOLDER : TreePanelCopy.NODE_KIND_PIPELINE}
-                color={node.kind === "folder" ? "gray" : "cyan"}
+                aria-label={
+                  node.kind === JenkinsNodeKind.FOLDER
+                    ? TreePanelCopy.NODE_KIND_FOLDER
+                    : TreePanelCopy.NODE_KIND_PIPELINE
+                }
+                color={node.kind === JenkinsNodeKind.FOLDER ? "gray" : "cyan"}
                 radius="xl"
                 role="img"
                 size="md"
                 variant="light"
               >
-                {node.kind === "folder" ? <IconFolder size={14} /> : <IconGitBranch size={14} />}
+                {node.kind === JenkinsNodeKind.FOLDER ? (
+                  <IconFolder size={14} />
+                ) : (
+                  <IconGitBranch size={14} />
+                )}
               </ThemeIcon>
             </Tooltip>
             <Text fw={500} truncate="end">{node.name}</Text>
           </Group>
           <Group gap="xs" style={{ flexShrink: 0 }} wrap="nowrap">
-            {node.kind === "pipeline" && buildHistory.length > 0 ? <BuildHistoryLine builds={buildHistory} /> : null}
-            {node.kind === "pipeline" && node.status ? (
+            {node.kind === JenkinsNodeKind.PIPELINE && buildHistory.length > 0 ? (
+              <BuildHistoryLine builds={buildHistory} />
+            ) : null}
+            {node.kind === JenkinsNodeKind.PIPELINE && node.status ? (
               <Badge color={JenkinsStatusColor[node.status]} variant="light">
                 {JenkinsStatusLabel[node.status]}
               </Badge>
@@ -286,7 +308,7 @@ function TreeNodeRow({
         </Group>
       </Paper>
 
-      {node.kind === "folder" ? (
+      {node.kind === JenkinsNodeKind.FOLDER ? (
         <Collapse in={expanded}>
           <Stack gap="xs">
             {node.children.map((child) => (
@@ -295,10 +317,12 @@ function TreeNodeRow({
                 agentPort={agentPort}
                 depth={depth + 1}
                 expandedPaths={expandedPaths}
+                isActive={isActive}
                 node={child}
                 onPinToggle={onPinToggle}
                 onToggle={onToggle}
                 pinnedPaths={pinnedPaths}
+                signature={signature}
                 token={token}
               />
             ))}
@@ -315,23 +339,23 @@ function TreeNodeRow({
             }}
             withBorder
           >
-            {buildQuery.isLoading ? (
+            {buildsState.isLoading && expandedBuilds.length === 0 ? (
               <Group gap="sm">
                 <Loader size="sm" />
                 <Text c="dimmed" size="sm">{TreePanelCopy.LOADING_BUILDS}</Text>
               </Group>
             ) : null}
-            {buildQuery.isError ? (
+            {buildsState.error && expandedBuilds.length === 0 ? (
               <Text c="red" size="sm">
-                {buildQuery.error instanceof Error ? buildQuery.error.message : TreePanelCopy.ERROR_GENERIC}
+                {buildsState.error instanceof Error ? buildsState.error.message : TreePanelCopy.ERROR_GENERIC}
               </Text>
             ) : null}
-            {buildQuery.data && buildQuery.data.builds.length === 0 ? (
+            {expandedBuilds.length === 0 && !buildsState.isLoading && !buildsState.isRefreshing ? (
               <Text c="dimmed" size="sm">{TreePanelCopy.BUILDS_EMPTY}</Text>
             ) : null}
-            {buildQuery.data?.builds.length ? (
+            {expandedBuilds.length > 0 ? (
               <Stack gap="xs">
-                {buildQuery.data.builds.map((build) => (
+                {expandedBuilds.map((build) => (
                   <BuildRow build={build} key={build.url} />
                 ))}
               </Stack>

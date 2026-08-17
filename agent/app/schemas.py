@@ -56,6 +56,7 @@ class AgentSettingsRead(BaseModel):
     jenkins_root_path: str
     qaa_generator_token_set: bool
     jenkins_root_folders: list[str]
+    jenkins_history_limit: int
     jenkins_request_timeout: float
     jenkins_tree_depth: int
     jenkins_stuck_min_idle_hours: int
@@ -81,6 +82,7 @@ class AgentSettingsUpdate(BaseModel):
     jenkins_root_path: str | None = None
     qaa_generator_token: str | None = None
     jenkins_root_folders: list[str] | None = None
+    jenkins_history_limit: int | None = None
     jenkins_request_timeout: float | None = None
     jenkins_tree_depth: int | None = None
     jenkins_stuck_min_idle_hours: int | None = None
@@ -103,6 +105,7 @@ def to_agent_settings_read(settings: Settings) -> AgentSettingsRead:
         jenkins_root_path=settings.jenkins_root_path,
         qaa_generator_token_set=bool(settings.qaa_generator_token),
         jenkins_root_folders=list(settings.jenkins_root_folders),
+        jenkins_history_limit=settings.jenkins_history_limit,
         jenkins_request_timeout=settings.jenkins_request_timeout,
         jenkins_tree_depth=settings.jenkins_tree_depth,
         jenkins_stuck_min_idle_hours=settings.jenkins_stuck_min_idle_hours,
@@ -482,10 +485,8 @@ class JenkinsNode(BaseModel):
     kind: JenkinsNodeKind
     status: JenkinsStatus | None = None
     color: str | None = None
+    builds: list[JenkinsBuild] = Field(default_factory=list)
     children: list[JenkinsNode] = Field(default_factory=list)
-
-
-JenkinsNode.model_rebuild()
 
 
 class JenkinsTreeResponse(BaseModel):
@@ -493,7 +494,20 @@ class JenkinsTreeResponse(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    signature: str
     roots: list[JenkinsNode] = Field(default_factory=list)
+
+
+class JenkinsScopeResponse(BaseModel):
+    """`/jenkins/scope` response shape."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    signature: str
+    root_path: str = Field(alias="rootPath")
+    root_folders: list[str] = Field(default_factory=list, alias="rootFolders")
+    tree_depth: int = Field(alias="treeDepth")
+    history_limit: int = Field(alias="historyLimit")
 
 
 class JenkinsBuild(BaseModel):
@@ -516,6 +530,9 @@ class JenkinsBuildsResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     builds: list[JenkinsBuild] = Field(default_factory=list)
+
+
+JenkinsNode.model_rebuild()
 
 
 class DeployRecipePayload(BaseModel):

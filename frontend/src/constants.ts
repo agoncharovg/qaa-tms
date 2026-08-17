@@ -68,6 +68,8 @@ export type StorageKey = (typeof StorageKey)[keyof typeof StorageKey];
 
 export const BackendPath = {
   AUTH_LOGIN: "/api/v1/auth/login",
+  JENKINS_TREE: "/api/v1/jenkins/tree",
+  JENKINS_BUILDS: "/api/v1/jenkins/builds",
   ME: "/api/v1/me",
   ME_PLUGINS: "/api/v1/me/plugins",
   SETTINGS: "/api/v1/settings",
@@ -93,6 +95,16 @@ export type BackendPath = (typeof BackendPath)[keyof typeof BackendPath];
 
 export function buildBackendUserPath(userId: number): string {
   return `${BackendPath.USERS}/${userId}`;
+}
+
+export function buildBackendJenkinsTreePath(signature: string): string {
+  const params = new URLSearchParams({ signature });
+  return `${BackendPath.JENKINS_TREE}?${params.toString()}`;
+}
+
+export function buildBackendJenkinsBuildsPath(signature: string, path: string): string {
+  const params = new URLSearchParams({ path, signature });
+  return `${BackendPath.JENKINS_BUILDS}?${params.toString()}`;
 }
 
 export function buildBackendOperationPath(operationId: string): string {
@@ -147,6 +159,7 @@ export const AgentPath = {
   PING: "/ping",
   SETTINGS: "/settings",
   PREFLIGHT: "/preflight",
+  JENKINS_SCOPE: "/jenkins/scope",
   JENKINS_TREE: "/jenkins/tree",
   JENKINS_BUILDS: "/jenkins/builds",
   KUBECONFIG_STATUS: "/staging/kubeconfig/status",
@@ -224,6 +237,10 @@ function setOptionalSearchParam(
 
 export function buildAgentJenkinsTreePath(): string {
   return AgentPath.JENKINS_TREE;
+}
+
+export function buildAgentJenkinsScopePath(): string {
+  return AgentPath.JENKINS_SCOPE;
 }
 
 export function buildAgentJenkinsBuildsPath(path: string): string {
@@ -601,7 +618,9 @@ export const QueryKey = {
   AGENT_NAMESPACE_STATUS: "agent-namespace-status",
   AGENT_NAMESPACE_CREDS: "agent-namespace-creds",
   AGENT_E2E_SUITES: "agent-e2e-suites",
+  JENKINS_SCOPE: "jenkins-scope",
   JENKINS_TREE: "jenkins-tree",
+  JENKINS_TREE_CACHE: "jenkins-tree-cache",
   JENKINS_BUILDS: "jenkins-builds",
   KUBECONFIG_STATUS: "kubeconfig-status",
   KUBE_CONTEXTS: "kube-contexts",
@@ -649,7 +668,8 @@ export const DEFAULT_QAA_RUNS_PAGE_SIZE = 20 as const;
 export const DEFAULT_JOB_POLL_INTERVAL_MS = 2000 as const;
 export const DEFAULT_KUBECONFIG_STATUS_POLL_MS = 60000 as const;
 export const DEFAULT_KUBE_LOG_TAIL = 200 as const;
-export const DEFAULT_JENKINS_TREE_REFETCH_MS = 30000 as const;
+export const DEFAULT_JENKINS_TREE_REFETCH_MS = 900000 as const;
+export const DEFAULT_JENKINS_BUILDS_REFETCH_MS = 60000 as const;
 export const DEFAULT_IMAGE_TAG = "latest" as const;
 export const MIN_DEPLOY_STAGE = 0 as const;
 export const MAX_DEPLOY_STAGE = 7 as const;

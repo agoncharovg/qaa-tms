@@ -1,6 +1,8 @@
 import {
   AUTH_SCHEME_BEARER,
   BackendPath,
+  buildBackendJenkinsBuildsPath,
+  buildBackendJenkinsTreePath,
   buildBackendQaaServiceTokenRegeneratePath,
   buildBackendQaaServiceTokenRevokePath,
   buildBackendQaaUserPath,
@@ -22,6 +24,10 @@ import {
   buildBackendUserPath,
 } from "@/constants";
 import type {
+  JenkinsBuildsCachePut,
+  JenkinsBuildsCacheRead,
+  JenkinsTreeCachePut,
+  JenkinsTreeCacheRead,
   LoginRequest,
   LoginResponse,
   MeUpdateRequest,
@@ -292,6 +298,65 @@ function buildQaaUsersListPath(params: QaaUsersListParams): string {
 }
 
 export const backendClient = {
+  getJenkinsTreeCache(
+    token: string,
+    signature: string,
+    signal?: AbortSignal
+  ): Promise<JenkinsTreeCacheRead> {
+    return request<JenkinsTreeCacheRead>(
+      buildBackendJenkinsTreePath(signature),
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
+  putJenkinsTreeCache(
+    token: string,
+    payload: JenkinsTreeCachePut,
+    signal?: AbortSignal
+  ): Promise<JenkinsTreeCacheRead> {
+    return request<JenkinsTreeCacheRead>(
+      BackendPath.JENKINS_TREE,
+      {
+        body: JSON.stringify(payload),
+        method: HttpMethod.PUT,
+      },
+      token,
+      signal
+    );
+  },
+
+  getJenkinsBuildsCache(
+    token: string,
+    signature: string,
+    path: string,
+    signal?: AbortSignal
+  ): Promise<JenkinsBuildsCacheRead> {
+    return request<JenkinsBuildsCacheRead>(
+      buildBackendJenkinsBuildsPath(signature, path),
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
+  putJenkinsBuildsCache(
+    token: string,
+    payload: JenkinsBuildsCachePut,
+    signal?: AbortSignal
+  ): Promise<JenkinsBuildsCacheRead> {
+    return request<JenkinsBuildsCacheRead>(
+      BackendPath.JENKINS_BUILDS,
+      {
+        body: JSON.stringify(payload),
+        method: HttpMethod.PUT,
+      },
+      token,
+      signal
+    );
+  },
+
   createQaaRun(
     token: string,
     payload: QaaRunCreateRequest,

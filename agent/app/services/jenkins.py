@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
@@ -59,6 +60,7 @@ BUILDS_TREE_EXPRESSION = (
     f"builds[number,result,building,timestamp,duration,url]{{0,{DEFAULT_JENKINS_BUILDS_LIMIT}}}"
 )
 MILLISECONDS_PER_SECOND = 1000
+SIGNATURE_LENGTH = 16
 
 
 class JenkinsNotConfiguredError(RuntimeError):
@@ -88,6 +90,18 @@ def allowed_root_paths(settings: Settings) -> list[str]:
         f"{root_path}{PATH_SEPARATOR}{JENKINS_JOB_PATH_SEGMENT}{PATH_SEPARATOR}{folder}"
         for folder in settings.jenkins_root_folders
     ]
+
+
+def jenkins_scope_signature(settings: Settings) -> str:
+    """Return a stable signature for the configured Jenkins tree scope."""
+
+    payload = (
+        f"{settings.jenkins_root_path}|"
+        f"{sorted(settings.jenkins_root_folders)}|"
+        f"{settings.jenkins_tree_depth}|"
+        f"{settings.jenkins_history_limit}"
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:SIGNATURE_LENGTH]
 
 
 async def _get_json(
@@ -168,7 +182,14 @@ async def fetch_tree(
     """Fetch the configured Jenkins subtree in one recursive API call."""
 
     require_configured(settings)
-    tree_expression = f"jobs[{_build_tree_field_expression(max(settings.jenkins_tree_depth, 1))}]"
+    tree_expression = (
+        "jobs["
+        + _build_tree_field_expression(
+            max(settings.jenkins_tree_depth, 1),
+            settings.jenkins_history_limit,
+        )
+        + "]"
+    )
     payload = await _get_json(
         settings,
         settings.jenkins_root_path,
@@ -283,25 +304,31 @@ async def fetch_builds(
     )
     builds: list[JenkinsBuild] = []
     for raw_build in _read_object_list(payload, "builds"):
-        url = _read_optional_string(raw_build, URL_KEY) or ""
-        builds.append(
-            JenkinsBuild(
-                number=_read_int(raw_build.get(NUMBER_KEY)) or 0,
-                result=_read_optional_string(raw_build, RESULT_KEY),
-                building=bool(raw_build.get(BUILDING_KEY)),
-                timestamp=_read_int(raw_build.get(TIMESTAMP_KEY)) or 0,
-                duration_ms=_read_int(raw_build.get(DURATION_KEY)) or 0,
-                url=url,
-                allure_url=f"{url}{JenkinsApiPath.ALLURE_SUFFIX.value}",
-            )
-        )
+        builds.append(_map_build(raw_build))
     return builds
 
 
-def _build_tree_field_expression(levels: int) -> str:
+def _build_tree_field_expression(levels: int, history_limit: int) -> str:
+    builds_expression = (
+        f"builds[number,result,building,timestamp,duration,url]{{0,{history_limit}}}"
+    )
+    tree_expression = f"{TREE_FIELD_EXPRESSION},{builds_expression}"
     if levels <= 1:
-        return TREE_FIELD_EXPRESSION
-    return f"{TREE_FIELD_EXPRESSION},jobs[{_build_tree_field_expression(levels - 1)}]"
+        return tree_expression
+    return f"{tree_expression},jobs[{_build_tree_field_expression(levels - 1, history_limit)}]"
+
+
+def _map_build(raw: Mapping[str, Any]) -> JenkinsBuild:
+    url = _read_optional_string(raw, URL_KEY) or ""
+    return JenkinsBuild(
+        number=_read_int(raw.get(NUMBER_KEY)) or 0,
+        result=_read_optional_string(raw, RESULT_KEY),
+        building=bool(raw.get(BUILDING_KEY)),
+        timestamp=_read_int(raw.get(TIMESTAMP_KEY)) or 0,
+        duration_ms=_read_int(raw.get(DURATION_KEY)) or 0,
+        url=url,
+        allure_url=f"{url}{JenkinsApiPath.ALLURE_SUFFIX.value}",
+    )
 
 
 def _map_node(settings: Settings, raw: Mapping[str, Any]) -> JenkinsNode:
@@ -311,6 +338,11 @@ def _map_node(settings: Settings, raw: Mapping[str, Any]) -> JenkinsNode:
         JenkinsNodeKind.FOLDER if JENKINS_FOLDER_CLASS in class_name else JenkinsNodeKind.PIPELINE
     )
     children = [_map_node(settings, child) for child in _read_object_list(raw, CHILDREN_KEY)]
+    builds = (
+        [_map_build(build) for build in _read_object_list(raw, "builds")]
+        if node_kind is JenkinsNodeKind.PIPELINE
+        else []
+    )
 
     return JenkinsNode(
         name=_read_optional_string(raw, NAME_KEY) or "",
@@ -319,6 +351,7 @@ def _map_node(settings: Settings, raw: Mapping[str, Any]) -> JenkinsNode:
         kind=node_kind,
         status=None if node_kind is JenkinsNodeKind.FOLDER else derive_status(raw, settings),
         color=_read_optional_string(raw, COLOR_KEY),
+        builds=builds,
         children=children if node_kind is JenkinsNodeKind.FOLDER else [],
     )
 

@@ -23,6 +23,7 @@ from app.core.constants import (
 )
 from app.db.seed import seed_dev_users
 from app.db.session import create_engine_and_session_maker
+from app.services.jenkins_cache import JenkinsCache
 from app.services.qaa_generator_transport import (
     QaaGeneratorPortForwardProcess,
     QaaGeneratorTransportError,
@@ -67,6 +68,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.engine = engine
         app.state.qaa_generator_client = qaa_generator_client
         app.state.qaa_generator_runtime = runtime
+        app.state.jenkins_cache = JenkinsCache()
         app.state.session_maker = session_maker
         async with session_maker() as session:
             await seed_dev_users(session)

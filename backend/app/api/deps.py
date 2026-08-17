@@ -15,6 +15,7 @@ from app.core.config import Settings
 from app.core.constants import AuthScheme, ErrorMessage, HttpHeader, JwtClaim, TokenType
 from app.core.security import decode_access_token
 from app.models.user import User
+from app.services.jenkins_cache import JenkinsCache
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -23,6 +24,10 @@ async def get_db(request: Request) -> AsyncIterator[AsyncSession]:
     session_maker = cast(async_sessionmaker[AsyncSession], request.app.state.session_maker)
     async with session_maker() as session:
         yield session
+
+
+def get_jenkins_cache(request: Request) -> JenkinsCache:
+    return cast(JenkinsCache, request.app.state.jenkins_cache)
 
 
 async def get_current_user(

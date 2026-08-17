@@ -37,6 +37,7 @@ from app.schemas import (
     E2eSuite,
     E2eSuitesResponse,
     JenkinsBuildsResponse,
+    JenkinsScopeResponse,
     JenkinsTreeResponse,
     JobCreateResponse,
     JobReadResponse,
@@ -67,6 +68,7 @@ from app.services.jenkins import (
     JenkinsUnreachableError,
     fetch_builds,
     fetch_tree,
+    jenkins_scope_signature,
 )
 from app.services.jobs import JobManager, JobNotFoundError
 from app.services.kube import (
@@ -106,6 +108,7 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 JobManagerDep = Annotated[JobManager, Depends(get_job_manager)]
 
 AGENT_SETTINGS_ENV_KEY_BY_FIELD = {
+    "jenkins_history_limit": EnvKey.JENKINS_HISTORY_LIMIT,
     "jenkins_root_folders": EnvKey.JENKINS_ROOT_FOLDERS,
     "jenkins_root_path": EnvKey.JENKINS_ROOT_PATH,
     "qaa_generator_token": EnvKey.QAA_GENERATOR_TOKEN,
@@ -210,7 +213,21 @@ async def get_jenkins_tree(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=str(exc),
         ) from exc
-    return JenkinsTreeResponse(roots=roots)
+    return JenkinsTreeResponse(signature=jenkins_scope_signature(settings), roots=roots)
+
+
+@router.get(AgentPath.JENKINS_SCOPE.value, response_model=JenkinsScopeResponse)
+async def get_jenkins_scope(
+    _: AuthDep,
+    settings: SettingsDep,
+) -> JenkinsScopeResponse:
+    return JenkinsScopeResponse(
+        signature=jenkins_scope_signature(settings),
+        root_path=settings.jenkins_root_path,
+        root_folders=list(settings.jenkins_root_folders),
+        tree_depth=settings.jenkins_tree_depth,
+        history_limit=settings.jenkins_history_limit,
+    )
 
 
 @router.get(AgentPath.JENKINS_BUILDS.value, response_model=JenkinsBuildsResponse)

@@ -5,6 +5,7 @@ import {
   AGENT_REQUEST_HEADER_VALUE,
   AgentPath,
   buildAgentJenkinsBuildsPath,
+  buildAgentJenkinsScopePath,
   buildAgentJenkinsTreePath,
   AUTH_SCHEME_BEARER,
   buildAgentE2eSuitesPath,
@@ -38,6 +39,7 @@ import type {
   E2eRunRequest,
   E2eSuitesResponse,
   JenkinsBuildsResponse,
+  JenkinsScopeResponse,
   JenkinsTreeResponse,
   JobCreateResponse,
   KubeCommandResult,
@@ -194,6 +196,20 @@ export function getJenkinsTree(
   return readAgentJson<JenkinsTreeResponse>(
     port,
     buildAgentJenkinsTreePath(),
+    { method: HttpMethod.GET },
+    token,
+    signal
+  );
+}
+
+export function getJenkinsScope(
+  port: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<JenkinsScopeResponse> {
+  return readAgentJson<JenkinsScopeResponse>(
+    port,
+    buildAgentJenkinsScopePath(),
     { method: HttpMethod.GET },
     token,
     signal
@@ -381,6 +397,7 @@ export const agentClient = {
   },
 
   getJenkinsBuilds,
+  getJenkinsScope,
   getJenkinsTree,
 
   getSettings(port: number, token: string, signal?: AbortSignal): Promise<AgentSettings> {

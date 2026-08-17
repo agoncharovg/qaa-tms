@@ -19,6 +19,7 @@ def write_agent_env(path: Path) -> None:
                 "AGENT_QAA_GENERATOR_TOKEN=initial-qaa-token",
                 "AGENT_JENKINS_ROOT_PATH=job/.QAA/job/E2E",
                 "AGENT_JENKINS_ROOT_FOLDERS=PREPROD,PROD",
+                "AGENT_JENKINS_HISTORY_LIMIT=8",
                 "AGENT_JENKINS_REQUEST_TIMEOUT=15",
                 "AGENT_JENKINS_TREE_DEPTH=5",
                 "AGENT_JENKINS_STUCK_MIN_IDLE_HOURS=6",
@@ -67,6 +68,7 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
     assert body["jenkins_token_set"] is True
     assert body["qaa_generator_token_set"] is True
     assert body["jenkins_root_folders"] == ["PREPROD", "PROD"]
+    assert body["jenkins_history_limit"] == 8
     assert "jenkins_token" not in body
     assert "qaa_generator_token" not in body
     assert "host" not in body
@@ -82,6 +84,7 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
             "qaa_generator_token": "",
             "jenkins_root_path": "job/.QAA/job/E2E/job/UPDATED",
             "jenkins_root_folders": ["UPDATED", "MORE"],
+            "jenkins_history_limit": 10,
             "jenkins_request_timeout": 22,
             "jenkins_tree_depth": 7,
             "jenkins_stuck_min_idle_hours": 11,
@@ -104,6 +107,7 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
     assert updated["jenkins_token_set"] is False
     assert updated["qaa_generator_token_set"] is False
     assert updated["jenkins_root_folders"] == ["UPDATED", "MORE"]
+    assert updated["jenkins_history_limit"] == 10
     assert updated["staging_bin"] == "/opt/staging"
     assert updated["kubectl_request_timeout"] == "20s"
 
@@ -113,9 +117,13 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
     assert runtime_settings.jenkins_token == ""
     assert runtime_settings.qaa_generator_token == ""
     assert runtime_settings.jenkins_root_folders == ["UPDATED", "MORE"]
-    assert client._transport.app.state.job_manager._settings.jenkins_url == "https://updated.jenkins"
+    assert runtime_settings.jenkins_history_limit == 10
+    assert (
+        client._transport.app.state.job_manager._settings.jenkins_url == "https://updated.jenkins"
+    )
 
     serialized_env = env_path.read_text(encoding="utf-8")
     assert "AGENT_JENKINS_TOKEN=\n" in serialized_env
     assert "AGENT_QAA_GENERATOR_TOKEN=\n" in serialized_env
     assert "AGENT_JENKINS_ROOT_FOLDERS=UPDATED,MORE\n" in serialized_env
+    assert "AGENT_JENKINS_HISTORY_LIMIT=10\n" in serialized_env

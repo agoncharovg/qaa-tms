@@ -14,9 +14,11 @@ from app.main import create_app
 from app.services.jenkins import (
     JenkinsPathOutOfScopeError,
     JenkinsUnreachableError,
+    _map_build,
     derive_status,
     fetch_builds,
     fetch_tree,
+    jenkins_scope_signature,
     validate_job_path,
 )
 
@@ -35,8 +37,10 @@ FRESH_BUILD_TIMESTAMP = int((datetime.now(UTC) - timedelta(hours=1)).timestamp()
 
 def build_settings(
     *,
+    history_limit: int = 8,
     token: str = "jenkins-token",
     root_folders: str | list[str] | None = None,
+    tree_depth: int = 5,
 ) -> Settings:
     settings_kwargs: dict[str, Any] = {
         "AGENT_HOST": "127.0.0.1",
@@ -47,7 +51,8 @@ def build_settings(
         "AGENT_JENKINS_USERNAME": "engineer",
         "AGENT_JENKINS_TOKEN": token,
         "AGENT_JENKINS_ROOT_PATH": JENKINS_ROOT_PATH,
-        "AGENT_JENKINS_TREE_DEPTH": 5,
+        "AGENT_JENKINS_HISTORY_LIMIT": history_limit,
+        "AGENT_JENKINS_TREE_DEPTH": tree_depth,
         "AGENT_JENKINS_REQUEST_TIMEOUT": 15.0,
         "AGENT_JENKINS_STUCK_MIN_IDLE_HOURS": 6,
     }
@@ -95,6 +100,24 @@ def build_tree_payload() -> dict[str, Any]:
                         "triggers": [
                             {"_class": "hudson.triggers.TimerTrigger", "spec": "H 1 * * *"}
                         ],
+                        "builds": [
+                            {
+                                "building": False,
+                                "duration": 120000,
+                                "number": 42,
+                                "result": "SUCCESS",
+                                "timestamp": FRESH_BUILD_TIMESTAMP,
+                                "url": f"{JENKINS_BASE_URL}/{PIPELINE_PATH}/42/",
+                            },
+                            {
+                                "building": True,
+                                "duration": 45000,
+                                "number": 43,
+                                "result": None,
+                                "timestamp": FRESH_BUILD_TIMESTAMP,
+                                "url": f"{JENKINS_BASE_URL}/{PIPELINE_PATH}/43/",
+                            },
+                        ],
                         "url": f"{JENKINS_BASE_URL}/{PIPELINE_PATH}/",
                     },
                     {
@@ -119,6 +142,18 @@ def build_tree_payload() -> dict[str, Any]:
                                 "property": [],
                                 "triggers": [
                                     {"_class": "hudson.triggers.TimerTrigger", "spec": "H 2 * * *"}
+                                ],
+                                "builds": [
+                                    {
+                                        "building": False,
+                                        "duration": 118000,
+                                        "number": 7,
+                                        "result": "FAILURE",
+                                        "timestamp": FRESH_BUILD_TIMESTAMP,
+                                        "url": (
+                                            f"{JENKINS_BASE_URL}/{PREPROD_PATH}/job/NestedFolder/job/Nested/7/"
+                                        ),
+                                    }
                                 ],
                                 "url": (
                                     f"{JENKINS_BASE_URL}/{PREPROD_PATH}/job/NestedFolder/job/Nested/"
@@ -156,6 +191,16 @@ def build_tree_payload() -> dict[str, Any]:
                             "result": None,
                             "timestamp": FRESH_BUILD_TIMESTAMP,
                         },
+                        "builds": [
+                            {
+                                "building": True,
+                                "duration": 30000,
+                                "number": 9,
+                                "result": None,
+                                "timestamp": FRESH_BUILD_TIMESTAMP,
+                                "url": f"{JENKINS_BASE_URL}/{PROD_PATH}/job/Release/9/",
+                            }
+                        ],
                         "name": "Release",
                         "property": [],
                         "triggers": [],
@@ -212,14 +257,21 @@ async def test_fetch_tree_filters_to_default_roots_in_configured_order() -> None
     assert [root.name for root in roots] == ["PREPROD", "PROD"]
     assert roots[0].kind.value == "folder"
     assert roots[0].path == PREPROD_PATH
+    assert roots[0].builds == []
     assert roots[0].children[0].name == "Smoke"
     assert roots[0].children[0].kind.value == "pipeline"
     assert roots[0].children[0].status == JenkinsStatus.PASSED
+    assert len(roots[0].children[0].builds) == 2
+    assert roots[0].children[0].builds[0].number == 42
+    assert roots[0].children[0].builds[0].allure_url.endswith("/42/allure/")
     assert roots[0].children[1].children[0].status == JenkinsStatus.FAILED
+    assert roots[0].children[1].children[0].builds[0].number == 7
     assert roots[1].children[0].status == JenkinsStatus.RUNNING
+    assert roots[1].children[0].builds[0].number == 9
     assert requests[0][0].startswith(f"{JENKINS_BASE_URL}/{JENKINS_ROOT_PATH}/api/json")
     assert requests[0][1] is not None
     assert requests[0][1].startswith("jobs[name,url,_class,color,buildable")
+    assert "builds[number,result,building,timestamp,duration,url]{0,8}" in requests[0][1]
 
 
 def test_build_settings_defaults_root_folders() -> None:
@@ -242,6 +294,29 @@ async def test_fetch_tree_uses_custom_root_allow_list_order() -> None:
     )
 
     assert [root.name for root in roots] == ["PROD", "PREPROD"]
+
+
+def test_map_build_maps_single_row() -> None:
+    build = _map_build(
+        {
+            "building": True,
+            "duration": 42000,
+            "number": 101,
+            "result": None,
+            "timestamp": FRESH_BUILD_TIMESTAMP,
+            "url": f"{JENKINS_BASE_URL}/{PIPELINE_PATH}/101/",
+        }
+    )
+
+    assert build.model_dump(by_alias=True) == {
+        "allureUrl": f"{JENKINS_BASE_URL}/{PIPELINE_PATH}/101/allure/",
+        "building": True,
+        "durationMs": 42000,
+        "number": 101,
+        "result": None,
+        "timestamp": FRESH_BUILD_TIMESTAMP,
+        "url": f"{JENKINS_BASE_URL}/{PIPELINE_PATH}/101/",
+    }
 
 
 def test_derive_status_covers_each_bucket() -> None:
@@ -317,6 +392,21 @@ async def test_fetch_builds_parses_allure_urls_and_running_builds() -> None:
     assert requests[0][1] == "builds[number,result,building,timestamp,duration,url]{0,15}"
 
 
+def test_jenkins_scope_signature_is_stable_and_changes_with_scope() -> None:
+    settings = build_settings()
+
+    assert jenkins_scope_signature(settings) == jenkins_scope_signature(build_settings())
+    assert jenkins_scope_signature(settings) != jenkins_scope_signature(
+        build_settings(history_limit=9)
+    )
+    assert jenkins_scope_signature(settings) != jenkins_scope_signature(
+        build_settings(tree_depth=6)
+    )
+    assert jenkins_scope_signature(settings) != jenkins_scope_signature(
+        build_settings(root_folders="PROD")
+    )
+
+
 def test_validate_job_path_accepts_only_allowed_root_scope() -> None:
     settings = build_settings()
 
@@ -369,6 +459,7 @@ async def test_jenkins_routes_report_503_502_400_and_401(
         transport = httpx.ASGITransport(app=not_configured_app)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             not_configured_response = await client.get("/jenkins/tree", headers=auth_headers)
+            scope_response = await client.get("/jenkins/scope", headers=auth_headers)
             unauthorized_response = await client.get("/jenkins/tree")
 
     configured_app = create_app(
@@ -391,6 +482,8 @@ async def test_jenkins_routes_report_503_502_400_and_401(
             )
 
     assert not_configured_response.status_code == 503
+    assert scope_response.status_code == 200
+    assert scope_response.json()["historyLimit"] == 8
     assert not_configured_response.json()["detail"] == ErrorMessage.JENKINS_NOT_CONFIGURED.value
     assert unauthorized_response.status_code == 401
     assert unreachable_response.status_code == 502

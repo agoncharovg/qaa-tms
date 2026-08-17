@@ -15,6 +15,7 @@ from app.core.constants import (
     DEFAULT_AGENT_PORT,
     DEFAULT_BACKEND_URL,
     DEFAULT_CORS_ORIGINS,
+    DEFAULT_JENKINS_HISTORY_LIMIT,
     DEFAULT_JENKINS_REQUEST_TIMEOUT,
     DEFAULT_JENKINS_ROOT_FOLDERS,
     DEFAULT_JENKINS_ROOT_PATH,
@@ -59,6 +60,10 @@ class Settings(BaseSettings):
     jenkins_root_folders: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: list(DEFAULT_JENKINS_ROOT_FOLDERS),
         alias=EnvKey.JENKINS_ROOT_FOLDERS.value,
+    )
+    jenkins_history_limit: int = Field(
+        default=DEFAULT_JENKINS_HISTORY_LIMIT,
+        alias=EnvKey.JENKINS_HISTORY_LIMIT.value,
     )
     jenkins_request_timeout: float = Field(
         default=DEFAULT_JENKINS_REQUEST_TIMEOUT,

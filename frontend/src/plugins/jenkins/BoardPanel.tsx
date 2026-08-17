@@ -13,19 +13,17 @@ import {
   Title,
 } from "@mantine/core";
 import { IconAlertCircle, IconPinnedOff } from "@tabler/icons-react";
-import { useQuery } from "@tanstack/react-query";
 
-import { AgentRequestError, agentClient } from "@/api/agentClient";
+import { AgentRequestError } from "@/api/agentClient";
 import {
-  DEFAULT_JENKINS_TREE_REFETCH_MS,
   JenkinsStatusColor,
   JenkinsStatusLabel,
   PluginId,
-  QueryKey,
   TabId,
 } from "@/constants";
 import { useJenkinsStore } from "@/plugins/jenkins/jenkinsStore";
 import { countGrayStatuses, countPipelineStatuses, findNodeByPath, flattenPipelines } from "@/plugins/jenkins/treeUtils";
+import { useJenkinsTree } from "@/plugins/jenkins/useJenkinsTree";
 import { useAuthStore } from "@/store/authStore";
 import { useUiStore } from "@/store/uiStoreCore";
 
@@ -61,14 +59,11 @@ export function BoardPanel({ agentPort }: BoardPanelProps) {
   const unpin = useJenkinsStore((state) => state.unpin);
   const isActive = useUiStore((state) => state.tabsByPlugin[PluginId.JENKINS].activeTabId === TabId.JENKINS_BOARD);
   const [expandedPaths, setExpandedPaths] = useState<string[]>([]);
-
-  const treeQuery = useQuery({
-    enabled: Boolean(token && pinnedPaths.length > 0),
-    queryFn: ({ signal }) => agentClient.getJenkinsTree(agentPort, token ?? "", signal),
-    queryKey: [QueryKey.JENKINS_TREE, agentPort, token, "board"],
-    refetchInterval: isActive ? DEFAULT_JENKINS_TREE_REFETCH_MS : false,
-    refetchOnWindowFocus: false,
-    retry: false,
+  const treeState = useJenkinsTree({
+    agentPort,
+    enabled: pinnedPaths.length > 0,
+    isActive,
+    token,
   });
 
   if (pinnedPaths.length === 0) {
@@ -82,7 +77,7 @@ export function BoardPanel({ agentPort }: BoardPanelProps) {
     );
   }
 
-  if (treeQuery.isLoading) {
+  if (treeState.isLoading) {
     return (
       <Stack align="center" gap="md" py="xl">
         <Loader size="lg" />
@@ -91,8 +86,8 @@ export function BoardPanel({ agentPort }: BoardPanelProps) {
     );
   }
 
-  if (treeQuery.isError) {
-    return renderBoardError(treeQuery.error);
+  if (treeState.error && treeState.roots.length === 0) {
+    return renderBoardError(treeState.error);
   }
 
   return (
@@ -106,7 +101,7 @@ export function BoardPanel({ agentPort }: BoardPanelProps) {
 
       <SimpleGrid cols={{ base: 1, lg: 2 }}>
         {pinnedPaths.map((path) => {
-          const pinnedNode = findNodeByPath(treeQuery.data?.roots ?? [], path);
+          const pinnedNode = findNodeByPath(treeState.roots, path);
           const expanded = expandedPaths.includes(path);
 
           if (!pinnedNode) {
