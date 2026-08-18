@@ -27,6 +27,10 @@ const backendClientMock = vi.hoisted(() => ({
   resolveJenkinsFreeze: vi.fn(),
 }));
 
+const buildHistoryLineMock = vi.hoisted(() => ({
+  renderCount: 0,
+}));
+
 vi.mock("@/api/agentClient", () => ({
   AgentRequestError: class AgentRequestError extends Error {
     status: number;
@@ -41,6 +45,13 @@ vi.mock("@/api/agentClient", () => ({
 
 vi.mock("@/api/backendClient", () => ({
   backendClient: backendClientMock,
+}));
+
+vi.mock("@/plugins/jenkins/BuildHistoryLine", () => ({
+  BuildHistoryLine: () => {
+    buildHistoryLineMock.renderCount += 1;
+    return null;
+  },
 }));
 
 import { PluginId, QueryKey, TabId } from "@/constants";
@@ -74,51 +85,79 @@ function buildTreeRoots() {
       builds: [],
       children: [
         {
-          builds: [
+          builds: [],
+          children: [
             {
-              allureUrl: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/42/allure/",
-              building: false,
-              durationMs: 120000,
-              number: 42,
-              result: "SUCCESS",
-              timestamp: BUILD_TIMESTAMP_RECENT,
-              url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/42/",
-            },
-            {
-              allureUrl: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/41/allure/",
-              building: false,
-              durationMs: 118000,
-              number: 41,
-              result: "FAILURE",
-              timestamp: BUILD_TIMESTAMP_OLDER,
-              url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/41/",
-            },
-            {
-              allureUrl: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/40/allure/",
-              building: true,
-              durationMs: 30000,
-              number: 40,
-              result: null,
-              timestamp: BUILD_TIMESTAMP_RUNNING,
-              url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/40/",
+              builds: [
+                {
+                  allureUrl: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/42/allure/",
+                  building: false,
+                  durationMs: 120000,
+                  number: 42,
+                  result: "SUCCESS",
+                  timestamp: BUILD_TIMESTAMP_RECENT,
+                  url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/42/",
+                },
+                {
+                  allureUrl: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/41/allure/",
+                  building: false,
+                  durationMs: 118000,
+                  number: 41,
+                  result: "FAILURE",
+                  timestamp: BUILD_TIMESTAMP_OLDER,
+                  url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/41/",
+                },
+                {
+                  allureUrl: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/40/allure/",
+                  building: true,
+                  durationMs: 30000,
+                  number: 40,
+                  result: null,
+                  timestamp: BUILD_TIMESTAMP_RUNNING,
+                  url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/40/",
+                },
+              ],
+              children: [],
+              color: "blue",
+              kind: "pipeline",
+              name: "Smoke",
+              scheduled: true,
+              synthetic: false,
+              path: "job/.QAA/job/E2E/job/PREPROD/job/Smoke",
+              status: "passed",
+              url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/",
             },
           ],
+          color: null,
+          kind: "folder",
+          name: "BE",
+          scheduled: false,
+          synthetic: false,
+          path: "job/.QAA/job/E2E/job/PREPROD",
+          status: null,
+          url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/",
+        },
+        {
+          builds: [],
           children: [],
-          color: "blue",
-          kind: "pipeline",
-          name: "Smoke",
-          scheduled: true,
-          path: "job/.QAA/job/E2E/job/PREPROD/job/Smoke",
-          status: "passed",
-          url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/",
+          color: null,
+          kind: "folder",
+          name: "FE",
+          scheduled: false,
+          synthetic: false,
+          path: "job/.QAA/job/UI_E2E/job/PREPROD",
+          status: null,
+          url: "https://jenkins.p.gc.onl/job/.QAA/job/UI_E2E/job/PREPROD/",
         },
       ],
       color: null,
       kind: "folder",
       name: "PREPROD",
-      path: "job/.QAA/job/E2E/job/PREPROD",
+      scheduled: false,
+      synthetic: true,
+      path: "",
       status: null,
-      url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/",
+      url: "",
     },
   ];
 }
@@ -127,7 +166,10 @@ function buildScope() {
   return {
     historyLimit: 8,
     rootFolders: ["PREPROD", "PROD"],
-    rootPath: "job/.QAA/job/E2E",
+    rootGroups: [
+      { label: "BE", path: "job/.QAA/job/E2E" },
+      { label: "FE", path: "job/.QAA/job/UI_E2E" },
+    ],
     signature: "scope-1234",
     treeDepth: 5,
   };
@@ -229,6 +271,7 @@ describe("TreePanel", () => {
     backendClientMock.putJenkinsBuildsCache.mockReset();
     backendClientMock.putJenkinsTreeCache.mockReset();
     backendClientMock.resolveJenkinsFreeze.mockReset();
+    buildHistoryLineMock.renderCount = 0;
     openMock.mockReset();
     localStorage.clear();
     resetAuthStoreState();
@@ -259,7 +302,7 @@ describe("TreePanel", () => {
     backendClientMock.getJenkinsResumeRuns.mockResolvedValue([]);
   });
 
-  it("renders cached strips without per-pipeline build calls, supports pinning, and opens Jenkins pages", async () => {
+  it("renders synthetic env groups without env actions, supports pinning real nodes, and opens Jenkins pages", async () => {
     const user = userEvent.setup();
 
     agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
@@ -283,25 +326,36 @@ describe("TreePanel", () => {
 
     expect(await screen.findByText("PREPROD")).toBeInTheDocument();
     expect(await screen.findByText("Smoke")).toBeInTheDocument();
-    expect(screen.getByRole("group", { name: "Build history" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "#42: SUCCESS" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "#41: FAILURE" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "#40: Running" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Runs on a schedule" })).toBeInTheDocument();
+    expect(await screen.findByText("BE")).toBeInTheDocument();
+    expect(await screen.findByText("FE")).toBeInTheDocument();
     expect(agentClientMock.getJenkinsBuilds).not.toHaveBeenCalled();
     expect(agentClientMock.getJenkinsTree).not.toHaveBeenCalled();
+    expect(screen.getAllByRole("button", { name: "Freeze folder..." })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Pin to board" })).toHaveLength(2);
 
-    const [folderPinButton, pipelinePinButton] = screen.getAllByRole("button", { name: "Pin to board" });
+    await user.dblClick(screen.getByText("PREPROD"));
+    expect(openMock).not.toHaveBeenCalled();
+
+    const [folderPinButton] = screen.getAllByRole("button", { name: "Pin to board" });
 
     await user.click(folderPinButton);
     expect(useJenkinsStore.getState().pinnedPaths).toEqual(["job/.QAA/job/E2E/job/PREPROD"]);
     expect(folderPinButton).toHaveAttribute("aria-label", "Unpin from board");
 
+    await user.click(screen.getByText("BE"));
+    const [pipelinePinButton] = screen.getAllByRole("button", { name: "Pin to board" });
     await user.click(pipelinePinButton);
     expect(useJenkinsStore.getState().pinnedPaths).toEqual([
       "job/.QAA/job/E2E/job/PREPROD",
       "job/.QAA/job/E2E/job/PREPROD/job/Smoke",
     ]);
+
+    await user.dblClick(screen.getByText("BE"));
+    expect(openMock).toHaveBeenCalledWith(
+      "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/",
+      "_blank",
+      "noopener"
+    );
 
     await user.dblClick(screen.getByText("Smoke"));
     expect(openMock).toHaveBeenCalledWith(
@@ -435,6 +489,29 @@ describe("TreePanel", () => {
     });
   });
 
+  it("does not rerender the tree while typing the freeze reason", async () => {
+    const user = userEvent.setup();
+
+    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsTreeCache.mockResolvedValue({
+      fetchedAt: "2026-08-17T10:00:00Z",
+      refreshLease: null,
+      roots: buildTreeRoots(),
+      signature: "scope-1234",
+      stale: false,
+    });
+
+    renderWithProviders(<TreePanel agentPort={47600} />);
+
+    await screen.findByText("Smoke");
+    await user.click((await screen.findAllByRole("button", { name: "Freeze folder..." }))[0]);
+
+    const renderCountBeforeTyping = buildHistoryLineMock.renderCount;
+    await user.type(screen.getByLabelText("Reason"), "DR freeze");
+
+    expect(buildHistoryLineMock.renderCount).toBe(renderCountBeforeTyping);
+  });
+
   it("freezes a folder through reserve, agent snapshot, and snapshot put in order", async () => {
     const user = userEvent.setup();
 
@@ -450,7 +527,7 @@ describe("TreePanel", () => {
       applied: false,
       createdAt: "2026-08-17T10:00:00Z",
       createdBy: "test",
-      folderName: "PREPROD",
+      folderName: "BE",
       folderPath: "job/.QAA/job/E2E/job/PREPROD",
       id: "freeze-1",
       killBuilds: true,
@@ -478,7 +555,7 @@ describe("TreePanel", () => {
       applied: true,
       createdAt: "2026-08-17T10:00:00Z",
       createdBy: "test",
-      folderName: "PREPROD",
+      folderName: "BE",
       folderPath: "job/.QAA/job/E2E/job/PREPROD",
       id: "freeze-1",
       killBuilds: true,
@@ -493,7 +570,7 @@ describe("TreePanel", () => {
 
     renderWithProviders(<TreePanel agentPort={47600} />);
 
-    await user.click(await screen.findByRole("button", { name: "Freeze folder..." }));
+    await user.click((await screen.findAllByRole("button", { name: "Freeze folder..." }))[0]);
     await user.type(screen.getByLabelText("Reason"), "DR freeze");
     await user.click(screen.getByRole("button", { name: "Freeze folder" }));
 
@@ -501,7 +578,7 @@ describe("TreePanel", () => {
       expect(backendClientMock.createJenkinsFreeze).toHaveBeenCalledWith(
         "token-123",
         expect.objectContaining({
-          folderName: "PREPROD",
+          folderName: "BE",
           folderPath: "job/.QAA/job/E2E/job/PREPROD",
           killBuilds: false,
           reason: "DR freeze",
@@ -547,7 +624,7 @@ describe("TreePanel", () => {
       applied: false,
       createdAt: "2026-08-17T10:00:00Z",
       createdBy: "test",
-      folderName: "PREPROD",
+      folderName: "BE",
       folderPath: "job/.QAA/job/E2E/job/PREPROD",
       id: "freeze-rollback",
       killBuilds: false,
@@ -564,7 +641,7 @@ describe("TreePanel", () => {
 
     renderWithProviders(<TreePanel agentPort={47600} />);
 
-    await user.click(await screen.findByRole("button", { name: "Freeze folder..." }));
+    await user.click((await screen.findAllByRole("button", { name: "Freeze folder..." }))[0]);
     await user.type(screen.getByLabelText("Reason"), "DR freeze");
     await user.click(screen.getByRole("button", { name: "Freeze folder" }));
 
@@ -592,7 +669,7 @@ describe("TreePanel", () => {
       applied: false,
       createdAt: "2026-08-17T10:00:00Z",
       createdBy: "test",
-      folderName: "PREPROD",
+      folderName: "BE",
       folderPath: "job/.QAA/job/E2E/job/PREPROD",
       id: "freeze-merge",
       killBuilds: false,
@@ -609,7 +686,7 @@ describe("TreePanel", () => {
       applied: true,
       createdAt: "2026-08-17T10:00:00Z",
       createdBy: "test",
-      folderName: "PREPROD",
+      folderName: "BE",
       folderPath: "job/.QAA/job/E2E/job/PREPROD",
       id: "freeze-merge",
       killBuilds: false,
@@ -624,7 +701,7 @@ describe("TreePanel", () => {
 
     renderWithProviders(<TreePanel agentPort={47600} />);
 
-    await user.click(await screen.findByRole("button", { name: "Freeze folder..." }));
+    await user.click((await screen.findAllByRole("button", { name: "Freeze folder..." }))[0]);
 
     const ownCheckbox = await screen.findByRole("checkbox", { name: /IAM · test/ });
     const otherCheckbox = screen.getByRole("checkbox", { name: /CDN · admin/ });
@@ -655,21 +732,38 @@ describe("TreePanel", () => {
         children: [
           {
             builds: [],
-            children: [],
+            children: [
+              {
+                builds: [],
+                children: [],
+                color: null,
+                kind: "folder",
+                name: "IAM",
+                path: "job/.QAA/job/E2E/job/PREPROD/job/IAM",
+                scheduled: false,
+                status: null,
+                synthetic: false,
+                url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/IAM/",
+              },
+            ],
             color: null,
             kind: "folder",
-            name: "IAM",
-            path: "job/.QAA/job/E2E/job/PREPROD/job/IAM",
+            name: "BE",
+            path: "job/.QAA/job/E2E/job/PREPROD",
+            scheduled: false,
             status: null,
-            url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/IAM/",
+            synthetic: false,
+            url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/",
           },
         ],
         color: null,
         kind: "folder",
         name: "PREPROD",
-        path: "job/.QAA/job/E2E/job/PREPROD",
+        path: "",
+        scheduled: false,
         status: null,
-        url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/",
+        synthetic: true,
+        url: "",
       },
     ];
 
@@ -686,7 +780,7 @@ describe("TreePanel", () => {
         applied: true,
         createdAt: "2026-08-17T10:00:00Z",
         createdBy: "test",
-        folderName: "PREPROD",
+        folderName: "BE",
         folderPath: "job/.QAA/job/E2E/job/PREPROD",
         id: "freeze-exact",
         killBuilds: false,
@@ -759,7 +853,7 @@ describe("TreePanel", () => {
         applied: true,
         createdAt: "2026-08-17T10:00:00Z",
         createdBy: "test",
-        folderName: "PREPROD",
+        folderName: "BE",
         folderPath: "job/.QAA/job/E2E/job/PREPROD",
         id: "freeze-exact",
         killBuilds: false,
@@ -822,7 +916,7 @@ describe("TreePanel", () => {
         applied: true,
         createdAt: "2026-08-17T10:00:00Z",
         createdBy: "test",
-        folderName: "PREPROD",
+        folderName: "BE",
         folderPath: "job/.QAA/job/E2E/job/PREPROD",
         id: "freeze-exact",
         killBuilds: false,
@@ -869,7 +963,7 @@ describe("TreePanel", () => {
         applied: true,
         createdAt: "2026-08-17T10:00:00Z",
         createdBy: "test",
-        folderName: "PREPROD",
+        folderName: "BE",
         folderPath: "job/.QAA/job/E2E/job/PREPROD",
         id: "freeze-exact",
         killBuilds: false,
