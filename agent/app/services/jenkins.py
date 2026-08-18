@@ -89,13 +89,16 @@ JOB_PATH_PREFIX = "job/"
 FULLNAME_SEPARATOR = "/"
 SCHEDULED_NAME_HINT = "scheduled"
 SCHEDULED_SCRIPT_TEMPLATE = (
+    "import groovy.json.JsonSlurper\n"
     "import org.jenkinsci.plugins.workflow.job.WorkflowJob\n"
     "import java.util.Base64\n"
     "import hudson.triggers.TimerTrigger\n"
     "import hudson.triggers.SCMTrigger\n"
-    "def prefix = new String(Base64.decoder.decode('__PREFIX__'), 'UTF-8')\n"
+    "def prefixes = new JsonSlurper().parseText(\n"
+    "  new String(Base64.decoder.decode('__PREFIXES__'), 'UTF-8')\n"
+    ")\n"
     "Jenkins.instance.getAllItems(WorkflowJob).each { j ->\n"
-    "  if (!j.fullName.startsWith(prefix)) return\n"
+    "  if (!prefixes.any { prefix -> j.fullName.startsWith(prefix) }) return\n"
     "  def scheduled = j.triggers.values().any {\n"
     "    (it instanceof TimerTrigger || it instanceof SCMTrigger) && it.spec?.trim()\n"
     "  }\n"
@@ -158,7 +161,7 @@ RESUME_SCRIPT_TEMPLATE = (
     "      return\n"
     "    }\n"
     "    if (job.isDisabled()) job.enable()\n"
-    "    if (item.scheduled) {\n"
+    "    if (item.scheduled || item.wasBuilding || job.isBuilding() || job.isInQueue()) {\n"
     "      outcomes << [fullName: fullName, outcome: 'enabled', detail: null]\n"
     "      return\n"
     "    }\n"
@@ -212,9 +215,9 @@ def require_configured(settings: Settings) -> None:
 def allowed_root_paths(settings: Settings) -> list[str]:
     """Return the allowed Jenkins root folder paths under the configured subtree."""
 
-    root_path = settings.jenkins_root_path.strip(PATH_SEPARATOR)
     return [
-        f"{root_path}{PATH_SEPARATOR}{JENKINS_JOB_PATH_SEGMENT}{PATH_SEPARATOR}{folder}"
+        f"{group.path.strip(PATH_SEPARATOR)}{PATH_SEPARATOR}{JENKINS_JOB_PATH_SEGMENT}{PATH_SEPARATOR}{folder}"
+        for group in settings.jenkins_root_groups
         for folder in settings.jenkins_root_folders
     ]
 
@@ -222,8 +225,11 @@ def allowed_root_paths(settings: Settings) -> list[str]:
 def jenkins_scope_signature(settings: Settings) -> str:
     """Return a stable signature for the configured Jenkins tree scope."""
 
+    group_signature = sorted(
+        f"{group.label}:{group.path}" for group in settings.jenkins_root_groups
+    )
     payload = (
-        f"{settings.jenkins_root_path}|"
+        f"{group_signature}|"
         f"{sorted(settings.jenkins_root_folders)}|"
         f"{settings.jenkins_tree_depth}|"
         f"{settings.jenkins_history_limit}"
@@ -288,10 +294,10 @@ def _fullname_from_job_path(job_path: str) -> str:
     return _fullname_prefix_from_job_path(job_path).removesuffix(FULLNAME_SEPARATOR)
 
 
-def _scheduled_fullname_prefix(settings: Settings) -> str:
-    """Convert the configured root path into a Jenkins ``fullName`` prefix."""
+def _scheduled_fullname_prefixes(settings: Settings) -> list[str]:
+    """Convert the configured root paths into Jenkins ``fullName`` prefixes."""
 
-    return _fullname_prefix_from_job_path(settings.jenkins_root_path)
+    return [_fullname_prefix_from_job_path(group.path) for group in settings.jenkins_root_groups]
 
 
 def _encode_base64(value: str) -> str:
@@ -329,9 +335,12 @@ async def fetch_scheduled_paths(
     empty set and the tree still renders — just without schedule markers.
     """
 
+    prefixes = _scheduled_fullname_prefixes(settings)
+    if not prefixes:
+        return set()
     script = SCHEDULED_SCRIPT_TEMPLATE.replace(
-        "__PREFIX__",
-        _encode_base64(_scheduled_fullname_prefix(settings)),
+        "__PREFIXES__",
+        _encode_base64(json.dumps(prefixes, separators=(",", ":"))),
     )
     try:
         async with httpx.AsyncClient(
@@ -393,7 +402,7 @@ async def fetch_tree(
     *,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> list[JenkinsNode]:
-    """Fetch the configured Jenkins subtree in one recursive API call."""
+    """Fetch the configured Jenkins subtrees and compose the synthetic env grouping."""
 
     require_configured(settings)
     tree_expression = (
@@ -405,23 +414,50 @@ async def fetch_tree(
         + "]"
     )
     scheduled_paths = await fetch_scheduled_paths(settings, transport=transport)
-    payload = await _get_json(
-        settings,
-        settings.jenkins_root_path,
-        tree=tree_expression,
-        transport=transport,
+    payloads = await asyncio.gather(
+        *(
+            _get_json(
+                settings,
+                group.path,
+                tree=tree_expression,
+                transport=transport,
+            )
+            for group in settings.jenkins_root_groups
+        )
     )
-    children_by_name: dict[str, dict[str, Any]] = {}
-    for raw_job in _read_object_list(payload, CHILDREN_KEY):
-        name = _read_optional_string(raw_job, NAME_KEY)
-        if name:
-            children_by_name[name] = raw_job
+    children_by_group_and_name: dict[str, dict[str, dict[str, Any]]] = {}
+    for group, payload in zip(settings.jenkins_root_groups, payloads, strict=True):
+        children_by_name: dict[str, dict[str, Any]] = {}
+        for raw_job in _read_object_list(payload, CHILDREN_KEY):
+            name = _read_optional_string(raw_job, NAME_KEY)
+            if name:
+                children_by_name[name] = raw_job
+        children_by_group_and_name[group.label] = children_by_name
 
-    return [
-        _map_node(settings, children_by_name[folder], scheduled_paths)
-        for folder in settings.jenkins_root_folders
-        if folder in children_by_name
-    ]
+    roots: list[JenkinsNode] = []
+    for folder in settings.jenkins_root_folders:
+        group_children: list[JenkinsNode] = []
+        for group in settings.jenkins_root_groups:
+            raw_env = children_by_group_and_name.get(group.label, {}).get(folder)
+            if raw_env is None:
+                continue
+            group_node = _map_node(settings, raw_env, scheduled_paths).model_copy(
+                update={"name": group.label}
+            )
+            group_children.append(group_node)
+        if not group_children:
+            continue
+        roots.append(
+            JenkinsNode(
+                name=folder,
+                path="",
+                url="",
+                kind=JenkinsNodeKind.FOLDER,
+                synthetic=True,
+                children=group_children,
+            )
+        )
+    return roots
 
 
 def derive_status(
@@ -674,6 +710,30 @@ async def _resume_folder_via_groovy(
     return _parse_resume_outcomes(_extract_script_json_list(body))
 
 
+async def _has_pending_execution(
+    settings: Settings,
+    job_path: str,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> bool:
+    """Return whether a job is already running or queued for execution."""
+
+    try:
+        payload = await _get_json(
+            settings,
+            job_path,
+            tree=f"{IN_QUEUE_KEY},{BUILDING_KEY},{LAST_BUILD_KEY}[{BUILDING_KEY}]",
+            transport=transport,
+        )
+    except JenkinsUnreachableError:
+        return False
+
+    if bool(payload.get(IN_QUEUE_KEY)) or bool(payload.get(BUILDING_KEY)):
+        return True
+    last_build = _read_object(payload, LAST_BUILD_KEY)
+    return bool(last_build.get(BUILDING_KEY))
+
+
 async def _fetch_last_build_parameters(
     settings: Settings,
     job_path: str,
@@ -780,6 +840,15 @@ async def _resume_one(
             detail=_response_detail(ENABLE_PATH, enable_response.status_code),
         )
     if item.scheduled:
+        return JenkinsResumeOutcome(
+            full_name=item.full_name,
+            outcome=JenkinsResumeResult.ENABLED,
+        )
+    if item.was_building or await _has_pending_execution(
+        settings,
+        item.path,
+        transport=transport,
+    ):
         return JenkinsResumeOutcome(
             full_name=item.full_name,
             outcome=JenkinsResumeResult.ENABLED,
@@ -1101,6 +1170,7 @@ def _map_node(
             else derive_status(raw, settings, scheduled=scheduled)
         ),
         color=_read_optional_string(raw, COLOR_KEY),
+        synthetic=False,
         scheduled=scheduled,
         builds=builds,
         children=children if node_kind is JenkinsNodeKind.FOLDER else [],
