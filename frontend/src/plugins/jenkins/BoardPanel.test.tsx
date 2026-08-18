@@ -29,6 +29,7 @@ vi.mock("@/api/backendClient", () => ({
 }));
 
 import { BoardPanel } from "@/plugins/jenkins/BoardPanel";
+import type { JenkinsBuild } from "@/api/types";
 import { PluginId, TabId } from "@/constants";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
 import { resetJenkinsStoreState, useJenkinsStore } from "@/plugins/jenkins/jenkinsStore";
@@ -204,6 +205,38 @@ describe("BoardPanel", () => {
       "_blank",
       "noopener"
     );
+  });
+
+  it("renders the build-history strip for a pinned pipeline once expanded", async () => {
+    const user = userEvent.setup();
+    const roots = buildTreeRoots();
+    const smokeBuild: JenkinsBuild = {
+      allureUrl: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/42/allure/",
+      building: false,
+      durationMs: 12000,
+      number: 42,
+      result: "SUCCESS",
+      timestamp: 1_723_800_000_000,
+      url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/42/",
+    };
+    (roots[0].children[0] as unknown as { builds: JenkinsBuild[] }).builds = [smokeBuild];
+
+    useJenkinsStore.setState({
+      pinnedPaths: ["job/.QAA/job/E2E/job/PREPROD"],
+    });
+    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsTreeCache.mockResolvedValue({
+      fetchedAt: "2026-08-17T10:00:00Z",
+      refreshLease: null,
+      roots,
+      signature: "scope-1234",
+      stale: false,
+    });
+
+    renderWithProviders(<BoardPanel agentPort={47600} />);
+
+    await user.click(await screen.findByText("PREPROD"));
+    expect(await screen.findByLabelText("#42: SUCCESS")).toBeInTheDocument();
   });
 
   it("refreshes the shared cache once when the backend returns stale data with a lease", async () => {

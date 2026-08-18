@@ -36,6 +36,8 @@ import {
   PluginId,
   TabId,
 } from "@/constants";
+import { BuildHistoryLine } from "@/plugins/jenkins/BuildHistoryLine";
+import { getBuildColor, getBuildLabel } from "@/plugins/jenkins/buildStatus";
 import { useJenkinsStore } from "@/plugins/jenkins/jenkinsStore";
 import { collectExpandableNodePaths } from "@/plugins/jenkins/treeUtils";
 import { useJenkinsBuilds } from "@/plugins/jenkins/useJenkinsBuilds";
@@ -61,7 +63,6 @@ interface TreeNodeRowProps {
 }
 
 const TreePanelCopy = {
-  BUILD_HISTORY: "Build history",
   BUILDS_EMPTY: "No recent builds were returned.",
   EMPTY_BODY: "No Jenkins folders were returned for the configured .QAA/E2E scope.",
   EMPTY_TITLE: "No Jenkins data",
@@ -87,8 +88,6 @@ const TreePanelCopy = {
 } as const;
 
 const TreePanelValue = {
-  BUILD_HISTORY_HEIGHT_PX: 8,
-  BUILD_HISTORY_WIDTH_PX: 108,
   INDENT_STEP_PX: 24,
   LEFT_BORDER_PX: 2,
 } as const;
@@ -367,28 +366,6 @@ function TreeNodeRow({
   );
 }
 
-function BuildHistoryLine({ builds }: { builds: JenkinsBuild[] }) {
-  return (
-    <Group aria-label={TreePanelCopy.BUILD_HISTORY} gap={2} role="group" style={{ width: TreePanelValue.BUILD_HISTORY_WIDTH_PX }} wrap="nowrap">
-      {builds.map((build) => (
-        <Tooltip key={build.url} label={formatBuildHistoryLabel(build)}>
-          <div
-            aria-label={formatBuildHistoryLabel(build)}
-            role="img"
-            style={{
-              backgroundColor: getBuildHistoryColor(build),
-              borderRadius: String(TreePanelValue.BUILD_HISTORY_HEIGHT_PX) + "px",
-              flex: 1,
-              height: TreePanelValue.BUILD_HISTORY_HEIGHT_PX,
-              minWidth: 0,
-            }}
-          />
-        </Tooltip>
-      ))}
-    </Group>
-  );
-}
-
 function BuildRow({ build }: { build: JenkinsBuild }) {
   return (
     <Tooltip label={TreePanelCopy.OPEN_ALLURE}>
@@ -446,34 +423,6 @@ function getErrorPresentation(error: unknown): { body: string; title: string } {
     body: error instanceof Error ? error.message : TreePanelCopy.ERROR_GENERIC,
     title: TreePanelCopy.ERROR_GENERIC,
   };
-}
-
-function getBuildColor(build: JenkinsBuild): string {
-  if (build.building) {
-    return "blue";
-  }
-  if (build.result === "SUCCESS") {
-    return "green";
-  }
-  if (build.result === "ABORTED" || build.result === "NOT_BUILT") {
-    return "gray";
-  }
-  return "red";
-}
-
-function getBuildHistoryColor(build: JenkinsBuild): string {
-  return `var(--mantine-color-${getBuildColor(build)}-6)`;
-}
-
-function formatBuildHistoryLabel(build: JenkinsBuild): string {
-  return "#" + String(build.number) + ": " + getBuildLabel(build);
-}
-
-function getBuildLabel(build: JenkinsBuild): string {
-  if (build.building) {
-    return "Running";
-  }
-  return build.result ?? "Unknown";
 }
 
 function formatRelativeAge(timestamp: number): string {

@@ -21,6 +21,7 @@ import {
   PluginId,
   TabId,
 } from "@/constants";
+import { BuildHistoryLine } from "@/plugins/jenkins/BuildHistoryLine";
 import { useJenkinsStore } from "@/plugins/jenkins/jenkinsStore";
 import { countGrayStatuses, countPipelineStatuses, findNodeByPath, flattenPipelines } from "@/plugins/jenkins/treeUtils";
 import { useJenkinsTree } from "@/plugins/jenkins/useJenkinsTree";
@@ -177,12 +178,19 @@ export function BoardPanel({ agentPort }: BoardPanelProps) {
                   <Stack gap="xs">
                     {pipelines.map((pipeline) => (
                       <Group justify="space-between" key={pipeline.path} wrap="nowrap">
-                        <Text size="sm">{pipeline.name}</Text>
-                        {pipeline.status ? (
-                          <Badge color={JenkinsStatusColor[pipeline.status]} variant="light">
-                            {JenkinsStatusLabel[pipeline.status]}
-                          </Badge>
-                        ) : null}
+                        <Text size="sm" style={{ flex: 1, minWidth: 0 }} truncate="end">
+                          {pipeline.name}
+                        </Text>
+                        <Group gap="xs" style={{ flexShrink: 0 }} wrap="nowrap">
+                          {pipeline.builds.length > 0 ? (
+                            <BuildHistoryLine builds={[...pipeline.builds].reverse()} />
+                          ) : null}
+                          {pipeline.status ? (
+                            <Badge color={JenkinsStatusColor[pipeline.status]} variant="light">
+                              {JenkinsStatusLabel[pipeline.status]}
+                            </Badge>
+                          ) : null}
+                        </Group>
                       </Group>
                     ))}
                   </Stack>
