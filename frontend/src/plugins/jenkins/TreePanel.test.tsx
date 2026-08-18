@@ -95,6 +95,7 @@ function buildTreeRoots() {
           color: "blue",
           kind: "pipeline",
           name: "Smoke",
+          scheduled: true,
           path: "job/.QAA/job/E2E/job/PREPROD/job/Smoke",
           status: "passed",
           url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/",
@@ -184,6 +185,7 @@ describe("TreePanel", () => {
     expect(screen.getByRole("img", { name: "#42: SUCCESS" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "#41: FAILURE" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "#40: Running" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Runs on a schedule" })).toBeInTheDocument();
     expect(agentClientMock.getJenkinsBuilds).not.toHaveBeenCalled();
     expect(agentClientMock.getJenkinsTree).not.toHaveBeenCalled();
 

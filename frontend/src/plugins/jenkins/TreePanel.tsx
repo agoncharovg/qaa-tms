@@ -19,6 +19,7 @@ import {
   IconAlertCircle,
   IconChevronDown,
   IconChevronRight,
+  IconClock,
   IconFolder,
   IconGitBranch,
   IconMaximize,
@@ -83,6 +84,7 @@ const TreePanelCopy = {
   OPEN_ALLURE: "Open Allure report",
   PIN: "Pin to board",
   REFRESH: "Refresh",
+  SCHEDULED: "Runs on a schedule",
   SUBTITLE:
     "Browse the live Jenkins tree for the configured .QAA/E2E roots, expand pipelines for recent builds, and pin folders or pipelines for the board.",
   TITLE: "Tree",
@@ -242,6 +244,15 @@ function TreeNodeRow({
   });
   const buildHistory = [...node.builds].reverse();
   const expandedBuilds = buildsState.fetchedAt ? buildsState.builds : node.builds;
+  const scheduledPipeline = node.kind === JenkinsNodeKind.PIPELINE && node.scheduled;
+  const kindIconLabel =
+    node.kind === JenkinsNodeKind.FOLDER
+      ? TreePanelCopy.NODE_KIND_FOLDER
+      : scheduledPipeline
+        ? TreePanelCopy.SCHEDULED
+        : TreePanelCopy.NODE_KIND_PIPELINE;
+  const kindIconColor =
+    node.kind === JenkinsNodeKind.FOLDER ? "gray" : scheduledPipeline ? "grape" : "cyan";
 
   return (
     <Stack gap="xs">
@@ -261,20 +272,10 @@ function TreeNodeRow({
             <ActionIcon aria-label={expanded ? TreePanelCopy.COLLAPSE_ALL : TreePanelCopy.EXPAND_ALL} variant="subtle">
               {expanded ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
             </ActionIcon>
-            <Tooltip
-              label={
-                node.kind === JenkinsNodeKind.FOLDER
-                  ? TreePanelCopy.NODE_KIND_FOLDER
-                  : TreePanelCopy.NODE_KIND_PIPELINE
-              }
-            >
+            <Tooltip label={kindIconLabel}>
               <ThemeIcon
-                aria-label={
-                  node.kind === JenkinsNodeKind.FOLDER
-                    ? TreePanelCopy.NODE_KIND_FOLDER
-                    : TreePanelCopy.NODE_KIND_PIPELINE
-                }
-                color={node.kind === JenkinsNodeKind.FOLDER ? "gray" : "cyan"}
+                aria-label={kindIconLabel}
+                color={kindIconColor}
                 radius="xl"
                 role="img"
                 size="md"
@@ -282,6 +283,8 @@ function TreeNodeRow({
               >
                 {node.kind === JenkinsNodeKind.FOLDER ? (
                   <IconFolder size={14} />
+                ) : scheduledPipeline ? (
+                  <IconClock size={14} />
                 ) : (
                   <IconGitBranch size={14} />
                 )}

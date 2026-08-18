@@ -15,6 +15,7 @@ from app.services.jenkins import (
     JenkinsPathOutOfScopeError,
     JenkinsUnreachableError,
     _map_build,
+    _map_node,
     derive_status,
     fetch_builds,
     fetch_tree,
@@ -97,9 +98,7 @@ def build_tree_payload() -> dict[str, Any]:
                         },
                         "name": "Smoke",
                         "property": [],
-                        "triggers": [
-                            {"_class": "hudson.triggers.TimerTrigger", "spec": "H 1 * * *"}
-                        ],
+                        "triggers": [],
                         "builds": [
                             {
                                 "building": False,
@@ -230,17 +229,29 @@ def build_tree_payload() -> dict[str, Any]:
     }
 
 
+SCHEDULED_SCRIPT_BODY = f"Result: null\n{PIPELINE_PATH}\n"
+
+
 def build_transport(
     payload: dict[str, Any],
     requests: list[tuple[str, str | None]],
     *,
     status_code: int = 200,
     raises: Exception | None = None,
+    scheduled_body: str = SCHEDULED_SCRIPT_BODY,
 ) -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append((str(request.url), request.url.params.get("tree")))
         if raises is not None:
             raise raises
+        if request.url.path.endswith("/crumbIssuer/api/json"):
+            return httpx.Response(
+                status_code=status_code,
+                json={"crumb": "csrf-token", "crumbRequestField": "Jenkins-Crumb"},
+                request=request,
+            )
+        if request.url.path.endswith("/scriptText"):
+            return httpx.Response(status_code=status_code, text=scheduled_body, request=request)
         return httpx.Response(status_code=status_code, json=payload, request=request)
 
     return httpx.MockTransport(handler)
@@ -261,6 +272,12 @@ async def test_fetch_tree_filters_to_default_roots_in_configured_order() -> None
     assert roots[0].children[0].name == "Smoke"
     assert roots[0].children[0].kind.value == "pipeline"
     assert roots[0].children[0].status == JenkinsStatus.PASSED
+    # Smoke has no JSON trigger; its schedule flag comes purely from the Script Console scan.
+    assert roots[0].children[0].scheduled is True
+    # Nested keeps a freestyle-style JSON trigger, exercising the has_schedule fallback.
+    assert roots[0].children[1].children[0].scheduled is True
+    assert roots[1].children[0].scheduled is False
+    assert roots[0].scheduled is False
     assert len(roots[0].children[0].builds) == 2
     assert roots[0].children[0].builds[0].number == 42
     assert roots[0].children[0].builds[0].allure_url.endswith("/42/allure/")
@@ -268,10 +285,12 @@ async def test_fetch_tree_filters_to_default_roots_in_configured_order() -> None
     assert roots[0].children[1].children[0].builds[0].number == 7
     assert roots[1].children[0].status == JenkinsStatus.RUNNING
     assert roots[1].children[0].builds[0].number == 9
-    assert requests[0][0].startswith(f"{JENKINS_BASE_URL}/{JENKINS_ROOT_PATH}/api/json")
-    assert requests[0][1] is not None
-    assert requests[0][1].startswith("jobs[name,url,_class,color,buildable")
-    assert "builds[number,result,building,timestamp,duration,url]{0,8}" in requests[0][1]
+    tree_requests = [request for request in requests if request[1] is not None]
+    assert tree_requests[0][0].startswith(f"{JENKINS_BASE_URL}/{JENKINS_ROOT_PATH}/api/json")
+    assert tree_requests[0][1].startswith("jobs[name,url,_class,color,buildable")
+    assert "builds[number,result,building,timestamp,duration,url]{0,8}" in tree_requests[0][1]
+    # The Script Console scan runs once, before the tree fetch, to keep it a single request.
+    assert any(request[0].endswith("/scriptText") for request in requests)
 
 
 def test_build_settings_defaults_root_folders() -> None:
@@ -317,6 +336,24 @@ def test_map_build_maps_single_row() -> None:
         "timestamp": FRESH_BUILD_TIMESTAMP,
         "url": f"{JENKINS_BASE_URL}/{PIPELINE_PATH}/101/",
     }
+
+
+def test_map_node_marks_scheduled_by_name_when_scan_and_json_are_empty() -> None:
+    settings = build_settings()
+    raw = {
+        "_class": "org.jenkinsci.plugins.workflow.job.WorkflowJob",
+        "color": "blue",
+        "name": "Rare launched scheduled",
+        "property": [],
+        "triggers": [],
+        "url": f"{JENKINS_BASE_URL}/{PREPROD_PATH}/job/Rare%20launched%20scheduled/",
+    }
+
+    # No Script Console hit, no JSON trigger — only the "... scheduled" name marks it.
+    assert _map_node(settings, raw, set()).scheduled is True
+
+    plain = {**raw, "name": "Smoke", "url": f"{JENKINS_BASE_URL}/{PREPROD_PATH}/job/Smoke/"}
+    assert _map_node(settings, plain, set()).scheduled is False
 
 
 def test_derive_status_covers_each_bucket() -> None:

@@ -157,6 +157,7 @@ describe("agentClient jenkins requests", () => {
           color: null,
           kind: "folder",
           name: "PREPROD",
+          scheduled: false,
           path: "job/.QAA/job/E2E/job/PREPROD",
           status: null,
           url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/",

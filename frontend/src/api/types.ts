@@ -472,6 +472,7 @@ export interface JenkinsNode {
   kind: JenkinsNodeKind;
   status: JenkinsStatus | null;
   color: string | null;
+  scheduled: boolean;
   builds: JenkinsBuild[];
   children: JenkinsNode[];
 }
