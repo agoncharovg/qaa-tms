@@ -14,12 +14,15 @@ from app.core.constants import (
     BackendPath,
     HeaderName,
     HeaderValue,
+    JenkinsResumeItemState,
     OperationStatus,
     OperationType,
 )
+from app.schemas import JenkinsResumeProgressRequest, JenkinsResumeRunRead
 from app.services.staging import get_agent_host_name, get_agent_version
 
 logger = logging.getLogger(__name__)
+RESUME_RUN_PROGRESS_SEGMENT = "progress"
 
 
 def build_operation_payload(
@@ -80,3 +83,61 @@ async def push_operation(
         response.raise_for_status()
     except httpx.HTTPError as exc:
         logger.warning("Audit push failed: %s", exc)
+
+
+def build_backend_headers(token: str) -> dict[str, str]:
+    return {
+        HeaderName.ACCEPT.value: HeaderValue.APPLICATION_JSON.value,
+        HeaderName.CONTENT_TYPE.value: HeaderValue.APPLICATION_JSON.value,
+        HeaderName.AUTHORIZATION.value: f"{HeaderValue.BEARER.value} {token}",
+        HeaderName.X_QAA_TMS.value: HeaderValue.X_QAA_TMS_ENABLED.value,
+    }
+
+
+def build_resume_run_path(run_id: UUID) -> str:
+    return f"{BackendPath.JENKINS_RESUME_RUNS.value}/{run_id}"
+
+
+def build_resume_run_progress_path(run_id: UUID) -> str:
+    return f"{build_resume_run_path(run_id)}/{RESUME_RUN_PROGRESS_SEGMENT}"
+
+
+async def get_jenkins_resume_run(
+    *,
+    client: httpx.AsyncClient,
+    token: str,
+    run_id: UUID,
+) -> JenkinsResumeRunRead:
+    response = await client.get(
+        build_resume_run_path(run_id),
+        headers=build_backend_headers(token),
+    )
+    response.raise_for_status()
+    return JenkinsResumeRunRead.model_validate(response.json())
+
+
+async def put_jenkins_resume_progress(
+    *,
+    client: httpx.AsyncClient,
+    token: str,
+    run_id: UUID,
+    path: str,
+    state: JenkinsResumeItemState,
+    reason: str | None = None,
+    next_path: str | None = None,
+    next_name: str | None = None,
+) -> JenkinsResumeRunRead:
+    payload = JenkinsResumeProgressRequest(
+        path=path,
+        state=state,
+        reason=reason,
+        next_path=next_path,
+        next_name=next_name,
+    )
+    response = await client.put(
+        build_resume_run_progress_path(run_id),
+        headers=build_backend_headers(token),
+        json=payload.model_dump(mode="json", by_alias=True),
+    )
+    response.raise_for_status()
+    return JenkinsResumeRunRead.model_validate(response.json())

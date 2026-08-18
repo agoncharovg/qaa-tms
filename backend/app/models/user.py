@@ -16,6 +16,8 @@ from app.core.constants import DEFAULT_STRING_LENGTH
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.jenkins_freeze import JenkinsFreeze
+    from app.models.jenkins_resume_run import JenkinsResumeRun
     from app.models.operation import Operation
 
 
@@ -41,3 +43,19 @@ class User(Base):
     )
 
     operations: Mapped[list[Operation]] = relationship(back_populates="user")
+    jenkins_freezes_created: Mapped[list[JenkinsFreeze]] = relationship(
+        foreign_keys="JenkinsFreeze.created_by_id",
+        back_populates="created_by",
+    )
+    jenkins_freezes_resolved: Mapped[list[JenkinsFreeze]] = relationship(
+        foreign_keys="JenkinsFreeze.resolved_by_id",
+        back_populates="resolved_by",
+    )
+    jenkins_resume_runs_created: Mapped[list[JenkinsResumeRun]] = relationship(
+        foreign_keys="JenkinsResumeRun.created_by_id",
+        back_populates="created_by",
+    )
+    jenkins_resume_runs_cancelled: Mapped[list[JenkinsResumeRun]] = relationship(
+        foreign_keys="JenkinsResumeRun.cancelled_by_id",
+        back_populates="cancelled_by",
+    )

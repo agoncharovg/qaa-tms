@@ -7,6 +7,8 @@ import type {
   E2eRunRequest,
   E2eSuitesResponse,
   JenkinsBuildsResponse,
+  JenkinsResumeRunAccepted,
+  JenkinsResumeRunRequest,
   JenkinsTreeResponse,
   JobCreateResponse,
   KubeCommandResult,
@@ -209,6 +211,40 @@ describe("agentClient jenkins requests", () => {
       expect(headers.get("Accept")).toBe("application/json");
       expect(headers.get("X-QAA-TMS")).toBe("1");
     }
+  });
+
+  it("starts a Jenkins resume campaign on the local agent with bearer auth", async () => {
+    const response: JenkinsResumeRunAccepted = {
+      runId: "run-1",
+    };
+    const payload: JenkinsResumeRunRequest = {
+      runId: "run-1",
+      snapshot: [
+        {
+          fullName: ".QAA/E2E/PREPROD/Smoke",
+          name: "Smoke",
+          path: "job/.QAA/job/E2E/job/PREPROD/job/Smoke",
+          scheduled: false,
+          wasBuilding: false,
+          wasDisabled: false,
+        },
+      ],
+    };
+
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(response), { status: 202 }));
+
+    expect(await agentClient.startJenkinsResumeRun(47600, "token-123", payload)).toEqual(response);
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    const headers = new Headers(init?.headers);
+
+    expect(url).toBe("http://127.0.0.1:47600/jenkins/resume-run");
+    expect(init?.method).toBe("POST");
+    expect(init?.body).toBe(JSON.stringify(payload));
+    expect(headers.get("Authorization")).toBe("Bearer token-123");
+    expect(headers.get("Content-Type")).toBe("application/json");
+    expect(headers.get("Accept")).toBe("application/json");
+    expect(headers.get("X-QAA-TMS")).toBe("1");
   });
 });
 

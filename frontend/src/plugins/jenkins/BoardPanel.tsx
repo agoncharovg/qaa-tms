@@ -17,14 +17,19 @@ import { IconAlertCircle, IconPinnedOff } from "@tabler/icons-react";
 
 import { AgentRequestError } from "@/api/agentClient";
 import {
+  JenkinsNodeKind,
   JenkinsStatusColor,
   JenkinsStatusLabel,
   PluginId,
   TabId,
 } from "@/constants";
-import { BuildHistoryLine, getBuildHistoryLineWidth } from "@/plugins/jenkins/BuildHistoryLine";
+import { BuildHistoryLine } from "@/plugins/jenkins/BuildHistoryLine";
+import { getBuildHistoryLineWidth } from "@/plugins/jenkins/buildHistoryLayout";
+import { JenkinsFreezeBadge } from "@/plugins/jenkins/JenkinsFreezeBadge";
+import { JenkinsResumeProgressModal } from "@/plugins/jenkins/JenkinsResumeProgressModal";
 import { useJenkinsStore } from "@/plugins/jenkins/jenkinsStore";
 import { countGrayStatuses, countPipelineStatuses, findNodeByPath, flattenPipelines } from "@/plugins/jenkins/treeUtils";
+import { useJenkinsFreezes } from "@/plugins/jenkins/useJenkinsFreezes";
 import { useJenkinsTree } from "@/plugins/jenkins/useJenkinsTree";
 import { useAuthStore } from "@/store/authStore";
 import { useUiStore } from "@/store/uiStoreCore";
@@ -68,19 +73,35 @@ export function BoardPanel({ agentPort }: BoardPanelProps) {
   const [expandedPaths, setExpandedPaths] = useState<string[]>([]);
   const treeState = useJenkinsTree({
     agentPort,
-    enabled: pinnedPaths.length > 0,
+    enabled: true,
     isActive,
+    token,
+  });
+  const freezesState = useJenkinsFreezes({
+    agentPort,
+    enabled: true,
+    isActive,
+    signature: treeState.signature,
     token,
   });
 
   if (pinnedPaths.length === 0) {
     return (
-      <Paper p="xl" radius="lg" withBorder>
-        <Stack gap="sm">
-          <Title order={3}>{BoardPanelCopy.EMPTY_TITLE}</Title>
-          <Text c="dimmed">{BoardPanelCopy.EMPTY_BODY}</Text>
-        </Stack>
-      </Paper>
+      <>
+        <JenkinsResumeProgressModal
+          onCancel={() => {
+            void freezesState.cancelResumeRun();
+          }}
+          onClose={freezesState.closeResumeRunSummary}
+          run={freezesState.visibleResumeRun}
+        />
+        <Paper p="xl" radius="lg" withBorder>
+          <Stack gap="sm">
+            <Title order={3}>{BoardPanelCopy.EMPTY_TITLE}</Title>
+            <Text c="dimmed">{BoardPanelCopy.EMPTY_BODY}</Text>
+          </Stack>
+        </Paper>
+      </>
     );
   }
 
@@ -98,140 +119,163 @@ export function BoardPanel({ agentPort }: BoardPanelProps) {
   }
 
   return (
-    <Stack gap="lg">
-      <div>
-        <Title order={3}>{BoardPanelCopy.PINNED_TITLE}</Title>
-        <Text c="dimmed" size="sm">
-          {BoardPanelCopy.SUBTITLE}
-        </Text>
-      </div>
+    <>
+      <JenkinsResumeProgressModal
+        onCancel={() => {
+          void freezesState.cancelResumeRun();
+        }}
+        onClose={freezesState.closeResumeRunSummary}
+        run={freezesState.visibleResumeRun}
+      />
+      <Stack gap="lg">
+        <div>
+          <Title order={3}>{BoardPanelCopy.PINNED_TITLE}</Title>
+          <Text c="dimmed" size="sm">
+            {BoardPanelCopy.SUBTITLE}
+          </Text>
+        </div>
 
-      <SimpleGrid cols={{ base: 1, lg: 2 }}>
-        {pinnedPaths.map((path) => {
-          const pinnedNode = findNodeByPath(treeState.roots, path);
-          const expanded = expandedPaths.includes(path);
+        <SimpleGrid cols={{ base: 1, lg: 2 }}>
+          {pinnedPaths.map((path) => {
+            const pinnedNode = findNodeByPath(treeState.roots, path);
+            const expanded = expandedPaths.includes(path);
 
-          if (!pinnedNode) {
+            if (!pinnedNode) {
+              return (
+                <Card key={path} padding="lg" radius="lg" withBorder>
+                  <Stack gap="sm">
+                    <Group justify="space-between">
+                      <Text fw={600}>{path}</Text>
+                      <ActionIcon aria-label={BoardPanelCopy.UNPIN} onClick={() => unpin(path)} variant="light">
+                        <IconPinnedOff size={16} />
+                      </ActionIcon>
+                    </Group>
+                    <Text c="dimmed" size="sm">
+                      {BoardPanelCopy.ITEM_MISSING}
+                    </Text>
+                  </Stack>
+                </Card>
+              );
+            }
+
+            const counts = countPipelineStatuses(pinnedNode);
+            const pipelines = flattenPipelines(pinnedNode);
+            const buildHistoryWidth = getBuildHistoryLineWidth(treeState.historyLimit);
+
             return (
-              <Card key={path} padding="lg" radius="lg" withBorder>
-                <Stack gap="sm">
-                  <Group justify="space-between">
-                    <Text fw={600}>{path}</Text>
-                    <ActionIcon aria-label={BoardPanelCopy.UNPIN} onClick={() => unpin(path)} variant="light">
+              <Card
+                key={pinnedNode.path}
+                onClick={() => {
+                  setExpandedPaths((currentPaths) =>
+                    currentPaths.includes(pinnedNode.path)
+                      ? currentPaths.filter((candidate) => candidate !== pinnedNode.path)
+                      : [...currentPaths, pinnedNode.path]
+                  );
+                }}
+                onDoubleClick={() => openExternal(pinnedNode.url)}
+                padding="lg"
+                radius="lg"
+                style={{ cursor: "pointer" }}
+                withBorder
+              >
+                <Stack gap="md">
+                  <Group justify="space-between" wrap="nowrap">
+                    <div>
+                      <Text fw={600}>{pinnedNode.name}</Text>
+                      <Text c="dimmed" size="sm">
+                        {pinnedNode.path}
+                      </Text>
+                    </div>
+                    <ActionIcon
+                      aria-label={BoardPanelCopy.UNPIN}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        unpin(pinnedNode.path);
+                      }}
+                      variant="light"
+                    >
                       <IconPinnedOff size={16} />
                     </ActionIcon>
                   </Group>
-                  <Text c="dimmed" size="sm">{BoardPanelCopy.ITEM_MISSING}</Text>
+                  {pinnedNode.kind === JenkinsNodeKind.FOLDER &&
+                  freezesState.coveringActiveFreezes(pinnedNode.path).length > 0 ? (
+                    <JenkinsFreezeBadge freezes={freezesState.coveringActiveFreezes(pinnedNode.path)} />
+                  ) : null}
+                  <Group gap="xs">
+                    <Badge color="green" variant="light">
+                      {BoardPanelCopy.SUCCESS + " " + String(counts.passed)}
+                    </Badge>
+                    <Badge color="red" variant="light">
+                      {BoardPanelCopy.FAILED + " " + String(counts.failed)}
+                    </Badge>
+                    <Badge color="gray" variant="light">
+                      {BoardPanelCopy.GRAY + " " + String(countGrayStatuses(counts))}
+                    </Badge>
+                    <Badge color="yellow" variant="light">
+                      {BoardPanelCopy.STUCK + " " + String(counts.stuck)}
+                    </Badge>
+                    <Badge color="blue" variant="light">
+                      {BoardPanelCopy.RUNNING + " " + String(counts.running)}
+                    </Badge>
+                  </Group>
+                  {expanded ? (
+                    <Stack gap="xs">
+                      {pipelines.map((pipeline) => (
+                        <Group justify="space-between" key={pipeline.path} wrap="nowrap">
+                          <Text size="sm" style={{ flex: 1, minWidth: 0 }} truncate="end">
+                            {pipeline.name}
+                          </Text>
+                          <Group
+                            gap={BoardPanelValue.PIPELINE_META_GAP_PX}
+                            style={{
+                              flexShrink: 0,
+                              justifyContent: "flex-end",
+                              width:
+                                buildHistoryWidth +
+                                BoardPanelValue.PIPELINE_META_GAP_PX +
+                                BoardPanelValue.STATUS_SLOT_PX,
+                            }}
+                            wrap="nowrap"
+                          >
+                            <Box
+                              style={{
+                                display: "flex",
+                                justifyContent: "flex-start",
+                                width: buildHistoryWidth,
+                              }}
+                            >
+                              {pipeline.builds.length > 0 ? (
+                                <BuildHistoryLine
+                                  builds={[...pipeline.builds].reverse()}
+                                  slotCount={treeState.historyLimit}
+                                />
+                              ) : null}
+                            </Box>
+                            <Box
+                              style={{
+                                display: "flex",
+                                justifyContent: "flex-end",
+                                width: BoardPanelValue.STATUS_SLOT_PX,
+                              }}
+                            >
+                              {pipeline.status ? (
+                                <Badge color={JenkinsStatusColor[pipeline.status]} variant="light">
+                                  {JenkinsStatusLabel[pipeline.status]}
+                                </Badge>
+                              ) : null}
+                            </Box>
+                          </Group>
+                        </Group>
+                      ))}
+                    </Stack>
+                  ) : null}
                 </Stack>
               </Card>
             );
-          }
-
-          const counts = countPipelineStatuses(pinnedNode);
-          const pipelines = flattenPipelines(pinnedNode);
-          const buildHistoryWidth = getBuildHistoryLineWidth(treeState.historyLimit);
-
-          return (
-            <Card
-              key={pinnedNode.path}
-              onClick={() => {
-                setExpandedPaths((currentPaths) =>
-                  currentPaths.includes(pinnedNode.path)
-                    ? currentPaths.filter((candidate) => candidate !== pinnedNode.path)
-                    : [...currentPaths, pinnedNode.path]
-                );
-              }}
-              onDoubleClick={() => openExternal(pinnedNode.url)}
-              padding="lg"
-              radius="lg"
-              style={{ cursor: "pointer" }}
-              withBorder
-            >
-              <Stack gap="md">
-                <Group justify="space-between" wrap="nowrap">
-                  <div>
-                    <Text fw={600}>{pinnedNode.name}</Text>
-                    <Text c="dimmed" size="sm">{pinnedNode.path}</Text>
-                  </div>
-                  <ActionIcon
-                    aria-label={BoardPanelCopy.UNPIN}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      unpin(pinnedNode.path);
-                    }}
-                    variant="light"
-                  >
-                    <IconPinnedOff size={16} />
-                  </ActionIcon>
-                </Group>
-                <Group gap="xs">
-                  <Badge color="green" variant="light">
-                    {BoardPanelCopy.SUCCESS + " " + String(counts.passed)}
-                  </Badge>
-                  <Badge color="red" variant="light">
-                    {BoardPanelCopy.FAILED + " " + String(counts.failed)}
-                  </Badge>
-                  <Badge color="gray" variant="light">
-                    {BoardPanelCopy.GRAY + " " + String(countGrayStatuses(counts))}
-                  </Badge>
-                  <Badge color="yellow" variant="light">
-                    {BoardPanelCopy.STUCK + " " + String(counts.stuck)}
-                  </Badge>
-                  <Badge color="blue" variant="light">
-                    {BoardPanelCopy.RUNNING + " " + String(counts.running)}
-                  </Badge>
-                </Group>
-                {expanded ? (
-                  <Stack gap="xs">
-                    {pipelines.map((pipeline) => (
-                      <Group justify="space-between" key={pipeline.path} wrap="nowrap">
-                        <Text size="sm" style={{ flex: 1, minWidth: 0 }} truncate="end">
-                          {pipeline.name}
-                        </Text>
-                        <Group
-                          gap={BoardPanelValue.PIPELINE_META_GAP_PX}
-                          style={{
-                            flexShrink: 0,
-                            justifyContent: "flex-end",
-                            width:
-                              buildHistoryWidth +
-                              BoardPanelValue.PIPELINE_META_GAP_PX +
-                              BoardPanelValue.STATUS_SLOT_PX,
-                          }}
-                          wrap="nowrap"
-                        >
-                          <Box style={{ display: "flex", justifyContent: "flex-start", width: buildHistoryWidth }}>
-                            {pipeline.builds.length > 0 ? (
-                              <BuildHistoryLine
-                                builds={[...pipeline.builds].reverse()}
-                                slotCount={treeState.historyLimit}
-                              />
-                            ) : null}
-                          </Box>
-                          <Box
-                            style={{
-                              display: "flex",
-                              justifyContent: "flex-end",
-                              width: BoardPanelValue.STATUS_SLOT_PX,
-                            }}
-                          >
-                            {pipeline.status ? (
-                              <Badge color={JenkinsStatusColor[pipeline.status]} variant="light">
-                                {JenkinsStatusLabel[pipeline.status]}
-                              </Badge>
-                            ) : null}
-                          </Box>
-                        </Group>
-                      </Group>
-                    ))}
-                  </Stack>
-                ) : null}
-              </Stack>
-            </Card>
-          );
-        })}
-      </SimpleGrid>
-    </Stack>
+          })}
+        </SimpleGrid>
+      </Stack>
+    </>
   );
 }
 

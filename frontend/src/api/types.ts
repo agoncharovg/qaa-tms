@@ -1,6 +1,10 @@
 import type {
   ContentType,
+  JenkinsFreezeStatus,
+  JenkinsResumeItemState,
+  JenkinsResumeRunStatus,
   JenkinsNodeKind,
+  JenkinsResumeOutcome,
   JenkinsStatus,
   JobStatus,
   JobStreamEvent,
@@ -494,6 +498,109 @@ export interface JenkinsBuild {
 
 export interface JenkinsBuildsResponse {
   builds: JenkinsBuild[];
+}
+
+export interface JenkinsFreezeSnapshotItem {
+  path: string;
+  fullName: string;
+  name: string;
+  wasDisabled: boolean;
+  scheduled: boolean;
+  wasBuilding: boolean;
+}
+
+export interface JenkinsFreezeRequest {
+  folderPath: string;
+  killBuilds: boolean;
+}
+
+export interface JenkinsFreezeResponse {
+  snapshot: JenkinsFreezeSnapshotItem[];
+}
+
+export interface JenkinsResumeRequest {
+  snapshot: JenkinsFreezeSnapshotItem[];
+}
+
+export interface JenkinsResumeOutcomeItem {
+  fullName: string;
+  outcome: JenkinsResumeOutcome;
+  detail: string | null;
+}
+
+export interface JenkinsResumeResponse {
+  outcomes: JenkinsResumeOutcomeItem[];
+}
+
+export interface JenkinsResumeRunRequest {
+  runId: string;
+  snapshot: JenkinsFreezeSnapshotItem[];
+}
+
+export interface JenkinsResumeRunAccepted {
+  runId: string;
+}
+
+export interface JenkinsFreezeCreateRequest {
+  folderPath: string;
+  folderName: string;
+  signature: string;
+  reason: string;
+  killBuilds: boolean;
+}
+
+export interface JenkinsFreezeSnapshotPutRequest {
+  snapshot: JenkinsFreezeSnapshotItem[];
+  mergeFreezeIds: string[];
+}
+
+export interface JenkinsFreezeRead {
+  id: string;
+  folderPath: string;
+  folderName: string;
+  signature: string;
+  reason: string;
+  killBuilds: boolean;
+  status: JenkinsFreezeStatus;
+  applied: boolean;
+  snapshot: JenkinsFreezeSnapshotItem[];
+  createdBy: string;
+  createdAt: string;
+  resolvedBy: string | null;
+  resolvedAt: string | null;
+  mergedIntoId: string | null;
+}
+
+export interface JenkinsResumeItem {
+  path: string;
+  name: string;
+  fullName: string;
+  scheduled: boolean;
+  state: JenkinsResumeItemState;
+  reason: string | null;
+}
+
+export interface JenkinsResumeRunCreateRequest {
+  freezeId: string;
+}
+
+export interface JenkinsResumeRunRead {
+  id: string;
+  freezeId: string;
+  signature: string;
+  status: JenkinsResumeRunStatus;
+  total: number;
+  startedCount: number;
+  skippedCount: number;
+  errorCount: number;
+  currentPath: string | null;
+  currentName: string | null;
+  items: JenkinsResumeItem[];
+  createdBy: string;
+  createdAt: string;
+  cancelledBy: string | null;
+  finishedAt: string | null;
+  stale: boolean;
 }
 
 export interface JenkinsScopeResponse {

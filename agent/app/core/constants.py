@@ -12,6 +12,9 @@ class AgentPath(StrEnum):
     JENKINS_SCOPE = "/jenkins/scope"
     JENKINS_TREE = "/jenkins/tree"
     JENKINS_BUILDS = "/jenkins/builds"
+    JENKINS_FREEZE = "/jenkins/freeze"
+    JENKINS_RESUME = "/jenkins/resume"
+    JENKINS_RESUME_RUN = "/jenkins/resume-run"
     KUBECONFIG_STATUS = "/staging/kubeconfig/status"
     KUBECONFIG_REFRESH = "/staging/kubeconfig/refresh"
     KUBECONFIG_ACTIVATE = "/staging/kubeconfig/activate"
@@ -95,6 +98,20 @@ class OperationStatus(StrEnum):
     ABORTED = "aborted"
 
 
+class JenkinsResumeRunStatus(StrEnum):
+    RUNNING = "running"
+    DONE = "done"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+
+
+class JenkinsResumeItemState(StrEnum):
+    PENDING = "pending"
+    STARTED = "started"
+    SKIPPED = "skipped"
+    ERROR = "error"
+
+
 class EnvKey(StrEnum):
     HOST = "AGENT_HOST"
     PORT = "AGENT_PORT"
@@ -109,6 +126,7 @@ class EnvKey(StrEnum):
     JENKINS_REQUEST_TIMEOUT = "AGENT_JENKINS_REQUEST_TIMEOUT"
     JENKINS_TREE_DEPTH = "AGENT_JENKINS_TREE_DEPTH"
     JENKINS_STUCK_MIN_IDLE_HOURS = "AGENT_JENKINS_STUCK_MIN_IDLE_HOURS"
+    JENKINS_RESUME_PAUSE_SECONDS = "AGENT_JENKINS_RESUME_PAUSE_SECONDS"
     STAGING_BIN = "AGENT_STAGING_BIN"
     STAGINGS_REPO = "AGENT_STAGINGS_REPO"
     KUBECTL_BIN = "AGENT_KUBECTL_BIN"
@@ -149,6 +167,7 @@ class HeaderValue(StrEnum):
 class BackendPath(StrEnum):
     ME = "/api/v1/me"
     OPERATIONS = "/api/v1/operations"
+    JENKINS_RESUME_RUNS = "/api/v1/jenkins/resume-runs"
     QAA_RUNS = "/api/v1/qaa/runs"
 
 
@@ -228,6 +247,13 @@ class JenkinsStatus(StrEnum):
     RUNNING = "running"
     STUCK = "stuck"
     NOTBUILT = "notbuilt"
+
+
+class JenkinsResumeResult(StrEnum):
+    RESTORED = "restored"
+    ENABLED = "enabled"
+    MISSING = "missing"
+    ERROR = "error"
 
 
 class JenkinsColor(StrEnum):
@@ -321,6 +347,7 @@ DEFAULT_JENKINS_HISTORY_LIMIT = 8
 DEFAULT_JENKINS_REQUEST_TIMEOUT = 15.0
 DEFAULT_JENKINS_TREE_DEPTH = 5
 DEFAULT_JENKINS_STUCK_MIN_IDLE_HOURS = 6
+DEFAULT_JENKINS_RESUME_PAUSE_SECONDS = 1.0
 DEFAULT_JENKINS_BUILDS_LIMIT = 15
 DEFAULT_STAGING_KUBECONFIG = "~/.kube/ai-staging.yaml"
 DEFAULT_AUTH_CACHE_TTL_SECONDS = 30

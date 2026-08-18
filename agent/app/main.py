@@ -36,6 +36,7 @@ def create_app(
             app.state.settings = resolved_settings
             app.state.backend_client = backend_client
             app.state.auth_cache = {}
+            app.state.jenkins_resume_tasks = {}
             app.state.job_manager = JobManager(
                 settings=resolved_settings,
                 backend_client=backend_client,

@@ -70,6 +70,8 @@ export const BackendPath = {
   AUTH_LOGIN: "/api/v1/auth/login",
   JENKINS_TREE: "/api/v1/jenkins/tree",
   JENKINS_BUILDS: "/api/v1/jenkins/builds",
+  JENKINS_FREEZES: "/api/v1/jenkins/freezes",
+  JENKINS_RESUME_RUNS: "/api/v1/jenkins/resume-runs",
   ME: "/api/v1/me",
   ME_PLUGINS: "/api/v1/me/plugins",
   SETTINGS: "/api/v1/settings",
@@ -105,6 +107,48 @@ export function buildBackendJenkinsTreePath(signature: string): string {
 export function buildBackendJenkinsBuildsPath(signature: string, path: string): string {
   const params = new URLSearchParams({ path, signature });
   return `${BackendPath.JENKINS_BUILDS}?${params.toString()}`;
+}
+
+export function buildBackendJenkinsFreezesPath(
+  signature: string,
+  status?: JenkinsFreezeStatus
+): string {
+  const params = new URLSearchParams({ signature });
+  if (status) {
+    params.set("status", status);
+  }
+  return `${BackendPath.JENKINS_FREEZES}?${params.toString()}`;
+}
+
+export function buildBackendJenkinsFreezePath(freezeId: string): string {
+  return `${BackendPath.JENKINS_FREEZES}/${encodeURIComponent(freezeId)}`;
+}
+
+export function buildBackendJenkinsFreezeSnapshotPath(freezeId: string): string {
+  return `${buildBackendJenkinsFreezePath(freezeId)}/snapshot`;
+}
+
+export function buildBackendJenkinsFreezeResolvePath(freezeId: string): string {
+  return `${buildBackendJenkinsFreezePath(freezeId)}/resolve`;
+}
+
+export function buildBackendJenkinsResumeRunsPath(
+  signature: string,
+  status?: JenkinsResumeRunStatus
+): string {
+  const params = new URLSearchParams({ signature });
+  if (status) {
+    params.set("status", status);
+  }
+  return `${BackendPath.JENKINS_RESUME_RUNS}?${params.toString()}`;
+}
+
+export function buildBackendJenkinsResumeRunPath(runId: string): string {
+  return `${BackendPath.JENKINS_RESUME_RUNS}/${encodeURIComponent(runId)}`;
+}
+
+export function buildBackendJenkinsResumeRunCancelPath(runId: string): string {
+  return `${buildBackendJenkinsResumeRunPath(runId)}/cancel`;
 }
 
 export function buildBackendOperationPath(operationId: string): string {
@@ -162,6 +206,9 @@ export const AgentPath = {
   JENKINS_SCOPE: "/jenkins/scope",
   JENKINS_TREE: "/jenkins/tree",
   JENKINS_BUILDS: "/jenkins/builds",
+  JENKINS_FREEZE: "/jenkins/freeze",
+  JENKINS_RESUME: "/jenkins/resume",
+  JENKINS_RESUME_RUN: "/jenkins/resume-run",
   KUBECONFIG_STATUS: "/staging/kubeconfig/status",
   KUBECONFIG_REFRESH: "/staging/kubeconfig/refresh",
   KUBECONFIG_ACTIVATE: "/staging/kubeconfig/activate",
@@ -622,6 +669,8 @@ export const QueryKey = {
   JENKINS_TREE: "jenkins-tree",
   JENKINS_TREE_CACHE: "jenkins-tree-cache",
   JENKINS_BUILDS: "jenkins-builds",
+  JENKINS_FREEZES: "jenkins-freezes",
+  JENKINS_RESUME_RUN: "jenkins-resume-run",
   KUBECONFIG_STATUS: "kubeconfig-status",
   KUBE_CONTEXTS: "kube-contexts",
   KUBE_NAMESPACES: "kube-namespaces",
@@ -670,6 +719,7 @@ export const DEFAULT_KUBECONFIG_STATUS_POLL_MS = 60000 as const;
 export const DEFAULT_KUBE_LOG_TAIL = 200 as const;
 export const DEFAULT_JENKINS_TREE_REFETCH_MS = 900000 as const;
 export const DEFAULT_JENKINS_BUILDS_REFETCH_MS = 60000 as const;
+export const JENKINS_RESUME_RUN_REFETCH_MS = 1500 as const;
 export const DEFAULT_IMAGE_TAG = "latest" as const;
 export const MIN_DEPLOY_STAGE = 0 as const;
 export const MAX_DEPLOY_STAGE = 7 as const;
@@ -692,6 +742,57 @@ export const JenkinsStatus = {
 
 export type JenkinsStatus = (typeof JenkinsStatus)[keyof typeof JenkinsStatus];
 
+export const JenkinsFreezeStatus = {
+  ACTIVE: "active",
+  RESOLVED: "resolved",
+  MERGED: "merged",
+} as const;
+
+export type JenkinsFreezeStatus = (typeof JenkinsFreezeStatus)[keyof typeof JenkinsFreezeStatus];
+
+export const JenkinsResumeOutcome = {
+  ENABLED: "enabled",
+  ERROR: "error",
+  MISSING: "missing",
+  RESTORED: "restored",
+} as const;
+
+export type JenkinsResumeOutcome = (typeof JenkinsResumeOutcome)[keyof typeof JenkinsResumeOutcome];
+
+export const JenkinsResumeRunStatus = {
+  RUNNING: "running",
+  DONE: "done",
+  CANCELLED: "cancelled",
+  FAILED: "failed",
+} as const;
+
+export type JenkinsResumeRunStatus =
+  (typeof JenkinsResumeRunStatus)[keyof typeof JenkinsResumeRunStatus];
+
+export const JenkinsResumeItemState = {
+  PENDING: "pending",
+  STARTED: "started",
+  SKIPPED: "skipped",
+  ERROR: "error",
+} as const;
+
+export type JenkinsResumeItemState =
+  (typeof JenkinsResumeItemState)[keyof typeof JenkinsResumeItemState];
+
+export const JenkinsResumeItemStateColor: Record<JenkinsResumeItemState, string> = {
+  [JenkinsResumeItemState.ERROR]: "red",
+  [JenkinsResumeItemState.PENDING]: "gray",
+  [JenkinsResumeItemState.SKIPPED]: "gray",
+  [JenkinsResumeItemState.STARTED]: "green",
+};
+
+export const JenkinsResumeItemStateLabel: Record<JenkinsResumeItemState, string> = {
+  [JenkinsResumeItemState.ERROR]: "Error",
+  [JenkinsResumeItemState.PENDING]: "Pending",
+  [JenkinsResumeItemState.SKIPPED]: "Skipped",
+  [JenkinsResumeItemState.STARTED]: "Started",
+};
+
 export const JenkinsStatusColor: Record<JenkinsStatus, string> = {
   [JenkinsStatus.PASSED]: "green",
   [JenkinsStatus.FAILED]: "red",
@@ -709,6 +810,46 @@ export const JenkinsStatusLabel: Record<JenkinsStatus, string> = {
   [JenkinsStatus.STUCK]: "Stuck",
   [JenkinsStatus.NOTBUILT]: "Not built",
 };
+
+export const JenkinsFreezeCopy = {
+  BADGE: "Frozen",
+  FREEZE_ACTION: "Freeze folder...",
+  FREEZE_CONFIRM: "Freeze folder",
+  FREEZE_REASON_LABEL: "Reason",
+  FREEZE_REASON_PLACEHOLDER: "Explain why this subtree is being frozen.",
+  FREEZE_REASON_REQUIRED: "Reason is required.",
+  FREEZE_TITLE: "Freeze Jenkins folder",
+  FREEZE_KILL_BUILDS: "Kill running builds",
+  FREEZE_MERGE_DESCRIPTION: "Choose which intersecting freezes the new freeze should absorb.",
+  FREEZE_MERGE_TITLE: "Merge existing freezes",
+  FREEZE_CANCEL: "Cancel",
+  FREEZE_ROW_LOADING: "Updating freeze state",
+  RESUME_ACTION: "Resume folder",
+  RESUME_CONFIRM: "Resume folder",
+  RESUME_CONFIRM_MESSAGE:
+    "Restore {restore} pipeline(s) in {folder}. {build} will be rebuilt now; {scheduled} scheduled pipeline(s) will only be re-enabled.",
+  RESUME_CONFIRM_TITLE: "Resume Jenkins folder",
+  RESUME_PARTIAL_MESSAGE:
+    "Restored {restored}, enabled {enabled}, missing {missing}, errors {error}. The freeze stays active so you can retry the failed pipelines.",
+  RESUME_PARTIAL_TITLE: "Folder partially resumed",
+  RESUME_SUCCESS_MESSAGE: "Restored {restored}, enabled {enabled}, missing {missing}, errors {error}.",
+  RESUME_SUCCESS_TITLE: "Folder resumed",
+} as const;
+
+export const JenkinsResumeRunCopy = {
+  CANCEL: "Cancel",
+  CANCELLED_SUMMARY: "Resume cancelled.",
+  CLOSE: "Close",
+  DONE_SUMMARY: "Resume completed.",
+  FINISHING: "Finishing...",
+  NOW_STARTING: "Starting now",
+  PROGRESS: "Progress",
+  SKIPPED: "Skipped",
+  STARTED_BY: "Started by {user} · {when}",
+  STARTED_COUNT: "{started}/{total} started",
+  TITLE: "Resume campaign",
+  WHO_CANCELLED: "Cancelled by {user}",
+} as const;
 
 export const QaaRunStatus = {
   QUEUED: "queued",

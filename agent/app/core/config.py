@@ -17,6 +17,7 @@ from app.core.constants import (
     DEFAULT_CORS_ORIGINS,
     DEFAULT_JENKINS_HISTORY_LIMIT,
     DEFAULT_JENKINS_REQUEST_TIMEOUT,
+    DEFAULT_JENKINS_RESUME_PAUSE_SECONDS,
     DEFAULT_JENKINS_ROOT_FOLDERS,
     DEFAULT_JENKINS_ROOT_PATH,
     DEFAULT_JENKINS_STUCK_MIN_IDLE_HOURS,
@@ -77,6 +78,10 @@ class Settings(BaseSettings):
     jenkins_stuck_min_idle_hours: int = Field(
         default=DEFAULT_JENKINS_STUCK_MIN_IDLE_HOURS,
         alias=EnvKey.JENKINS_STUCK_MIN_IDLE_HOURS.value,
+    )
+    jenkins_resume_pause_seconds: float = Field(
+        default=DEFAULT_JENKINS_RESUME_PAUSE_SECONDS,
+        alias=EnvKey.JENKINS_RESUME_PAUSE_SECONDS.value,
     )
     staging_bin: str | None = Field(default=None, alias=EnvKey.STAGING_BIN.value)
     stagings_repo: str | None = Field(default=None, alias=EnvKey.STAGINGS_REPO.value)

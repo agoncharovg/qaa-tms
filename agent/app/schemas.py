@@ -13,6 +13,9 @@ from app.core.constants import (
     MAX_STAGE,
     MIN_STAGE,
     JenkinsNodeKind,
+    JenkinsResumeItemState,
+    JenkinsResumeResult,
+    JenkinsResumeRunStatus,
     JenkinsStatus,
     JobStatus,
     KubeconfigAction,
@@ -531,6 +534,127 @@ class JenkinsBuildsResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     builds: list[JenkinsBuild] = Field(default_factory=list)
+
+
+class JenkinsFreezeSnapshotItem(BaseModel):
+    """Per-pipeline state captured at freeze time."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    path: str
+    full_name: str = Field(alias="fullName")
+    name: str
+    was_disabled: bool = Field(alias="wasDisabled")
+    scheduled: bool
+    was_building: bool = Field(alias="wasBuilding")
+
+
+class JenkinsFreezeRequest(BaseModel):
+    """`/jenkins/freeze` request body."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    folder_path: str = Field(alias="folderPath", min_length=1)
+    kill_builds: bool = Field(alias="killBuilds")
+
+
+class JenkinsFreezeResponse(BaseModel):
+    """`/jenkins/freeze` response body."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    snapshot: list[JenkinsFreezeSnapshotItem] = Field(default_factory=list)
+
+
+class JenkinsResumeOutcome(BaseModel):
+    """Per-pipeline resume result."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    full_name: str = Field(alias="fullName")
+    outcome: JenkinsResumeResult
+    detail: str | None = None
+
+
+class JenkinsResumeRequest(BaseModel):
+    """`/jenkins/resume` request body."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    snapshot: list[JenkinsFreezeSnapshotItem] = Field(default_factory=list)
+
+
+class JenkinsResumeResponse(BaseModel):
+    """`/jenkins/resume` response body."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    outcomes: list[JenkinsResumeOutcome] = Field(default_factory=list)
+
+
+class JenkinsResumeRunRequest(BaseModel):
+    """`/jenkins/resume-run` request body."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    run_id: UUID = Field(alias="runId")
+    snapshot: list[JenkinsFreezeSnapshotItem] = Field(default_factory=list)
+
+
+class JenkinsResumeRunAccepted(BaseModel):
+    """`/jenkins/resume-run` accepted response body."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    run_id: UUID = Field(alias="runId")
+
+
+class JenkinsResumeItem(BaseModel):
+    """Shared backend resume item shape consumed by the agent."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    path: str
+    name: str
+    full_name: str = Field(alias="fullName")
+    scheduled: bool
+    state: JenkinsResumeItemState
+    reason: str | None = None
+
+
+class JenkinsResumeProgressRequest(BaseModel):
+    """Backend progress update payload for a throttled resume run."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    path: str
+    state: JenkinsResumeItemState
+    reason: str | None = None
+    next_path: str | None = Field(default=None, alias="nextPath")
+    next_name: str | None = Field(default=None, alias="nextName")
+
+
+class JenkinsResumeRunRead(BaseModel):
+    """Shared backend resume run shape consumed by the agent."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    id: UUID
+    freeze_id: UUID = Field(alias="freezeId")
+    signature: str
+    status: JenkinsResumeRunStatus
+    total: int
+    started_count: int = Field(alias="startedCount")
+    skipped_count: int = Field(alias="skippedCount")
+    error_count: int = Field(alias="errorCount")
+    current_path: str | None = Field(default=None, alias="currentPath")
+    current_name: str | None = Field(default=None, alias="currentName")
+    items: list[JenkinsResumeItem] = Field(default_factory=list)
+    created_by: str = Field(alias="createdBy")
+    created_at: datetime = Field(alias="createdAt")
+    cancelled_by: str | None = Field(default=None, alias="cancelledBy")
+    finished_at: datetime | None = Field(default=None, alias="finishedAt")
+    stale: bool
 
 
 JenkinsNode.model_rebuild()

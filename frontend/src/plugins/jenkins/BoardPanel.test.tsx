@@ -8,6 +8,7 @@ const agentClientMock = vi.hoisted(() => ({
 }));
 
 const backendClientMock = vi.hoisted(() => ({
+  getJenkinsFreezes: vi.fn(),
   getJenkinsTreeCache: vi.fn(),
   putJenkinsTreeCache: vi.fn(),
 }));
@@ -142,6 +143,7 @@ describe("BoardPanel", () => {
   beforeEach(() => {
     agentClientMock.getJenkinsScope.mockReset();
     agentClientMock.getJenkinsTree.mockReset();
+    backendClientMock.getJenkinsFreezes.mockReset();
     backendClientMock.getJenkinsTreeCache.mockReset();
     backendClientMock.putJenkinsTreeCache.mockReset();
     openMock.mockReset();
@@ -169,6 +171,7 @@ describe("BoardPanel", () => {
       },
       token: "token-123",
     });
+    backendClientMock.getJenkinsFreezes.mockResolvedValue([]);
   });
 
   it("renders recursive status counts from the shared cache and opens the folder on double click", async () => {
@@ -237,6 +240,46 @@ describe("BoardPanel", () => {
 
     await user.click(await screen.findByText("PREPROD"));
     expect(await screen.findByLabelText("#42: SUCCESS")).toBeInTheDocument();
+  });
+
+  it("shows the shared frozen badge and reason on pinned folders", async () => {
+    const user = userEvent.setup();
+
+    useJenkinsStore.setState({
+      pinnedPaths: ["job/.QAA/job/E2E/job/PREPROD"],
+    });
+    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsTreeCache.mockResolvedValue({
+      fetchedAt: "2026-08-17T10:00:00Z",
+      refreshLease: null,
+      roots: buildTreeRoots(),
+      signature: "scope-1234",
+      stale: false,
+    });
+    backendClientMock.getJenkinsFreezes.mockResolvedValue([
+      {
+        applied: true,
+        createdAt: "2026-08-17T10:00:00Z",
+        createdBy: "test",
+        folderName: "PREPROD",
+        folderPath: "job/.QAA/job/E2E/job/PREPROD",
+        id: "freeze-1",
+        killBuilds: false,
+        mergedIntoId: null,
+        reason: "Pinned folder freeze",
+        resolvedAt: null,
+        resolvedBy: null,
+        signature: "scope-1234",
+        snapshot: [],
+        status: "active",
+      },
+    ]);
+
+    renderWithProviders(<BoardPanel agentPort={47600} />);
+
+    const badge = await screen.findByText("Frozen");
+    await user.hover(badge);
+    expect(await screen.findByText("Pinned folder freeze")).toBeInTheDocument();
   });
 
   it("refreshes the shared cache once when the backend returns stale data with a lease", async () => {

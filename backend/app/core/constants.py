@@ -33,6 +33,26 @@ class OperationStatus(StrEnum):
     ABORTED = "aborted"
 
 
+class JenkinsFreezeStatus(StrEnum):
+    ACTIVE = "active"
+    RESOLVED = "resolved"
+    MERGED = "merged"
+
+
+class JenkinsResumeRunStatus(StrEnum):
+    RUNNING = "running"
+    DONE = "done"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+
+
+class JenkinsResumeItemState(StrEnum):
+    PENDING = "pending"
+    STARTED = "started"
+    SKIPPED = "skipped"
+    ERROR = "error"
+
+
 class Product(StrEnum):
     IAM = "IAM"
     BILLING = "Billing"
@@ -51,6 +71,14 @@ class RoutePath(StrEnum):
     AUTH = "/auth"
     LOGIN = "/login"
     JENKINS = "/jenkins"
+    FREEZES = "/freezes"
+    FREEZE_BY_ID = "/freezes/{freeze_id}"
+    FREEZE_SNAPSHOT = "/freezes/{freeze_id}/snapshot"
+    FREEZE_RESOLVE = "/freezes/{freeze_id}/resolve"
+    RESUME_RUNS = "/resume-runs"
+    RESUME_RUN_BY_ID = "/resume-runs/{run_id}"
+    RESUME_RUN_PROGRESS = "/resume-runs/{run_id}/progress"
+    RESUME_RUN_CANCEL = "/resume-runs/{run_id}/cancel"
     TREE = "/tree"
     BUILDS = "/builds"
     ME = "/me"
@@ -232,3 +260,4 @@ DEFAULT_QAA_GENERATOR_PORT_FORWARD_REMOTE_PORT = 8080
 JENKINS_TREE_CACHE_TTL_SECONDS = 900
 JENKINS_BUILDS_CACHE_TTL_SECONDS = 60
 JENKINS_REFRESH_LEASE_TTL_SECONDS = 30
+JENKINS_RESUME_RUN_STALE_SECONDS = 30

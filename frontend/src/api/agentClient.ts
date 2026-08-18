@@ -39,6 +39,12 @@ import type {
   E2eRunRequest,
   E2eSuitesResponse,
   JenkinsBuildsResponse,
+  JenkinsFreezeRequest,
+  JenkinsFreezeResponse,
+  JenkinsResumeRequest,
+  JenkinsResumeRunAccepted,
+  JenkinsResumeRunRequest,
+  JenkinsResumeResponse,
   JenkinsScopeResponse,
   JenkinsTreeResponse,
   JobCreateResponse,
@@ -231,6 +237,51 @@ export function getJenkinsBuilds(
   );
 }
 
+export function freezeJenkinsFolder(
+  port: number,
+  token: string,
+  body: JenkinsFreezeRequest,
+  signal?: AbortSignal
+): Promise<JenkinsFreezeResponse> {
+  return readAgentJson<JenkinsFreezeResponse>(
+    port,
+    AgentPath.JENKINS_FREEZE,
+    createJsonBody(body),
+    token,
+    signal
+  );
+}
+
+export function resumeJenkinsFolder(
+  port: number,
+  token: string,
+  body: JenkinsResumeRequest,
+  signal?: AbortSignal
+): Promise<JenkinsResumeResponse> {
+  return readAgentJson<JenkinsResumeResponse>(
+    port,
+    AgentPath.JENKINS_RESUME,
+    createJsonBody(body),
+    token,
+    signal
+  );
+}
+
+export function startJenkinsResumeRun(
+  port: number,
+  token: string,
+  body: JenkinsResumeRunRequest,
+  signal?: AbortSignal
+): Promise<JenkinsResumeRunAccepted> {
+  return readAgentJson<JenkinsResumeRunAccepted>(
+    port,
+    AgentPath.JENKINS_RESUME_RUN,
+    createJsonBody(body),
+    token,
+    signal
+  );
+}
+
 export function getKubeconfigStatus(
   port: number,
   token: string,
@@ -396,6 +447,7 @@ export const agentClient = {
     );
   },
 
+  freezeJenkinsFolder,
   getJenkinsBuilds,
   getJenkinsScope,
   getJenkinsTree,
@@ -651,4 +703,6 @@ export const agentClient = {
   },
   getKubeconfigStatus,
   refreshKubeconfig,
+  resumeJenkinsFolder,
+  startJenkinsResumeRun,
 };

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
+  JenkinsResumeRunRead,
   OperationListResponse,
   OperationRead,
   OperationReplay,
@@ -110,6 +111,63 @@ describe("backendClient operations", () => {
     expect(updateInit?.method).toBe("PUT");
     expect(updateInit?.body).toBe(JSON.stringify({ enabled_plugins: [] }));
     expect(new Headers(updateInit?.headers).get("Authorization")).toBe("Bearer token-123");
+  });
+
+  it("creates, lists, reads, and cancels Jenkins resume runs with the correct wire shape", async () => {
+    const run: JenkinsResumeRunRead = {
+      cancelledBy: null,
+      createdAt: "2026-08-18T10:00:00Z",
+      createdBy: "test",
+      currentName: "Smoke",
+      currentPath: "job/.QAA/job/E2E/job/PREPROD/job/Smoke",
+      errorCount: 0,
+      finishedAt: null,
+      freezeId: "freeze-1",
+      id: "run-1",
+      items: [],
+      signature: "scope-1234",
+      skippedCount: 1,
+      stale: false,
+      startedCount: 1,
+      status: "running",
+      total: 2,
+    };
+
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify(run), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([run]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(run), { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ...run, cancelledBy: "admin", status: "cancelled" }), {
+          status: 200,
+        })
+      );
+
+    expect(await backendClient.createJenkinsResumeRun("token-123", { freezeId: "freeze-1" })).toEqual(run);
+    expect(await backendClient.getJenkinsResumeRuns("token-123", "scope-1234", "running")).toEqual([run]);
+    expect(await backendClient.getJenkinsResumeRun("token-123", "run-1")).toEqual(run);
+    expect(await backendClient.cancelJenkinsResumeRun("token-123", "run-1")).toEqual({
+      ...run,
+      cancelledBy: "admin",
+      status: "cancelled",
+    });
+
+    const [createUrl, createInit] = fetchMock.mock.calls[0] ?? [];
+    const [listUrl, listInit] = fetchMock.mock.calls[1] ?? [];
+    const [getUrl, getInit] = fetchMock.mock.calls[2] ?? [];
+    const [cancelUrl, cancelInit] = fetchMock.mock.calls[3] ?? [];
+
+    expect(createUrl).toBe("http://localhost:8000/api/v1/jenkins/resume-runs");
+    expect(createInit?.method).toBe("POST");
+    expect(createInit?.body).toBe(JSON.stringify({ freezeId: "freeze-1" }));
+    expect(listUrl).toBe(
+      "http://localhost:8000/api/v1/jenkins/resume-runs?signature=scope-1234&status=running"
+    );
+    expect(listInit?.method).toBe("GET");
+    expect(getUrl).toBe("http://localhost:8000/api/v1/jenkins/resume-runs/run-1");
+    expect(getInit?.method).toBe("GET");
+    expect(cancelUrl).toBe("http://localhost:8000/api/v1/jenkins/resume-runs/run-1/cancel");
+    expect(cancelInit?.method).toBe("POST");
   });
 
   it("sends create, update, get, and delete user requests with the correct wire shape", async () => {

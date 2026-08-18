@@ -1,18 +1,30 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const agentClientMock = vi.hoisted(() => ({
+  freezeJenkinsFolder: vi.fn(),
   getJenkinsBuilds: vi.fn(),
   getJenkinsScope: vi.fn(),
   getJenkinsTree: vi.fn(),
+  resumeJenkinsFolder: vi.fn(),
+  startJenkinsResumeRun: vi.fn(),
 }));
 
 const backendClientMock = vi.hoisted(() => ({
+  cancelJenkinsResumeRun: vi.fn(),
+  createJenkinsFreeze: vi.fn(),
+  createJenkinsResumeRun: vi.fn(),
+  deleteJenkinsFreeze: vi.fn(),
   getJenkinsBuildsCache: vi.fn(),
+  getJenkinsFreezes: vi.fn(),
+  getJenkinsResumeRun: vi.fn(),
+  getJenkinsResumeRuns: vi.fn(),
   getJenkinsTreeCache: vi.fn(),
+  putJenkinsFreezeSnapshot: vi.fn(),
   putJenkinsBuildsCache: vi.fn(),
   putJenkinsTreeCache: vi.fn(),
+  resolveJenkinsFreeze: vi.fn(),
 }));
 
 vi.mock("@/api/agentClient", () => ({
@@ -31,7 +43,7 @@ vi.mock("@/api/backendClient", () => ({
   backendClient: backendClientMock,
 }));
 
-import { PluginId, TabId } from "@/constants";
+import { PluginId, QueryKey, TabId } from "@/constants";
 import { TreePanel } from "@/plugins/jenkins/TreePanel";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
 import { resetJenkinsStoreState, useJenkinsStore } from "@/plugins/jenkins/jenkinsStore";
@@ -121,15 +133,102 @@ function buildScope() {
   };
 }
 
+function buildActiveFreezes() {
+  return [
+    {
+      applied: true,
+      createdAt: "2026-08-17T10:00:00Z",
+      createdBy: "test",
+      folderName: "IAM",
+      folderPath: "job/.QAA/job/E2E/job/PREPROD/job/IAM",
+      id: "freeze-own",
+      killBuilds: false,
+      mergedIntoId: null,
+      reason: "Own freeze",
+      resolvedAt: null,
+      resolvedBy: null,
+      signature: "scope-1234",
+      snapshot: [],
+      status: "active",
+    },
+    {
+      applied: true,
+      createdAt: "2026-08-17T11:00:00Z",
+      createdBy: "admin",
+      folderName: "CDN",
+      folderPath: "job/.QAA/job/E2E/job/PREPROD/job/CDN",
+      id: "freeze-other",
+      killBuilds: false,
+      mergedIntoId: null,
+      reason: "Other freeze",
+      resolvedAt: null,
+      resolvedBy: null,
+      signature: "scope-1234",
+      snapshot: [],
+      status: "active",
+    },
+  ];
+}
+
+function buildResumeRun(status: "running" | "done" | "cancelled" = "running") {
+  return {
+    cancelledBy: status === "cancelled" ? "admin" : null,
+    createdAt: "2026-08-18T10:00:00Z",
+    createdBy: "test",
+    currentName: status === "running" ? "Smoke" : null,
+    currentPath: status === "running" ? "job/.QAA/job/E2E/job/PREPROD/job/Smoke" : null,
+    errorCount: 0,
+    finishedAt: status === "running" ? null : "2026-08-18T10:05:00Z",
+    freezeId: "freeze-exact",
+    id: "run-1",
+    items: [
+      {
+        fullName: ".QAA/E2E/PREPROD/Smoke",
+        name: "Smoke",
+        path: "job/.QAA/job/E2E/job/PREPROD/job/Smoke",
+        reason: null,
+        scheduled: false,
+        state: "started",
+      },
+      {
+        fullName: ".QAA/E2E/PREPROD/Disabled",
+        name: "Disabled",
+        path: "job/.QAA/job/E2E/job/PREPROD/job/Disabled",
+        reason: "Disabled before the freeze",
+        scheduled: false,
+        state: "skipped",
+      },
+    ],
+    signature: "scope-1234",
+    skippedCount: 1,
+    stale: false,
+    startedCount: 1,
+    status,
+    total: 1,
+  };
+}
+
 describe("TreePanel", () => {
   beforeEach(() => {
     agentClientMock.getJenkinsBuilds.mockReset();
+    agentClientMock.freezeJenkinsFolder.mockReset();
     agentClientMock.getJenkinsScope.mockReset();
     agentClientMock.getJenkinsTree.mockReset();
+    agentClientMock.resumeJenkinsFolder.mockReset();
+    agentClientMock.startJenkinsResumeRun.mockReset();
+    backendClientMock.cancelJenkinsResumeRun.mockReset();
+    backendClientMock.createJenkinsFreeze.mockReset();
+    backendClientMock.createJenkinsResumeRun.mockReset();
+    backendClientMock.deleteJenkinsFreeze.mockReset();
     backendClientMock.getJenkinsBuildsCache.mockReset();
+    backendClientMock.getJenkinsFreezes.mockReset();
+    backendClientMock.getJenkinsResumeRun.mockReset();
+    backendClientMock.getJenkinsResumeRuns.mockReset();
     backendClientMock.getJenkinsTreeCache.mockReset();
+    backendClientMock.putJenkinsFreezeSnapshot.mockReset();
     backendClientMock.putJenkinsBuildsCache.mockReset();
     backendClientMock.putJenkinsTreeCache.mockReset();
+    backendClientMock.resolveJenkinsFreeze.mockReset();
     openMock.mockReset();
     localStorage.clear();
     resetAuthStoreState();
@@ -155,6 +254,9 @@ describe("TreePanel", () => {
       },
       token: "token-123",
     });
+    backendClientMock.getJenkinsFreezes.mockResolvedValue([]);
+    backendClientMock.getJenkinsResumeRun.mockResolvedValue(buildResumeRun("running"));
+    backendClientMock.getJenkinsResumeRuns.mockResolvedValue([]);
   });
 
   it("renders cached strips without per-pipeline build calls, supports pinning, and opens Jenkins pages", async () => {
@@ -331,5 +433,471 @@ describe("TreePanel", () => {
       expect(agentClientMock.getJenkinsBuilds).toHaveBeenCalledTimes(1);
       expect(backendClientMock.putJenkinsBuildsCache).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("freezes a folder through reserve, agent snapshot, and snapshot put in order", async () => {
+    const user = userEvent.setup();
+
+    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsTreeCache.mockResolvedValue({
+      fetchedAt: "2026-08-17T10:00:00Z",
+      refreshLease: null,
+      roots: buildTreeRoots(),
+      signature: "scope-1234",
+      stale: false,
+    });
+    backendClientMock.createJenkinsFreeze.mockResolvedValue({
+      applied: false,
+      createdAt: "2026-08-17T10:00:00Z",
+      createdBy: "test",
+      folderName: "PREPROD",
+      folderPath: "job/.QAA/job/E2E/job/PREPROD",
+      id: "freeze-1",
+      killBuilds: true,
+      mergedIntoId: null,
+      reason: "DR",
+      resolvedAt: null,
+      resolvedBy: null,
+      signature: "scope-1234",
+      snapshot: [],
+      status: "active",
+    });
+    agentClientMock.freezeJenkinsFolder.mockResolvedValue({
+      snapshot: [
+        {
+          fullName: ".QAA/E2E/PREPROD/Smoke",
+          name: "Smoke",
+          path: "job/.QAA/job/E2E/job/PREPROD/job/Smoke",
+          scheduled: false,
+          wasBuilding: false,
+          wasDisabled: false,
+        },
+      ],
+    });
+    backendClientMock.putJenkinsFreezeSnapshot.mockResolvedValue({
+      applied: true,
+      createdAt: "2026-08-17T10:00:00Z",
+      createdBy: "test",
+      folderName: "PREPROD",
+      folderPath: "job/.QAA/job/E2E/job/PREPROD",
+      id: "freeze-1",
+      killBuilds: true,
+      mergedIntoId: null,
+      reason: "DR",
+      resolvedAt: null,
+      resolvedBy: null,
+      signature: "scope-1234",
+      snapshot: [],
+      status: "active",
+    });
+
+    renderWithProviders(<TreePanel agentPort={47600} />);
+
+    await user.click(await screen.findByRole("button", { name: "Freeze folder..." }));
+    await user.type(screen.getByLabelText("Reason"), "DR freeze");
+    await user.click(screen.getByRole("button", { name: "Freeze folder" }));
+
+    await waitFor(() => {
+      expect(backendClientMock.createJenkinsFreeze).toHaveBeenCalledWith(
+        "token-123",
+        expect.objectContaining({
+          folderName: "PREPROD",
+          folderPath: "job/.QAA/job/E2E/job/PREPROD",
+          killBuilds: false,
+          reason: "DR freeze",
+          signature: "scope-1234",
+        })
+      );
+      expect(agentClientMock.freezeJenkinsFolder).toHaveBeenCalledWith(47600, expect.anything(), expect.anything());
+    });
+
+    expect(backendClientMock.putJenkinsFreezeSnapshot).toHaveBeenCalledWith("token-123", "freeze-1", {
+      mergeFreezeIds: [],
+      snapshot: [
+        {
+          fullName: ".QAA/E2E/PREPROD/Smoke",
+          name: "Smoke",
+          path: "job/.QAA/job/E2E/job/PREPROD/job/Smoke",
+          scheduled: false,
+          wasBuilding: false,
+          wasDisabled: false,
+        },
+      ],
+    });
+    expect(
+      backendClientMock.createJenkinsFreeze.mock.invocationCallOrder[0]
+    ).toBeLessThan(agentClientMock.freezeJenkinsFolder.mock.invocationCallOrder[0]);
+    expect(
+      agentClientMock.freezeJenkinsFolder.mock.invocationCallOrder[0]
+    ).toBeLessThan(backendClientMock.putJenkinsFreezeSnapshot.mock.invocationCallOrder[0]);
+  });
+
+  it("rolls back the reserved freeze when the agent freeze step fails", async () => {
+    const user = userEvent.setup();
+
+    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsTreeCache.mockResolvedValue({
+      fetchedAt: "2026-08-17T10:00:00Z",
+      refreshLease: null,
+      roots: buildTreeRoots(),
+      signature: "scope-1234",
+      stale: false,
+    });
+    backendClientMock.createJenkinsFreeze.mockResolvedValue({
+      applied: false,
+      createdAt: "2026-08-17T10:00:00Z",
+      createdBy: "test",
+      folderName: "PREPROD",
+      folderPath: "job/.QAA/job/E2E/job/PREPROD",
+      id: "freeze-rollback",
+      killBuilds: false,
+      mergedIntoId: null,
+      reason: "DR",
+      resolvedAt: null,
+      resolvedBy: null,
+      signature: "scope-1234",
+      snapshot: [],
+      status: "active",
+    });
+    agentClientMock.freezeJenkinsFolder.mockRejectedValue(new Error("freeze failed"));
+    backendClientMock.deleteJenkinsFreeze.mockResolvedValue(undefined);
+
+    renderWithProviders(<TreePanel agentPort={47600} />);
+
+    await user.click(await screen.findByRole("button", { name: "Freeze folder..." }));
+    await user.type(screen.getByLabelText("Reason"), "DR freeze");
+    await user.click(screen.getByRole("button", { name: "Freeze folder" }));
+
+    await waitFor(() => {
+      expect(backendClientMock.deleteJenkinsFreeze).toHaveBeenCalledWith(
+        "token-123",
+        "freeze-rollback"
+      );
+    });
+  });
+
+  it("shows intersecting freeze merge checkboxes with own freezes checked by default", async () => {
+    const user = userEvent.setup();
+
+    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsTreeCache.mockResolvedValue({
+      fetchedAt: "2026-08-17T10:00:00Z",
+      refreshLease: null,
+      roots: buildTreeRoots(),
+      signature: "scope-1234",
+      stale: false,
+    });
+    backendClientMock.getJenkinsFreezes.mockResolvedValue(buildActiveFreezes());
+    backendClientMock.createJenkinsFreeze.mockResolvedValue({
+      applied: false,
+      createdAt: "2026-08-17T10:00:00Z",
+      createdBy: "test",
+      folderName: "PREPROD",
+      folderPath: "job/.QAA/job/E2E/job/PREPROD",
+      id: "freeze-merge",
+      killBuilds: false,
+      mergedIntoId: null,
+      reason: "DR",
+      resolvedAt: null,
+      resolvedBy: null,
+      signature: "scope-1234",
+      snapshot: [],
+      status: "active",
+    });
+    agentClientMock.freezeJenkinsFolder.mockResolvedValue({ snapshot: [] });
+    backendClientMock.putJenkinsFreezeSnapshot.mockResolvedValue({
+      applied: true,
+      createdAt: "2026-08-17T10:00:00Z",
+      createdBy: "test",
+      folderName: "PREPROD",
+      folderPath: "job/.QAA/job/E2E/job/PREPROD",
+      id: "freeze-merge",
+      killBuilds: false,
+      mergedIntoId: null,
+      reason: "DR",
+      resolvedAt: null,
+      resolvedBy: null,
+      signature: "scope-1234",
+      snapshot: [],
+      status: "active",
+    });
+
+    renderWithProviders(<TreePanel agentPort={47600} />);
+
+    await user.click(await screen.findByRole("button", { name: "Freeze folder..." }));
+
+    const ownCheckbox = await screen.findByRole("checkbox", { name: /IAM · test/ });
+    const otherCheckbox = screen.getByRole("checkbox", { name: /CDN · admin/ });
+    expect(ownCheckbox).toBeChecked();
+    expect(otherCheckbox).not.toBeChecked();
+
+    await user.click(otherCheckbox);
+    await user.type(screen.getByLabelText("Reason"), "Widen freeze");
+    await user.click(screen.getByRole("button", { name: "Freeze folder" }));
+
+    await waitFor(() => {
+      expect(backendClientMock.putJenkinsFreezeSnapshot).toHaveBeenCalledWith(
+        "token-123",
+        "freeze-merge",
+        {
+          mergeFreezeIds: ["freeze-own", "freeze-other"],
+          snapshot: [],
+        }
+      );
+    });
+  });
+
+  it("shows a frozen badge from an ancestor freeze and starts a resume campaign for exact-folder freezes", async () => {
+    const user = userEvent.setup();
+    const roots = [
+      {
+        builds: [],
+        children: [
+          {
+            builds: [],
+            children: [],
+            color: null,
+            kind: "folder",
+            name: "IAM",
+            path: "job/.QAA/job/E2E/job/PREPROD/job/IAM",
+            status: null,
+            url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/IAM/",
+          },
+        ],
+        color: null,
+        kind: "folder",
+        name: "PREPROD",
+        path: "job/.QAA/job/E2E/job/PREPROD",
+        status: null,
+        url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/",
+      },
+    ];
+
+    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsTreeCache.mockResolvedValue({
+      fetchedAt: "2026-08-17T10:00:00Z",
+      refreshLease: null,
+      roots,
+      signature: "scope-1234",
+      stale: false,
+    });
+    backendClientMock.getJenkinsFreezes.mockResolvedValue([
+      {
+        applied: true,
+        createdAt: "2026-08-17T10:00:00Z",
+        createdBy: "test",
+        folderName: "PREPROD",
+        folderPath: "job/.QAA/job/E2E/job/PREPROD",
+        id: "freeze-exact",
+        killBuilds: false,
+        mergedIntoId: null,
+        reason: "DR freeze",
+        resolvedAt: null,
+        resolvedBy: null,
+        signature: "scope-1234",
+        snapshot: [
+          {
+            fullName: ".QAA/E2E/PREPROD/IAM/Smoke",
+            name: "Smoke",
+            path: "job/.QAA/job/E2E/job/PREPROD/job/IAM/job/Smoke",
+            scheduled: false,
+            wasBuilding: false,
+            wasDisabled: false,
+          },
+        ],
+        status: "active",
+      },
+    ]);
+    backendClientMock.createJenkinsResumeRun.mockResolvedValue(buildResumeRun("running"));
+    agentClientMock.startJenkinsResumeRun.mockResolvedValue({ runId: "run-1" });
+
+    renderWithProviders(<TreePanel agentPort={47600} />);
+
+    const frozenBadges = await screen.findAllByText("Frozen");
+    await user.hover(frozenBadges[1]);
+    expect(await screen.findByText("DR freeze")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Resume folder" }));
+
+    const resumeDialog = await screen.findByRole("dialog", { name: "Resume Jenkins folder" });
+    await user.click(within(resumeDialog).getByRole("button", { name: "Resume folder" }));
+
+    await waitFor(() => {
+      expect(backendClientMock.createJenkinsResumeRun).toHaveBeenCalledWith("token-123", {
+        freezeId: "freeze-exact",
+      });
+      expect(agentClientMock.startJenkinsResumeRun).toHaveBeenCalledWith(47600, expect.anything(), {
+        runId: "run-1",
+        snapshot: [
+          {
+            fullName: ".QAA/E2E/PREPROD/IAM/Smoke",
+            name: "Smoke",
+            path: "job/.QAA/job/E2E/job/PREPROD/job/IAM/job/Smoke",
+            scheduled: false,
+            wasBuilding: false,
+            wasDisabled: false,
+          },
+        ],
+      });
+    });
+
+    expect(agentClientMock.resumeJenkinsFolder).not.toHaveBeenCalled();
+    expect(backendClientMock.resolveJenkinsFreeze).not.toHaveBeenCalled();
+  });
+
+  it("renders the shared progress modal from poll results and disables resume actions while locked", async () => {
+    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsTreeCache.mockResolvedValue({
+      fetchedAt: "2026-08-17T10:00:00Z",
+      refreshLease: null,
+      roots: buildTreeRoots(),
+      signature: "scope-1234",
+      stale: false,
+    });
+    backendClientMock.getJenkinsFreezes.mockResolvedValue([
+      {
+        applied: true,
+        createdAt: "2026-08-17T10:00:00Z",
+        createdBy: "test",
+        folderName: "PREPROD",
+        folderPath: "job/.QAA/job/E2E/job/PREPROD",
+        id: "freeze-exact",
+        killBuilds: false,
+        mergedIntoId: null,
+        reason: "DR freeze",
+        resolvedAt: null,
+        resolvedBy: null,
+        signature: "scope-1234",
+        snapshot: [],
+        status: "active",
+      },
+    ]);
+    backendClientMock.getJenkinsResumeRuns.mockResolvedValue([buildResumeRun("running")]);
+
+    renderWithProviders(<TreePanel agentPort={47600} />);
+
+    expect(await screen.findByText("Resume campaign")).toBeInTheDocument();
+    expect(screen.getByText(/Started by test/)).toBeInTheDocument();
+    expect(screen.getAllByText("Smoke").length).toBeGreaterThan(0);
+    expect(screen.getByText("1/1 started")).toBeInTheDocument();
+    expect(screen.getByText("Disabled before the freeze")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Resume folder" })).toBeDisabled();
+    expect(backendClientMock.createJenkinsResumeRun).not.toHaveBeenCalled();
+  });
+
+  it("cancels the active resume run from the shared modal", async () => {
+    const user = userEvent.setup();
+
+    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsTreeCache.mockResolvedValue({
+      fetchedAt: "2026-08-17T10:00:00Z",
+      refreshLease: null,
+      roots: buildTreeRoots(),
+      signature: "scope-1234",
+      stale: false,
+    });
+    backendClientMock.getJenkinsResumeRuns.mockResolvedValue([buildResumeRun("running")]);
+    backendClientMock.cancelJenkinsResumeRun.mockResolvedValue(buildResumeRun("cancelled"));
+
+    renderWithProviders(<TreePanel agentPort={47600} />);
+
+    await user.click(await screen.findByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => {
+      expect(backendClientMock.cancelJenkinsResumeRun).toHaveBeenCalledWith("token-123", "run-1");
+    });
+  });
+
+  it("shows a terminal summary and releases the lock when the run finishes", async () => {
+    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsTreeCache.mockResolvedValue({
+      fetchedAt: "2026-08-17T10:00:00Z",
+      refreshLease: null,
+      roots: buildTreeRoots(),
+      signature: "scope-1234",
+      stale: false,
+    });
+    backendClientMock.getJenkinsFreezes.mockResolvedValue([
+      {
+        applied: true,
+        createdAt: "2026-08-17T10:00:00Z",
+        createdBy: "test",
+        folderName: "PREPROD",
+        folderPath: "job/.QAA/job/E2E/job/PREPROD",
+        id: "freeze-exact",
+        killBuilds: false,
+        mergedIntoId: null,
+        reason: "DR freeze",
+        resolvedAt: null,
+        resolvedBy: null,
+        signature: "scope-1234",
+        snapshot: [],
+        status: "active",
+      },
+    ]);
+    backendClientMock.getJenkinsResumeRuns
+      .mockResolvedValueOnce([buildResumeRun("running")])
+      .mockResolvedValue([]);
+    backendClientMock.getJenkinsResumeRun.mockResolvedValue(buildResumeRun("done"));
+
+    const { queryClient } = renderWithProviders(<TreePanel agentPort={47600} />);
+
+    expect(await screen.findByRole("button", { name: "Resume folder" })).toBeDisabled();
+
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: [QueryKey.JENKINS_RESUME_RUN, "list", "token-123", "scope-1234"],
+      });
+    });
+
+    expect(await screen.findByText("Resume completed.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Resume folder" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+  });
+
+  it("shows a cancelled summary and releases the lock when the run is cancelled", async () => {
+    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsTreeCache.mockResolvedValue({
+      fetchedAt: "2026-08-17T10:00:00Z",
+      refreshLease: null,
+      roots: buildTreeRoots(),
+      signature: "scope-1234",
+      stale: false,
+    });
+    backendClientMock.getJenkinsFreezes.mockResolvedValue([
+      {
+        applied: true,
+        createdAt: "2026-08-17T10:00:00Z",
+        createdBy: "test",
+        folderName: "PREPROD",
+        folderPath: "job/.QAA/job/E2E/job/PREPROD",
+        id: "freeze-exact",
+        killBuilds: false,
+        mergedIntoId: null,
+        reason: "DR freeze",
+        resolvedAt: null,
+        resolvedBy: null,
+        signature: "scope-1234",
+        snapshot: [],
+        status: "active",
+      },
+    ]);
+    backendClientMock.getJenkinsResumeRuns
+      .mockResolvedValueOnce([buildResumeRun("running")])
+      .mockResolvedValue([]);
+    backendClientMock.getJenkinsResumeRun.mockResolvedValue(buildResumeRun("cancelled"));
+
+    const { queryClient } = renderWithProviders(<TreePanel agentPort={47600} />);
+
+    expect(await screen.findByRole("button", { name: "Cancel" })).toBeInTheDocument();
+
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: [QueryKey.JENKINS_RESUME_RUN, "list", "token-123", "scope-1234"],
+      });
+    });
+
+    expect(await screen.findByText("Resume cancelled.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Resume folder" })).not.toBeDisabled();
   });
 });

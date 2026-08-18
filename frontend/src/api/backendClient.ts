@@ -1,6 +1,13 @@
 import {
   AUTH_SCHEME_BEARER,
   BackendPath,
+  buildBackendJenkinsFreezePath,
+  buildBackendJenkinsFreezeResolvePath,
+  buildBackendJenkinsFreezesPath,
+  buildBackendJenkinsResumeRunCancelPath,
+  buildBackendJenkinsResumeRunPath,
+  buildBackendJenkinsResumeRunsPath,
+  buildBackendJenkinsFreezeSnapshotPath,
   buildBackendJenkinsBuildsPath,
   buildBackendJenkinsTreePath,
   buildBackendQaaServiceTokenRegeneratePath,
@@ -26,6 +33,11 @@ import {
 import type {
   JenkinsBuildsCachePut,
   JenkinsBuildsCacheRead,
+  JenkinsFreezeCreateRequest,
+  JenkinsFreezeRead,
+  JenkinsResumeRunCreateRequest,
+  JenkinsResumeRunRead,
+  JenkinsFreezeSnapshotPutRequest,
   JenkinsTreeCachePut,
   JenkinsTreeCacheRead,
   LoginRequest,
@@ -352,6 +364,122 @@ export const backendClient = {
         body: JSON.stringify(payload),
         method: HttpMethod.PUT,
       },
+      token,
+      signal
+    );
+  },
+
+  getJenkinsFreezes(
+    token: string,
+    signature: string,
+    status?: JenkinsFreezeRead["status"],
+    signal?: AbortSignal
+  ): Promise<JenkinsFreezeRead[]> {
+    return request<JenkinsFreezeRead[]>(
+      buildBackendJenkinsFreezesPath(signature, status),
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
+  createJenkinsFreeze(
+    token: string,
+    payload: JenkinsFreezeCreateRequest,
+    signal?: AbortSignal
+  ): Promise<JenkinsFreezeRead> {
+    return request<JenkinsFreezeRead>(
+      BackendPath.JENKINS_FREEZES,
+      {
+        body: JSON.stringify(payload),
+        method: HttpMethod.POST,
+      },
+      token,
+      signal
+    );
+  },
+
+  putJenkinsFreezeSnapshot(
+    token: string,
+    freezeId: string,
+    payload: JenkinsFreezeSnapshotPutRequest,
+    signal?: AbortSignal
+  ): Promise<JenkinsFreezeRead> {
+    return request<JenkinsFreezeRead>(
+      buildBackendJenkinsFreezeSnapshotPath(freezeId),
+      {
+        body: JSON.stringify(payload),
+        method: HttpMethod.PUT,
+      },
+      token,
+      signal
+    );
+  },
+
+  deleteJenkinsFreeze(token: string, freezeId: string, signal?: AbortSignal): Promise<void> {
+    return request<void>(buildBackendJenkinsFreezePath(freezeId), { method: HttpMethod.DELETE }, token, signal);
+  },
+
+  resolveJenkinsFreeze(token: string, freezeId: string, signal?: AbortSignal): Promise<JenkinsFreezeRead> {
+    return request<JenkinsFreezeRead>(
+      buildBackendJenkinsFreezeResolvePath(freezeId),
+      { method: HttpMethod.POST },
+      token,
+      signal
+    );
+  },
+
+  createJenkinsResumeRun(
+    token: string,
+    payload: JenkinsResumeRunCreateRequest,
+    signal?: AbortSignal
+  ): Promise<JenkinsResumeRunRead> {
+    return request<JenkinsResumeRunRead>(
+      BackendPath.JENKINS_RESUME_RUNS,
+      {
+        body: JSON.stringify(payload),
+        method: HttpMethod.POST,
+      },
+      token,
+      signal
+    );
+  },
+
+  getJenkinsResumeRuns(
+    token: string,
+    signature: string,
+    status?: JenkinsResumeRunRead["status"],
+    signal?: AbortSignal
+  ): Promise<JenkinsResumeRunRead[]> {
+    return request<JenkinsResumeRunRead[]>(
+      buildBackendJenkinsResumeRunsPath(signature, status),
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
+  getJenkinsResumeRun(
+    token: string,
+    runId: string,
+    signal?: AbortSignal
+  ): Promise<JenkinsResumeRunRead> {
+    return request<JenkinsResumeRunRead>(
+      buildBackendJenkinsResumeRunPath(runId),
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
+  cancelJenkinsResumeRun(
+    token: string,
+    runId: string,
+    signal?: AbortSignal
+  ): Promise<JenkinsResumeRunRead> {
+    return request<JenkinsResumeRunRead>(
+      buildBackendJenkinsResumeRunCancelPath(runId),
+      { method: HttpMethod.POST },
       token,
       signal
     );

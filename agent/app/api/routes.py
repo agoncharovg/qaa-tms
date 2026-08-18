@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from collections.abc import AsyncIterator
-from typing import Annotated
+from typing import Annotated, cast
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 
@@ -37,6 +40,12 @@ from app.schemas import (
     E2eSuite,
     E2eSuitesResponse,
     JenkinsBuildsResponse,
+    JenkinsFreezeRequest,
+    JenkinsFreezeResponse,
+    JenkinsResumeRequest,
+    JenkinsResumeResponse,
+    JenkinsResumeRunAccepted,
+    JenkinsResumeRunRequest,
     JenkinsScopeResponse,
     JenkinsTreeResponse,
     JobCreateResponse,
@@ -68,7 +77,11 @@ from app.services.jenkins import (
     JenkinsUnreachableError,
     fetch_builds,
     fetch_tree,
+    freeze_folder,
     jenkins_scope_signature,
+    require_configured,
+    resume_folder,
+    run_resume_campaign,
 )
 from app.services.jobs import JobManager, JobNotFoundError
 from app.services.kube import (
@@ -106,6 +119,7 @@ router = APIRouter()
 AuthDep = Annotated[AuthContext, Depends(require_auth)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 JobManagerDep = Annotated[JobManager, Depends(get_job_manager)]
+logger = logging.getLogger(__name__)
 
 AGENT_SETTINGS_ENV_KEY_BY_FIELD = {
     "jenkins_history_limit": EnvKey.JENKINS_HISTORY_LIMIT,
@@ -254,6 +268,110 @@ async def get_jenkins_builds(
             detail=str(exc),
         ) from exc
     return JenkinsBuildsResponse(builds=builds)
+
+
+@router.post(AgentPath.JENKINS_FREEZE.value, response_model=JenkinsFreezeResponse)
+async def post_jenkins_freeze(
+    request_body: JenkinsFreezeRequest,
+    _: AuthDep,
+    settings: SettingsDep,
+) -> JenkinsFreezeResponse:
+    try:
+        snapshot = await freeze_folder(
+            settings,
+            request_body.folder_path,
+            kill_builds=request_body.kill_builds,
+        )
+    except JenkinsNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except (JenkinsPathOutOfScopeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except JenkinsUnreachableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+    return JenkinsFreezeResponse(snapshot=snapshot)
+
+
+@router.post(AgentPath.JENKINS_RESUME.value, response_model=JenkinsResumeResponse)
+async def post_jenkins_resume(
+    request_body: JenkinsResumeRequest,
+    _: AuthDep,
+    settings: SettingsDep,
+) -> JenkinsResumeResponse:
+    try:
+        outcomes = await resume_folder(settings, request_body.snapshot)
+    except JenkinsNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except (JenkinsPathOutOfScopeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except JenkinsUnreachableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+    return JenkinsResumeResponse(outcomes=outcomes)
+
+
+@router.post(
+    AgentPath.JENKINS_RESUME_RUN.value,
+    response_model=JenkinsResumeRunAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def post_jenkins_resume_run(
+    request_body: JenkinsResumeRunRequest,
+    request: Request,
+    auth: AuthDep,
+    settings: SettingsDep,
+) -> JenkinsResumeRunAccepted:
+    try:
+        require_configured(settings)
+    except JenkinsNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    task_key = str(request_body.run_id)
+    tasks = cast(dict[str, asyncio.Task[None]], request.app.state.jenkins_resume_tasks)
+    if task_key not in tasks:
+        backend_client = cast(httpx.AsyncClient, request.app.state.backend_client)
+
+        async def runner() -> None:
+            try:
+                await run_resume_campaign(
+                    settings,
+                    request_body.run_id,
+                    auth.token,
+                    request_body.snapshot,
+                    backend_client=backend_client,
+                )
+            except Exception:
+                logger.exception("jenkins resume campaign failed: run_id=%s", task_key)
+
+        def discard_task(_finished: asyncio.Task[None]) -> None:
+            # Drop the handle when the campaign ends so the map does not grow unbounded
+            # and a fresh run_id can always be launched.
+            tasks.pop(task_key, None)
+
+        task = asyncio.create_task(runner(), name=f"jenkins-resume-{task_key}")
+        task.add_done_callback(discard_task)
+        tasks[task_key] = task
+
+    return JenkinsResumeRunAccepted(run_id=request_body.run_id)
 
 
 @router.get(AgentPath.KUBECONFIG_STATUS.value, response_model=KubeconfigStatus)
