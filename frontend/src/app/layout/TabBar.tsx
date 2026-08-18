@@ -7,25 +7,30 @@ import {
   Text,
 } from "@mantine/core";
 import { IconX } from "@tabler/icons-react";
+import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { usePalette } from "@/app/theme/usePalette";
 import { type TabId as TabIdType } from "@/constants";
+import { resolveIcon } from "@/core/plugins/icons";
 import { pluginById } from "@/plugins/registry";
 import { useAuthStore } from "@/store/authStore";
 import { getOpenWorkspaceTabs, useUiStore } from "@/store/uiStore";
 
 function TabLabel({
+  icon,
   isCloseable,
   onClose,
   title,
 }: {
+  icon: ReactNode;
   isCloseable: boolean;
   onClose: () => void;
   title: string;
 }) {
   return (
     <Group gap={6} wrap="nowrap">
+      {icon}
       <Text fw={500} size="sm">
         {title}
       </Text>
@@ -116,36 +121,40 @@ export function TabBar() {
               <Tabs.List>
                 {openTabs.map((tab) => {
                   const isActive = tab.id === activeWorkspaceTabId;
-                  return (
-                  <Tabs.Tab
-                    key={tab.id}
-                    value={tab.id}
-                    style={{
-                      backgroundColor: isActive ? palette.accentSoft : palette.chip,
-                      border: `1px solid ${isActive ? palette.accent : palette.line}`,
-                      color: isActive ? palette.accent : palette.inkSoft,
-                    }}
-                  >
-                    <TabLabel
-                      isCloseable={tab.closeable}
-                      onClose={() => {
-                        closeTab(tab.pluginId, tab.id);
-                        const nextActiveTabId = useUiStore.getState().activeWorkspaceTabId;
-                        if (!nextActiveTabId) {
-                          return;
-                        }
+                  const plugin = pluginById(tab.pluginId);
+                  const Icon = plugin ? resolveIcon(plugin.icon) : null;
 
-                        const nextTab = getOpenWorkspaceTabs(useUiStore.getState().workspaceTabIds).find(
-                          (candidate) => candidate.id === nextActiveTabId
-                        );
-                        const plugin = pluginById(nextTab?.pluginId);
-                        if (plugin) {
-                          navigate(plugin.route);
-                        }
+                  return (
+                    <Tabs.Tab
+                      key={tab.id}
+                      value={tab.id}
+                      style={{
+                        backgroundColor: isActive ? palette.accentSoft : palette.chip,
+                        border: `1px solid ${isActive ? palette.accent : palette.line}`,
+                        color: isActive ? palette.accent : palette.inkSoft,
                       }}
-                      title={tab.title}
-                    />
-                  </Tabs.Tab>
+                    >
+                      <TabLabel
+                        icon={Icon ? <Icon aria-hidden="true" size={15} stroke={1.8} /> : null}
+                        isCloseable={tab.closeable}
+                        onClose={() => {
+                          closeTab(tab.pluginId, tab.id);
+                          const nextActiveTabId = useUiStore.getState().activeWorkspaceTabId;
+                          if (!nextActiveTabId) {
+                            return;
+                          }
+
+                          const nextTab = getOpenWorkspaceTabs(useUiStore.getState().workspaceTabIds).find(
+                            (candidate) => candidate.id === nextActiveTabId
+                          );
+                          const nextPlugin = pluginById(nextTab?.pluginId);
+                          if (nextPlugin) {
+                            navigate(nextPlugin.route);
+                          }
+                        }}
+                        title={tab.title}
+                      />
+                    </Tabs.Tab>
                   );
                 })}
               </Tabs.List>

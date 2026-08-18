@@ -51,10 +51,16 @@ describe("TabBar", () => {
     renderTabBar();
 
     expect(screen.queryByRole("button", { name: /Open tab/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Generate/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /History/i })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("tab", { name: /Generate/i }));
+    const generateTab = screen.getByRole("tab", { name: /Generate/i });
+    const historyTab = screen.getByRole("tab", { name: /History/i });
+
+    expect(generateTab).toBeInTheDocument();
+    expect(historyTab).toBeInTheDocument();
+    expect(generateTab.querySelector("svg")).not.toBeNull();
+    expect(historyTab.querySelector("svg")).not.toBeNull();
+
+    await user.click(generateTab);
     expect(useUiStore.getState().activeWorkspaceTabId).toBe(TabId.QAA_GENERATE);
   });
 });
