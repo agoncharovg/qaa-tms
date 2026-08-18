@@ -342,7 +342,7 @@ describe("TreePanel", () => {
     expect(useJenkinsStore.getState().pinnedPaths).toEqual(["job/.QAA/job/E2E/job/PREPROD"]);
     expect(folderPinButton).toHaveAttribute("aria-label", "Unpin from board");
 
-    await user.click(screen.getByText("BE"));
+    await user.click(screen.getAllByText("BE")[0]!);
     const [pipelinePinButton] = screen.getAllByRole("button", { name: "Pin to board" });
     await user.click(pipelinePinButton);
     expect(useJenkinsStore.getState().pinnedPaths).toEqual([
@@ -735,7 +735,20 @@ describe("TreePanel", () => {
             children: [
               {
                 builds: [],
-                children: [],
+                children: [
+                  {
+                    builds: [],
+                    children: [],
+                    color: "blue",
+                    kind: "pipeline",
+                    name: "Smoke",
+                    path: "job/.QAA/job/E2E/job/PREPROD/job/IAM/job/Smoke",
+                    scheduled: false,
+                    status: "passed",
+                    synthetic: false,
+                    url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/IAM/job/Smoke/",
+                  },
+                ],
                 color: null,
                 kind: "folder",
                 name: "IAM",
@@ -810,6 +823,13 @@ describe("TreePanel", () => {
     const frozenBadges = await screen.findAllByText("Frozen");
     await user.hover(frozenBadges[1]);
     expect(await screen.findByText("DR freeze")).toBeInTheDocument();
+
+    expect(screen.getAllByText("BE")[0]?.closest('[data-frozen="true"]')).not.toBeNull();
+    expect(screen.getByText("IAM").closest('[data-frozen="true"]')).not.toBeNull();
+
+    await user.click(screen.getAllByText("BE")[0]!);
+    expect(await screen.findByText("Smoke")).toBeInTheDocument();
+    expect(screen.getByText("Smoke").closest('[data-frozen="true"]')).not.toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Resume folder" }));
 

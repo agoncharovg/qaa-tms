@@ -121,6 +121,8 @@ const TreePanelCopy = {
 
 const TreePanelValue = {
   FREEZE_SLOT_PX: 36,
+  FROZEN_BACKGROUND: "var(--mantine-color-cyan-light)",
+  FROZEN_BORDER: "var(--mantine-color-cyan-light-color)",
   INDENT_STEP_PX: 24,
   LEFT_BORDER_PX: 2,
   PIPELINE_META_GAP_PX: 8,
@@ -511,19 +513,24 @@ function TreeNodeRow({
         : TreePanelCopy.NODE_KIND_PIPELINE;
   const kindIconColor =
     node.kind === JenkinsNodeKind.FOLDER ? "gray" : scheduledPipeline ? "grape" : "cyan";
+  const freezableNode = Boolean(node.path) && !node.synthetic;
   const actionableFolder = node.kind === JenkinsNodeKind.FOLDER && !node.synthetic;
   const exactFreeze = actionableFolder ? freezesByFolderPath.get(node.path) ?? null : null;
-  const coveringFreezes = actionableFolder ? coveringActiveFreezes(node.path) : [];
+  const coveringFreezes = freezableNode ? coveringActiveFreezes(node.path) : [];
+  const frozen = coveringFreezes.length > 0;
   const loadingFreezeState = actionableFolder && isMutatingPath(node.path);
 
   return (
     <Stack gap="xs">
       <Paper
+        data-frozen={frozen || undefined}
         onClick={() => onToggle(nodeKey)}
         onDoubleClick={() => openExternal(node.url)}
         p="sm"
         radius="md"
         style={{
+          backgroundColor: frozen ? TreePanelValue.FROZEN_BACKGROUND : undefined,
+          borderColor: frozen ? TreePanelValue.FROZEN_BORDER : undefined,
           cursor: "pointer",
           marginLeft: depth * TreePanelValue.INDENT_STEP_PX,
         }}

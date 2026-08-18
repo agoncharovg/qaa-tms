@@ -47,7 +47,7 @@ const BoardPanelCopy = {
   ERROR_NOT_CONFIGURED_TITLE: "Jenkins is not configured in the companion app",
   ERROR_UNREACHABLE_BODY: "Connect VPN and confirm Jenkins is reachable from this machine.",
   ERROR_UNREACHABLE_TITLE: "Jenkins is unreachable",
-  ITEM_MISSING: "This pinned item is no longer available inside the configured .QAA/E2E scope.",
+  ITEM_MISSING: "This pinned item is no longer available inside the configured Jenkins scope.",
   GRAY: "Gray",
   LOADING: "Loading pinned Jenkins folders.",
   PINNED_TITLE: "Pinned",
@@ -61,6 +61,8 @@ const BoardPanelCopy = {
 } as const;
 
 const BoardPanelValue = {
+  FROZEN_BACKGROUND: "var(--mantine-color-cyan-light)",
+  FROZEN_BORDER: "var(--mantine-color-cyan-light-color)",
   PIPELINE_META_GAP_PX: 8,
   STATUS_SLOT_PX: 104,
 } as const;
@@ -161,9 +163,14 @@ export function BoardPanel({ agentPort }: BoardPanelProps) {
             const counts = countPipelineStatuses(pinnedNode);
             const pipelines = flattenPipelines(pinnedNode);
             const buildHistoryWidth = getBuildHistoryLineWidth(treeState.historyLimit);
+            const coveringFreezes = pinnedNode.path
+              ? freezesState.coveringActiveFreezes(pinnedNode.path)
+              : [];
+            const frozen = coveringFreezes.length > 0;
 
             return (
               <Card
+                data-frozen={frozen || undefined}
                 key={pinnedNode.path}
                 onClick={() => {
                   setExpandedPaths((currentPaths) =>
@@ -175,7 +182,11 @@ export function BoardPanel({ agentPort }: BoardPanelProps) {
                 onDoubleClick={() => openExternal(pinnedNode.url)}
                 padding="lg"
                 radius="lg"
-                style={{ cursor: "pointer" }}
+                style={{
+                  backgroundColor: frozen ? BoardPanelValue.FROZEN_BACKGROUND : undefined,
+                  borderColor: frozen ? BoardPanelValue.FROZEN_BORDER : undefined,
+                  cursor: "pointer",
+                }}
                 withBorder
               >
                 <Stack gap="md">
@@ -197,9 +208,8 @@ export function BoardPanel({ agentPort }: BoardPanelProps) {
                       <IconPinnedOff size={16} />
                     </ActionIcon>
                   </Group>
-                  {pinnedNode.kind === JenkinsNodeKind.FOLDER &&
-                  freezesState.coveringActiveFreezes(pinnedNode.path).length > 0 ? (
-                    <JenkinsFreezeBadge freezes={freezesState.coveringActiveFreezes(pinnedNode.path)} />
+                  {pinnedNode.kind === JenkinsNodeKind.FOLDER && coveringFreezes.length > 0 ? (
+                    <JenkinsFreezeBadge freezes={coveringFreezes} />
                   ) : null}
                   <Group gap="xs">
                     <Badge color="green" variant="light">
@@ -308,5 +318,8 @@ function getErrorPresentation(error: unknown): { body: string; title: string } {
 }
 
 function openExternal(url: string): void {
+  if (!url) {
+    return;
+  }
   window.open(url, "_blank", "noopener");
 }
