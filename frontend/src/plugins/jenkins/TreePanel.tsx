@@ -3,6 +3,7 @@ import {
   ActionIcon,
   Alert,
   Badge,
+  Box,
   Button,
   Collapse,
   Group,
@@ -36,7 +37,7 @@ import {
   PluginId,
   TabId,
 } from "@/constants";
-import { BuildHistoryLine } from "@/plugins/jenkins/BuildHistoryLine";
+import { BuildHistoryLine, getBuildHistoryLineWidth } from "@/plugins/jenkins/BuildHistoryLine";
 import { getBuildColor, getBuildLabel } from "@/plugins/jenkins/buildStatus";
 import { useJenkinsStore } from "@/plugins/jenkins/jenkinsStore";
 import { collectExpandableNodePaths } from "@/plugins/jenkins/treeUtils";
@@ -53,6 +54,7 @@ interface TreeNodeRowProps {
   agentPort: number;
   depth: number;
   expandedPaths: string[];
+  historyLimit: number | null;
   isActive: boolean;
   node: JenkinsNode;
   onPinToggle: (path: string) => void;
@@ -90,6 +92,9 @@ const TreePanelCopy = {
 const TreePanelValue = {
   INDENT_STEP_PX: 24,
   LEFT_BORDER_PX: 2,
+  PIPELINE_META_GAP_PX: 8,
+  PIN_SLOT_PX: 36,
+  STATUS_SLOT_PX: 104,
 } as const;
 
 const RelativeTimeValue = {
@@ -185,6 +190,7 @@ export function TreePanel({ agentPort }: TreePanelProps) {
             agentPort={agentPort}
             depth={0}
             expandedPaths={expandedPaths}
+            historyLimit={treeState.historyLimit}
             isActive={isActive}
             node={node}
             onPinToggle={(path) => {
@@ -215,6 +221,7 @@ function TreeNodeRow({
   agentPort,
   depth,
   expandedPaths,
+  historyLimit,
   isActive,
   node,
   onPinToggle,
@@ -225,6 +232,7 @@ function TreeNodeRow({
 }: TreeNodeRowProps) {
   const expanded = expandedPaths.includes(node.path);
   const pinned = pinnedPaths.includes(node.path);
+  const buildHistoryWidth = getBuildHistoryLineWidth(historyLimit);
   const buildsState = useJenkinsBuilds({
     agentPort,
     enabled: expanded && isActive && node.kind === JenkinsNodeKind.PIPELINE,
@@ -281,14 +289,37 @@ function TreeNodeRow({
             </Tooltip>
             <Text fw={500} truncate="end">{node.name}</Text>
           </Group>
-          <Group gap="xs" style={{ flexShrink: 0 }} wrap="nowrap">
-            {node.kind === JenkinsNodeKind.PIPELINE && buildHistory.length > 0 ? (
-              <BuildHistoryLine builds={buildHistory} />
+          <Group
+            gap={TreePanelValue.PIPELINE_META_GAP_PX}
+            style={{
+              flexShrink: 0,
+              justifyContent: node.kind === JenkinsNodeKind.PIPELINE ? "flex-end" : undefined,
+              width:
+                node.kind === JenkinsNodeKind.PIPELINE
+                  ? buildHistoryWidth +
+                    TreePanelValue.PIPELINE_META_GAP_PX +
+                    TreePanelValue.STATUS_SLOT_PX +
+                    TreePanelValue.PIPELINE_META_GAP_PX +
+                    TreePanelValue.PIN_SLOT_PX
+                  : undefined,
+            }}
+            wrap="nowrap"
+          >
+            {node.kind === JenkinsNodeKind.PIPELINE ? (
+              <Box style={{ display: "flex", justifyContent: "flex-start", width: buildHistoryWidth }}>
+                {buildHistory.length > 0 ? (
+                  <BuildHistoryLine builds={buildHistory} slotCount={historyLimit} />
+                ) : null}
+              </Box>
             ) : null}
-            {node.kind === JenkinsNodeKind.PIPELINE && node.status ? (
-              <Badge color={JenkinsStatusColor[node.status]} variant="light">
-                {JenkinsStatusLabel[node.status]}
-              </Badge>
+            {node.kind === JenkinsNodeKind.PIPELINE ? (
+              <Box style={{ display: "flex", justifyContent: "flex-end", width: TreePanelValue.STATUS_SLOT_PX }}>
+                {node.status ? (
+                  <Badge color={JenkinsStatusColor[node.status]} variant="light">
+                    {JenkinsStatusLabel[node.status]}
+                  </Badge>
+                ) : null}
+              </Box>
             ) : null}
             <Tooltip label={pinned ? TreePanelCopy.UNPIN : TreePanelCopy.PIN}>
               <ActionIcon
@@ -297,6 +328,10 @@ function TreeNodeRow({
                 onClick={(event) => {
                   event.stopPropagation();
                   onPinToggle(node.path);
+                }}
+                style={{
+                  flex: "0 0 auto",
+                  width: TreePanelValue.PIN_SLOT_PX,
                 }}
                 variant="light"
               >
@@ -316,6 +351,7 @@ function TreeNodeRow({
                 agentPort={agentPort}
                 depth={depth + 1}
                 expandedPaths={expandedPaths}
+                historyLimit={historyLimit}
                 isActive={isActive}
                 node={child}
                 onPinToggle={onPinToggle}

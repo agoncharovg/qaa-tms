@@ -16,6 +16,7 @@ interface UseJenkinsTreeOptions {
 interface UseJenkinsTreeResult {
   error: unknown;
   fetchedAt: string | null;
+  historyLimit: number | null;
   isLoading: boolean;
   isRefreshing: boolean;
   refetch: () => Promise<void>;
@@ -96,6 +97,7 @@ export function useJenkinsTree({
       cacheQuery.error ??
       ((cacheQuery.data?.roots.length ?? 0) > 0 ? null : refreshMutation.error),
     fetchedAt: cacheQuery.data?.fetchedAt ?? null,
+    historyLimit: scopeQuery.data?.historyLimit ?? null,
     isLoading: scopeQuery.isLoading || cacheQuery.isLoading,
     isRefreshing: cacheQuery.isFetching || refreshMutation.isPending,
     async refetch() {

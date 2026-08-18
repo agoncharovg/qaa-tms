@@ -3,6 +3,7 @@ import {
   ActionIcon,
   Alert,
   Badge,
+  Box,
   Card,
   Group,
   Loader,
@@ -21,7 +22,7 @@ import {
   PluginId,
   TabId,
 } from "@/constants";
-import { BuildHistoryLine } from "@/plugins/jenkins/BuildHistoryLine";
+import { BuildHistoryLine, getBuildHistoryLineWidth } from "@/plugins/jenkins/BuildHistoryLine";
 import { useJenkinsStore } from "@/plugins/jenkins/jenkinsStore";
 import { countGrayStatuses, countPipelineStatuses, findNodeByPath, flattenPipelines } from "@/plugins/jenkins/treeUtils";
 import { useJenkinsTree } from "@/plugins/jenkins/useJenkinsTree";
@@ -52,6 +53,11 @@ const BoardPanelCopy = {
   SUCCESS: "Passed",
   FAILED: "Failed",
   UNPIN: "Unpin from board",
+} as const;
+
+const BoardPanelValue = {
+  PIPELINE_META_GAP_PX: 8,
+  STATUS_SLOT_PX: 104,
 } as const;
 
 export function BoardPanel({ agentPort }: BoardPanelProps) {
@@ -123,6 +129,7 @@ export function BoardPanel({ agentPort }: BoardPanelProps) {
 
           const counts = countPipelineStatuses(pinnedNode);
           const pipelines = flattenPipelines(pinnedNode);
+          const buildHistoryWidth = getBuildHistoryLineWidth(treeState.historyLimit);
 
           return (
             <Card
@@ -181,15 +188,39 @@ export function BoardPanel({ agentPort }: BoardPanelProps) {
                         <Text size="sm" style={{ flex: 1, minWidth: 0 }} truncate="end">
                           {pipeline.name}
                         </Text>
-                        <Group gap="xs" style={{ flexShrink: 0 }} wrap="nowrap">
-                          {pipeline.builds.length > 0 ? (
-                            <BuildHistoryLine builds={[...pipeline.builds].reverse()} />
-                          ) : null}
-                          {pipeline.status ? (
-                            <Badge color={JenkinsStatusColor[pipeline.status]} variant="light">
-                              {JenkinsStatusLabel[pipeline.status]}
-                            </Badge>
-                          ) : null}
+                        <Group
+                          gap={BoardPanelValue.PIPELINE_META_GAP_PX}
+                          style={{
+                            flexShrink: 0,
+                            justifyContent: "flex-end",
+                            width:
+                              buildHistoryWidth +
+                              BoardPanelValue.PIPELINE_META_GAP_PX +
+                              BoardPanelValue.STATUS_SLOT_PX,
+                          }}
+                          wrap="nowrap"
+                        >
+                          <Box style={{ display: "flex", justifyContent: "flex-start", width: buildHistoryWidth }}>
+                            {pipeline.builds.length > 0 ? (
+                              <BuildHistoryLine
+                                builds={[...pipeline.builds].reverse()}
+                                slotCount={treeState.historyLimit}
+                              />
+                            ) : null}
+                          </Box>
+                          <Box
+                            style={{
+                              display: "flex",
+                              justifyContent: "flex-end",
+                              width: BoardPanelValue.STATUS_SLOT_PX,
+                            }}
+                          >
+                            {pipeline.status ? (
+                              <Badge color={JenkinsStatusColor[pipeline.status]} variant="light">
+                                {JenkinsStatusLabel[pipeline.status]}
+                              </Badge>
+                            ) : null}
+                          </Box>
                         </Group>
                       </Group>
                     ))}

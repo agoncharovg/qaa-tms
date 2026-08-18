@@ -8,34 +8,79 @@ const BuildHistoryCopy = {
 } as const;
 
 const BuildHistoryValue = {
+  DEFAULT_SLOT_COUNT: 8,
+  EMPTY_SLOT_COLOR: "rgba(148, 163, 184, 0.2)",
+  GAP_PX: 2,
   HEIGHT_PX: 8,
-  WIDTH_PX: 108,
+  WIDTH_PX: 12,
 } as const;
 
-export function BuildHistoryLine({ builds }: { builds: JenkinsBuild[] }) {
+function resolveSlotCount(slotCount: number | null | undefined): number {
+  if (!slotCount || slotCount < 1) {
+    return BuildHistoryValue.DEFAULT_SLOT_COUNT;
+  }
+
+  return slotCount;
+}
+
+export function getBuildHistoryLineWidth(slotCount: number | null | undefined): number {
+  const resolvedSlotCount = resolveSlotCount(slotCount);
+  return (
+    resolvedSlotCount * BuildHistoryValue.WIDTH_PX +
+    Math.max(0, resolvedSlotCount - 1) * BuildHistoryValue.GAP_PX
+  );
+}
+
+export function BuildHistoryLine({
+  builds,
+  slotCount,
+}: {
+  builds: JenkinsBuild[];
+  slotCount?: number | null;
+}) {
+  const resolvedSlotCount = resolveSlotCount(slotCount);
+  const buildSlots = Array.from(
+    { length: resolvedSlotCount },
+    (_, index) => builds[index] ?? null
+  );
+
   return (
     <Group
       aria-label={BuildHistoryCopy.BUILD_HISTORY}
-      gap={2}
+      gap={BuildHistoryValue.GAP_PX}
       role="group"
-      style={{ width: BuildHistoryValue.WIDTH_PX }}
+      style={{ width: getBuildHistoryLineWidth(resolvedSlotCount) }}
       wrap="nowrap"
     >
-      {builds.map((build) => (
-        <Tooltip key={build.url} label={formatBuildHistoryLabel(build)}>
+      {buildSlots.map((build, index) =>
+        build ? (
+          <Tooltip key={build.url} label={formatBuildHistoryLabel(build)}>
+            <div
+              aria-label={formatBuildHistoryLabel(build)}
+              role="img"
+              style={{
+                backgroundColor: getBuildHistoryColor(build),
+                borderRadius: String(BuildHistoryValue.HEIGHT_PX) + "px",
+                flex: "0 0 auto",
+                height: BuildHistoryValue.HEIGHT_PX,
+                width: BuildHistoryValue.WIDTH_PX,
+              }}
+            />
+          </Tooltip>
+        ) : (
           <div
-            aria-label={formatBuildHistoryLabel(build)}
-            role="img"
+            aria-hidden="true"
+            key={"empty-slot-" + String(index)}
             style={{
-              backgroundColor: getBuildHistoryColor(build),
+              backgroundColor: BuildHistoryValue.EMPTY_SLOT_COLOR,
               borderRadius: String(BuildHistoryValue.HEIGHT_PX) + "px",
-              flex: 1,
+              flex: "0 0 auto",
               height: BuildHistoryValue.HEIGHT_PX,
-              minWidth: 0,
+              width: BuildHistoryValue.WIDTH_PX,
             }}
           />
-        </Tooltip>
-      ))}
+        )
+      )}
     </Group>
   );
 }
