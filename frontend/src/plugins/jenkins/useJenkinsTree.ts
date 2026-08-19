@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { agentClient } from "@/api/agentClient";
 import { backendClient } from "@/api/backendClient";
-import type { JenkinsNode } from "@/api/types";
+import type { JenkinsNode, JenkinsRootGroup } from "@/api/types";
 import { DEFAULT_JENKINS_TREE_REFETCH_MS, QueryKey } from "@/constants";
 
 interface UseJenkinsTreeOptions {
@@ -20,6 +20,8 @@ interface UseJenkinsTreeResult {
   isLoading: boolean;
   isRefreshing: boolean;
   refetch: () => Promise<void>;
+  rootFolders: string[];
+  rootGroups: JenkinsRootGroup[];
   roots: JenkinsNode[];
   signature: string | null;
 }
@@ -107,6 +109,8 @@ export function useJenkinsTree({
     isLoading: scopeQuery.isLoading || cacheQuery.isLoading,
     isRefreshing: cacheQuery.isFetching || refreshMutation.isPending,
     refetch,
+    rootFolders: scopeQuery.data?.rootFolders ?? [],
+    rootGroups: scopeQuery.data?.rootGroups ?? [],
     roots: cacheQuery.data?.roots ?? [],
     signature,
   };

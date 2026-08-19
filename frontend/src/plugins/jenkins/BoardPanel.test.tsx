@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const agentClientMock = vi.hoisted(() => ({
@@ -178,6 +178,43 @@ function buildTreeRoots() {
       synthetic: true,
       url: "",
     },
+    {
+      builds: [],
+      children: [
+        {
+          builds: [],
+          children: [],
+          color: null,
+          kind: "folder",
+          name: "BE",
+          path: "job/.QAA/job/E2E/job/PROD",
+          scheduled: false,
+          status: null,
+          synthetic: false,
+          url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PROD/",
+        },
+        {
+          builds: [],
+          children: [],
+          color: null,
+          kind: "folder",
+          name: "FE",
+          path: "job/.QAA/job/UI_E2E/job/PROD",
+          scheduled: false,
+          status: null,
+          synthetic: false,
+          url: "https://jenkins.p.gc.onl/job/.QAA/job/UI_E2E/job/PROD/",
+        },
+      ],
+      color: null,
+      kind: "folder",
+      name: "PROD",
+      path: "",
+      scheduled: false,
+      status: null,
+      synthetic: true,
+      url: "",
+    },
   ];
 }
 
@@ -250,6 +287,49 @@ describe("BoardPanel", () => {
       "_blank",
       "noopener"
     );
+  });
+
+
+  it("groups pinned items by root folder and group", async () => {
+    useJenkinsStore.setState({
+      pinnedPaths: [
+        "job/.QAA/job/UI_E2E/job/PROD",
+        "job/.QAA/job/E2E/job/PREPROD",
+        "job/.QAA/job/E2E/job/PROD",
+        "job/.QAA/job/UI_E2E/job/PREPROD",
+      ],
+    });
+    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsTreeCache.mockResolvedValue({
+      fetchedAt: "2026-08-17T10:00:00Z",
+      refreshLease: null,
+      roots: buildTreeRoots(),
+      signature: "scope-1234",
+      stale: false,
+    });
+
+    renderWithProviders(<BoardPanel agentPort={47600} />);
+
+    const sectionHeadings = await screen.findAllByRole("heading", { level: 4 });
+    expect(sectionHeadings.map((heading) => heading.textContent)).toEqual([
+      "PREPROD / BE",
+      "PREPROD / FE",
+      "PROD / BE",
+      "PROD / FE",
+    ]);
+
+    expect(
+      within(screen.getByText("PREPROD / BE").closest("section")!).getByText("job/.QAA/job/E2E/job/PREPROD")
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByText("PREPROD / FE").closest("section")!).getByText("job/.QAA/job/UI_E2E/job/PREPROD")
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByText("PROD / BE").closest("section")!).getByText("job/.QAA/job/E2E/job/PROD")
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByText("PROD / FE").closest("section")!).getByText("job/.QAA/job/UI_E2E/job/PROD")
+    ).toBeInTheDocument();
   });
 
   it("renders the build-history strip for a pinned pipeline once expanded", async () => {
