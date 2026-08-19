@@ -299,6 +299,8 @@ class StagingFlag(StrEnum):
     APPLY = "--apply"
     PRODUCT = "--product"
     SUITE = "--suite"
+    MARK = "--mark"
+    MARKS = "--marks"
     THREADS = "--threads"
     LIST_SUITES = "--list-suites"
 

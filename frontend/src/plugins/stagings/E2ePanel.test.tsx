@@ -101,18 +101,19 @@ describe("E2ePanel", () => {
     });
   });
 
-  it("shows namespace suggestions and uses the staging default threads count", async () => {
+  it("shows namespace suggestions, searchable suites, and the default qaa-e2e tag", async () => {
     const user = userEvent.setup();
 
     renderWithProviders(<E2ePanel />);
 
     const namespaceInput = await screen.findByRole("textbox", { name: "Namespace" });
+    const imageInput = screen.getByRole("textbox", { name: "qaa-e2e image tag" });
     const threadsInput = screen.getByRole("spinbutton", { name: "Threads" });
 
     expect(namespaceInput).toHaveAttribute("placeholder", "qaa-demo");
+    expect(imageInput).toHaveValue("latest");
     expect(threadsInput).toHaveValue(5);
     expect(screen.getByText(/suggestions include only deployed cluster namespaces/i)).toBeInTheDocument();
-    expect(await screen.findByText("smoke")).toBeInTheDocument();
 
     await user.type(namespaceInput, "qaa");
     expect(await screen.findByRole("option", { name: "qaa-demo" })).toBeInTheDocument();
@@ -120,14 +121,18 @@ describe("E2ePanel", () => {
     expect(screen.queryByRole("option", { name: "qaa-iam" })).not.toBeInTheDocument();
 
     await user.clear(namespaceInput);
-    await user.click(screen.getByRole("checkbox", { name: "smoke" }));
-    await user.click(screen.getByRole("checkbox", { name: "full" }));
+    await user.click(screen.getByText("Named suites"));
+    expect(await screen.findByRole("option", { name: /smoke/i })).toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: /smoke/i }));
+    await user.click(screen.getByText("Named suites"));
+    await user.click(await screen.findByRole("option", { name: /full/i }));
     await user.type(namespaceInput, "qaa-demo");
     await user.click(screen.getByRole("button", { name: "Run E2E" }));
 
     await waitFor(() => {
       expect(agentClientMock.listNamespaces).toHaveBeenCalledWith(47600, "token-123", expect.anything());
       expect(agentClientMock.e2eRun).toHaveBeenCalledWith(47600, "token-123", {
+        image: "latest",
         ns: "qaa-demo",
         product: "Billing",
         suites: ["smoke", "full"],
@@ -136,20 +141,22 @@ describe("E2ePanel", () => {
     });
   });
 
-  it("still accepts a manually typed namespace that is not in suggestions", async () => {
+  it("allows raw pytest -m runs without selecting a named suite", async () => {
     const user = userEvent.setup();
 
     renderWithProviders(<E2ePanel />);
 
-    await user.click(await screen.findByRole("checkbox", { name: "smoke" }));
-    await user.type(screen.getByRole("textbox", { name: "Namespace" }), "custom-ns");
+    await user.type(await screen.findByRole("textbox", { name: "Namespace" }), "custom-ns");
+    await user.type(screen.getByRole("textbox", { name: "Pytest -m" }), "product_billing and smoke");
     await user.click(screen.getByRole("button", { name: "Run E2E" }));
 
     await waitFor(() => {
       expect(agentClientMock.e2eRun).toHaveBeenCalledWith(47600, "token-123", {
+        image: "latest",
+        marks: "product_billing and smoke",
         ns: "custom-ns",
         product: "Billing",
-        suites: ["smoke"],
+        suites: [],
         threads: 5,
       });
     });

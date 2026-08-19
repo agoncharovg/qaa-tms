@@ -103,7 +103,7 @@ The `Stagings` optional plugin exposes six tabs:
 - `History`: browse recorded backend operations, inspect the stored recipe and full log, and replay deploy operations by prefilling the Deploy tab.
 - `Namespaces`: render cluster namespaces and local overlays as separate groups, inspect namespace status, load masked credentials on demand, tail live deployment logs, and start namespace-scoped `adopt` / `destroy` jobs from the detail drawer.
 - `Sync`: submit the global `staging sync` flags form and watch the shared live job log panel used by deploy, destroy, adopt, and sync.
-- `E2E`: choose a product, load its named suite registry from the agent, select suites, submit `{ ns, product, suites[], threads? }`, and watch the shared live job log panel for the `staging e2e-run` job.
+- `E2E`: choose a product, search the named suite registry from the agent, optionally override it with raw pytest `-m` / `-k`, set the `qaa-e2e` image tag (`latest` by default), submit `{ ns, product, suites[], image?, mark?, marks?, threads? }`, and watch the shared live job log panel for the `staging e2e-run` job.
 
 Every Stagings tab also shares a persistent kubeconfig banner from the section
 shell. It detects whether the staging kubeconfig is missing, stale, token-expired,

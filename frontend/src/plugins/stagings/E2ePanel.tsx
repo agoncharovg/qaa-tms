@@ -4,9 +4,9 @@ import {
   Autocomplete,
   Button,
   Card,
-  Checkbox,
   Group,
   Loader,
+  MultiSelect,
   NativeSelect,
   SimpleGrid,
   Stack,
@@ -31,11 +31,15 @@ import { useAuthStore } from "@/store/authStore";
 import { useStagingsStore } from "@/store/stagingsStore";
 import { useUiStore } from "@/store/uiStoreCore";
 
+const DEFAULT_E2E_IMAGE = "latest";
 const DEFAULT_E2E_THREADS = "5";
 
 interface E2eFormState {
   ns: string;
   product: Product;
+  image: string;
+  mark: string;
+  marks: string;
   threads: string;
 }
 
@@ -53,16 +57,28 @@ function normalizeThreads(value: string): number | null | undefined {
   return parsed >= 1 ? parsed : null;
 }
 
+function normalizeOptionalText(value: string): string | undefined {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 function buildE2eRunRequest(formState: E2eFormState, suites: string[]): E2eRunRequest {
   const threads = normalizeThreads(formState.threads);
   if (threads === null) {
     throw new Error("Threads must be a positive integer.");
   }
 
+  const image = normalizeOptionalText(formState.image);
+  const mark = normalizeOptionalText(formState.mark);
+  const marks = normalizeOptionalText(formState.marks);
+
   return {
     ns: formState.ns.trim(),
     product: formState.product,
     suites,
+    ...(image === undefined ? {} : { image }),
+    ...(mark === undefined ? {} : { mark }),
+    ...(marks === undefined ? {} : { marks }),
     ...(threads === undefined ? {} : { threads }),
   };
 }
@@ -78,6 +94,9 @@ export function E2ePanel() {
   const [formState, setFormState] = useState<E2eFormState>({
     ns: "",
     product: PRODUCT_OPTIONS[0],
+    image: DEFAULT_E2E_IMAGE,
+    mark: "",
+    marks: "",
     threads: DEFAULT_E2E_THREADS,
   });
   const [selectedSuites, setSelectedSuites] = useState<string[]>([]);
@@ -122,6 +141,20 @@ export function E2ePanel() {
     return [...new Set(entries)].sort((left, right) => left.localeCompare(right));
   }, [namespacesQuery.data?.clusterNamespaces]);
 
+  const suiteOptions = useMemo(
+    () =>
+      (suitesQuery.data?.suites ?? []).map((suite) => ({
+        label: suite.name,
+        value: suite.name,
+      })),
+    [suitesQuery.data?.suites]
+  );
+
+  const suiteMarksByName = useMemo(
+    () => new Map((suitesQuery.data?.suites ?? []).map((suite) => [suite.name, suite.marks])),
+    [suitesQuery.data?.suites]
+  );
+
   useEffect(() => {
     setSelectedSuites([]);
   }, [formState.product]);
@@ -141,11 +174,12 @@ export function E2ePanel() {
   });
 
   const parsedThreads = useMemo(() => normalizeThreads(formState.threads), [formState.threads]);
+  const hasMarksOverride = formState.marks.trim().length > 0;
   const runDisabled =
     companionUnavailable ||
     isJobRunning ||
     formState.ns.trim().length === 0 ||
-    selectedSuites.length === 0 ||
+    (selectedSuites.length === 0 && !hasMarksOverride) ||
     parsedThreads === null ||
     suitesQuery.isLoading ||
     suitesQuery.isError;
@@ -186,7 +220,7 @@ export function E2ePanel() {
             <div>
               <Title order={3}>Run E2E suites</Title>
               <Text c="dimmed" size="sm">
-                Pick a product, select named suites from the registry, and trigger `staging e2e-run` through the companion app.
+                Pick a product, search named suites from the registry, and trigger `staging e2e-run` through the companion app.
               </Text>
             </div>
 
@@ -254,39 +288,40 @@ export function E2ePanel() {
                   </Alert>
                 ) : (
                   <Stack gap="xs">
-                    <Text fw={500} size="sm">
-                      Named suites
-                    </Text>
-                    <Text c="dimmed" size="sm">
-                      Select only from the registry returned by `staging e2e-run --list-suites`.
-                    </Text>
-                    {suitesQuery.data?.suites.length ? (
-                      suitesQuery.data.suites.map((suite) => {
-                        const checked = selectedSuites.includes(suite.name);
+                    <MultiSelect
+                      clearable
+                      data={suiteOptions}
+                      description="Search the suite registry from `staging e2e-run --list-suites`. Leave this empty only when you provide Pytest -m below."
+                      disabled={companionUnavailable || isJobRunning || !suiteOptions.length}
+                      hidePickedOptions
+                      label="Named suites"
+                      maxDropdownHeight={280}
+                      nothingFoundMessage="No suite matches the current search."
+                      onChange={setSelectedSuites}
+                      placeholder={suiteOptions.length ? "Select one or more suites" : "No suites available"}
+                      renderOption={({ option }) => {
+                        const marks = suiteMarksByName.get(option.value);
                         return (
-                          <Card key={suite.name} padding="sm" radius="md" withBorder>
-                            <Checkbox
-                              checked={checked}
-                              description={suite.marks}
-                              disabled={isJobRunning}
-                              label={suite.name}
-                              onChange={(event) => {
-                                const nextChecked = event.currentTarget.checked;
-                                setSelectedSuites((current) =>
-                                  nextChecked
-                                    ? [...current, suite.name]
-                                    : current.filter((item) => item !== suite.name)
-                                );
-                              }}
-                            />
-                          </Card>
+                          <Stack gap={0}>
+                            <Text fw={500} size="sm">
+                              {option.label}
+                            </Text>
+                            {marks ? (
+                              <Text c="dimmed" size="xs">
+                                {marks}
+                              </Text>
+                            ) : null}
+                          </Stack>
                         );
-                      })
-                    ) : (
+                      }}
+                      searchable
+                      value={selectedSuites}
+                    />
+                    {!suiteOptions.length ? (
                       <Alert color="gray" icon={<IconInfoCircle size={18} />} title="No suites returned">
                         <Text size="sm">The registry returned no named suites for {formState.product}.</Text>
                       </Alert>
-                    )}
+                    ) : null}
                   </Stack>
                 )}
 
@@ -307,23 +342,72 @@ export function E2ePanel() {
                   value={formState.ns}
                 />
 
-                <TextInput
-                  description="Optional xdist thread count passed as --threads. Current staging default: 5."
-                  disabled={companionUnavailable || isJobRunning}
-                  error={parsedThreads === null ? "Threads must be a positive integer." : null}
-                  inputMode="numeric"
-                  label="Threads"
-                  onChange={(event) => {
-                    const { value } = event.currentTarget;
-                    setFormState((current) => ({
-                      ...current,
-                      threads: value,
-                    }));
-                  }}
-                  placeholder={DEFAULT_E2E_THREADS}
-                  type="number"
-                  value={formState.threads}
-                />
+                <SimpleGrid cols={{ base: 1, sm: 2 }}>
+                  <TextInput
+                    description="Passed as --image for the qaa-e2e runner. Defaults to latest."
+                    disabled={companionUnavailable || isJobRunning}
+                    label="qaa-e2e image tag"
+                    onChange={(event) => {
+                      const { value } = event.currentTarget;
+                      setFormState((current) => ({
+                        ...current,
+                        image: value,
+                      }));
+                    }}
+                    placeholder={DEFAULT_E2E_IMAGE}
+                    value={formState.image}
+                  />
+
+                  <TextInput
+                    description="Optional xdist thread count passed as --threads. Current staging default: 5."
+                    disabled={companionUnavailable || isJobRunning}
+                    error={parsedThreads === null ? "Threads must be a positive integer." : null}
+                    inputMode="numeric"
+                    label="Threads"
+                    onChange={(event) => {
+                      const { value } = event.currentTarget;
+                      setFormState((current) => ({
+                        ...current,
+                        threads: value,
+                      }));
+                    }}
+                    placeholder={DEFAULT_E2E_THREADS}
+                    type="number"
+                    value={formState.threads}
+                  />
+                </SimpleGrid>
+
+                <Stack gap="md">
+                  <TextInput
+                    description="Optional pytest -k expression passed as --mark."
+                    disabled={companionUnavailable || isJobRunning}
+                    label="Pytest -k"
+                    onChange={(event) => {
+                      const { value } = event.currentTarget;
+                      setFormState((current) => ({
+                        ...current,
+                        mark: value,
+                      }));
+                    }}
+                    placeholder="auth and not slow"
+                    value={formState.mark}
+                  />
+
+                  <TextInput
+                    description="Optional pytest -m expression passed as --marks. When set, it overrides the named suite selection in staging."
+                    disabled={companionUnavailable || isJobRunning}
+                    label="Pytest -m"
+                    onChange={(event) => {
+                      const { value } = event.currentTarget;
+                      setFormState((current) => ({
+                        ...current,
+                        marks: value,
+                      }));
+                    }}
+                    placeholder="product_iam and smoke"
+                    value={formState.marks}
+                  />
+                </Stack>
 
                 {e2eMutation.isError ? (
                   <Alert color="red" icon={<IconAlertCircle size={18} />} title="E2E request failed">
@@ -337,7 +421,7 @@ export function E2ePanel() {
 
                 <Group justify="space-between">
                   <Text c="dimmed" size="sm">
-                    The form sends <code>{`{ ns, product, suites[], threads? }`}</code> to the agent.
+                    The form sends <code>{`{ ns, product, suites[], image?, mark?, marks?, threads? }`}</code> to the agent.
                   </Text>
                   <Button disabled={runDisabled} loading={e2eMutation.isPending} type="submit">
                     Run E2E

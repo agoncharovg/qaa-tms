@@ -163,7 +163,10 @@ local watcher process only; the already-triggered remote Jenkins build keeps run
 
 `GET /e2e/suites?product=...` is a Bearer-guarded read endpoint that shells out to
 `staging e2e-run <placeholder> --product <P> --list-suites`, parses the named suite
-registry, and does not create backend audit records.
+registry, and does not create backend audit records. `POST /e2e-run` also accepts the
+optional raw runner flags mirrored from `qaa-stagings/scripts/e2e_run.py`: `image`
+(`--image`), `mark` (pytest `-k`, sent as `--mark`), and `marks` (pytest `-m`, sent
+as `--marks`), in addition to the existing named suites and threads fields.
 
 The Jenkins routes are read-only local-agent helpers for the builtin `jenkins` plugin.
 `GET /jenkins/tree` fetches the configured `.QAA/E2E` subtree in one recursive Jenkins

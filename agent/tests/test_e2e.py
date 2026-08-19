@@ -17,6 +17,9 @@ E2E_RUN_BODY = {
     "ns": "qaa-demo",
     "product": "IAM",
     "suites": ["smoke", "full"],
+    "image": "latest",
+    "mark": "auth and not slow",
+    "marks": "product_iam and smoke",
     "threads": 9,
 }
 
@@ -96,13 +99,19 @@ async def test_e2e_run_creates_job_and_records_operation(
     stream_response = await client.get(f"/jobs/{created['jobId']}/stream", headers=auth_headers)
     events = parse_sse_events(stream_response.text)
 
-    assert job["argv"][-8:] == [
+    assert job["argv"][-14:] == [
         "e2e-run",
         "qaa-demo",
         "--product",
         "IAM",
         "--suite",
         "smoke,full",
+        "--image",
+        "latest",
+        "--mark",
+        "auth and not slow",
+        "--marks",
+        "product_iam and smoke",
         "--threads",
         "9",
     ]
@@ -113,7 +122,12 @@ async def test_e2e_run_creates_job_and_records_operation(
     assert backend_recorder.operations[1]["recipe"] == {
         "product": "IAM",
         "suites": ["smoke", "full"],
-        "flags": {"threads": 9},
+        "flags": {
+            "image": "latest",
+            "mark": "auth and not slow",
+            "marks": "product_iam and smoke",
+            "threads": 9,
+        },
     }
 
 

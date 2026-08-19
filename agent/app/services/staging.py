@@ -138,6 +138,9 @@ def build_e2e_run_argv(
     namespace: str,
     product: Product,
     suites: list[str],
+    image: str | None,
+    mark: str | None,
+    marks: str | None,
     threads: int | None,
 ) -> tuple[list[str], StagingInstallation]:
     """Translate an E2E run request into the real CLI argv."""
@@ -151,6 +154,12 @@ def build_e2e_run_argv(
     )
     if suites:
         argv.extend([StagingFlag.SUITE.value, ",".join(suites)])
+    if image:
+        argv.extend([StagingFlag.IMAGE.value, image])
+    if mark:
+        argv.extend([StagingFlag.MARK.value, mark])
+    if marks:
+        argv.extend([StagingFlag.MARKS.value, marks])
     if threads is not None:
         argv.extend([StagingFlag.THREADS.value, str(threads)])
     return argv, installation

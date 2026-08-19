@@ -243,6 +243,9 @@ export interface E2eRunRequest {
   ns: string;
   product: Product;
   suites: string[];
+  image?: string;
+  mark?: string;
+  marks?: string;
   threads?: number;
 }
 

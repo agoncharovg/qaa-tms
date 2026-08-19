@@ -100,6 +100,9 @@ describe("agentClient job creation requests", () => {
       ns: "qa-demo",
       product: "IAM",
       suites: ["smoke", "full"],
+      image: "latest",
+      mark: "auth and not slow",
+      marks: "product_iam and smoke",
       threads: 7,
     };
 

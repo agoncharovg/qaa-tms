@@ -290,6 +290,9 @@ class E2eRunRequest(BaseModel):
     ns: str = Field(min_length=1)
     product: Product
     suites: list[str] = Field(default_factory=list)
+    image: str | None = None
+    mark: str | None = None
+    marks: str | None = None
     threads: int | None = Field(default=None, ge=1)
 
 

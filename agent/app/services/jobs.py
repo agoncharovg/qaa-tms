@@ -165,6 +165,9 @@ class JobManager:
             request.ns,
             request.product,
             request.suites,
+            request.image,
+            request.mark,
+            request.marks,
             request.threads,
         )
         return await self._create_job(
@@ -175,7 +178,12 @@ class JobManager:
             recipe={
                 "product": request.product.value,
                 "suites": request.suites,
-                "flags": {"threads": request.threads},
+                "flags": {
+                    "image": request.image,
+                    "mark": request.mark,
+                    "marks": request.marks,
+                    "threads": request.threads,
+                },
             },
             token=token,
         )
