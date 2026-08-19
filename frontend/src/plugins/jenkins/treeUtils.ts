@@ -60,6 +60,17 @@ export function flattenPipelines(node: JenkinsNode): JenkinsNode[] {
   return node.children.flatMap((child) => flattenPipelines(child));
 }
 
+// The "frozen" indicator follows the real Jenkins state, not the freeze DB records:
+// a pipeline is frozen when it is disabled in Jenkins, and a folder is frozen when it
+// holds at least one disabled pipeline. This keeps the tree honest even when pipelines
+// are re-enabled directly in Jenkins or via a partial (nested) resume campaign.
+export function hasDisabledPipeline(node: JenkinsNode): boolean {
+  if (node.kind === "pipeline") {
+    return node.status === JenkinsStatus.DISABLED;
+  }
+  return node.children.some((child) => hasDisabledPipeline(child));
+}
+
 export function countPipelineStatuses(node: JenkinsNode): JenkinsStatusCounts {
   return flattenPipelines(node).reduce((counts, pipeline) => {
     switch (pipeline.status) {

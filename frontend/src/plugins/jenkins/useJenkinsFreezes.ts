@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { agentClient } from "@/api/agentClient";
-import { backendClient } from "@/api/backendClient";
+import { BackendHttpError, backendClient } from "@/api/backendClient";
 import type { JenkinsFreezeRead, JenkinsFreezeSnapshotItem, JenkinsResumeRunRead } from "@/api/types";
 import {
   DEFAULT_JENKINS_TREE_REFETCH_MS,
+  HttpStatus,
   JENKINS_RESUME_RUN_REFETCH_MS,
   JenkinsFreezeStatus,
   JenkinsResumeRunStatus,
@@ -48,6 +49,10 @@ interface UseJenkinsFreezesOptions {
   agentPort: number;
   enabled: boolean;
   isActive: boolean;
+  // Forces a fresh agent-backed tree fetch (not just a cache re-read) so freeze/resume
+  // effects on the real Jenkins disabled state show up immediately, not after a manual
+  // page refresh. Falls back to a cache invalidation when not provided.
+  refreshTree?: () => Promise<void>;
   signature: string | null;
   token: string | null;
 }
@@ -84,6 +89,7 @@ interface UseJenkinsFreezesResult {
   isLoading: boolean;
   isLocked: boolean;
   isMutatingPath: (path: string) => boolean;
+  resolveFreeze: (freezeId: string) => Promise<void>;
   startResumeCampaign: (
     freeze: JenkinsFreezeRead,
     snapshot: JenkinsFreezeSnapshotItem[],
@@ -97,6 +103,7 @@ export function useJenkinsFreezes({
   agentPort,
   enabled,
   isActive,
+  refreshTree,
   signature,
   token,
 }: UseJenkinsFreezesOptions): UseJenkinsFreezesResult {
@@ -108,6 +115,21 @@ export function useJenkinsFreezes({
   );
   const treeCacheQueryKey = useMemo(() => [QueryKey.JENKINS_TREE_CACHE], []);
   const [trackedResumeRunId, setTrackedResumeRunId] = useState<string | null>(null);
+
+  // Pull fresh Jenkins state after a freeze/resume so the disabled-driven tree indicator
+  // updates at once. Without a refresher we only re-read the (still stale) backend cache.
+  const refreshTreeData = useCallback(async () => {
+    try {
+      if (refreshTree) {
+        await refreshTree();
+        return;
+      }
+      await queryClient.invalidateQueries({ queryKey: treeCacheQueryKey });
+    } catch {
+      // Best-effort: a failed tree refresh must not break the freeze/resume flow.
+      // The periodic stale-cache refresh will reconcile the view on the next poll.
+    }
+  }, [queryClient, refreshTree, treeCacheQueryKey]);
 
   const freezesQuery = useQuery({
     enabled: Boolean(enabled && token && signature),
@@ -216,7 +238,7 @@ export function useJenkinsFreezes({
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: freezesQueryKey }),
-        queryClient.invalidateQueries({ queryKey: [QueryKey.JENKINS_TREE_CACHE] }),
+        refreshTreeData(),
       ]);
     },
   });
@@ -264,7 +286,22 @@ export function useJenkinsFreezes({
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: freezesQueryKey }),
         queryClient.invalidateQueries({ queryKey: resumeRunListQueryKey }),
-        queryClient.invalidateQueries({ queryKey: treeCacheQueryKey }),
+        refreshTreeData(),
+      ]);
+    },
+  });
+
+  const resolveFreezeMutation = useMutation({
+    mutationFn: async (freezeId: string) => {
+      if (!token) {
+        throw new Error(FreezeErrorMessage.AUTH);
+      }
+      await backendClient.resolveJenkinsFreeze(token, freezeId);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: freezesQueryKey }),
+        queryClient.invalidateQueries({ queryKey: [QueryKey.JENKINS_TREE_CACHE] }),
       ]);
     },
   });
@@ -280,7 +317,7 @@ export function useJenkinsFreezes({
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: resumeRunListQueryKey }),
         queryClient.invalidateQueries({ queryKey: freezesQueryKey }),
-        queryClient.invalidateQueries({ queryKey: [QueryKey.JENKINS_TREE_CACHE] }),
+        refreshTreeData(),
       ]);
     },
   });
@@ -300,8 +337,17 @@ export function useJenkinsFreezes({
     return nextMap;
   }, [activeFreezes]);
 
+  const trackedRunningResumeRun =
+    trackedResumeRunQuery.data?.status === JenkinsResumeRunStatus.RUNNING
+      ? trackedResumeRunQuery.data
+      : null;
   const visibleResumeRun = activeResumeRun ?? trackedResumeRunQuery.data ?? null;
-  const isLocked = activeResumeRun !== null;
+  // A stale run means the agent-side campaign task is gone (dead heartbeat); it must never
+  // lock the UI forever — the operator can cancel it to clear the orphaned record.
+  const lockResumeRun =
+    (activeResumeRun && !activeResumeRun.stale ? activeResumeRun : null) ??
+    (trackedRunningResumeRun && !trackedRunningResumeRun.stale ? trackedRunningResumeRun : null);
+  const isLocked = lockResumeRun !== null;
   const completedTrackedResumeRunId =
     trackedResumeRunQuery.data && trackedResumeRunQuery.data.status !== JenkinsResumeRunStatus.RUNNING
       ? trackedResumeRunQuery.data.id
@@ -314,9 +360,26 @@ export function useJenkinsFreezes({
     void Promise.all([
       queryClient.invalidateQueries({ queryKey: freezesQueryKey }),
       queryClient.invalidateQueries({ queryKey: resumeRunListQueryKey }),
-      queryClient.invalidateQueries({ queryKey: treeCacheQueryKey }),
+      refreshTreeData(),
     ]);
-  }, [completedTrackedResumeRunId, freezesQueryKey, queryClient, resumeRunListQueryKey, treeCacheQueryKey]);
+  }, [completedTrackedResumeRunId, freezesQueryKey, queryClient, refreshTreeData, resumeRunListQueryKey]);
+
+  // Belt-and-suspenders for the progress modal: if the tracked run has dropped out of the
+  // active RUNNING list but our cached detail still shows it running, the detail poll missed
+  // the terminal transition (e.g. the tab was inactive when the campaign finished). Force a
+  // refetch so the modal advances to its terminal summary instead of hanging on the initial
+  // snapshot.
+  const trackedRunMissingFromActiveList =
+    trackedResumeRunId !== null &&
+    trackedResumeRunQuery.data?.status === JenkinsResumeRunStatus.RUNNING &&
+    !(resumeRunQuery.data ?? []).some((run) => run.id === trackedResumeRunId);
+
+  useEffect(() => {
+    if (!trackedRunMissingFromActiveList) {
+      return;
+    }
+    void queryClient.invalidateQueries({ queryKey: trackedResumeRunQueryKey });
+  }, [queryClient, trackedResumeRunQueryKey, trackedRunMissingFromActiveList]);
 
   const coveringActiveFreezes = useCallback(
     (path: string): JenkinsFreezeRead[] =>
@@ -327,19 +390,18 @@ export function useJenkinsFreezes({
   const activeFreezeForPath = useCallback(
     (path: string): JenkinsFreezeRead | null => {
       const exactFreeze = freezesByFolderPath.get(normalizeJenkinsPath(path));
-      if (exactFreeze) {
-        return exactFreeze;
+      const candidateFreezes = [
+        ...(exactFreeze ? [exactFreeze] : []),
+        ...coveringActiveFreezes(path).filter((freeze) => freeze.id !== exactFreeze?.id),
+      ];
+
+      for (const freeze of candidateFreezes) {
+        if (freeze.snapshot.some((item) => !item.wasDisabled && isSameOrNestedPath(item.path, path))) {
+          return freeze;
+        }
       }
 
-      const coveringFreezes = coveringActiveFreezes(path);
-      if (coveringFreezes.length === 0) {
-        return null;
-      }
-
-      return (
-        coveringFreezes.sort((left, right) => right.folderPath.length - left.folderPath.length)[0] ??
-        null
-      );
+      return null;
     },
     [coveringActiveFreezes, freezesByFolderPath]
   );
@@ -373,10 +435,38 @@ export function useJenkinsFreezes({
   );
 
   const cancelResumeRun = useCallback(async () => {
-    if (activeResumeRun) {
-      await cancelResumeRunMutation.mutateAsync(activeResumeRun.id);
+    const refreshResumeState = async (): Promise<void> => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: resumeRunListQueryKey }),
+        queryClient.invalidateQueries({ queryKey: trackedResumeRunQueryKey }),
+        queryClient.invalidateQueries({ queryKey: freezesQueryKey }),
+        queryClient.invalidateQueries({ queryKey: treeCacheQueryKey }),
+      ]);
+    };
+
+    if (!lockResumeRun) {
+      await refreshResumeState();
+      return;
     }
-  }, [activeResumeRun, cancelResumeRunMutation]);
+
+    try {
+      await cancelResumeRunMutation.mutateAsync(lockResumeRun.id);
+    } catch (error) {
+      if (error instanceof BackendHttpError && error.status === HttpStatus.CONFLICT) {
+        await refreshResumeState();
+        return;
+      }
+      throw error;
+    }
+  }, [
+    cancelResumeRunMutation,
+    freezesQueryKey,
+    lockResumeRun,
+    queryClient,
+    resumeRunListQueryKey,
+    trackedResumeRunQueryKey,
+    treeCacheQueryKey,
+  ]);
 
   const closeResumeRunSummary = useCallback(() => {
     setTrackedResumeRunId(null);
@@ -387,6 +477,13 @@ export function useJenkinsFreezes({
       await freezeMutation.mutateAsync(args);
     },
     [freezeMutation]
+  );
+
+  const resolveFreeze = useCallback(
+    async (freezeId: string) => {
+      await resolveFreezeMutation.mutateAsync(freezeId);
+    },
+    [resolveFreezeMutation]
   );
 
   const startResumeCampaign = useCallback(
@@ -427,6 +524,7 @@ export function useJenkinsFreezes({
     isLoading: freezesQuery.isLoading || resumeRunQuery.isLoading,
     isLocked,
     isMutatingPath,
+    resolveFreeze,
     startResumeCampaign,
     visibleResumeRun,
   };

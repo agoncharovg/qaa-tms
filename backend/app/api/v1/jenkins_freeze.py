@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Annotated
+from urllib.parse import unquote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -60,12 +61,26 @@ async def has_running_resume_lock(db: AsyncSession, signature: str) -> bool:
     return running_run is not None
 
 
+def normalize_jenkins_path(path: str) -> str:
+    return unquote(path).strip("/")
+
+
 def intersects_path(left: str, right: str) -> bool:
-    return left == right or left.startswith(f"{right}/") or right.startswith(f"{left}/")
+    normalized_left = normalize_jenkins_path(left)
+    normalized_right = normalize_jenkins_path(right)
+    return (
+        normalized_left == normalized_right
+        or normalized_left.startswith(f"{normalized_right}/")
+        or normalized_right.startswith(f"{normalized_left}/")
+    )
 
 
 def can_absorb_freeze(owner_path: str, candidate_path: str) -> bool:
-    return candidate_path == owner_path or candidate_path.startswith(f"{owner_path}/")
+    normalized_owner = normalize_jenkins_path(owner_path)
+    normalized_candidate = normalize_jenkins_path(candidate_path)
+    return normalized_candidate == normalized_owner or normalized_candidate.startswith(
+        f"{normalized_owner}/"
+    )
 
 
 def to_freeze_read(freeze: JenkinsFreeze) -> JenkinsFreezeRead:
@@ -175,7 +190,7 @@ async def put_jenkins_freeze_snapshot(
         )
 
     snapshot_items = [item.model_copy(deep=True) for item in payload.snapshot]
-    items_by_path = {item.path: item for item in snapshot_items}
+    items_by_path = {normalize_jenkins_path(item.path): item for item in snapshot_items}
     merge_candidates: list[JenkinsFreeze] = []
     if payload.merge_freeze_ids:
         merge_candidates = list(
@@ -203,7 +218,7 @@ async def put_jenkins_freeze_snapshot(
             snapshot_item = JenkinsFreezeSnapshotItem.model_validate(merged_item)
             if snapshot_item.was_disabled:
                 continue
-            target_item = items_by_path.get(snapshot_item.path)
+            target_item = items_by_path.get(normalize_jenkins_path(snapshot_item.path))
             if target_item is None:
                 continue
             target_item.was_disabled = False

@@ -44,6 +44,7 @@ import type {
 import {
   JenkinsFreezeCopy,
   JenkinsNodeKind,
+  JenkinsStatus,
   JenkinsStatusColor,
   JenkinsStatusLabel,
   PluginId,
@@ -60,7 +61,13 @@ import {
   formatRelativeAge,
   formatRelativeAgeFromIso,
 } from "@/plugins/jenkins/relativeTime";
-import { buildJenkinsNodeKey, collectExpandableNodeKeys } from "@/plugins/jenkins/treeUtils";
+import {
+  buildJenkinsNodeKey,
+  collectExpandableNodeKeys,
+  findNodeByPath,
+  flattenPipelines,
+  hasDisabledPipeline,
+} from "@/plugins/jenkins/treeUtils";
 import { useJenkinsBuilds } from "@/plugins/jenkins/useJenkinsBuilds";
 import { useJenkinsFreezes } from "@/plugins/jenkins/useJenkinsFreezes";
 import { useJenkinsTree } from "@/plugins/jenkins/useJenkinsTree";
@@ -88,6 +95,19 @@ function normalizeJenkinsPath(path: string): string {
   return decodeURIComponent(path).replace(/^\/+|\/+$/g, "");
 }
 
+// Server clocks are UTC, but SQLite-backed timestamps (e.g. freeze.createdAt) come back
+// without a tz designator while the in-memory tree cache emits an explicit offset. Date.parse
+// would then read the tz-less one as LOCAL time, skewing cross-source comparisons by the
+// local offset. Normalize a missing tz to UTC so both sides compare on the same clock.
+export function parseServerTimestampMs(value: string | null | undefined): number {
+  if (!value) {
+    return Number.NaN;
+  }
+  const trimmed = value.trim();
+  const hasTimezone = /([zZ])|([+-]\d{2}:?\d{2})$/.test(trimmed);
+  return Date.parse(hasTimezone ? trimmed : `${trimmed}Z`);
+}
+
 function isSameOrNestedPath(path: string, prefix: string): boolean {
   const normalizedPath = normalizeJenkinsPath(path);
   const normalizedPrefix = normalizeJenkinsPath(prefix);
@@ -111,7 +131,6 @@ interface TreeNodeRowProps {
   coveringActiveFreezes: (path: string) => JenkinsFreezeRead[];
   depth: number;
   expandedNodeKeys: string[];
-  freezesByFolderPath: Map<string, JenkinsFreezeRead>;
   historyLimit: number | null;
   isActive: boolean;
   isLocked: boolean;
@@ -132,7 +151,6 @@ interface JenkinsTreeRowsProps {
   agentPort: number;
   coveringActiveFreezes: (path: string) => JenkinsFreezeRead[];
   expandedNodeKeys: string[];
-  freezesByFolderPath: Map<string, JenkinsFreezeRead>;
   historyLimit: number | null;
   isActive: boolean;
   isLocked: boolean;
@@ -209,6 +227,7 @@ export function TreePanel({ agentPort }: TreePanelProps) {
     agentPort,
     enabled: true,
     isActive,
+    refreshTree: treeState.refetch,
     signature: treeState.signature,
     token,
   });
@@ -240,6 +259,56 @@ export function TreePanel({ agentPort }: TreePanelProps) {
     setFreezeModal(null);
     setResumeModal(null);
   }, [freezesState.isLocked]);
+
+  // Reconcile freeze records against the real Jenkins state: once a frozen folder has no
+  // disabled pipeline left — fully resumed here, resumed elsewhere, or re-enabled directly
+  // in Jenkins — auto-resolve its freeze so the active list stops lagging behind the tree.
+  const resolvingFreezeIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (freezesState.isLocked || treeState.roots.length === 0) {
+      return;
+    }
+    // Only trust the tree to contradict a freeze when the tree snapshot is NEWER than the
+    // freeze. A stale cache fetched before the freeze still shows pipelines enabled, and
+    // resolving on it would wrongly drop the freeze the operator just created (race).
+    const treeFetchedAtMs = parseServerTimestampMs(treeState.fetchedAt);
+    if (Number.isNaN(treeFetchedAtMs)) {
+      return;
+    }
+    for (const freeze of freezesState.activeFreezes) {
+      if (resolvingFreezeIdsRef.current.has(freeze.id)) {
+        continue;
+      }
+      const freezeCreatedAtMs = parseServerTimestampMs(freeze.createdAt);
+      if (!Number.isNaN(freezeCreatedAtMs) && treeFetchedAtMs <= freezeCreatedAtMs) {
+        continue;
+      }
+      const folderNode = findNodeByPath(treeState.roots, freeze.folderPath);
+      if (!folderNode) {
+        continue;
+      }
+      const pipelines = flattenPipelines(folderNode);
+      if (
+        pipelines.length === 0 ||
+        pipelines.some((pipeline) => pipeline.status === JenkinsStatus.DISABLED)
+      ) {
+        continue;
+      }
+      resolvingFreezeIdsRef.current.add(freeze.id);
+      void freezesState
+        .resolveFreeze(freeze.id)
+        .catch(() => undefined)
+        .finally(() => {
+          resolvingFreezeIdsRef.current.delete(freeze.id);
+        });
+    }
+  }, [
+    freezesState.activeFreezes,
+    freezesState.isLocked,
+    freezesState.resolveFreeze,
+    treeState.fetchedAt,
+    treeState.roots,
+  ]);
 
   const openFreezeModal = useCallback(
     (folderPath: string, folderName: string): void => {
@@ -412,7 +481,6 @@ export function TreePanel({ agentPort }: TreePanelProps) {
           agentPort={agentPort}
           coveringActiveFreezes={freezesState.coveringActiveFreezes}
           expandedNodeKeys={expandedNodeKeys ?? []}
-          freezesByFolderPath={freezesState.freezesByFolderPath}
           historyLimit={treeState.historyLimit}
           isActive={isActive}
           isLocked={freezesState.isLocked}
@@ -436,7 +504,6 @@ const JenkinsTreeRows = memo(function JenkinsTreeRows({
   agentPort,
   coveringActiveFreezes,
   expandedNodeKeys,
-  freezesByFolderPath,
   historyLimit,
   isActive,
   isLocked,
@@ -462,7 +529,6 @@ const JenkinsTreeRows = memo(function JenkinsTreeRows({
             coveringActiveFreezes={coveringActiveFreezes}
             depth={0}
             expandedNodeKeys={expandedNodeKeys ?? []}
-            freezesByFolderPath={freezesByFolderPath}
             historyLimit={historyLimit}
             isActive={isActive}
             isLocked={isLocked}
@@ -635,7 +701,6 @@ function TreeNodeRow({
   coveringActiveFreezes,
   depth,
   expandedNodeKeys,
-  freezesByFolderPath,
   historyLimit,
   isActive,
   isLocked,
@@ -673,10 +738,17 @@ function TreeNodeRow({
     node.kind === JenkinsNodeKind.FOLDER ? "gray" : scheduledPipeline ? "grape" : "cyan";
   const freezableNode = Boolean(node.path) && !node.synthetic;
   const actionableFolder = node.kind === JenkinsNodeKind.FOLDER && !node.synthetic;
-  const exactFreeze = actionableFolder ? freezesByFolderPath.get(normalizeJenkinsPath(node.path)) ?? null : null;
-  const resumeFreeze = actionableFolder ? activeFreezeForPath(node.path) : null;
   const coveringFreezes = freezableNode ? coveringActiveFreezes(node.path) : [];
-  const frozen = coveringFreezes.length > 0;
+  // Follow the real Jenkins state: a node is frozen when it (or, for a folder, any
+  // descendant pipeline) is disabled in Jenkins — not merely because a freeze record
+  // still covers it. Manual re-enables and partial resumes clear this on the next refetch.
+  const frozen = freezableNode && hasDisabledPipeline(node);
+  // Only offer "Resume" when a covering freeze actually owns at least one restorable
+  // item in this subtree. Otherwise the disabled state came from an earlier/manual lock
+  // and launching a campaign would only produce skipped items.
+  const resumeFreeze = actionableFolder && frozen ? activeFreezeForPath(node.path) : null;
+  const showResumeAction = actionableFolder && resumeFreeze !== null;
+  const showFreezeAction = actionableFolder && !frozen;
   const loadingFreezeState = actionableFolder && isMutatingPath(resumeFreeze?.folderPath ?? node.path);
 
   return (
@@ -757,22 +829,39 @@ function TreeNodeRow({
                 ) : null}
               </Box>
             ) : null}
-            {node.kind === JenkinsNodeKind.FOLDER && coveringFreezes.length > 0 ? (
+            {node.kind === JenkinsNodeKind.FOLDER && frozen && coveringFreezes.length > 0 ? (
               <JenkinsFreezeBadge freezes={coveringFreezes} />
             ) : null}
-            {actionableFolder ? (
-              <Tooltip label={resumeFreeze ? JenkinsFreezeCopy.RESUME_ACTION : JenkinsFreezeCopy.FREEZE_ACTION}>
+            {showResumeAction ? (
+              <Tooltip label={JenkinsFreezeCopy.RESUME_ACTION}>
                 <ActionIcon
-                  aria-label={resumeFreeze ? JenkinsFreezeCopy.RESUME_ACTION : JenkinsFreezeCopy.FREEZE_ACTION}
-                  color={resumeFreeze ? "green" : "cyan"}
+                  aria-label={JenkinsFreezeCopy.RESUME_ACTION}
+                  color="green"
                   disabled={isLocked}
                   loading={loadingFreezeState}
                   onClick={(event) => {
                     event.stopPropagation();
-                    if (resumeFreeze) {
-                      onResumeRequest(resumeFreeze, node.path, node.name);
-                      return;
-                    }
+                    onResumeRequest(resumeFreeze, node.path, node.name);
+                  }}
+                  style={{
+                    flex: "0 0 auto",
+                    width: TreePanelValue.FREEZE_SLOT_PX,
+                  }}
+                  variant="light"
+                >
+                  <IconPlayerPlay size={16} />
+                </ActionIcon>
+              </Tooltip>
+            ) : null}
+            {showFreezeAction ? (
+              <Tooltip label={JenkinsFreezeCopy.FREEZE_ACTION}>
+                <ActionIcon
+                  aria-label={JenkinsFreezeCopy.FREEZE_ACTION}
+                  color="cyan"
+                  disabled={isLocked}
+                  loading={loadingFreezeState}
+                  onClick={(event) => {
+                    event.stopPropagation();
                     onFreezeRequest(node.path, node.name);
                   }}
                   style={{
@@ -781,7 +870,7 @@ function TreeNodeRow({
                   }}
                   variant="light"
                 >
-                  {resumeFreeze ? <IconPlayerPlay size={16} /> : <IconSnowflake size={16} />}
+                  <IconSnowflake size={16} />
                 </ActionIcon>
               </Tooltip>
             ) : null}
@@ -821,7 +910,6 @@ function TreeNodeRow({
                   coveringActiveFreezes={coveringActiveFreezes}
                   depth={depth + 1}
                   expandedNodeKeys={expandedNodeKeys ?? []}
-                  freezesByFolderPath={freezesByFolderPath}
                   historyLimit={historyLimit}
                   isActive={isActive}
                   isLocked={isLocked}

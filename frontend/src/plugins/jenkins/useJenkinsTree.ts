@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { agentClient } from "@/api/agentClient";
@@ -91,6 +91,12 @@ export function useJenkinsTree({
     refreshMutation.mutate({ refreshLease });
   }, [refreshLease, refreshMutation, stale]);
 
+  // Stable identity so callers (e.g. useJenkinsFreezes) can depend on it in effects
+  // without re-running every render. Forces a fresh agent fetch, bypassing the stale cache.
+  const refetch = useCallback(async () => {
+    await refreshMutation.mutateAsync({ refreshLease: null });
+  }, [refreshMutation.mutateAsync]);
+
   return {
     error:
       scopeQuery.error ??
@@ -100,9 +106,7 @@ export function useJenkinsTree({
     historyLimit: scopeQuery.data?.historyLimit ?? null,
     isLoading: scopeQuery.isLoading || cacheQuery.isLoading,
     isRefreshing: cacheQuery.isFetching || refreshMutation.isPending,
-    async refetch() {
-      await refreshMutation.mutateAsync({ refreshLease: null });
-    },
+    refetch,
     roots: cacheQuery.data?.roots ?? [],
     signature,
   };

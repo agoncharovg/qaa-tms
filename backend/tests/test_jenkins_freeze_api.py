@@ -15,9 +15,13 @@ from app.models.jenkins_freeze import JenkinsFreeze
 SIGNATURE = "scope-jenkins-1"
 PREPROD_PATH = "job/.QAA/job/E2E/job/PREPROD"
 IAM_PATH = f"{PREPROD_PATH}/job/IAM"
+IAM_CLIENT_PORTAL_PATH = f"{IAM_PATH}/job/IAM%20Client%20portal"
+IAM_CLIENT_PORTAL_DECODED_PATH = f"{IAM_PATH}/job/IAM Client portal"
 CDN_PATH = f"{PREPROD_PATH}/job/CDN"
 OTHER_PATH = "job/.QAA/job/E2E/job/PROD"
 IAM_PIPELINE_PATH = f"{IAM_PATH}/job/Smoke"
+IAM_CLIENT_PORTAL_PIPELINE_PATH = f"{IAM_CLIENT_PORTAL_DECODED_PATH}/job/Web"
+IAM_CLIENT_PORTAL_PIPELINE_ENCODED_PATH = f"{IAM_CLIENT_PORTAL_PATH}/job/Web"
 CDN_PIPELINE_PATH = f"{CDN_PATH}/job/Smoke"
 PREPROD_PIPELINE_PATH = f"{PREPROD_PATH}/job/Shared"
 
@@ -263,6 +267,55 @@ def test_merge_absorbs_selected_active_freezes_and_non_merge_keeps_prior_locks(
     assert iam_row.resolved_at is not None
     assert cdn_row.resolved_at is not None
     assert merged_response["createdBy"] == user["username"]
+
+
+def test_merge_matches_snapshot_items_with_encoded_and_decoded_paths(client: TestClient) -> None:
+    token, _ = login(client, "test", "")
+
+    portal = create_freeze(
+        client,
+        token,
+        folder_path=IAM_CLIENT_PORTAL_PATH,
+        folder_name="IAM Client portal",
+        reason="Portal",
+    )
+    put_snapshot(
+        client,
+        token,
+        portal["id"],
+        [
+            snapshot_item(
+                IAM_CLIENT_PORTAL_PIPELINE_PATH,
+                full_name=".QAA/E2E/PREPROD/IAM/IAM Client portal/Web",
+                name="Web",
+                was_disabled=False,
+            )
+        ],
+    )
+
+    merged = create_freeze(
+        client,
+        token,
+        folder_path=IAM_PATH,
+        folder_name="IAM",
+        reason="Merge",
+    )
+    merged_response = put_snapshot(
+        client,
+        token,
+        merged["id"],
+        [
+            snapshot_item(
+                IAM_CLIENT_PORTAL_PIPELINE_ENCODED_PATH,
+                full_name=".QAA/E2E/PREPROD/IAM/IAM Client portal/Web",
+                name="Web",
+                was_disabled=True,
+            )
+        ],
+        merge_freeze_ids=[portal["id"]],
+    )
+
+    assert merged_response["snapshot"][0]["wasDisabled"] is False
 
 
 def test_merge_ignores_non_active_or_non_intersecting_ids(client: TestClient) -> None:
