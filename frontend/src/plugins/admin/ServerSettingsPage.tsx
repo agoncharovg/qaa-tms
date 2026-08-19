@@ -8,7 +8,6 @@ import {
   PasswordInput,
   SimpleGrid,
   Stack,
-  Switch,
   Text,
   TextInput,
   Title,
@@ -26,15 +25,10 @@ const ServerSettingsPageCopy = {
   BASE_URL_LABEL: "QAA generator base URL",
   CLEAR_SUPERUSER_TOKEN: "Clear superuser token",
   DESCRIPTION:
-    "Edit the backend-held QAA generator transport and superuser settings. Transport changes still require a backend restart.",
+    "Edit the backend-held QAA generator ingress URL and superuser token. Base URL changes still require a backend restart.",
   LOAD_ERROR: "Server settings failed to load",
   LOADING: "Loading server settings.",
-  LOCAL_PORT_LABEL: "Port-forward local port",
   NOT_SET: "Not set",
-  NAMESPACE_LABEL: "Port-forward namespace",
-  PORT_FORWARD_ENABLED_LABEL: "Port-forward enabled",
-  REMOTE_PORT_LABEL: "Port-forward remote port",
-  RESOURCE_LABEL: "Port-forward resource",
   SAVE: "Save server settings",
   SECRET_SET: "•••• set",
   SUCCESS: "Settings saved.",
@@ -54,10 +48,6 @@ const ALERT_ICON_SIZE_PX = 18 as const;
 const CARD_TITLE_ORDER = 3 as const;
 const FORM_COLUMNS = { base: 1, md: 2 } as const;
 const PAGE_TITLE_ORDER = 2 as const;
-const TITLE_TEXT = {
-  LOCAL_PORT: "Local port",
-  REMOTE_PORT: "Remote port",
-} as const;
 
 const SECRET_INPUT_AUTOCOMPLETE = "new-password" as const;
 const SECRET_INPUT_NAME = {
@@ -71,11 +61,6 @@ type Notice = {
 
 type ServerFormState = {
   baseUrl: string;
-  localPort: string;
-  namespace: string;
-  portForwardEnabled: boolean;
-  remotePort: string;
-  resource: string;
   superuserToken: string;
   superuserTokenDirty: boolean;
   superuserTokenSet: boolean;
@@ -84,23 +69,10 @@ type ServerFormState = {
 function buildServerFormState(settings: ServerSettingsRead): ServerFormState {
   return {
     baseUrl: settings.qaa_generator_base_url,
-    localPort: String(settings.qaa_generator_port_forward_local_port),
-    namespace: settings.qaa_generator_port_forward_namespace,
-    portForwardEnabled: settings.qaa_generator_port_forward_enabled,
-    remotePort: String(settings.qaa_generator_port_forward_remote_port),
-    resource: settings.qaa_generator_port_forward_resource,
     superuserToken: EMPTY_VALUE,
     superuserTokenDirty: false,
     superuserTokenSet: settings.qaa_generator_superuser_token_set,
   };
-}
-
-function parseNumberField(value: string, label: string): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
-    throw new Error(`${label} must be a number.`);
-  }
-  return parsed;
 }
 
 function NoticeAlert({
@@ -223,11 +195,6 @@ export function ServerSettingsPage() {
     setNotice(null);
     const payload: ServerSettingsUpdateRequest = {
       qaa_generator_base_url: form.baseUrl,
-      qaa_generator_port_forward_enabled: form.portForwardEnabled,
-      qaa_generator_port_forward_local_port: parseNumberField(form.localPort, TITLE_TEXT.LOCAL_PORT),
-      qaa_generator_port_forward_namespace: form.namespace,
-      qaa_generator_port_forward_remote_port: parseNumberField(form.remotePort, TITLE_TEXT.REMOTE_PORT),
-      qaa_generator_port_forward_resource: form.resource,
     };
     if (form.superuserTokenDirty) {
       payload.qaa_generator_superuser_token = form.superuserToken;
@@ -283,31 +250,6 @@ export function ServerSettingsPage() {
                   setField("superuserTokenDirty", true);
                 }}
                 value={form.superuserToken}
-              />
-              <Switch
-                checked={form.portForwardEnabled}
-                label={ServerSettingsPageCopy.PORT_FORWARD_ENABLED_LABEL}
-                onChange={(event) => setField("portForwardEnabled", event.currentTarget.checked)}
-              />
-              <TextInput
-                label={ServerSettingsPageCopy.NAMESPACE_LABEL}
-                onChange={(event) => setField("namespace", event.currentTarget.value)}
-                value={form.namespace}
-              />
-              <TextInput
-                label={ServerSettingsPageCopy.RESOURCE_LABEL}
-                onChange={(event) => setField("resource", event.currentTarget.value)}
-                value={form.resource}
-              />
-              <TextInput
-                label={ServerSettingsPageCopy.LOCAL_PORT_LABEL}
-                onChange={(event) => setField("localPort", event.currentTarget.value)}
-                value={form.localPort}
-              />
-              <TextInput
-                label={ServerSettingsPageCopy.REMOTE_PORT_LABEL}
-                onChange={(event) => setField("remotePort", event.currentTarget.value)}
-                value={form.remotePort}
               />
             </SimpleGrid>
             <Group justify="space-between">

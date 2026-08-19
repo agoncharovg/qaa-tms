@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from enum import StrEnum
 
 import httpx
 from fastapi import FastAPI, HTTPException, status
@@ -24,20 +22,7 @@ from app.core.constants import (
 from app.db.seed import seed_dev_users
 from app.db.session import create_engine_and_session_maker
 from app.services.jenkins_cache import JenkinsCache
-from app.services.qaa_generator_transport import (
-    QaaGeneratorPortForwardProcess,
-    QaaGeneratorTransportError,
-    resolve_direct_qaa_generator_runtime,
-    resolve_qaa_generator_runtime,
-)
-
-LOGGER = logging.getLogger(__name__)
-
-
-class QaaGeneratorStartupMessage(StrEnum):
-    PORT_FORWARD_FALLBACK = (
-        "qaa-generator port-forward setup failed; falling back to the configured base URL: %s"
-    )
+from app.services.qaa_generator_transport import resolve_qaa_generator_runtime
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -47,19 +32,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         runtime = resolve_qaa_generator_runtime(resolved_settings)
-        qaa_generator_port_forward: QaaGeneratorPortForwardProcess | None = None
-        if runtime.port_forward is not None:
-            qaa_generator_port_forward = QaaGeneratorPortForwardProcess(
-                runtime.port_forward,
-                timeout_seconds=DEFAULT_QAA_GENERATOR_TIMEOUT_SECONDS,
-            )
-            try:
-                qaa_generator_port_forward.__enter__()
-            except QaaGeneratorTransportError as exc:
-                LOGGER.warning(QaaGeneratorStartupMessage.PORT_FORWARD_FALLBACK.value, exc)
-                qaa_generator_port_forward = None
-                runtime = resolve_direct_qaa_generator_runtime(resolved_settings)
-
         qaa_generator_client = httpx.AsyncClient(
             base_url=runtime.base_url,
             timeout=DEFAULT_QAA_GENERATOR_TIMEOUT_SECONDS,
@@ -74,8 +46,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await seed_dev_users(session)
         yield
         await qaa_generator_client.aclose()
-        if qaa_generator_port_forward is not None:
-            qaa_generator_port_forward.__exit__(None, None, None)
         await engine.dispose()
 
     app = FastAPI(title="QAA-TMS Backend", lifespan=lifespan)

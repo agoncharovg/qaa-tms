@@ -5,10 +5,10 @@ import httpx
 
 async def test_cors_allows_tms_origin_preflight(client: httpx.AsyncClient) -> None:
     response = await client.options(
-        "/preflight",
+        "/settings",
         headers={
             "Origin": "http://localhost:3000",
-            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Method": "PUT",
             "Access-Control-Request-Headers": "Authorization, X-QAA-TMS",
         },
     )

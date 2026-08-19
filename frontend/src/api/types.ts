@@ -83,21 +83,11 @@ export interface LoginResponse {
 export interface ServerSettingsRead {
   qaa_generator_base_url: string;
   qaa_generator_superuser_token_set: boolean;
-  qaa_generator_port_forward_enabled: boolean;
-  qaa_generator_port_forward_namespace: string;
-  qaa_generator_port_forward_resource: string;
-  qaa_generator_port_forward_local_port: number;
-  qaa_generator_port_forward_remote_port: number;
 }
 
 export interface ServerSettingsUpdateRequest {
   qaa_generator_base_url?: string;
   qaa_generator_superuser_token?: string;
-  qaa_generator_port_forward_enabled?: boolean;
-  qaa_generator_port_forward_namespace?: string;
-  qaa_generator_port_forward_resource?: string;
-  qaa_generator_port_forward_local_port?: number;
-  qaa_generator_port_forward_remote_port?: number;
 }
 
 export interface AgentPingResponse {

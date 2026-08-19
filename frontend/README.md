@@ -85,8 +85,8 @@ The bottom sidebar account entry opens the `Profile` system plugin plus a logout
 `VITE_AGENT_PORTS` into localStorage. They are read at module load, so the UI asks for a
 reload after saving. `Settings -> Local companion` talks directly to the agent on
 `127.0.0.1`. `Settings -> Server` is visible to admins only and updates the backend-side
-qaa-generator operational config; changing transport details there still requires a backend
-restart because the outbound client and optional port-forward are created at startup.
+qaa-generator operational config; changing the base URL there still requires a backend
+restart because the outbound client is created at startup.
 
 ## Administration workflow
 

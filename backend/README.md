@@ -58,17 +58,10 @@ the values still persist to the real consumer surfaces. Backend QAA generator tr
 in the backend `.env`; per-user QAA generator tokens live only in the local companion `.env`; bootstrap-only values such as `DATABASE_URL` and `JWT_SECRET` remain
 outside the UI.
 
-- `QAA_GENERATOR_BASE_URL`: base URL for the upstream service. Default: `http://qaa-generator.default.svc.cluster.local:8080/api/v1`
-- `QAA_GENERATOR_PORT_FORWARD_ENABLED`: when `true`, ignore the configured upstream URL locally and talk to qaa-generator through `kubectl port-forward`. Default: `false`
-- `QAA_GENERATOR_PORT_FORWARD_NAMESPACE`: Kubernetes namespace for the local port-forward workaround. Default: `qaa-prod`
-- `QAA_GENERATOR_PORT_FORWARD_RESOURCE`: Kubernetes service resource for the local port-forward workaround. Default: `svc/qaa-generator`
-- `QAA_GENERATOR_PORT_FORWARD_LOCAL_PORT`: local port for the workaround tunnel. Default: `18080`
-- `QAA_GENERATOR_PORT_FORWARD_REMOTE_PORT`: remote service port for the workaround tunnel. Default: `8080`
+- `QAA_GENERATOR_BASE_URL`: base URL for the upstream service. Default: `https://qaa-generator-prod.i.gc.onl/api/v1`
 - `QAA_GENERATOR_SUPERUSER_TOKEN`: bearer token the backend sends only for admin calls to QAA generator. This value never reaches the browser.
 
-Changing `QAA_GENERATOR_BASE_URL` or any port-forward value through the UI still requires a
-backend restart, because the outbound HTTP client and optional port-forward process are
-created at startup.
+Changing `QAA_GENERATOR_BASE_URL` through the UI still requires a backend restart, because the outbound HTTP client is created at startup.
 
 ## Local run
 
@@ -93,8 +86,6 @@ alembic upgrade head
 ```bash
 uvicorn app.main:app --reload
 ```
-
-If qaa-generator has no ingress yet, enable `QAA_GENERATOR_PORT_FORWARD_ENABLED=true` and keep `kubectl` authenticated; the backend will tunnel `svc/qaa-generator` locally and keep the public API shape unchanged.
 
 The startup sequence seeds the `test` and `admin` users if they do not exist yet.
 

@@ -13,13 +13,8 @@ def write_backend_env(path: Path) -> None:
     path.write_text(
         "\n".join(
             [
-                "QAA_GENERATOR_BASE_URL=http://initial.example/api/v1",
+                "QAA_GENERATOR_BASE_URL=https://initial.example/api/v1",
                 "QAA_GENERATOR_SUPERUSER_TOKEN=super-token",
-                "QAA_GENERATOR_PORT_FORWARD_ENABLED=true",
-                "QAA_GENERATOR_PORT_FORWARD_NAMESPACE=initial-ns",
-                "QAA_GENERATOR_PORT_FORWARD_RESOURCE=svc/initial",
-                "QAA_GENERATOR_PORT_FORWARD_LOCAL_PORT=18080",
-                "QAA_GENERATOR_PORT_FORWARD_REMOTE_PORT=8080",
                 "",
             ]
         ),
@@ -40,7 +35,7 @@ def test_server_settings_are_admin_only(client: TestClient, tmp_path: Path, monk
     non_admin_put = client.put(
         "/api/v1/settings",
         headers=auth_header(user_token),
-        json={"qaa_generator_base_url": "http://blocked.example/api/v1"},
+        json={"qaa_generator_base_url": "https://blocked.example/api/v1"},
     )
     admin_get = client.get("/api/v1/settings", headers=auth_header(admin_token))
 
@@ -67,29 +62,22 @@ def test_put_server_settings_masks_superuser_token_and_refreshes_runtime(
         "/api/v1/settings",
         headers=auth_header(admin_token),
         json={
-            "qaa_generator_base_url": "http://updated.example/api/v1",
+            "qaa_generator_base_url": "https://updated.example/api/v1",
             "qaa_generator_superuser_token": "updated-super",
-            "qaa_generator_port_forward_enabled": False,
-            "qaa_generator_port_forward_namespace": "updated-ns",
-            "qaa_generator_port_forward_resource": "svc/updated",
-            "qaa_generator_port_forward_local_port": 19090,
-            "qaa_generator_port_forward_remote_port": 9090,
         },
     )
 
     assert response.status_code == 200
     body = response.json()
-    assert body["qaa_generator_base_url"] == "http://updated.example/api/v1"
+    assert body["qaa_generator_base_url"] == "https://updated.example/api/v1"
     assert body["qaa_generator_superuser_token_set"] is True
-    assert body["qaa_generator_port_forward_enabled"] is False
-    assert body["qaa_generator_port_forward_local_port"] == 19090
-    assert body["qaa_generator_port_forward_remote_port"] == 9090
 
     runtime_settings = client.app.state.settings
-    assert runtime_settings.qaa_generator_base_url == "http://updated.example/api/v1"
+    assert runtime_settings.qaa_generator_base_url == "https://updated.example/api/v1"
     assert runtime_settings.qaa_generator_superuser_token == "updated-super"
 
     serialized_env = env_path.read_text(encoding="utf-8")
+    assert "QAA_GENERATOR_BASE_URL=https://updated.example/api/v1\n" in serialized_env
     assert "QAA_GENERATOR_SUPERUSER_TOKEN=updated-super\n" in serialized_env
 
     read_back = client.get("/api/v1/settings", headers=auth_header(admin_token))
