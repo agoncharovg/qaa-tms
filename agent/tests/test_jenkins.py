@@ -901,6 +901,145 @@ async def test_freeze_folder_builds_fullname_prefix_and_parses_snapshot() -> Non
     assert base64.b64encode(b".QAA/E2E/PREPROD/").decode("ascii") in scripts[0]
 
 
+async def test_freeze_folder_decodes_urlencoded_folder_names_in_fullname_prefix() -> None:
+    settings = build_settings()
+    scripts: list[str] = []
+    portal_path = f"{PREPROD_FE_PATH}/job/IAM/job/IAM%20Client%20portal"
+
+    await freeze_folder(
+        settings,
+        portal_path,
+        kill_builds=False,
+        transport=build_freeze_script_transport(
+            scripts,
+            script_text=(
+                "Result: null\n"
+                "[{"
+                "\"path\":\"job/.QAA/job/UI_E2E/job/PREPROD/job/IAM/job/"
+                "IAM Client portal/job/Web\","
+                "\"fullName\":\".QAA/UI_E2E/PREPROD/IAM/IAM Client portal/Web\","
+                "\"name\":\"Web\","
+                "\"wasDisabled\":false,"
+                "\"scheduled\":false,"
+                "\"wasBuilding\":false}]\n"
+            ),
+        ),
+    )
+
+    expected_prefix = ".QAA/UI_E2E/PREPROD/IAM/IAM Client portal/"
+    assert base64.b64encode(expected_prefix.encode("utf-8")).decode("ascii") in scripts[0]
+
+
+async def test_freeze_folder_falls_back_to_rest_when_groovy_returns_empty_snapshot() -> None:
+    settings = build_settings()
+    requests: list[str] = []
+    portal_path = f"{PREPROD_FE_PATH}/job/IAM/job/IAM%20Client%20portal"
+    pipeline_path = f"{portal_path}/job/Web"
+    tree_payload = {
+        "_class": "com.cloudbees.hudson.plugins.folder.Folder",
+        "jobs": [
+            {
+                "_class": "org.jenkinsci.plugins.workflow.job.WorkflowJob",
+                "disabled": False,
+                "lastBuild": {"building": False},
+                "name": "Web",
+                "property": [],
+                "triggers": [],
+                "url": f"{JENKINS_BASE_URL}/{pipeline_path}/",
+            }
+        ],
+        "url": f"{JENKINS_BASE_URL}/{portal_path}/",
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        request_path = request.url.path.strip("/")
+        requests.append(request_path)
+        if request_path.endswith("crumbIssuer/api/json"):
+            return httpx.Response(
+                status_code=200,
+                json={"crumb": "csrf-token", "crumbRequestField": "Jenkins-Crumb"},
+                request=request,
+            )
+        if request_path.endswith("scriptText"):
+            return httpx.Response(status_code=200, text="Result: null\n[]\n", request=request)
+        if request_path.endswith("/api/json"):
+            requested_tree = request.url.params.get("tree", "")
+            if "jobs[" not in requested_tree:
+                folder_only = {key: value for key, value in tree_payload.items() if key != "jobs"}
+                return httpx.Response(status_code=200, json=folder_only, request=request)
+            return httpx.Response(status_code=200, json=tree_payload, request=request)
+        if request_path.endswith("/disable"):
+            return httpx.Response(status_code=200, request=request)
+        return httpx.Response(status_code=404, request=request)
+
+    snapshot = await freeze_folder(
+        settings,
+        portal_path,
+        kill_builds=False,
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert len(snapshot) == 1
+    assert snapshot[0].path == pipeline_path
+    assert snapshot[0].full_name == ".QAA/UI_E2E/PREPROD/IAM/IAM Client portal/Web"
+    assert any(path.endswith("/disable") for path in requests)
+
+
+async def test_freeze_folder_rest_fallback_decodes_urlencoded_snapshot_full_names() -> None:
+    settings = build_settings()
+    requests: list[str] = []
+    portal_path = f"{PREPROD_FE_PATH}/job/IAM/job/IAM%20Client%20portal"
+    pipeline_path = f"{portal_path}/job/Web"
+    tree_payload = {
+        "_class": "com.cloudbees.hudson.plugins.folder.Folder",
+        "jobs": [
+            {
+                "_class": "org.jenkinsci.plugins.workflow.job.WorkflowJob",
+                "disabled": False,
+                "lastBuild": {"building": False},
+                "name": "Web",
+                "property": [],
+                "triggers": [],
+                "url": f"{JENKINS_BASE_URL}/{pipeline_path}/",
+            }
+        ],
+        "url": f"{JENKINS_BASE_URL}/{portal_path}/",
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        request_path = request.url.path.strip("/")
+        requests.append(request_path)
+        if request_path.endswith("crumbIssuer/api/json"):
+            return httpx.Response(
+                status_code=200,
+                json={"crumb": "csrf-token", "crumbRequestField": "Jenkins-Crumb"},
+                request=request,
+            )
+        if request_path.endswith("scriptText"):
+            return httpx.Response(status_code=403, text="forbidden", request=request)
+        if request_path.endswith("/api/json"):
+            requested_tree = request.url.params.get("tree", "")
+            if "jobs[" not in requested_tree:
+                folder_only = {key: value for key, value in tree_payload.items() if key != "jobs"}
+                return httpx.Response(status_code=200, json=folder_only, request=request)
+            return httpx.Response(status_code=200, json=tree_payload, request=request)
+        if request_path.endswith("/disable"):
+            return httpx.Response(status_code=200, request=request)
+        return httpx.Response(status_code=404, request=request)
+
+    snapshot = await freeze_folder(
+        settings,
+        portal_path,
+        kill_builds=False,
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert len(snapshot) == 1
+    assert snapshot[0].path == pipeline_path
+    assert snapshot[0].full_name == ".QAA/UI_E2E/PREPROD/IAM/IAM Client portal/Web"
+    assert any(path.endswith("/disable") for path in requests)
+
+
 async def test_freeze_folder_kill_builds_toggles_abort_branch() -> None:
     settings = build_settings()
     scripts: list[str] = []
@@ -911,7 +1050,15 @@ async def test_freeze_folder_kill_builds_toggles_abort_branch() -> None:
         kill_builds=True,
         transport=build_freeze_script_transport(
             scripts,
-            script_text="Result: null\n[]\n",
+            script_text=(
+                "Result: null\n"
+                "[{\"path\":\"job/.QAA/job/E2E/job/PREPROD/job/Smoke\","
+                "\"fullName\":\".QAA/E2E/PREPROD/Smoke\","
+                "\"name\":\"Smoke\","
+                "\"wasDisabled\":false,"
+                "\"scheduled\":false,"
+                "\"wasBuilding\":false}]\n"
+            ),
         ),
     )
 

@@ -10,7 +10,7 @@ import logging
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 from uuid import UUID
 
 import httpx
@@ -283,7 +283,7 @@ def _fullname_prefix_from_job_path(job_path: str) -> str:
     """Convert ``job/...`` URL path segments into a Jenkins ``fullName`` prefix."""
 
     segments = [
-        segment
+        unquote(segment)
         for segment in job_path.strip(PATH_SEPARATOR).split(PATH_SEPARATOR)
         if segment and segment != JOB_PATH_PREFIX.strip(PATH_SEPARATOR)
     ]
@@ -587,8 +587,13 @@ async def freeze_folder(
             kill_builds=kill_builds,
             transport=transport,
         )
-        logger.info("jenkins freeze: mechanism=groovy path=%s", validated_path)
-        return snapshot
+        if snapshot:
+            logger.info("jenkins freeze: mechanism=groovy path=%s", validated_path)
+            return snapshot
+        logger.warning(
+            "jenkins freeze groovy returned empty snapshot, falling back to REST: path=%s",
+            validated_path,
+        )
     except JenkinsScriptConsoleError as exc:
         logger.warning(
             "jenkins freeze groovy failed, falling back to REST: path=%s error=%s",
