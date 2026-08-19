@@ -56,7 +56,7 @@ async def ensure_not_last_admin(db: AsyncSession, user: User) -> None:
     if await count_admins(db) <= 1:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="The last remaining admin cannot be removed.",
+            detail=ErrorMessage.LAST_REMAINING_ADMIN_CANNOT_BE_REMOVED.value,
         )
 
 
@@ -140,7 +140,7 @@ async def create_user(
     if existing_user is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Username already exists.",
+            detail=ErrorMessage.USERNAME_ALREADY_EXISTS.value,
         )
 
     user = User(
@@ -182,7 +182,7 @@ async def update_user(
     if user.id == current_user.id and "is_admin" in provided_fields and payload.is_admin is False:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="You cannot remove your own admin access.",
+            detail=ErrorMessage.CANNOT_REMOVE_OWN_ADMIN_ACCESS.value,
         )
 
     if "display_name" in provided_fields and payload.display_name is not None:
@@ -212,7 +212,7 @@ async def delete_user(
     if user.id == current_user.id:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="You cannot delete your own account.",
+            detail=ErrorMessage.CANNOT_DELETE_OWN_ACCOUNT.value,
         )
 
     operation_count = await db.scalar(
@@ -221,7 +221,7 @@ async def delete_user(
     if (operation_count or 0) > 0:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="This user has recorded operations; audit history must be preserved.",
+            detail=ErrorMessage.USER_HAS_RECORDED_OPERATIONS.value,
         )
 
     await db.delete(user)

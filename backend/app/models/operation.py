@@ -2,35 +2,27 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Integer, String, Text, Uuid
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.constants import (
     DEFAULT_STRING_LENGTH,
-    DatabaseDialect,
     OperationStatus,
     OperationType,
 )
+from app.core.db_types import enum_values, json_variant
+from app.core.time import utcnow
 from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.user import User
 
 
-def utcnow() -> datetime:
-    return datetime.now(UTC)
-
-
-def enum_values(enum_type: type[OperationType] | type[OperationStatus]) -> list[str]:
-    return [member.value for member in enum_type]
-
-
-recipe_column = JSON().with_variant(JSONB(), DatabaseDialect.POSTGRESQL.value)
+recipe_column = json_variant()
 
 
 class Operation(Base):

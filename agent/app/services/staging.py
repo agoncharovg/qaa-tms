@@ -17,7 +17,11 @@ from app.core.constants import (
     DEFAULT_STAGING_BINARY_NAME,
     PACKAGE_NAME,
     ErrorMessage,
+    GitCommand,
+    GitFlag,
+    GitRef,
     Product,
+    RequiredTool,
     StagingCommand,
     StagingFlag,
 )
@@ -178,7 +182,14 @@ def _resolve_git_sha(repo_root: Path | None) -> str | None:
         return None
     try:
         result = subprocess.run(
-            ["git", "-C", str(repo_root), "rev-parse", "--short", "HEAD"],
+            [
+                RequiredTool.GIT.value,
+                GitFlag.DIRECTORY.value,
+                str(repo_root),
+                GitCommand.REV_PARSE.value,
+                GitFlag.SHORT.value,
+                GitRef.HEAD.value,
+            ],
             check=True,
             capture_output=True,
             text=True,

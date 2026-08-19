@@ -146,7 +146,6 @@ AGENT_SETTINGS_ENV_KEY_BY_FIELD = {
 }
 
 AGENT_SETTINGS_RUNTIME_FIELDS = tuple(AGENT_SETTINGS_ENV_KEY_BY_FIELD)
-CSV_SEPARATOR = ","
 
 
 def serialize_env_value(value: object) -> str:
@@ -155,7 +154,7 @@ def serialize_env_value(value: object) -> str:
             return GROUP_LIST_SEPARATOR.join(
                 f"{item.label}{GROUP_LABEL_SEPARATOR}{item.path}" for item in value
             )
-        return CSV_SEPARATOR.join(str(item) for item in value)
+        return GROUP_LIST_SEPARATOR.join(str(item) for item in value)
     return str(value)
 
 

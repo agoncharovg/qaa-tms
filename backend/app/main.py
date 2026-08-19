@@ -15,6 +15,7 @@ from app.core.config import Settings, get_settings
 from app.core.constants import (
     DEFAULT_QAA_GENERATOR_TIMEOUT_SECONDS,
     ApiTag,
+    ErrorMessage,
     HealthFieldName,
     HealthStatus,
     RoutePath,
@@ -73,7 +74,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except Exception as exc:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Database is not ready.",
+                detail=ErrorMessage.DATABASE_NOT_READY.value,
             ) from exc
         return {HealthFieldName.STATUS.value: HealthStatus.READY.value}
 

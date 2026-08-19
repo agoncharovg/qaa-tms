@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from uuid import uuid4
 
 from app.core.constants import (
@@ -16,13 +16,8 @@ from app.core.constants import (
     JENKINS_REFRESH_LEASE_TTL_SECONDS,
     JENKINS_TREE_CACHE_TTL_SECONDS,
 )
+from app.core.time import utcnow
 from app.schemas.jenkins import JenkinsBuild, JenkinsNode
-
-
-def utcnow() -> datetime:
-    """Return the current UTC time."""
-
-    return datetime.now(UTC)
 
 
 @dataclass

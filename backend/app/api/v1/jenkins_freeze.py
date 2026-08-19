@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from enum import StrEnum
 from typing import Annotated
-from urllib.parse import unquote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -19,8 +18,11 @@ from app.core.constants import (
     ApiTag,
     JenkinsFreezeStatus,
     JenkinsResumeRunStatus,
+    QueryParam,
     RoutePath,
 )
+from app.core.jenkins_paths import normalize_jenkins_path
+from app.core.time import utcnow
 from app.models.jenkins_freeze import JenkinsFreeze
 from app.models.jenkins_resume_run import JenkinsResumeRun
 from app.schemas.jenkins_freeze import (
@@ -45,9 +47,6 @@ class FreezeErrorMessage(StrEnum):
     RESUME_LOCK_CONFLICT = "Another Jenkins resume campaign is already running for this scope."
 
 
-def utcnow() -> datetime:
-    return datetime.now(UTC)
-
 
 async def has_running_resume_lock(db: AsyncSession, signature: str) -> bool:
     cutoff = utcnow() - timedelta(seconds=JENKINS_RESUME_RUN_STALE_SECONDS)
@@ -60,9 +59,6 @@ async def has_running_resume_lock(db: AsyncSession, signature: str) -> bool:
     )
     return running_run is not None
 
-
-def normalize_jenkins_path(path: str) -> str:
-    return unquote(path).strip("/")
 
 
 def intersects_path(left: str, right: str) -> bool:
@@ -125,7 +121,9 @@ async def list_jenkins_freezes(
     _: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
     signature: Annotated[str, Query(...)],
-    status_: Annotated[JenkinsFreezeStatus, Query(alias="status")] = JenkinsFreezeStatus.ACTIVE,
+    status_: Annotated[
+        JenkinsFreezeStatus, Query(alias=QueryParam.STATUS.value)
+    ] = JenkinsFreezeStatus.ACTIVE,
 ) -> list[JenkinsFreezeRead]:
     freezes = await db.scalars(
         select(JenkinsFreeze)

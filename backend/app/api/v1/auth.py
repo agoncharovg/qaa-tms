@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
 from app.core.config import Settings
-from app.core.constants import ApiTag, RoutePath, TokenType
+from app.core.constants import ApiTag, ErrorMessage, RoutePath, TokenType
 from app.core.security import create_access_token, verify_password
 from app.models.user import User
 from app.schemas.auth import LoginRequest, LoginResponse
@@ -29,7 +29,7 @@ async def login(
     if user is None or not verify_password(payload.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username or password.",
+            detail=ErrorMessage.INVALID_USERNAME_OR_PASSWORD.value,
         )
 
     settings = cast(Settings, request.app.state.settings)

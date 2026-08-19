@@ -11,6 +11,9 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from app.core import env_file
 from app.core.constants import (
+    DEFAULT_DATABASE_URL,
+    DEFAULT_JWT_EXPIRE_MINUTES,
+    DEFAULT_JWT_SECRET,
     DEFAULT_QAA_GENERATOR_BASE_URL,
     DEFAULT_QAA_GENERATOR_SUPERUSER_TOKEN,
     EnvKey,
@@ -28,11 +31,14 @@ class Settings(BaseSettings):
     )
 
     database_url: str = Field(
-        default="postgresql+asyncpg://qaa_tms:qaa_tms@localhost:5432/qaa_tms",
+        default=DEFAULT_DATABASE_URL,
         alias=EnvKey.DATABASE_URL.value,
     )
-    jwt_secret: str = Field(default="dev-secret-change-me", alias=EnvKey.JWT_SECRET.value)
-    jwt_expire_minutes: int = Field(default=720, alias=EnvKey.JWT_EXPIRE_MINUTES.value)
+    jwt_secret: str = Field(default=DEFAULT_JWT_SECRET, alias=EnvKey.JWT_SECRET.value)
+    jwt_expire_minutes: int = Field(
+        default=DEFAULT_JWT_EXPIRE_MINUTES,
+        alias=EnvKey.JWT_EXPIRE_MINUTES.value,
+    )
     cors_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=list,
         alias=EnvKey.CORS_ORIGINS.value,

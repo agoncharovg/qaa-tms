@@ -35,6 +35,7 @@ from app.schemas import (
     SyncRequest,
 )
 from app.services.backend import build_operation_payload, push_operation
+from app.services.command import spawn_namespaces_process
 from app.services.sse import encode_sse
 from app.services.staging import (
     StagingInstallation,
@@ -272,13 +273,7 @@ class JobManager:
             return
 
         try:
-            job.process = await asyncio.create_subprocess_exec(
-                *job.argv,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-                cwd=str(job.repo_root) if job.repo_root is not None else None,
-                start_new_session=True,
-            )
+            job.process = await spawn_namespaces_process(job.argv, job.repo_root)
             assert job.process.stdout is not None
             while True:
                 raw_line = await job.process.stdout.readline()

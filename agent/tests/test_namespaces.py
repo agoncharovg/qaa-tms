@@ -10,6 +10,7 @@ from conftest import BackendRecorder, parse_sse_events
 from app.core.config import Settings
 from app.main import create_app
 from app.services import namespaces as namespaces_service
+from app.services import sse as sse_service
 from app.services.namespaces import PlainTextCommandResult, stream_namespace_logs
 
 
@@ -141,12 +142,16 @@ async def test_namespace_logs_stream_uses_job_sse_frame_format(
     backend_recorder: BackendRecorder,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def fake_spawn(argv: list[str], repo_root: Path | None) -> FakeProcess:
+    async def fake_spawn(
+        argv: list[str],
+        repo_root: Path | None,
+        env: dict[str, str] | None = None,
+    ) -> FakeProcess:
         assert argv[-3:] == ["logs", "qa-demo", "iam-api"]
         assert repo_root is not None
         return FakeProcess([b"line one\n", b"line two\n"], exit_code=0)
 
-    monkeypatch.setattr(namespaces_service, "spawn_namespaces_process", fake_spawn)
+    monkeypatch.setattr(sse_service, "spawn_namespaces_process", fake_spawn)
 
     response = await client.get("/namespaces/qa-demo/logs?deploy=iam-api", headers=auth_headers)
 
@@ -166,7 +171,11 @@ async def test_namespace_logs_terminates_process_on_disconnect(
 ) -> None:
     terminated: list[FakeProcess] = []
 
-    async def fake_spawn(argv: list[str], repo_root: Path | None) -> FakeProcess:
+    async def fake_spawn(
+        argv: list[str],
+        repo_root: Path | None,
+        env: dict[str, str] | None = None,
+    ) -> FakeProcess:
         assert argv[-3:] == ["logs", "qa-demo", "iam-api"]
         assert repo_root is not None
         return FakeProcess([], exit_code=0)
@@ -178,8 +187,8 @@ async def test_namespace_logs_terminates_process_on_disconnect(
     async def disconnected() -> bool:
         return True
 
-    monkeypatch.setattr(namespaces_service, "spawn_namespaces_process", fake_spawn)
-    monkeypatch.setattr(namespaces_service, "terminate_process", fake_terminate)
+    monkeypatch.setattr(sse_service, "spawn_namespaces_process", fake_spawn)
+    monkeypatch.setattr(sse_service, "terminate_process", fake_terminate)
 
     stream = stream_namespace_logs(
         app.state.settings,

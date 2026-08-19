@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Annotated
-from urllib.parse import unquote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -21,8 +20,11 @@ from app.core.constants import (
     JenkinsFreezeStatus,
     JenkinsResumeItemState,
     JenkinsResumeRunStatus,
+    QueryParam,
     RoutePath,
 )
+from app.core.jenkins_paths import normalize_jenkins_path
+from app.core.time import utcnow
 from app.models.jenkins_freeze import JenkinsFreeze
 from app.models.jenkins_resume_run import JenkinsResumeRun
 from app.schemas.jenkins_freeze import JenkinsFreezeSnapshotItem
@@ -41,15 +43,14 @@ router = APIRouter(
 
 class ResumeRunErrorMessage(StrEnum):
     CANCEL_CONFLICT = "Only running resume campaigns can be cancelled."
+    DISABLED_BEFORE_FREEZE = "Disabled before the freeze"
+    FOLDER_NOT_IN_FREEZE = "Resume folder is not part of this freeze."
     FREEZE_INACTIVE = "Only active freezes can be resumed."
     FREEZE_NOT_FOUND = "Jenkins freeze not found."
     LOCK_CONFLICT = "Another Jenkins resume campaign is already running for this scope."
     PLAN_ITEM_NOT_FOUND = "Resume progress path is not part of this campaign."
     RUN_NOT_FOUND = "Jenkins resume campaign not found."
 
-
-def utcnow() -> datetime:
-    return datetime.now(UTC)
 
 
 def ensure_utc(value: datetime) -> datetime:
@@ -120,14 +121,13 @@ async def get_freeze_or_404(db: AsyncSession, freeze_id: UUID) -> JenkinsFreeze:
     return freeze
 
 
-def normalize_jenkins_path(path: str) -> str:
-    return unquote(path).strip("/")
-
 
 def is_same_or_nested_path(path: str, prefix: str) -> bool:
     normalized_path = normalize_jenkins_path(path)
     normalized_prefix = normalize_jenkins_path(prefix)
-    return normalized_path == normalized_prefix or normalized_path.startswith(f"{normalized_prefix}/")
+    return normalized_path == normalized_prefix or normalized_path.startswith(
+        f"{normalized_prefix}/"
+    )
 
 
 def build_resume_item(snapshot_item: JenkinsFreezeSnapshotItem) -> JenkinsResumeItem:
@@ -138,7 +138,7 @@ def build_resume_item(snapshot_item: JenkinsFreezeSnapshotItem) -> JenkinsResume
             full_name=snapshot_item.full_name,
             scheduled=snapshot_item.scheduled,
             state=JenkinsResumeItemState.SKIPPED,
-            reason="Disabled before the freeze",
+            reason=ResumeRunErrorMessage.DISABLED_BEFORE_FREEZE.value,
         )
     return JenkinsResumeItem(
         path=snapshot_item.path,
@@ -200,7 +200,7 @@ async def create_jenkins_resume_run(
     if not is_same_or_nested_path(target_path, freeze.folder_path):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Resume folder is not part of this freeze.",
+            detail=ResumeRunErrorMessage.FOLDER_NOT_IN_FREEZE.value,
         )
 
     snapshot_items = [
@@ -230,7 +230,9 @@ async def create_jenkins_resume_run(
         heartbeat_at=now,
         finished_at=now if run_status is JenkinsResumeRunStatus.DONE else None,
     )
-    if run_status is JenkinsResumeRunStatus.DONE and normalize_jenkins_path(target_path) == normalize_jenkins_path(freeze.folder_path):
+    if run_status is JenkinsResumeRunStatus.DONE and normalize_jenkins_path(
+        target_path
+    ) == normalize_jenkins_path(freeze.folder_path):
         freeze.status = JenkinsFreezeStatus.RESOLVED
         freeze.resolved_by_id = current_user.id
         freeze.resolved_by = current_user
@@ -255,7 +257,9 @@ async def list_jenkins_resume_runs(
     _: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
     signature: Annotated[str, Query(...)],
-    status_: Annotated[JenkinsResumeRunStatus | None, Query(alias="status")] = (
+    status_: Annotated[
+        JenkinsResumeRunStatus | None, Query(alias=QueryParam.STATUS.value)
+    ] = (
         JenkinsResumeRunStatus.RUNNING
     ),
 ) -> list[JenkinsResumeRunRead]:

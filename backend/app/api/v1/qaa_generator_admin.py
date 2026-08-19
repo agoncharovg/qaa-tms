@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.deps import AdminUser
 from app.core.config import Settings
-from app.core.constants import ApiTag, MediaType, RoutePath
+from app.core.constants import ApiTag, HttpMethod, MediaType, RoutePath
 from app.schemas.qaa_generator import (
     QaaServiceTokenCreateRequest,
     QaaUserCreateRequest,
@@ -31,12 +31,6 @@ from app.services.qaa_generator import (
 
 router = APIRouter(tags=[ApiTag.QAA_GENERATOR.value])
 
-
-class HttpMethod(StrEnum):
-    DELETE = "DELETE"
-    GET = "GET"
-    PATCH = "PATCH"
-    POST = "POST"
 
 
 class QaaAdminListQueryParam(StrEnum):

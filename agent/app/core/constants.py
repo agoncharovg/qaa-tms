@@ -179,6 +179,21 @@ class RequiredTool(StrEnum):
     GIT = "git"
 
 
+class GitCommand(StrEnum):
+    REV_PARSE = "rev-parse"
+    SUBMODULE = "submodule"
+    STATUS = "status"
+
+
+class GitFlag(StrEnum):
+    DIRECTORY = "-C"
+    SHORT = "--short"
+
+
+class GitRef(StrEnum):
+    HEAD = "HEAD"
+
+
 class DockerRegistry(StrEnum):
     HARBOR = "harbor.p.gc.onl"
     STAGING = "registry.frn-stg.p.gc.onl:8443"

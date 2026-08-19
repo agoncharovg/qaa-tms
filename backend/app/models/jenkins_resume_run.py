@@ -2,19 +2,29 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, JSON, DateTime, Enum, ForeignKey, Index, Integer, String, Uuid, text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Uuid,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.constants import (
     DEFAULT_STRING_LENGTH,
-    DatabaseDialect,
     JenkinsResumeRunStatus,
 )
+from app.core.db_types import enum_values, json_variant
+from app.core.time import utcnow
 from app.db.base import Base
 
 if TYPE_CHECKING:
@@ -22,15 +32,7 @@ if TYPE_CHECKING:
     from app.models.user import User
 
 
-def utcnow() -> datetime:
-    return datetime.now(UTC)
-
-
-def enum_values(enum_type: type[JenkinsResumeRunStatus]) -> list[str]:
-    return [member.value for member in enum_type]
-
-
-items_column = JSON().with_variant(JSONB(), DatabaseDialect.POSTGRESQL.value)
+items_column = json_variant()
 
 
 class JenkinsResumeRun(Base):
@@ -42,8 +44,8 @@ class JenkinsResumeRun(Base):
             "uq_jenkins_resume_runs_active",
             "signature",
             unique=True,
-            postgresql_where=text("status = 'running'"),
-            sqlite_where=text("status = 'running'"),
+            postgresql_where=text(f"status = '{JenkinsResumeRunStatus.RUNNING.value}'"),
+            sqlite_where=text(f"status = '{JenkinsResumeRunStatus.RUNNING.value}'"),
         ),
     )
 

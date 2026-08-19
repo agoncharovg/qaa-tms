@@ -131,6 +131,13 @@ class HttpHeader(StrEnum):
     X_QAA_GENERATOR_TOKEN = "X-QAA-Generator-Token"
 
 
+class HttpMethod(StrEnum):
+    DELETE = "DELETE"
+    GET = "GET"
+    PATCH = "PATCH"
+    POST = "POST"
+
+
 class MediaType(StrEnum):
     JSON = "application/json"
     TEXT_EVENT_STREAM = "text/event-stream"
@@ -157,6 +164,11 @@ class EnvKey(StrEnum):
 
 class EnvFile(StrEnum):
     DOT_ENV = ".env"
+
+
+class QueryParam(StrEnum):
+    STATUS = "status"
+    TYPE = "type"
 
 
 class DatabaseDialect(StrEnum):
@@ -206,6 +218,17 @@ class QaaRunStatus(StrEnum):
 
 
 class ErrorMessage(StrEnum):
+    ADMIN_ACCESS_REQUIRED = "Admin access is required."
+    CANNOT_DELETE_OWN_ACCOUNT = "You cannot delete your own account."
+    CANNOT_REMOVE_OWN_ADMIN_ACCESS = "You cannot remove your own admin access."
+    DATABASE_NOT_READY = "Database is not ready."
+    INVALID_USERNAME_OR_PASSWORD = "Invalid username or password."
+    LAST_REMAINING_ADMIN_CANNOT_BE_REMOVED = "The last remaining admin cannot be removed."
+    NOT_AUTHENTICATED = "Not authenticated."
+    USERNAME_ALREADY_EXISTS = "Username already exists."
+    USER_HAS_RECORDED_OPERATIONS = (
+        "This user has recorded operations; audit history must be preserved."
+    )
     INVALID_AUTHENTICATION_CREDENTIALS = "Invalid authentication credentials."
     OPERATION_NOT_FOUND = "Operation not found."
     USER_NOT_FOUND = "User not found."
@@ -244,6 +267,9 @@ OPERATIONS_MIN_LIMIT = 1
 OPERATIONS_MAX_LIMIT = 100
 OPERATIONS_DEFAULT_LIMIT = 20
 DEFAULT_OFFSET = 0
+DEFAULT_DATABASE_URL = "postgresql+asyncpg://qaa_tms:qaa_tms@localhost:5432/qaa_tms"
+DEFAULT_JWT_SECRET = "dev-secret-change-me"
+DEFAULT_JWT_EXPIRE_MINUTES = 720
 DEFAULT_QAA_GENERATOR_BASE_URL = "https://qaa-generator-prod.i.gc.onl/api/v1"
 DEFAULT_QAA_GENERATOR_SUPERUSER_TOKEN = ""
 DEFAULT_QAA_GENERATOR_TIMEOUT_SECONDS = 30.0

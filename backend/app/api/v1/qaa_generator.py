@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
 import re
-from datetime import UTC, datetime
+from collections.abc import AsyncIterator
+from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Any, cast
 
@@ -19,12 +19,14 @@ from app.core.config import Settings
 from app.core.constants import (
     ApiTag,
     HttpHeader,
+    HttpMethod,
     MediaType,
     OperationStatus,
     OperationType,
     QaaRunStatus,
     RoutePath,
 )
+from app.core.time import utcnow
 from app.models.operation import Operation
 from app.models.user import User
 from app.schemas.operation import OperationRecipe
@@ -58,18 +60,18 @@ class QaaListQueryParam(StrEnum):
 class QaaPayloadField(StrEnum):
     BRANCH = "branch"
     DRY_RUN = "dry_run"
+    FINAL_REPORT_TEXT = "final_report_text"
     FLAGS = "flags"
+    ID = "id"
+    ITEMS = "items"
     JIRA_KEY = "jira_key"
+    PR_URL = "pr_url"
     PROFILE = "profile"
+    REPORT_TEXT = "report_text"
     RUN_ID = "run_id"
     SKIP_EXEC = "skip_exec"
     SKIP_PR = "skip_pr"
     STATUS = "status"
-
-
-class HttpMethod(StrEnum):
-    GET = "GET"
-    POST = "POST"
 
 
 TERMINAL_QAA_TO_OPERATION_STATUS = {
@@ -82,9 +84,6 @@ QaaPersonalTokenHeader = Annotated[
     Header(alias=HttpHeader.X_QAA_GENERATOR_TOKEN.value),
 ]
 
-
-def utcnow() -> datetime:
-    return datetime.now(UTC)
 
 
 def get_qaa_client(request: Request) -> httpx.AsyncClient:
@@ -116,8 +115,14 @@ def build_operation_recipe(
 PR_URL_PATTERN = re.compile(r"^PR URL:\s*(?P<url>\S+)\s*$", re.MULTILINE)
 
 
-def build_proxy_response(result: QaaGeneratorJsonResponse, payload: Any | None = None) -> JSONResponse:
-    return JSONResponse(content=result.payload if payload is None else payload, status_code=result.status_code)
+def build_proxy_response(
+    result: QaaGeneratorJsonResponse,
+    payload: Any | None = None,
+) -> JSONResponse:
+    return JSONResponse(
+        content=result.payload if payload is None else payload,
+        status_code=result.status_code,
+    )
 
 
 def normalize_qaa_run_payload(payload: Any) -> Any:
@@ -127,10 +132,10 @@ def normalize_qaa_run_payload(payload: Any) -> Any:
     normalized = dict(payload)
     run_id = normalized.get(QaaPayloadField.RUN_ID.value)
     if not isinstance(run_id, str):
-        upstream_id = normalized.get("id")
+        upstream_id = normalized.get(QaaPayloadField.ID.value)
         if isinstance(upstream_id, str):
             normalized[QaaPayloadField.RUN_ID.value] = upstream_id
-    normalized.pop("id", None)
+    normalized.pop(QaaPayloadField.ID.value, None)
     return normalized
 
 
@@ -138,12 +143,14 @@ def normalize_qaa_runs_list_payload(payload: Any) -> Any:
     if not isinstance(payload, dict):
         return payload
 
-    items = payload.get("items")
+    items = payload.get(QaaPayloadField.ITEMS.value)
     if not isinstance(items, list):
         return payload
 
     normalized = dict(payload)
-    normalized["items"] = [normalize_qaa_run_payload(item) for item in items]
+    normalized[QaaPayloadField.ITEMS.value] = [
+        normalize_qaa_run_payload(item) for item in items
+    ]
     return normalized
 
 
@@ -162,18 +169,20 @@ def normalize_qaa_run_artifacts_payload(payload: Any) -> Any:
         return payload
 
     normalized = dict(payload)
-    report_text = normalized.get("report_text")
+    report_text = normalized.get(QaaPayloadField.REPORT_TEXT.value)
     if not isinstance(report_text, str):
-        final_report_text = normalized.get("final_report_text")
+        final_report_text = normalized.get(QaaPayloadField.FINAL_REPORT_TEXT.value)
         if isinstance(final_report_text, str):
             report_text = final_report_text
-            normalized["report_text"] = final_report_text
+            normalized[QaaPayloadField.REPORT_TEXT.value] = final_report_text
 
-    pr_url = normalized.get("pr_url")
+    pr_url = normalized.get(QaaPayloadField.PR_URL.value)
     if not isinstance(pr_url, str):
-        extracted_pr_url = extract_pr_url_from_report(report_text if isinstance(report_text, str) else None)
+        extracted_pr_url = extract_pr_url_from_report(
+            report_text if isinstance(report_text, str) else None
+        )
         if extracted_pr_url is not None:
-            normalized["pr_url"] = extracted_pr_url
+            normalized[QaaPayloadField.PR_URL.value] = extracted_pr_url
 
     return normalized
 

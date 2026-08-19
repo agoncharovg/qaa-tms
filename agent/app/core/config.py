@@ -166,7 +166,9 @@ class Settings(BaseSettings):
                         "AGENT_JENKINS_ROOT_GROUPS must be a JSON array or CSV string."
                     )
                 parsed_groups = cls._parse_root_group_items(parsed)
-                return parsed_groups or cls._parse_root_group_items(list(DEFAULT_JENKINS_ROOT_GROUPS))
+                return parsed_groups or cls._parse_root_group_items(
+                    list(DEFAULT_JENKINS_ROOT_GROUPS)
+                )
             values: list[Any] = [
                 item.strip() for item in stripped.split(GROUP_LIST_SEPARATOR) if item.strip()
             ]
@@ -190,7 +192,9 @@ class Settings(BaseSettings):
                 if not isinstance(parsed, list):
                     raise ValueError("AGENT_CORS_ORIGINS must be a JSON array or CSV string.")
                 return [str(item).strip() for item in parsed if str(item).strip()]
-            return [item.strip() for item in stripped.split(",") if item.strip()]
+            return [
+                item.strip() for item in stripped.split(GROUP_LIST_SEPARATOR) if item.strip()
+            ]
         raise ValueError("AGENT_CORS_ORIGINS must be a list or string.")
 
     @field_validator("jenkins_root_folders", mode="before")
@@ -213,7 +217,9 @@ class Settings(BaseSettings):
                     )
                 values = [str(item).strip() for item in parsed if str(item).strip()]
                 return values or list(DEFAULT_JENKINS_ROOT_FOLDERS)
-            values = [item.strip() for item in stripped.split(",") if item.strip()]
+            values = [
+                item.strip() for item in stripped.split(GROUP_LIST_SEPARATOR) if item.strip()
+            ]
             return values or list(DEFAULT_JENKINS_ROOT_FOLDERS)
         raise ValueError("AGENT_JENKINS_ROOT_FOLDERS must be a list or string.")
 

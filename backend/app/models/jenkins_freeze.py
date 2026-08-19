@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import JSON, Boolean, DateTime, Enum, ForeignKey, String, Text, Uuid
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.constants import DEFAULT_STRING_LENGTH, DatabaseDialect, JenkinsFreezeStatus
+from app.core.constants import DEFAULT_STRING_LENGTH, JenkinsFreezeStatus
+from app.core.db_types import enum_values, json_variant
+from app.core.time import utcnow
 from app.db.base import Base
 
 if TYPE_CHECKING:
@@ -18,15 +19,7 @@ if TYPE_CHECKING:
     from app.models.user import User
 
 
-def utcnow() -> datetime:
-    return datetime.now(UTC)
-
-
-def enum_values(enum_type: type[JenkinsFreezeStatus]) -> list[str]:
-    return [member.value for member in enum_type]
-
-
-snapshot_column = JSON().with_variant(JSONB(), DatabaseDialect.POSTGRESQL.value)
+snapshot_column = json_variant()
 
 
 class JenkinsFreeze(Base):

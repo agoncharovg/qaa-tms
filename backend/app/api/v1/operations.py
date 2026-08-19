@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID, uuid4
 
@@ -21,8 +20,10 @@ from app.core.constants import (
     ErrorMessage,
     OperationStatus,
     OperationType,
+    QueryParam,
     RoutePath,
 )
+from app.core.time import utcnow
 from app.models.operation import Operation
 from app.models.user import User
 from app.schemas.operation import (
@@ -35,9 +36,6 @@ from app.schemas.operation import (
 
 router = APIRouter(prefix=RoutePath.OPERATIONS.value, tags=[ApiTag.OPERATIONS.value])
 
-
-def utcnow() -> datetime:
-    return datetime.now(UTC)
 
 
 def to_operation_summary(operation: Operation) -> OperationSummary:
@@ -133,8 +131,8 @@ async def list_operations(
     db: Annotated[AsyncSession, Depends(get_db)],
     user_id: int | None = None,
     ns: str | None = None,
-    type_: Annotated[OperationType | None, Query(alias="type")] = None,
-    status_: Annotated[OperationStatus | None, Query(alias="status")] = None,
+    type_: Annotated[OperationType | None, Query(alias=QueryParam.TYPE.value)] = None,
+    status_: Annotated[OperationStatus | None, Query(alias=QueryParam.STATUS.value)] = None,
     limit: Annotated[int, Query(ge=OPERATIONS_MIN_LIMIT, le=OPERATIONS_MAX_LIMIT)] = (
         OPERATIONS_DEFAULT_LIMIT
     ),

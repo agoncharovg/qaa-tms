@@ -38,7 +38,7 @@ async def get_current_user(
     if credentials is None or credentials.scheme.lower() != TokenType.BEARER.value:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated.",
+            detail=ErrorMessage.NOT_AUTHENTICATED.value,
             headers={HttpHeader.WWW_AUTHENTICATE.value: AuthScheme.BEARER.value},
         )
 
@@ -78,7 +78,7 @@ async def get_current_admin(current_user: CurrentUser) -> User:
     if not current_user.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access is required.",
+            detail=ErrorMessage.ADMIN_ACCESS_REQUIRED.value,
         )
     return current_user
 

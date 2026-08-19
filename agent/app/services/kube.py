@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import json
 import os
@@ -23,25 +22,15 @@ from app.core.config import Settings
 from app.core.constants import (
     DEFAULT_KUBE_LOG_TAIL,
     ErrorMessage,
-    JobEventType,
-    JobStatus,
     KubectlCommand,
     KubectlFlag,
     KubectlOutput,
     OperationStatus,
     OperationType,
-    SseEvent,
 )
-from app.schemas import JobLogEvent, JobTerminalEvent
 from app.services.backend import build_operation_payload, push_operation
-from app.services.command import (
-    LOG_READ_POLL_SECONDS,
-    PlainTextCommandResult,
-    run_plain_text_command,
-    spawn_namespaces_process,
-    terminate_process,
-)
-from app.services.sse import encode_sse
+from app.services.command import PlainTextCommandResult, run_plain_text_command
+from app.services.sse import stream_process_log_frames
 
 
 class KubectlNotInstalledError(RuntimeError):
@@ -531,63 +520,7 @@ def stream_pod_logs(
     argv = build_pod_logs_argv(settings, namespace, pod, container, follow, tail, previous, context)
     env = build_kube_env(settings)
 
-    async def iterator() -> AsyncIterator[str]:
-        process = await spawn_namespaces_process(argv, None, env=env)
-        aborted = False
-
-        try:
-            assert process.stdout is not None
-            while True:
-                if await is_disconnected():
-                    aborted = True
-                    break
-
-                try:
-                    raw_line = await asyncio.wait_for(
-                        process.stdout.readline(),
-                        timeout=LOG_READ_POLL_SECONDS,
-                    )
-                except TimeoutError:
-                    if process.returncode is not None:
-                        break
-                    continue
-
-                if raw_line:
-                    line = raw_line.decode("utf-8", errors="replace").rstrip("\r\n")
-                    yield encode_sse(
-                        SseEvent.LOG,
-                        JobLogEvent(type=JobEventType.LINE.value, line=line).model_dump(),
-                    )
-                    continue
-
-                if process.returncode is not None:
-                    break
-
-                exit_code = await process.wait()
-                if exit_code is not None:
-                    break
-
-            if aborted:
-                return
-
-            exit_code = await process.wait()
-            status = JobStatus.SUCCESS if exit_code == 0 else JobStatus.FAILED
-            yield encode_sse(
-                SseEvent.TERMINAL,
-                JobTerminalEvent(
-                    type=JobEventType.TERMINAL.value,
-                    status=status,
-                    exit_code=exit_code,
-                ).model_dump(by_alias=True),
-            )
-        except asyncio.CancelledError:
-            aborted = True
-            raise
-        finally:
-            if aborted:
-                await terminate_process(process)
-
-    return iterator()
+    return stream_process_log_frames(argv, None, env=env, is_disconnected=is_disconnected)
 
 
 async def push_kube_operation(

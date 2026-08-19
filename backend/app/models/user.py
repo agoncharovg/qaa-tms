@@ -6,13 +6,14 @@ model because they are consumed by the local companion on the user's machine.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import JSON, Boolean, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.constants import DEFAULT_STRING_LENGTH
+from app.core.time import utcnow
 from app.db.base import Base
 
 if TYPE_CHECKING:
@@ -20,9 +21,6 @@ if TYPE_CHECKING:
     from app.models.jenkins_resume_run import JenkinsResumeRun
     from app.models.operation import Operation
 
-
-def utcnow() -> datetime:
-    return datetime.now(UTC)
 
 
 class User(Base):

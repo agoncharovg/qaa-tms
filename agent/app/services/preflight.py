@@ -15,6 +15,8 @@ from app.core.constants import (
     DEFAULT_COMMAND_TIMEOUT_SECONDS,
     HTTPS_PORT,
     DockerRegistry,
+    GitCommand,
+    GitFlag,
     KubeconfigReason,
     PreflightKey,
     RequiredTool,
@@ -232,7 +234,13 @@ async def _check_submodules(installation: StagingInstallation) -> PreflightItem:
         )
 
     result = await _run_command(
-        ["git", "-C", str(installation.repo_root), "submodule", "status"],
+        [
+            RequiredTool.GIT.value,
+            GitFlag.DIRECTORY.value,
+            str(installation.repo_root),
+            GitCommand.SUBMODULE.value,
+            GitCommand.STATUS.value,
+        ],
         timeout=DEFAULT_COMMAND_TIMEOUT_SECONDS,
     )
     if result is None or result.returncode != 0:

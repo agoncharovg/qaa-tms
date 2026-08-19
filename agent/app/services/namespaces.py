@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import re
 import shlex
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -12,25 +11,9 @@ from pathlib import Path
 from re import Pattern
 
 from app.core.config import Settings
-from app.core.constants import (
-    MAX_STAGE,
-    MIN_STAGE,
-    ErrorMessage,
-    JobEventType,
-    JobStatus,
-    SseEvent,
-    StagingFlag,
-)
-from app.schemas import JobLogEvent, JobTerminalEvent
-from app.services.command import (
-    LOG_READ_POLL_SECONDS,
-    PlainTextCommandResult,
-    run_plain_text_command,
-    spawn_namespaces_process,
-    strip_ansi,
-    terminate_process,
-)
-from app.services.sse import encode_sse
+from app.core.constants import MAX_STAGE, MIN_STAGE, ErrorMessage, StagingFlag
+from app.services.command import PlainTextCommandResult, run_plain_text_command, strip_ansi
+from app.services.sse import stream_process_log_frames
 from app.services.staging import (
     StagingInstallation,
     StagingNotInstalledError,
@@ -39,6 +22,7 @@ from app.services.staging import (
 
 
 class NamespaceCommand(StrEnum):
+
     """Supported staging namespace subcommands."""
 
     LIST = "list"
@@ -194,63 +178,8 @@ def stream_namespace_logs(
     argv, installation = build_namespace_logs_argv(settings, namespace, deploy)
     repo_root = installation.repo_root
 
-    async def iterator() -> AsyncIterator[str]:
-        process = await spawn_namespaces_process(argv, repo_root)
-        aborted = False
+    return stream_process_log_frames(argv, repo_root, is_disconnected=is_disconnected)
 
-        try:
-            assert process.stdout is not None
-            while True:
-                if await is_disconnected():
-                    aborted = True
-                    break
-
-                try:
-                    raw_line = await asyncio.wait_for(
-                        process.stdout.readline(),
-                        timeout=LOG_READ_POLL_SECONDS,
-                    )
-                except TimeoutError:
-                    if process.returncode is not None:
-                        break
-                    continue
-
-                if raw_line:
-                    line = raw_line.decode("utf-8", errors="replace").rstrip("\r\n")
-                    yield encode_sse(
-                        SseEvent.LOG,
-                        JobLogEvent(type=JobEventType.LINE.value, line=line).model_dump(),
-                    )
-                    continue
-
-                if process.returncode is not None:
-                    break
-
-                exit_code = await process.wait()
-                if exit_code is not None:
-                    break
-
-            if aborted:
-                return
-
-            exit_code = await process.wait()
-            status = JobStatus.SUCCESS if exit_code == 0 else JobStatus.FAILED
-            yield encode_sse(
-                SseEvent.TERMINAL,
-                JobTerminalEvent(
-                    type=JobEventType.TERMINAL.value,
-                    status=status,
-                    exit_code=exit_code,
-                ).model_dump(by_alias=True),
-            )
-        except asyncio.CancelledError:
-            aborted = True
-            raise
-        finally:
-            if aborted:
-                await terminate_process(process)
-
-    return iterator()
 
 
 def parse_namespace_list(raw_output: str) -> ParsedNamespaceList:
