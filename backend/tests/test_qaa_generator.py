@@ -59,6 +59,12 @@ QAA_CREATE_PAYLOAD = {
     "skip_exec": False,
     "skip_pr": True,
 }
+QAA_CREATE_UPSTREAM_RESPONSE = {
+    "effective_actor": None,
+    "id": QAA_RUN_ID,
+    "jira_key": QAA_JIRA_KEY,
+    "status": "queued",
+}
 QAA_CREATE_RESPONSE = {
     "effective_actor": None,
     "jira_key": QAA_JIRA_KEY,
@@ -68,6 +74,19 @@ QAA_CREATE_RESPONSE = {
 QAA_CONFLICT_RESPONSE = {
     "error": "A run for this Jira key is already active.",
     "run_id": QAA_DUPLICATE_RUN_ID,
+}
+QAA_LIST_UPSTREAM_RESPONSE = {
+    "items": [
+        {
+            "created_at": QAA_CREATED_FROM,
+            "effective_actor": "email:alice@example.com",
+            "id": QAA_RUN_ID,
+            "jira_key": QAA_JIRA_KEY,
+            "status": "running",
+            "updated_at": QAA_CREATED_TO,
+        }
+    ],
+    "next_cursor": QAA_CURSOR,
 }
 QAA_LIST_RESPONSE = {
     "items": [
@@ -82,6 +101,14 @@ QAA_LIST_RESPONSE = {
     ],
     "next_cursor": QAA_CURSOR,
 }
+QAA_RUN_DETAIL_UPSTREAM_RESPONSE = {
+    "created_at": QAA_CREATED_FROM,
+    "effective_actor": "email:alice@example.com",
+    "id": QAA_RUN_ID,
+    "jira_key": QAA_JIRA_KEY,
+    "status": "completed",
+    "updated_at": QAA_CREATED_TO,
+}
 QAA_RUN_DETAIL_RESPONSE = {
     "created_at": QAA_CREATED_FROM,
     "effective_actor": "email:alice@example.com",
@@ -90,10 +117,15 @@ QAA_RUN_DETAIL_RESPONSE = {
     "status": "completed",
     "updated_at": QAA_CREATED_TO,
 }
+QAA_RUN_ARTIFACTS_UPSTREAM_RESPONSE = {
+    "archive": {"filename": "run-123.zip", "size_bytes": 128},
+    "final_report_text": "Summary\nPR URL: https://example.invalid/pr/123\nGenerated report",
+}
 QAA_RUN_ARTIFACTS_RESPONSE = {
     "archive": {"filename": "run-123.zip", "size_bytes": 128},
+    "final_report_text": "Summary\nPR URL: https://example.invalid/pr/123\nGenerated report",
     "pr_url": "https://example.invalid/pr/123",
-    "report_text": "Generated report",
+    "report_text": "Summary\nPR URL: https://example.invalid/pr/123\nGenerated report",
 }
 QAA_RUN_CONTROL_RESPONSE = {"run_id": QAA_RUN_ID}
 QAA_LIST_QUERY_PARAMS = [
@@ -179,7 +211,7 @@ def test_create_qaa_run_returns_202_and_records_operation(
         )
         assert request.headers[HttpHeader.IDEMPOTENCY_KEY.value] == QAA_GENERATOR_IDEMPOTENCY_KEY
         assert json.loads(request.content.decode("utf-8")) == QAA_CREATE_PAYLOAD
-        return httpx.Response(status_code=202, json=QAA_CREATE_RESPONSE)
+        return httpx.Response(status_code=202, json=QAA_CREATE_UPSTREAM_RESPONSE)
 
     install_qaa_client(handler)
 
@@ -252,7 +284,7 @@ def test_list_qaa_runs_forwards_filters_and_uses_personal_token(
         assert request.url.params.get("limit") == QAA_LIST_LIMIT
         assert request.url.params.get("cursor") == QAA_CURSOR
         assert request.url.params.get_list("status") == ["running", "paused"]
-        return httpx.Response(status_code=200, json=QAA_LIST_RESPONSE)
+        return httpx.Response(status_code=200, json=QAA_LIST_UPSTREAM_RESPONSE)
 
     install_qaa_client(handler)
 
@@ -306,10 +338,10 @@ def test_qaa_run_detail_reconciles_operation_with_personal_token(
         if request_count == 1:
             assert request.method == "POST"
             assert request.url.path == UPSTREAM_RUNS_PATH
-            return httpx.Response(status_code=202, json=QAA_CREATE_RESPONSE)
+            return httpx.Response(status_code=202, json=QAA_CREATE_UPSTREAM_RESPONSE)
         assert request.method == "GET"
         assert request.url.path == UPSTREAM_RUN_DETAIL_PATH
-        return httpx.Response(status_code=200, json=QAA_RUN_DETAIL_RESPONSE)
+        return httpx.Response(status_code=200, json=QAA_RUN_DETAIL_UPSTREAM_RESPONSE)
 
     install_qaa_client(handler)
 
@@ -347,7 +379,7 @@ def test_qaa_run_artifacts_and_controls_forward_methods_paths_with_personal_toke
             == f"Bearer {QAA_GENERATOR_PERSONAL_TOKEN}"
         )
         if request.url.path == UPSTREAM_RUN_ARTIFACTS_PATH:
-            return httpx.Response(status_code=200, json=QAA_RUN_ARTIFACTS_RESPONSE)
+            return httpx.Response(status_code=200, json=QAA_RUN_ARTIFACTS_UPSTREAM_RESPONSE)
         return httpx.Response(status_code=202, json=QAA_RUN_CONTROL_RESPONSE)
 
     install_qaa_client(handler)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+import re
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Annotated, Any, cast
@@ -112,8 +113,69 @@ def build_operation_recipe(
     return OperationRecipe(flags=flags)
 
 
-def build_proxy_response(result: QaaGeneratorJsonResponse) -> JSONResponse:
-    return JSONResponse(content=result.payload, status_code=result.status_code)
+PR_URL_PATTERN = re.compile(r"^PR URL:\s*(?P<url>\S+)\s*$", re.MULTILINE)
+
+
+def build_proxy_response(result: QaaGeneratorJsonResponse, payload: Any | None = None) -> JSONResponse:
+    return JSONResponse(content=result.payload if payload is None else payload, status_code=result.status_code)
+
+
+def normalize_qaa_run_payload(payload: Any) -> Any:
+    if not isinstance(payload, dict):
+        return payload
+
+    normalized = dict(payload)
+    run_id = normalized.get(QaaPayloadField.RUN_ID.value)
+    if not isinstance(run_id, str):
+        upstream_id = normalized.get("id")
+        if isinstance(upstream_id, str):
+            normalized[QaaPayloadField.RUN_ID.value] = upstream_id
+    normalized.pop("id", None)
+    return normalized
+
+
+def normalize_qaa_runs_list_payload(payload: Any) -> Any:
+    if not isinstance(payload, dict):
+        return payload
+
+    items = payload.get("items")
+    if not isinstance(items, list):
+        return payload
+
+    normalized = dict(payload)
+    normalized["items"] = [normalize_qaa_run_payload(item) for item in items]
+    return normalized
+
+
+def extract_pr_url_from_report(report_text: str | None) -> str | None:
+    if not report_text:
+        return None
+
+    match = PR_URL_PATTERN.search(report_text)
+    if not match:
+        return None
+    return match.group("url")
+
+
+def normalize_qaa_run_artifacts_payload(payload: Any) -> Any:
+    if not isinstance(payload, dict):
+        return payload
+
+    normalized = dict(payload)
+    report_text = normalized.get("report_text")
+    if not isinstance(report_text, str):
+        final_report_text = normalized.get("final_report_text")
+        if isinstance(final_report_text, str):
+            report_text = final_report_text
+            normalized["report_text"] = final_report_text
+
+    pr_url = normalized.get("pr_url")
+    if not isinstance(pr_url, str):
+        extracted_pr_url = extract_pr_url_from_report(report_text if isinstance(report_text, str) else None)
+        if extracted_pr_url is not None:
+            normalized["pr_url"] = extracted_pr_url
+
+    return normalized
 
 
 def extract_run_id(payload: Any) -> str | None:
@@ -286,7 +348,8 @@ async def create_qaa_run(
         )
         raise
 
-    run_id = extract_run_id(result.payload)
+    normalized_payload = normalize_qaa_run_payload(result.payload)
+    run_id = extract_run_id(normalized_payload)
     if result.status_code == status.HTTP_409_CONFLICT:
         await finalize_audit_operation(
             db,
@@ -295,10 +358,10 @@ async def create_qaa_run(
             run_id=run_id,
             status_value=OperationStatus.FAILED,
         )
-        return build_proxy_response(result)
+        return build_proxy_response(result, normalized_payload)
 
     await finalize_audit_operation(db, operation, payload=payload, run_id=run_id)
-    return build_proxy_response(result)
+    return build_proxy_response(result, normalized_payload)
 
 
 @router.get(ROOT_ROUTE_PATH)
@@ -339,7 +402,7 @@ async def list_qaa_runs(
             cursor=cursor,
         ),
     )
-    return build_proxy_response(result)
+    return build_proxy_response(result, normalize_qaa_runs_list_payload(result.payload))
 
 
 @router.get(RoutePath.QAA_RUN_BY_ID.value)
@@ -362,13 +425,14 @@ async def get_qaa_run(
         ),
         token_mode=QaaGeneratorTokenMode.PERSONAL,
     )
+    normalized_payload = normalize_qaa_run_payload(result.payload)
     await reconcile_qaa_operation(
         db,
         current_user=current_user,
         run_id=run_id,
-        payload=result.payload,
+        payload=normalized_payload,
     )
-    return build_proxy_response(result)
+    return build_proxy_response(result, normalized_payload)
 
 
 @router.get(f"{RoutePath.QAA_RUN_BY_ID.value}{RoutePath.ARTIFACTS.value}")
@@ -391,7 +455,7 @@ async def get_qaa_run_artifacts(
         ),
         token_mode=QaaGeneratorTokenMode.PERSONAL,
     )
-    return build_proxy_response(result)
+    return build_proxy_response(result, normalize_qaa_run_artifacts_payload(result.payload))
 
 
 async def handle_qaa_run_action(
@@ -415,7 +479,7 @@ async def handle_qaa_run_action(
         token_mode=QaaGeneratorTokenMode.PERSONAL,
         passthrough_status_codes=PASSTHROUGH_STATUS_CODES,
     )
-    return build_proxy_response(result)
+    return build_proxy_response(result, normalize_qaa_run_payload(result.payload))
 
 
 @router.post(f"{RoutePath.QAA_RUN_BY_ID.value}{RoutePath.PAUSE.value}")
