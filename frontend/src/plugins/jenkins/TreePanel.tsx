@@ -101,6 +101,10 @@ function filterSnapshotForFolder(
   return snapshot.filter((item) => isSameOrNestedPath(item.path, folderPath));
 }
 
+function haveSameNodeKeys(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
 interface TreeNodeRowProps {
   activeFreezeForPath: (path: string) => JenkinsFreezeRead | null;
   agentPort: number;
@@ -184,13 +188,15 @@ const TreePanelValue = {
 export function TreePanel({ agentPort }: TreePanelProps) {
   const token = useAuthStore((state) => state.token);
   const currentUser = useAuthStore((state) => state.currentUser);
+  const expandedNodeKeys = useJenkinsStore((state) => state.expandedNodeKeys);
   const pinnedPaths = useJenkinsStore((state) => state.pinnedPaths);
   const pin = useJenkinsStore((state) => state.pin);
+  const setExpandedNodeKeys = useJenkinsStore((state) => state.setExpandedNodeKeys);
+  const toggleExpandedNodeKey = useJenkinsStore((state) => state.toggleExpandedNodeKey);
   const unpin = useJenkinsStore((state) => state.unpin);
   const isActive = useUiStore(
     (state) => state.tabsByPlugin[PluginId.JENKINS].activeTabId === TabId.JENKINS_TREE
   );
-  const [expandedNodeKeys, setExpandedNodeKeys] = useState<string[]>([]);
   const [freezeModal, setFreezeModal] = useState<FreezeModalRequest | null>(null);
   const [resumeModal, setResumeModal] = useState<ResumeModalRequest | null>(null);
   const treeState = useJenkinsTree({
@@ -207,16 +213,25 @@ export function TreePanel({ agentPort }: TreePanelProps) {
     token,
   });
 
-  // Auto-expand the roots once, when the tree first loads. Keyed on a ref (not on
-  // expandedNodeKeys being empty) so "Collapse All" is not immediately undone.
-  const didInitialExpandRef = useRef(false);
+  const didHydrateExpandedNodeKeysRef = useRef(false);
   useEffect(() => {
-    if (didInitialExpandRef.current || treeState.roots.length === 0) {
+    if (treeState.roots.length === 0 || didHydrateExpandedNodeKeysRef.current) {
       return;
     }
-    didInitialExpandRef.current = true;
-    setExpandedNodeKeys(treeState.roots.map((root) => buildJenkinsNodeKey(root)));
-  }, [treeState.roots]);
+
+    const validNodeKeys = new Set(collectExpandableNodeKeys(treeState.roots));
+    if (expandedNodeKeys === null) {
+      didHydrateExpandedNodeKeysRef.current = true;
+      setExpandedNodeKeys(treeState.roots.map((root) => buildJenkinsNodeKey(root)));
+      return;
+    }
+
+    didHydrateExpandedNodeKeysRef.current = true;
+    const filteredNodeKeys = expandedNodeKeys.filter((nodeKey) => validNodeKeys.has(nodeKey));
+    if (!haveSameNodeKeys(filteredNodeKeys, expandedNodeKeys)) {
+      setExpandedNodeKeys(filteredNodeKeys);
+    }
+  }, [expandedNodeKeys, setExpandedNodeKeys, treeState.roots]);
 
   useEffect(() => {
     if (!freezesState.isLocked) {
@@ -264,21 +279,20 @@ export function TreePanel({ agentPort }: TreePanelProps) {
     [pin, pinnedPaths, unpin]
   );
 
-  const toggleNode = useCallback((nextNodeKey: string): void => {
-    setExpandedNodeKeys((currentKeys) =>
-      currentKeys.includes(nextNodeKey)
-        ? currentKeys.filter((candidate) => candidate !== nextNodeKey)
-        : [...currentKeys, nextNodeKey]
-    );
-  }, []);
+  const toggleNode = useCallback(
+    (nextNodeKey: string): void => {
+      toggleExpandedNodeKey(nextNodeKey);
+    },
+    [toggleExpandedNodeKey]
+  );
 
   const expandAllNodes = useCallback(() => {
     setExpandedNodeKeys(collectExpandableNodeKeys(treeState.roots));
-  }, [treeState.roots]);
+  }, [setExpandedNodeKeys, treeState.roots]);
 
   const collapseAllNodes = useCallback(() => {
     setExpandedNodeKeys([]);
-  }, []);
+  }, [setExpandedNodeKeys]);
 
   const submitResumeModal = useCallback(
     async (restartPipelines: boolean): Promise<void> => {
@@ -397,7 +411,7 @@ export function TreePanel({ agentPort }: TreePanelProps) {
           activeFreezeForPath={freezesState.activeFreezeForPath}
           agentPort={agentPort}
           coveringActiveFreezes={freezesState.coveringActiveFreezes}
-          expandedNodeKeys={expandedNodeKeys}
+          expandedNodeKeys={expandedNodeKeys ?? []}
           freezesByFolderPath={freezesState.freezesByFolderPath}
           historyLimit={treeState.historyLimit}
           isActive={isActive}
@@ -447,7 +461,7 @@ const JenkinsTreeRows = memo(function JenkinsTreeRows({
             agentPort={agentPort}
             coveringActiveFreezes={coveringActiveFreezes}
             depth={0}
-            expandedNodeKeys={expandedNodeKeys}
+            expandedNodeKeys={expandedNodeKeys ?? []}
             freezesByFolderPath={freezesByFolderPath}
             historyLimit={historyLimit}
             isActive={isActive}
@@ -806,7 +820,7 @@ function TreeNodeRow({
                   agentPort={agentPort}
                   coveringActiveFreezes={coveringActiveFreezes}
                   depth={depth + 1}
-                  expandedNodeKeys={expandedNodeKeys}
+                  expandedNodeKeys={expandedNodeKeys ?? []}
                   freezesByFolderPath={freezesByFolderPath}
                   historyLimit={historyLimit}
                   isActive={isActive}

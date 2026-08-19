@@ -54,7 +54,7 @@ vi.mock("@/plugins/jenkins/BuildHistoryLine", () => ({
   },
 }));
 
-import { PluginId, QueryKey, TabId } from "@/constants";
+import { PluginId, QueryKey, StorageKey, TabId } from "@/constants";
 import { TreePanel } from "@/plugins/jenkins/TreePanel";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
 import { resetJenkinsStoreState, useJenkinsStore } from "@/plugins/jenkins/jenkinsStore";
@@ -511,6 +511,46 @@ describe("TreePanel", () => {
     await user.type(screen.getByLabelText("Reason"), "DR freeze");
 
     expect(buildHistoryLineMock.renderCount).toBe(renderCountBeforeTyping);
+  });
+
+  it("restores the previously expanded Jenkins node after remount", async () => {
+    const user = userEvent.setup();
+
+    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsTreeCache.mockResolvedValue({
+      fetchedAt: "2026-08-17T10:00:00Z",
+      refreshLease: null,
+      roots: buildTreeRoots(),
+      signature: "scope-1234",
+      stale: false,
+    });
+    backendClientMock.getJenkinsBuildsCache.mockResolvedValue({
+      builds: [],
+      fetchedAt: null,
+      path: "job/.QAA/job/E2E/job/PREPROD/job/Smoke",
+      refreshLease: null,
+      signature: "scope-1234",
+      stale: false,
+    });
+
+    const firstRender = renderWithProviders(<TreePanel agentPort={47600} />);
+
+    await screen.findByText("Smoke");
+    await user.click(screen.getAllByText("BE")[0]!);
+    await user.click(screen.getByText("Smoke"));
+    expect(await screen.findByText("#42")).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem(StorageKey.JENKINS_PINNED) ?? "{}")).toMatchObject({
+      expandedNodeKeys: [
+        "synthetic/PREPROD",
+        "job/.QAA/job/E2E/job/PREPROD",
+        "job/.QAA/job/E2E/job/PREPROD/job/Smoke",
+      ],
+    });
+
+    firstRender.unmount();
+    renderWithProviders(<TreePanel agentPort={47600} />);
+
+    expect(await screen.findByText("#42")).toBeInTheDocument();
   });
 
   it("does not rerender the tree when opening the resume dialog or toggling automatic restart", async () => {
