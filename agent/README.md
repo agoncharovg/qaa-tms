@@ -53,11 +53,12 @@ settings such as `AGENT_HOST`, `AGENT_PORT`, `AGENT_CORS_ORIGINS`, and
 - `AGENT_JENKINS_TOKEN`
   The engineer's personal Jenkins API token used only by the local companion app. Jenkins access
   still depends on the engineer's own VPN session and Jenkins permissions.
-- `AGENT_JENKINS_ROOT_PATH`
-  Allowed Jenkins subtree. Default: `job/.QAA/job/E2E`.
+- `AGENT_JENKINS_ROOT_GROUPS`
+  Comma-separated `LABEL=job/path` list of grouped Jenkins source roots. Default:
+  `BE=job/.QAA/job/E2E,FE=job/.QAA/job/UI_E2E`.
 - `AGENT_JENKINS_ROOT_FOLDERS`
-  Editable allow-list of child folders under `.QAA/E2E`. Default: `PREPROD,PROD`.
-  More roots can be added later without code changes; a UI editor is future work.
+  Editable allow-list of shared env folders under every configured root group. Default:
+  `PREPROD,PROD`. More roots can be added later without code changes; a UI editor is future work.
 - `AGENT_JENKINS_REQUEST_TIMEOUT`
   Timeout for Jenkins API reads. Default: `15`.
 - `AGENT_JENKINS_TREE_DEPTH`

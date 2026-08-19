@@ -8,12 +8,13 @@ from app.services import jenkins_cache as cache_service
 from app.services.jenkins_cache import JenkinsCache
 
 
-def build_node(path: str) -> JenkinsNode:
+def build_node(path: str, *, name: str = "PREPROD", synthetic: bool = False) -> JenkinsNode:
     return JenkinsNode(
-        name="PREPROD",
+        name=name,
         path=path,
         url=f"https://jenkins.example/{path}/",
         kind="folder",
+        synthetic=synthetic,
         children=[],
     )
 
@@ -104,3 +105,26 @@ def test_builds_cache_expired_lease_can_be_reminted(monkeypatch) -> None:
     assert fetched_at == current_time[0]
     assert stale is False
     assert lease is None
+
+
+def test_tree_cache_preserves_synthetic_env_nodes() -> None:
+    cache = JenkinsCache()
+    signature = "scope-1"
+    roots = [
+        JenkinsNode(
+            name="PREPROD",
+            path="",
+            url="",
+            kind="folder",
+            synthetic=True,
+            children=[build_node("job/.QAA/job/E2E/job/PREPROD", name="BE")],
+        )
+    ]
+
+    asyncio.run(cache.write_tree(signature, roots, None))
+
+    cached_roots, _, _, _ = asyncio.run(cache.read_tree(signature))
+
+    assert cached_roots[0].synthetic is True
+    assert cached_roots[0].path == ""
+    assert cached_roots[0].children[0].path == "job/.QAA/job/E2E/job/PREPROD"

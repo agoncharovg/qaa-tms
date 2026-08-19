@@ -797,6 +797,7 @@ async def _resume_one(
     settings: Settings,
     item: JenkinsFreezeSnapshotItem,
     *,
+    restart_pipeline: bool = True,
     client: httpx.AsyncClient | None = None,
     crumb_headers: Mapping[str, str] | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
@@ -807,6 +808,7 @@ async def _resume_one(
             return await _resume_one(
                 settings,
                 item,
+                restart_pipeline=restart_pipeline,
                 client=local_client,
                 crumb_headers=local_crumb_headers,
                 transport=transport,
@@ -839,7 +841,7 @@ async def _resume_one(
             outcome=JenkinsResumeResult.ERROR,
             detail=_response_detail(ENABLE_PATH, enable_response.status_code),
         )
-    if item.scheduled:
+    if item.scheduled or not restart_pipeline:
         return JenkinsResumeOutcome(
             full_name=item.full_name,
             outcome=JenkinsResumeResult.ENABLED,
@@ -905,6 +907,7 @@ async def run_resume_campaign(
     token: str,
     snapshot: list[JenkinsFreezeSnapshotItem],
     *,
+    restart_pipelines: bool = True,
     backend_client: httpx.AsyncClient,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> None:
@@ -927,6 +930,7 @@ async def run_resume_campaign(
             outcome = await _resume_one(
                 settings,
                 item,
+                restart_pipeline=restart_pipelines,
                 client=client,
                 crumb_headers=crumb_headers,
                 transport=transport,

@@ -44,6 +44,15 @@ export function JenkinsResumeProgressModal({
       : run.status === JenkinsResumeRunStatus.DONE
         ? JenkinsResumeRunCopy.DONE_SUMMARY
         : JenkinsResumeProgressModalCopy.ERROR_SUMMARY;
+  const successCountLabel = run.restartPipelines
+    ? JenkinsResumeRunCopy.STARTED_COUNT
+    : JenkinsResumeRunCopy.ENABLED_COUNT;
+  const successItemLabel = run.restartPipelines
+    ? JenkinsResumeItemStateLabel[JenkinsResumeItemState.STARTED]
+    : JenkinsResumeRunCopy.ENABLED;
+  const currentActionLabel = run.restartPipelines
+    ? JenkinsResumeRunCopy.NOW_STARTING
+    : JenkinsResumeRunCopy.NOW_ENABLING;
 
   return (
     <Modal
@@ -62,7 +71,7 @@ export function JenkinsResumeProgressModal({
 
         <Stack gap="xs">
           <Text fw={600} size="sm">
-            {JenkinsResumeRunCopy.NOW_STARTING}
+            {currentActionLabel}
           </Text>
           <Text>{run.currentName ?? JenkinsResumeRunCopy.FINISHING}</Text>
         </Stack>
@@ -73,7 +82,7 @@ export function JenkinsResumeProgressModal({
               {JenkinsResumeRunCopy.PROGRESS}
             </Text>
             <Text c="dimmed" size="sm">
-              {JenkinsResumeRunCopy.STARTED_COUNT.replace("{started}", String(run.startedCount)).replace(
+              {successCountLabel.replace("{started}", String(run.startedCount)).replace(
                 "{total}",
                 String(run.total)
               )}
@@ -82,7 +91,7 @@ export function JenkinsResumeProgressModal({
           <Progress value={progressValue} />
           <Group gap="xs">
             <Badge color="green" variant="light">
-              {JenkinsResumeItemStateLabel[JenkinsResumeItemState.STARTED]}
+              {successItemLabel}
             </Badge>
             <Text c="dimmed" size="sm">
               {run.startedCount}
@@ -117,7 +126,9 @@ export function JenkinsResumeProgressModal({
                   ) : null}
                 </div>
                 <Badge color={JenkinsResumeItemStateColor[item.state]} variant="light">
-                  {JenkinsResumeItemStateLabel[item.state]}
+                  {item.state === JenkinsResumeItemState.STARTED && !run.restartPipelines
+                    ? JenkinsResumeRunCopy.ENABLED
+                    : JenkinsResumeItemStateLabel[item.state]}
                 </Badge>
               </Group>
             ))}

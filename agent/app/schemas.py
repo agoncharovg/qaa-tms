@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.config import Settings
+from app.core.config import JenkinsRootGroup, Settings
 from app.core.constants import (
     MAX_STAGE,
     MIN_STAGE,
@@ -56,7 +56,7 @@ class AgentSettingsRead(BaseModel):
     jenkins_url: str
     jenkins_username: str
     jenkins_token_set: bool
-    jenkins_root_path: str
+    jenkins_root_groups: list[JenkinsRootGroup]
     qaa_generator_token_set: bool
     jenkins_root_folders: list[str]
     jenkins_history_limit: int
@@ -82,7 +82,7 @@ class AgentSettingsUpdate(BaseModel):
     jenkins_url: str | None = None
     jenkins_username: str | None = None
     jenkins_token: str | None = None
-    jenkins_root_path: str | None = None
+    jenkins_root_groups: list[JenkinsRootGroup] | None = None
     qaa_generator_token: str | None = None
     jenkins_root_folders: list[str] | None = None
     jenkins_history_limit: int | None = None
@@ -105,7 +105,7 @@ def to_agent_settings_read(settings: Settings) -> AgentSettingsRead:
         jenkins_url=settings.jenkins_url,
         jenkins_username=settings.jenkins_username,
         jenkins_token_set=bool(settings.jenkins_token),
-        jenkins_root_path=settings.jenkins_root_path,
+        jenkins_root_groups=list(settings.jenkins_root_groups),
         qaa_generator_token_set=bool(settings.qaa_generator_token),
         jenkins_root_folders=list(settings.jenkins_root_folders),
         jenkins_history_limit=settings.jenkins_history_limit,
@@ -488,6 +488,7 @@ class JenkinsNode(BaseModel):
     kind: JenkinsNodeKind
     status: JenkinsStatus | None = None
     color: str | None = None
+    synthetic: bool = False
     scheduled: bool = False
     builds: list[JenkinsBuild] = Field(default_factory=list)
     children: list[JenkinsNode] = Field(default_factory=list)
@@ -508,7 +509,7 @@ class JenkinsScopeResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     signature: str
-    root_path: str = Field(alias="rootPath")
+    root_groups: list[JenkinsRootGroup] = Field(default_factory=list, alias="rootGroups")
     root_folders: list[str] = Field(default_factory=list, alias="rootFolders")
     tree_depth: int = Field(alias="treeDepth")
     history_limit: int = Field(alias="historyLimit")
@@ -599,6 +600,7 @@ class JenkinsResumeRunRequest(BaseModel):
 
     run_id: UUID = Field(alias="runId")
     snapshot: list[JenkinsFreezeSnapshotItem] = Field(default_factory=list)
+    restart_pipelines: bool = Field(default=True, alias="restartPipelines")
 
 
 class JenkinsResumeRunAccepted(BaseModel):
@@ -641,6 +643,7 @@ class JenkinsResumeRunRead(BaseModel):
 
     id: UUID
     freeze_id: UUID = Field(alias="freezeId")
+    restart_pipelines: bool = Field(alias="restartPipelines")
     signature: str
     status: JenkinsResumeRunStatus
     total: int

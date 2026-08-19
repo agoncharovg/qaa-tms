@@ -5,12 +5,18 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 from uuid import UUID
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from test_users import auth_header, login
 
-from app.core.constants import JenkinsFreezeStatus, JenkinsResumeRunStatus
+from app.core.constants import (
+    JENKINS_RESUME_RUN_STALE_SECONDS,
+    JenkinsFreezeStatus,
+    JenkinsResumeRunStatus,
+)
 from app.models.jenkins_freeze import JenkinsFreeze
 from app.models.jenkins_resume_run import JenkinsResumeRun
 
@@ -69,11 +75,21 @@ def put_snapshot(
     assert response.status_code == 200
 
 
-def create_resume_run(client: TestClient, token: str, freeze_id: str) -> dict[str, Any]:
+def create_resume_run(
+    client: TestClient,
+    token: str,
+    freeze_id: str,
+    *,
+    restart_pipelines: bool = True,
+    folder_path: str | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {"freezeId": freeze_id, "restartPipelines": restart_pipelines}
+    if folder_path is not None:
+        payload["folderPath"] = folder_path
     response = client.post(
         "/api/v1/jenkins/resume-runs",
         headers=auth_header(token),
-        json={"freezeId": freeze_id},
+        json=payload,
     )
     assert response.status_code == 200
     return cast(dict[str, Any], response.json())
@@ -154,6 +170,7 @@ def test_create_resume_run_builds_plan_and_sets_total(client: TestClient) -> Non
     run = create_resume_run(client, token, freeze["id"])
 
     assert run["status"] == JenkinsResumeRunStatus.RUNNING.value
+    assert run["restartPipelines"] is True
     assert run["total"] == 1
     assert run["startedCount"] == 0
     assert run["skippedCount"] == 1
@@ -162,6 +179,93 @@ def test_create_resume_run_builds_plan_and_sets_total(client: TestClient) -> Non
     assert run["currentName"] == "Smoke"
     assert [item["state"] for item in run["items"]] == ["pending", "skipped"]
     assert run["items"][1]["reason"] == "Disabled before the freeze"
+    assert read_resume_run(client, run["id"]).restart_pipelines is True
+
+
+def test_create_resume_run_persists_restart_flag_false(client: TestClient) -> None:
+    token, _ = login(client, "test", "")
+    freeze = create_freeze(client, token)
+    put_snapshot(
+        client,
+        token,
+        freeze["id"],
+        [
+            snapshot_item(
+                PIPELINE_PATH,
+                full_name=".QAA/E2E/PREPROD/Smoke",
+                name="Smoke",
+                was_disabled=False,
+            )
+        ],
+    )
+
+    run = create_resume_run(client, token, freeze["id"], restart_pipelines=False)
+
+    assert run["restartPipelines"] is False
+    assert read_resume_run(client, run["id"]).restart_pipelines is False
+
+
+def test_partial_resume_run_only_plans_selected_subtree_and_keeps_freeze_active(client: TestClient) -> None:
+    token, _ = login(client, "test", "")
+    freeze = create_freeze(client, token)
+    child_folder_path = f"{FOLDER_PATH}/job/IAM%20Client%20portal"
+    child_job_path = f"{FOLDER_PATH}/job/IAM Client portal"
+    put_snapshot(
+        client,
+        token,
+        freeze["id"],
+        [
+            snapshot_item(
+                PIPELINE_PATH,
+                full_name=".QAA/E2E/PREPROD/Smoke",
+                name="Smoke",
+                was_disabled=False,
+            ),
+            snapshot_item(
+                f"{child_job_path}/job/Web",
+                full_name=".QAA/E2E/PREPROD/IAM Client portal/Web",
+                name="Web",
+                was_disabled=False,
+            ),
+            snapshot_item(
+                f"{child_job_path}/job/Admin",
+                full_name=".QAA/E2E/PREPROD/IAM Client portal/Admin",
+                name="Admin",
+                was_disabled=False,
+            ),
+        ],
+    )
+
+    run = create_resume_run(client, token, freeze["id"], folder_path=child_folder_path)
+
+    assert run["total"] == 2
+    assert run["currentName"] == "Web"
+    assert [item["name"] for item in run["items"]] == ["Web", "Admin"]
+
+    first_progress = client.put(
+        f"/api/v1/jenkins/resume-runs/{run['id']}/progress",
+        headers=auth_header(token),
+        json={
+            "path": f"{child_job_path}/job/Web",
+            "state": "started",
+            "nextPath": f"{child_job_path}/job/Admin",
+            "nextName": "Admin",
+        },
+    )
+    assert first_progress.status_code == 200
+
+    done_progress = client.put(
+        f"/api/v1/jenkins/resume-runs/{run['id']}/progress",
+        headers=auth_header(token),
+        json={
+            "path": f"{child_job_path}/job/Admin",
+            "state": "started",
+        },
+    )
+
+    assert done_progress.status_code == 200
+    assert done_progress.json()["status"] == JenkinsResumeRunStatus.DONE.value
+    assert read_freeze(client, freeze["id"]).status == JenkinsFreezeStatus.ACTIVE
 
 
 def test_second_create_conflicts_while_fresh_run_is_active(client: TestClient) -> None:
@@ -191,6 +295,46 @@ def test_second_create_conflicts_while_fresh_run_is_active(client: TestClient) -
     assert response.status_code == 409
 
 
+def test_partial_unique_index_blocks_two_running_runs_per_signature(client: TestClient) -> None:
+    # DB-level backstop for the create-race the app-level 409 check cannot catch under
+    # true concurrency: two RUNNING runs for one signature must be rejected.
+    token, user = login(client, "test", "")
+    freeze = create_freeze(client, token)
+    put_snapshot(
+        client,
+        token,
+        freeze["id"],
+        [
+            snapshot_item(
+                PIPELINE_PATH,
+                full_name=".QAA/E2E/PREPROD/Smoke",
+                name="Smoke",
+                was_disabled=False,
+            )
+        ],
+    )
+    create_resume_run(client, token, freeze["id"])
+
+    session_maker = cast(async_sessionmaker[AsyncSession], client.app.state.session_maker)
+
+    async def insert_second() -> None:
+        async with session_maker() as session:
+            session.add(
+                JenkinsResumeRun(
+                    freeze_id=UUID(freeze["id"]),
+                    signature=SIGNATURE,
+                    status=JenkinsResumeRunStatus.RUNNING,
+                    total=1,
+                    items=[],
+                    created_by_id=user["id"],
+                )
+            )
+            await session.commit()
+
+    with pytest.raises(IntegrityError):
+        asyncio.run(insert_second())
+
+
 def test_create_succeeds_when_existing_run_is_stale(client: TestClient) -> None:
     token, _ = login(client, "test", "")
     freeze = create_freeze(client, token)
@@ -211,7 +355,7 @@ def test_create_succeeds_when_existing_run_is_stale(client: TestClient) -> None:
     update_resume_run_heartbeat(
         client,
         stale_run["id"],
-        datetime.now(tz=UTC) - timedelta(seconds=31),
+        datetime.now(tz=UTC) - timedelta(seconds=JENKINS_RESUME_RUN_STALE_SECONDS + 1),
     )
 
     response = client.post(
@@ -402,7 +546,7 @@ def test_stale_flag_is_computed_from_heartbeat(client: TestClient) -> None:
     update_resume_run_heartbeat(
         client,
         run["id"],
-        datetime.now(tz=UTC) - timedelta(seconds=31),
+        datetime.now(tz=UTC) - timedelta(seconds=JENKINS_RESUME_RUN_STALE_SECONDS + 1),
     )
 
     response = client.get(

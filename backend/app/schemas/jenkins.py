@@ -34,6 +34,7 @@ class JenkinsNode(BaseModel):
     kind: JenkinsNodeKind
     status: JenkinsStatus | None = None
     color: str | None = None
+    synthetic: bool = False
     scheduled: bool = False
     builds: list[JenkinsBuild] = Field(default_factory=list)
     children: list[JenkinsNode] = Field(default_factory=list)

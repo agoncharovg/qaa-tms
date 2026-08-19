@@ -30,7 +30,9 @@ function readStoredState(): JenkinsStorageState {
     const parsed = JSON.parse(rawValue) as { pinnedPaths?: unknown };
     return {
       pinnedPaths: Array.isArray(parsed.pinnedPaths)
-        ? parsed.pinnedPaths.filter((value): value is string => typeof value === "string")
+        ? parsed.pinnedPaths.filter(
+            (value): value is string => typeof value === "string" && value.trim().length > 0
+          )
         : [],
     };
   } catch {
@@ -56,6 +58,9 @@ export const useJenkinsStore = create<JenkinsState>()((set, get) => ({
   },
 
   pin(path) {
+    if (!path.trim()) {
+      return;
+    }
     if (get().pinnedPaths.includes(path)) {
       return;
     }

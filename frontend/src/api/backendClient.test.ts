@@ -124,6 +124,7 @@ describe("backendClient operations", () => {
       finishedAt: null,
       freezeId: "freeze-1",
       id: "run-1",
+      restartPipelines: true,
       items: [],
       signature: "scope-1234",
       skippedCount: 1,
@@ -143,7 +144,12 @@ describe("backendClient operations", () => {
         })
       );
 
-    expect(await backendClient.createJenkinsResumeRun("token-123", { freezeId: "freeze-1" })).toEqual(run);
+    expect(
+      await backendClient.createJenkinsResumeRun("token-123", {
+        freezeId: "freeze-1",
+        restartPipelines: true,
+      })
+    ).toEqual(run);
     expect(await backendClient.getJenkinsResumeRuns("token-123", "scope-1234", "running")).toEqual([run]);
     expect(await backendClient.getJenkinsResumeRun("token-123", "run-1")).toEqual(run);
     expect(await backendClient.cancelJenkinsResumeRun("token-123", "run-1")).toEqual({
@@ -159,7 +165,7 @@ describe("backendClient operations", () => {
 
     expect(createUrl).toBe("http://localhost:8000/api/v1/jenkins/resume-runs");
     expect(createInit?.method).toBe("POST");
-    expect(createInit?.body).toBe(JSON.stringify({ freezeId: "freeze-1" }));
+    expect(createInit?.body).toBe(JSON.stringify({ freezeId: "freeze-1", restartPipelines: true }));
     expect(listUrl).toBe(
       "http://localhost:8000/api/v1/jenkins/resume-runs?signature=scope-1234&status=running"
     );

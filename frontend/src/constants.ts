@@ -828,6 +828,7 @@ export const JenkinsFreezeCopy = {
   RESUME_CONFIRM: "Resume folder",
   RESUME_CONFIRM_MESSAGE:
     "Restore {restore} pipeline(s) in {folder}. {build} will be rebuilt now; {scheduled} scheduled pipeline(s) will only be re-enabled.",
+  RESUME_RESTART_PIPELINES: "Automatically restart resumed pipelines",
   RESUME_CONFIRM_TITLE: "Resume Jenkins folder",
   RESUME_PARTIAL_MESSAGE:
     "Restored {restored}, enabled {enabled}, missing {missing}, errors {error}. The freeze stays active so you can retry the failed pipelines.",
@@ -843,10 +844,13 @@ export const JenkinsResumeRunCopy = {
   DONE_SUMMARY: "Resume completed.",
   FINISHING: "Finishing...",
   NOW_STARTING: "Starting now",
+  NOW_ENABLING: "Enabling now",
   PROGRESS: "Progress",
   SKIPPED: "Skipped",
   STARTED_BY: "Started by {user} · {when}",
   STARTED_COUNT: "{started}/{total} started",
+  ENABLED: "Enabled",
+  ENABLED_COUNT: "{started}/{total} enabled",
   TITLE: "Resume campaign",
   WHO_CANCELLED: "Cancelled by {user}",
 } as const;

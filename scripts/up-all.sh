@@ -202,13 +202,11 @@ prepare_sqlite_backend() {
 import asyncio
 import os
 
+import app.models  # noqa: F401  (registers every model on Base.metadata)
 from app.db.base import Base
 from app.db.session import create_engine_and_session_maker
-from app.models.operation import Operation
-from app.models.user import User
 
 engine, _ = create_engine_and_session_maker(os.environ["DATABASE_URL"])
-_ = (Operation, User)
 
 async def main() -> None:
     async with engine.begin() as connection:

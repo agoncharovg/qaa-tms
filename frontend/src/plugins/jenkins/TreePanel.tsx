@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   ActionIcon,
   Alert,
@@ -35,7 +35,12 @@ import {
 } from "@tabler/icons-react";
 
 import { AgentRequestError } from "@/api/agentClient";
-import type { JenkinsBuild, JenkinsFreezeRead, JenkinsNode } from "@/api/types";
+import type {
+  JenkinsBuild,
+  JenkinsFreezeRead,
+  JenkinsFreezeSnapshotItem,
+  JenkinsNode,
+} from "@/api/types";
 import {
   JenkinsFreezeCopy,
   JenkinsNodeKind,
@@ -72,7 +77,32 @@ interface FreezeModalRequest {
   initialMergeFreezeIds: string[];
 }
 
+interface ResumeModalRequest {
+  folderName: string;
+  folderPath: string;
+  freeze: JenkinsFreezeRead;
+  snapshot: JenkinsFreezeSnapshotItem[];
+}
+
+function normalizeJenkinsPath(path: string): string {
+  return decodeURIComponent(path).replace(/^\/+|\/+$/g, "");
+}
+
+function isSameOrNestedPath(path: string, prefix: string): boolean {
+  const normalizedPath = normalizeJenkinsPath(path);
+  const normalizedPrefix = normalizeJenkinsPath(prefix);
+  return normalizedPath === normalizedPrefix || normalizedPath.startsWith(`${normalizedPrefix}/`);
+}
+
+function filterSnapshotForFolder(
+  snapshot: JenkinsFreezeSnapshotItem[],
+  folderPath: string
+): JenkinsFreezeSnapshotItem[] {
+  return snapshot.filter((item) => isSameOrNestedPath(item.path, folderPath));
+}
+
 interface TreeNodeRowProps {
+  activeFreezeForPath: (path: string) => JenkinsFreezeRead | null;
   agentPort: number;
   coveringActiveFreezes: (path: string) => JenkinsFreezeRead[];
   depth: number;
@@ -86,9 +116,29 @@ interface TreeNodeRowProps {
   nodeKey: string;
   onFreezeRequest: (folderPath: string, folderName: string) => void;
   onPinToggle: (path: string) => void;
-  onResumeRequest: (freeze: JenkinsFreezeRead) => void;
+  onResumeRequest: (freeze: JenkinsFreezeRead, folderPath: string, folderName: string) => void;
   onToggle: (nodeKey: string) => void;
   pinnedPaths: string[];
+  signature: string | null;
+  token: string | null;
+}
+
+interface JenkinsTreeRowsProps {
+  activeFreezeForPath: (path: string) => JenkinsFreezeRead | null;
+  agentPort: number;
+  coveringActiveFreezes: (path: string) => JenkinsFreezeRead[];
+  expandedNodeKeys: string[];
+  freezesByFolderPath: Map<string, JenkinsFreezeRead>;
+  historyLimit: number | null;
+  isActive: boolean;
+  isLocked: boolean;
+  isMutatingPath: (path: string) => boolean;
+  onFreezeRequest: (folderPath: string, folderName: string) => void;
+  onPinToggle: (path: string) => void;
+  onResumeRequest: (freeze: JenkinsFreezeRead, folderPath: string, folderName: string) => void;
+  onToggle: (nodeKey: string) => void;
+  pinnedPaths: string[];
+  roots: JenkinsNode[];
   signature: string | null;
   token: string | null;
 }
@@ -142,7 +192,7 @@ export function TreePanel({ agentPort }: TreePanelProps) {
   );
   const [expandedNodeKeys, setExpandedNodeKeys] = useState<string[]>([]);
   const [freezeModal, setFreezeModal] = useState<FreezeModalRequest | null>(null);
-  const [resumeModal, setResumeModal] = useState<JenkinsFreezeRead | null>(null);
+  const [resumeModal, setResumeModal] = useState<ResumeModalRequest | null>(null);
   const treeState = useJenkinsTree({
     agentPort,
     enabled: true,
@@ -176,34 +226,80 @@ export function TreePanel({ agentPort }: TreePanelProps) {
     setResumeModal(null);
   }, [freezesState.isLocked]);
 
-  function openFreezeModal(folderPath: string, folderName: string): void {
-    const initialMergeFreezeIds = freezesState
-      .absorbableActiveFreezes(folderPath)
-      .filter((freeze) => freeze.createdBy === currentUser?.username)
-      .map((freeze) => freeze.id);
-    setFreezeModal({
-      folderName,
-      folderPath,
-      initialMergeFreezeIds,
-    });
-  }
+  const openFreezeModal = useCallback(
+    (folderPath: string, folderName: string): void => {
+      const initialMergeFreezeIds = freezesState
+        .absorbableActiveFreezes(folderPath)
+        .filter((freeze) => freeze.createdBy === currentUser?.username)
+        .map((freeze) => freeze.id);
+      setFreezeModal({
+        folderName,
+        folderPath,
+        initialMergeFreezeIds,
+      });
+    },
+    [currentUser?.username, freezesState.absorbableActiveFreezes]
+  );
 
-  const resumeRestorable = resumeModal?.snapshot.filter((item) => !item.wasDisabled) ?? [];
-  const resumeBuildCount = resumeRestorable.filter((item) => !item.scheduled).length;
-  const resumeScheduledCount = resumeRestorable.length - resumeBuildCount;
+  const openResumeModal = useCallback(
+    (freeze: JenkinsFreezeRead, folderPath: string, folderName: string): void => {
+      setResumeModal({
+        freeze,
+        folderName,
+        folderPath,
+        snapshot: filterSnapshotForFolder(freeze.snapshot, folderPath),
+      });
+    },
+    []
+  );
 
-  async function submitResumeModal(): Promise<void> {
-    if (!resumeModal) {
-      return;
-    }
+  const togglePinnedPath = useCallback(
+    (path: string): void => {
+      if (pinnedPaths.includes(path)) {
+        unpin(path);
+        return;
+      }
+      pin(path);
+    },
+    [pin, pinnedPaths, unpin]
+  );
 
-    try {
-      await freezesState.startResumeCampaign(resumeModal);
-      setResumeModal(null);
-    } catch {
-      // Keep the modal open so the operator can retry.
-    }
-  }
+  const toggleNode = useCallback((nextNodeKey: string): void => {
+    setExpandedNodeKeys((currentKeys) =>
+      currentKeys.includes(nextNodeKey)
+        ? currentKeys.filter((candidate) => candidate !== nextNodeKey)
+        : [...currentKeys, nextNodeKey]
+    );
+  }, []);
+
+  const expandAllNodes = useCallback(() => {
+    setExpandedNodeKeys(collectExpandableNodeKeys(treeState.roots));
+  }, [treeState.roots]);
+
+  const collapseAllNodes = useCallback(() => {
+    setExpandedNodeKeys([]);
+  }, []);
+
+  const submitResumeModal = useCallback(
+    async (restartPipelines: boolean): Promise<void> => {
+      if (!resumeModal) {
+        return;
+      }
+
+      try {
+        await freezesState.startResumeCampaign(
+          resumeModal.freeze,
+          resumeModal.snapshot,
+          restartPipelines,
+          resumeModal.folderPath
+        );
+        setResumeModal(null);
+      } catch {
+        // Keep the modal open so the operator can retry.
+      }
+    },
+    [freezesState.startResumeCampaign, resumeModal]
+  );
 
   if (treeState.isLoading) {
     return (
@@ -262,37 +358,15 @@ export function TreePanel({ agentPort }: TreePanelProps) {
         />
       ) : null}
 
-      <Modal
-        centered
-        onClose={() => setResumeModal(null)}
-        opened={resumeModal !== null}
-        title={JenkinsFreezeCopy.RESUME_CONFIRM_TITLE}
-      >
-        <Stack gap="md">
-          <Text size="sm">
-            {JenkinsFreezeCopy.RESUME_CONFIRM_MESSAGE.replace(
-              "{restore}",
-              String(resumeRestorable.length)
-            )
-              .replace("{folder}", resumeModal?.folderName ?? "")
-              .replace("{build}", String(resumeBuildCount))
-              .replace("{scheduled}", String(resumeScheduledCount))}
-          </Text>
-          <Group justify="flex-end">
-            <Button onClick={() => setResumeModal(null)} variant="default">
-              {JenkinsFreezeCopy.FREEZE_CANCEL}
-            </Button>
-            <Button
-              color="green"
-              disabled={freezesState.isLocked}
-              loading={resumeModal ? freezesState.isMutatingPath(resumeModal.folderPath) : false}
-              onClick={() => void submitResumeModal()}
-            >
-              {JenkinsFreezeCopy.RESUME_CONFIRM}
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
+      {resumeModal ? (
+        <ResumeFolderModal
+          isLocked={freezesState.isLocked}
+          isMutating={freezesState.isMutatingPath(resumeModal.folderPath)}
+          onClose={() => setResumeModal(null)}
+          onSubmit={submitResumeModal}
+          resume={resumeModal}
+        />
+      ) : null}
 
       <Stack gap="lg">
         <Group justify="space-between" wrap="wrap">
@@ -303,18 +377,10 @@ export function TreePanel({ agentPort }: TreePanelProps) {
             </Text>
           </div>
           <Group>
-            <Button
-              leftSection={<IconMaximize size={16} />}
-              onClick={() => setExpandedNodeKeys(collectExpandableNodeKeys(treeState.roots))}
-              variant="light"
-            >
+            <Button leftSection={<IconMaximize size={16} />} onClick={expandAllNodes} variant="light">
               {TreePanelCopy.EXPAND_ALL}
             </Button>
-            <Button
-              leftSection={<IconMinimize size={16} />}
-              onClick={() => setExpandedNodeKeys([])}
-              variant="light"
-            >
+            <Button leftSection={<IconMinimize size={16} />} onClick={collapseAllNodes} variant="light">
               {TreePanelCopy.COLLAPSE_ALL}
             </Button>
             <Button
@@ -327,50 +393,81 @@ export function TreePanel({ agentPort }: TreePanelProps) {
           </Group>
         </Group>
 
-        <Stack gap="xs">
-          {treeState.roots.map((node) => {
-            const nodeKey = buildJenkinsNodeKey(node);
-            return (
-              <TreeNodeRow
-                key={nodeKey}
-                agentPort={agentPort}
-                coveringActiveFreezes={freezesState.coveringActiveFreezes}
-                depth={0}
-                expandedNodeKeys={expandedNodeKeys}
-                freezesByFolderPath={freezesState.freezesByFolderPath}
-                historyLimit={treeState.historyLimit}
-                isActive={isActive}
-                isLocked={freezesState.isLocked}
-                isMutatingPath={freezesState.isMutatingPath}
-                node={node}
-                nodeKey={nodeKey}
-                onFreezeRequest={openFreezeModal}
-                onPinToggle={(path) => {
-                  if (pinnedPaths.includes(path)) {
-                    unpin(path);
-                    return;
-                  }
-                  pin(path);
-                }}
-                onResumeRequest={setResumeModal}
-                onToggle={(nextNodeKey) => {
-                  setExpandedNodeKeys((currentKeys) =>
-                    currentKeys.includes(nextNodeKey)
-                      ? currentKeys.filter((candidate) => candidate !== nextNodeKey)
-                      : [...currentKeys, nextNodeKey]
-                  );
-                }}
-                pinnedPaths={pinnedPaths}
-                signature={treeState.signature}
-                token={token}
-              />
-            );
-          })}
-        </Stack>
+        <JenkinsTreeRows
+          activeFreezeForPath={freezesState.activeFreezeForPath}
+          agentPort={agentPort}
+          coveringActiveFreezes={freezesState.coveringActiveFreezes}
+          expandedNodeKeys={expandedNodeKeys}
+          freezesByFolderPath={freezesState.freezesByFolderPath}
+          historyLimit={treeState.historyLimit}
+          isActive={isActive}
+          isLocked={freezesState.isLocked}
+          isMutatingPath={freezesState.isMutatingPath}
+          onFreezeRequest={openFreezeModal}
+          onPinToggle={togglePinnedPath}
+          onResumeRequest={openResumeModal}
+          onToggle={toggleNode}
+          pinnedPaths={pinnedPaths}
+          roots={treeState.roots}
+          signature={treeState.signature}
+          token={token}
+        />
       </Stack>
     </>
   );
 }
+
+const JenkinsTreeRows = memo(function JenkinsTreeRows({
+  activeFreezeForPath,
+  agentPort,
+  coveringActiveFreezes,
+  expandedNodeKeys,
+  freezesByFolderPath,
+  historyLimit,
+  isActive,
+  isLocked,
+  isMutatingPath,
+  onFreezeRequest,
+  onPinToggle,
+  onResumeRequest,
+  onToggle,
+  pinnedPaths,
+  roots,
+  signature,
+  token,
+}: JenkinsTreeRowsProps) {
+  return (
+    <Stack gap="xs">
+      {roots.map((node) => {
+        const nodeKey = buildJenkinsNodeKey(node);
+        return (
+          <TreeNodeRow
+            key={nodeKey}
+            activeFreezeForPath={activeFreezeForPath}
+            agentPort={agentPort}
+            coveringActiveFreezes={coveringActiveFreezes}
+            depth={0}
+            expandedNodeKeys={expandedNodeKeys}
+            freezesByFolderPath={freezesByFolderPath}
+            historyLimit={historyLimit}
+            isActive={isActive}
+            isLocked={isLocked}
+            isMutatingPath={isMutatingPath}
+            node={node}
+            nodeKey={nodeKey}
+            onFreezeRequest={onFreezeRequest}
+            onPinToggle={onPinToggle}
+            onResumeRequest={onResumeRequest}
+            onToggle={onToggle}
+            pinnedPaths={pinnedPaths}
+            signature={signature}
+            token={token}
+          />
+        );
+      })}
+    </Stack>
+  );
+});
 
 interface FreezeFolderModalProps {
   freeze: FreezeModalRequest;
@@ -472,7 +569,54 @@ function FreezeFolderModal({
   );
 }
 
+interface ResumeFolderModalProps {
+  isLocked: boolean;
+  isMutating: boolean;
+  onClose: () => void;
+  onSubmit: (restartPipelines: boolean) => Promise<void>;
+  resume: ResumeModalRequest;
+}
+
+function ResumeFolderModal({ isLocked, isMutating, onClose, onSubmit, resume }: ResumeFolderModalProps) {
+  const [restartPipelines, setRestartPipelines] = useState(true);
+  const restorableItems = resume.snapshot.filter((item) => !item.wasDisabled);
+  const resumeBuildCount = restorableItems.filter((item) => !item.scheduled).length;
+  const resumeScheduledCount = restorableItems.length - resumeBuildCount;
+
+  return (
+    <Modal centered opened onClose={onClose} title={JenkinsFreezeCopy.RESUME_CONFIRM_TITLE}>
+      <Stack gap="md">
+        <Text size="sm">
+          {JenkinsFreezeCopy.RESUME_CONFIRM_MESSAGE.replace("{restore}", String(restorableItems.length))
+            .replace("{folder}", resume.folderName)
+            .replace("{build}", String(resumeBuildCount))
+            .replace("{scheduled}", String(resumeScheduledCount))}
+        </Text>
+        <Checkbox
+          checked={restartPipelines}
+          label={JenkinsFreezeCopy.RESUME_RESTART_PIPELINES}
+          onChange={(event) => setRestartPipelines(event.currentTarget.checked)}
+        />
+        <Group justify="flex-end">
+          <Button onClick={onClose} variant="default">
+            {JenkinsFreezeCopy.FREEZE_CANCEL}
+          </Button>
+          <Button
+            color="green"
+            disabled={isLocked}
+            loading={isMutating}
+            onClick={() => void onSubmit(restartPipelines)}
+          >
+            {JenkinsFreezeCopy.RESUME_CONFIRM}
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
 function TreeNodeRow({
+  activeFreezeForPath,
   agentPort,
   coveringActiveFreezes,
   depth,
@@ -515,10 +659,11 @@ function TreeNodeRow({
     node.kind === JenkinsNodeKind.FOLDER ? "gray" : scheduledPipeline ? "grape" : "cyan";
   const freezableNode = Boolean(node.path) && !node.synthetic;
   const actionableFolder = node.kind === JenkinsNodeKind.FOLDER && !node.synthetic;
-  const exactFreeze = actionableFolder ? freezesByFolderPath.get(node.path) ?? null : null;
+  const exactFreeze = actionableFolder ? freezesByFolderPath.get(normalizeJenkinsPath(node.path)) ?? null : null;
+  const resumeFreeze = actionableFolder ? activeFreezeForPath(node.path) : null;
   const coveringFreezes = freezableNode ? coveringActiveFreezes(node.path) : [];
   const frozen = coveringFreezes.length > 0;
-  const loadingFreezeState = actionableFolder && isMutatingPath(node.path);
+  const loadingFreezeState = actionableFolder && isMutatingPath(resumeFreeze?.folderPath ?? node.path);
 
   return (
     <Stack gap="xs">
@@ -602,16 +747,16 @@ function TreeNodeRow({
               <JenkinsFreezeBadge freezes={coveringFreezes} />
             ) : null}
             {actionableFolder ? (
-              <Tooltip label={exactFreeze ? JenkinsFreezeCopy.RESUME_ACTION : JenkinsFreezeCopy.FREEZE_ACTION}>
+              <Tooltip label={resumeFreeze ? JenkinsFreezeCopy.RESUME_ACTION : JenkinsFreezeCopy.FREEZE_ACTION}>
                 <ActionIcon
-                  aria-label={exactFreeze ? JenkinsFreezeCopy.RESUME_ACTION : JenkinsFreezeCopy.FREEZE_ACTION}
-                  color={exactFreeze ? "green" : "cyan"}
+                  aria-label={resumeFreeze ? JenkinsFreezeCopy.RESUME_ACTION : JenkinsFreezeCopy.FREEZE_ACTION}
+                  color={resumeFreeze ? "green" : "cyan"}
                   disabled={isLocked}
                   loading={loadingFreezeState}
                   onClick={(event) => {
                     event.stopPropagation();
-                    if (exactFreeze) {
-                      onResumeRequest(exactFreeze);
+                    if (resumeFreeze) {
+                      onResumeRequest(resumeFreeze, node.path, node.name);
                       return;
                     }
                     onFreezeRequest(node.path, node.name);
@@ -622,7 +767,7 @@ function TreeNodeRow({
                   }}
                   variant="light"
                 >
-                  {exactFreeze ? <IconPlayerPlay size={16} /> : <IconSnowflake size={16} />}
+                  {resumeFreeze ? <IconPlayerPlay size={16} /> : <IconSnowflake size={16} />}
                 </ActionIcon>
               </Tooltip>
             ) : null}
@@ -657,6 +802,7 @@ function TreeNodeRow({
               return (
                 <TreeNodeRow
                   key={childNodeKey}
+                  activeFreezeForPath={activeFreezeForPath}
                   agentPort={agentPort}
                   coveringActiveFreezes={coveringActiveFreezes}
                   depth={depth + 1}

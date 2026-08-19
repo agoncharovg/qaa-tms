@@ -26,3 +26,13 @@ export function formatRelativeAgeFromIso(isoTimestamp: string): string {
   }
   return formatRelativeAge(parsedTimestamp);
 }
+
+export function formatDuration(durationMs: number): string {
+  const totalSeconds = Math.max(0, Math.floor(durationMs / RelativeTimeValue.SECOND_MS));
+  const minutes = Math.floor(totalSeconds / RelativeTimeValue.MINUTE_SECONDS);
+  const seconds = totalSeconds % RelativeTimeValue.MINUTE_SECONDS;
+  if (minutes === 0) {
+    return `${seconds}s`;
+  }
+  return `${minutes}m ${seconds}s`;
+}

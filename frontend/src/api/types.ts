@@ -133,7 +133,7 @@ export interface AgentSettings {
   jenkins_url: string;
   jenkins_username: string;
   jenkins_token_set: boolean;
-  jenkins_root_path: string;
+  jenkins_root_groups: JenkinsRootGroup[];
   qaa_generator_token_set: boolean;
   jenkins_root_folders: string[];
   jenkins_history_limit: number;
@@ -155,7 +155,7 @@ export interface AgentSettingsUpdate {
   jenkins_url?: string;
   jenkins_username?: string;
   jenkins_token?: string;
-  jenkins_root_path?: string;
+  jenkins_root_groups?: JenkinsRootGroup[];
   qaa_generator_token?: string;
   jenkins_root_folders?: string[];
   jenkins_history_limit?: number;
@@ -476,9 +476,15 @@ export interface JenkinsNode {
   kind: JenkinsNodeKind;
   status: JenkinsStatus | null;
   color: string | null;
+  synthetic: boolean;
   scheduled: boolean;
   builds: JenkinsBuild[];
   children: JenkinsNode[];
+}
+
+export interface JenkinsRootGroup {
+  label: string;
+  path: string;
 }
 
 export interface JenkinsTreeResponse {
@@ -535,6 +541,7 @@ export interface JenkinsResumeResponse {
 export interface JenkinsResumeRunRequest {
   runId: string;
   snapshot: JenkinsFreezeSnapshotItem[];
+  restartPipelines: boolean;
 }
 
 export interface JenkinsResumeRunAccepted {
@@ -582,11 +589,14 @@ export interface JenkinsResumeItem {
 
 export interface JenkinsResumeRunCreateRequest {
   freezeId: string;
+  restartPipelines: boolean;
+  folderPath?: string;
 }
 
 export interface JenkinsResumeRunRead {
   id: string;
   freezeId: string;
+  restartPipelines: boolean;
   signature: string;
   status: JenkinsResumeRunStatus;
   total: number;
@@ -605,7 +615,7 @@ export interface JenkinsResumeRunRead {
 
 export interface JenkinsScopeResponse {
   signature: string;
-  rootPath: string;
+  rootGroups: JenkinsRootGroup[];
   rootFolders: string[];
   treeDepth: number;
   historyLimit: number;

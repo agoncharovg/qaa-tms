@@ -5,10 +5,12 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Annotated
+from urllib.parse import unquote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -73,6 +75,7 @@ def to_resume_run_read(
     return JenkinsResumeRunRead(
         id=run.id,
         freeze_id=run.freeze_id,
+        restart_pipelines=run.restart_pipelines,
         signature=run.signature,
         status=run.status,
         total=run.total,
@@ -115,6 +118,16 @@ async def get_freeze_or_404(db: AsyncSession, freeze_id: UUID) -> JenkinsFreeze:
             detail=ResumeRunErrorMessage.FREEZE_NOT_FOUND.value,
         )
     return freeze
+
+
+def normalize_jenkins_path(path: str) -> str:
+    return unquote(path).strip("/")
+
+
+def is_same_or_nested_path(path: str, prefix: str) -> bool:
+    normalized_path = normalize_jenkins_path(path)
+    normalized_prefix = normalize_jenkins_path(prefix)
+    return normalized_path == normalized_prefix or normalized_path.startswith(f"{normalized_prefix}/")
 
 
 def build_resume_item(snapshot_item: JenkinsFreezeSnapshotItem) -> JenkinsResumeItem:
@@ -183,7 +196,18 @@ async def create_jenkins_resume_run(
             run.current_path = None
             run.current_name = None
 
-    snapshot_items = [JenkinsFreezeSnapshotItem.model_validate(item) for item in freeze.snapshot]
+    target_path = payload.folder_path or freeze.folder_path
+    if not is_same_or_nested_path(target_path, freeze.folder_path):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Resume folder is not part of this freeze.",
+        )
+
+    snapshot_items = [
+        JenkinsFreezeSnapshotItem.model_validate(item)
+        for item in freeze.snapshot
+        if is_same_or_nested_path(str(item.get("path", "")), target_path)
+    ]
     plan_items = [build_resume_item(item) for item in snapshot_items]
     total = sum(item.state is JenkinsResumeItemState.PENDING for item in plan_items)
     started_count, skipped_count, error_count = recalculate_counts(plan_items)
@@ -191,6 +215,8 @@ async def create_jenkins_resume_run(
     run_status = JenkinsResumeRunStatus.DONE if total == 0 else JenkinsResumeRunStatus.RUNNING
     run = JenkinsResumeRun(
         freeze_id=freeze.id,
+        restart_pipelines=payload.restart_pipelines,
+        target_path=target_path,
         signature=freeze.signature,
         status=run_status,
         total=total,
@@ -204,14 +230,22 @@ async def create_jenkins_resume_run(
         heartbeat_at=now,
         finished_at=now if run_status is JenkinsResumeRunStatus.DONE else None,
     )
-    if run_status is JenkinsResumeRunStatus.DONE:
+    if run_status is JenkinsResumeRunStatus.DONE and normalize_jenkins_path(target_path) == normalize_jenkins_path(freeze.folder_path):
         freeze.status = JenkinsFreezeStatus.RESOLVED
         freeze.resolved_by_id = current_user.id
         freeze.resolved_by = current_user
         freeze.resolved_at = now
 
     db.add(run)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        # The partial-unique index caught a concurrent create for the same scope.
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=ResumeRunErrorMessage.LOCK_CONFLICT.value,
+        ) from exc
     created_run = await get_run_or_404(db, run.id)
     return to_resume_run_read(created_run, now=now)
 
@@ -292,7 +326,11 @@ async def put_jenkins_resume_progress(
         # partial-resume promise in JenkinsFreezeCopy.RESUME_PARTIAL_MESSAGE).
         if run.error_count == 0:
             freeze = await get_freeze_or_404(db, run.freeze_id)
-            if freeze.status is JenkinsFreezeStatus.ACTIVE:
+            if (
+                freeze.status is JenkinsFreezeStatus.ACTIVE
+                and normalize_jenkins_path(run.target_path or freeze.folder_path)
+                == normalize_jenkins_path(freeze.folder_path)
+            ):
                 freeze.status = JenkinsFreezeStatus.RESOLVED
                 freeze.resolved_by_id = run.created_by_id
                 freeze.resolved_at = now

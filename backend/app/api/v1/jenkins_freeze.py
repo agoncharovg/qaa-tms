@@ -184,6 +184,9 @@ async def put_jenkins_freeze_snapshot(
                     JenkinsFreeze.id.in_(payload.merge_freeze_ids),
                     JenkinsFreeze.signature == freeze.signature,
                     JenkinsFreeze.status == JenkinsFreezeStatus.ACTIVE,
+                    # Only merge freezes that already carry a snapshot; a reserved but
+                    # not-yet-applied freeze has none and would be orphaned empty.
+                    JenkinsFreeze.applied.is_(True),
                 )
             )
         )

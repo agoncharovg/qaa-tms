@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { agentClient } from "@/api/agentClient";
 import { backendClient } from "@/api/backendClient";
-import type { JenkinsFreezeRead, JenkinsResumeRunRead } from "@/api/types";
+import type { JenkinsFreezeRead, JenkinsFreezeSnapshotItem, JenkinsResumeRunRead } from "@/api/types";
 import {
   DEFAULT_JENKINS_TREE_REFETCH_MS,
   JENKINS_RESUME_RUN_REFETCH_MS,
@@ -52,6 +52,23 @@ interface UseJenkinsFreezesOptions {
   token: string | null;
 }
 
+interface StartResumeCampaignArgs {
+  folderPath: string;
+  freeze: JenkinsFreezeRead;
+  restartPipelines: boolean;
+  snapshot: JenkinsFreezeSnapshotItem[];
+}
+
+function normalizeJenkinsPath(path: string): string {
+  return decodeURIComponent(path).replace(/^\/+|\/+$/g, "");
+}
+
+function isSameOrNestedPath(path: string, prefix: string): boolean {
+  const normalizedPath = normalizeJenkinsPath(path);
+  const normalizedPrefix = normalizeJenkinsPath(prefix);
+  return normalizedPath === normalizedPrefix || normalizedPath.startsWith(`${normalizedPrefix}/`);
+}
+
 interface UseJenkinsFreezesResult {
   absorbableActiveFreezes: (path: string) => JenkinsFreezeRead[];
   activeFreezeForPath: (path: string) => JenkinsFreezeRead | null;
@@ -67,7 +84,12 @@ interface UseJenkinsFreezesResult {
   isLoading: boolean;
   isLocked: boolean;
   isMutatingPath: (path: string) => boolean;
-  startResumeCampaign: (freeze: JenkinsFreezeRead) => Promise<void>;
+  startResumeCampaign: (
+    freeze: JenkinsFreezeRead,
+    snapshot: JenkinsFreezeSnapshotItem[],
+    restartPipelines?: boolean,
+    folderPath?: string
+  ) => Promise<void>;
   visibleResumeRun: JenkinsResumeRunRead | null;
 }
 
@@ -79,8 +101,12 @@ export function useJenkinsFreezes({
   token,
 }: UseJenkinsFreezesOptions): UseJenkinsFreezesResult {
   const queryClient = useQueryClient();
-  const freezesQueryKey = [QueryKey.JENKINS_FREEZES, token, signature];
-  const resumeRunListQueryKey = [QueryKey.JENKINS_RESUME_RUN, "list", token, signature];
+  const freezesQueryKey = useMemo(() => [QueryKey.JENKINS_FREEZES, token, signature], [signature, token]);
+  const resumeRunListQueryKey = useMemo(
+    () => [QueryKey.JENKINS_RESUME_RUN, "list", token, signature],
+    [signature, token]
+  );
+  const treeCacheQueryKey = useMemo(() => [QueryKey.JENKINS_TREE_CACHE], []);
   const [trackedResumeRunId, setTrackedResumeRunId] = useState<string | null>(null);
 
   const freezesQuery = useQuery({
@@ -124,11 +150,15 @@ export function useJenkinsFreezes({
     setTrackedResumeRunId(activeResumeRun.id);
   }, [activeResumeRun]);
 
+  const trackedResumeRunQueryKey = useMemo(
+    () => [QueryKey.JENKINS_RESUME_RUN, "detail", token, trackedResumeRunId],
+    [token, trackedResumeRunId]
+  );
   const trackedResumeRunQuery = useQuery({
     enabled: Boolean(enabled && token && trackedResumeRunId),
     queryFn: ({ signal }) =>
       backendClient.getJenkinsResumeRun(token ?? "", trackedResumeRunId ?? "", signal),
-    queryKey: [QueryKey.JENKINS_RESUME_RUN, "detail", token, trackedResumeRunId],
+    queryKey: trackedResumeRunQueryKey,
     refetchInterval: (query) => {
       const run = query.state.data;
       return isActive && run?.status === JenkinsResumeRunStatus.RUNNING
@@ -192,17 +222,22 @@ export function useJenkinsFreezes({
   });
 
   const startResumeCampaignMutation = useMutation({
-    mutationFn: async (freeze: JenkinsFreezeRead) => {
+    mutationFn: async ({ folderPath, freeze, restartPipelines, snapshot }: StartResumeCampaignArgs) => {
       if (!token) {
         throw new Error(FreezeErrorMessage.AUTH);
       }
 
-      const run = await backendClient.createJenkinsResumeRun(token, { freezeId: freeze.id });
+      const run = await backendClient.createJenkinsResumeRun(token, {
+        freezeId: freeze.id,
+        restartPipelines,
+        folderPath,
+      });
       try {
         if (run.status === JenkinsResumeRunStatus.RUNNING) {
           await agentClient.startJenkinsResumeRun(agentPort, token, {
             runId: run.id,
-            snapshot: freeze.snapshot,
+            snapshot,
+            restartPipelines,
           });
         }
       } catch (error) {
@@ -215,12 +250,21 @@ export function useJenkinsFreezes({
         }
         throw error;
       }
+      return run;
     },
-    onSuccess: async () => {
+    onSuccess: async (run) => {
+      setTrackedResumeRunId(run.id);
+      queryClient.setQueryData([QueryKey.JENKINS_RESUME_RUN, "detail", token, run.id], run);
+      if (run.status === JenkinsResumeRunStatus.RUNNING) {
+        queryClient.setQueryData<JenkinsResumeRunRead[]>(resumeRunListQueryKey, (current) => [
+          run,
+          ...(current ?? []).filter((candidate) => candidate.id !== run.id),
+        ]);
+      }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: freezesQueryKey }),
         queryClient.invalidateQueries({ queryKey: resumeRunListQueryKey }),
-        queryClient.invalidateQueries({ queryKey: [QueryKey.JENKINS_TREE_CACHE] }),
+        queryClient.invalidateQueries({ queryKey: treeCacheQueryKey }),
       ]);
     },
   });
@@ -241,76 +285,134 @@ export function useJenkinsFreezes({
     },
   });
 
-  const activeFreezes = (freezesQuery.data ?? []).filter((freeze) => freeze.applied);
-  const freezesByFolderPath = new Map<string, JenkinsFreezeRead>();
-  for (const freeze of activeFreezes) {
-    if (!freezesByFolderPath.has(freeze.folderPath)) {
-      freezesByFolderPath.set(freeze.folderPath, freeze);
+  const activeFreezes = useMemo(
+    () => (freezesQuery.data ?? []).filter((freeze) => freeze.applied),
+    [freezesQuery.data]
+  );
+  const freezesByFolderPath = useMemo(() => {
+    const nextMap = new Map<string, JenkinsFreezeRead>();
+    for (const freeze of activeFreezes) {
+      const normalizedPath = normalizeJenkinsPath(freeze.folderPath);
+      if (!nextMap.has(normalizedPath)) {
+        nextMap.set(normalizedPath, freeze);
+      }
     }
-  }
+    return nextMap;
+  }, [activeFreezes]);
 
   const visibleResumeRun = activeResumeRun ?? trackedResumeRunQuery.data ?? null;
   const isLocked = activeResumeRun !== null;
+  const completedTrackedResumeRunId =
+    trackedResumeRunQuery.data && trackedResumeRunQuery.data.status !== JenkinsResumeRunStatus.RUNNING
+      ? trackedResumeRunQuery.data.id
+      : null;
 
-  function coveringActiveFreezes(path: string): JenkinsFreezeRead[] {
-    return activeFreezes.filter(
-      (freeze) => freeze.folderPath === path || path.startsWith(`${freeze.folderPath}/`)
-    );
-  }
-
-  function activeFreezeForPath(path: string): JenkinsFreezeRead | null {
-    const exactFreeze = freezesByFolderPath.get(path);
-    if (exactFreeze) {
-      return exactFreeze;
+  useEffect(() => {
+    if (!completedTrackedResumeRunId) {
+      return;
     }
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: freezesQueryKey }),
+      queryClient.invalidateQueries({ queryKey: resumeRunListQueryKey }),
+      queryClient.invalidateQueries({ queryKey: treeCacheQueryKey }),
+    ]);
+  }, [completedTrackedResumeRunId, freezesQueryKey, queryClient, resumeRunListQueryKey, treeCacheQueryKey]);
 
-    const coveringFreezes = coveringActiveFreezes(path);
-    if (coveringFreezes.length === 0) {
-      return null;
-    }
+  const coveringActiveFreezes = useCallback(
+    (path: string): JenkinsFreezeRead[] =>
+      activeFreezes.filter((freeze) => isSameOrNestedPath(path, freeze.folderPath)),
+    [activeFreezes]
+  );
 
-    return (
-      coveringFreezes.sort((left, right) => right.folderPath.length - left.folderPath.length)[0] ??
-      null
-    );
-  }
+  const activeFreezeForPath = useCallback(
+    (path: string): JenkinsFreezeRead | null => {
+      const exactFreeze = freezesByFolderPath.get(normalizeJenkinsPath(path));
+      if (exactFreeze) {
+        return exactFreeze;
+      }
 
-  function intersectingActiveFreezes(path: string): JenkinsFreezeRead[] {
-    return activeFreezes.filter(
-      (freeze) =>
-        freeze.folderPath === path ||
-        freeze.folderPath.startsWith(`${path}/`) ||
-        path.startsWith(`${freeze.folderPath}/`)
-    );
-  }
+      const coveringFreezes = coveringActiveFreezes(path);
+      if (coveringFreezes.length === 0) {
+        return null;
+      }
 
-  function absorbableActiveFreezes(path: string): JenkinsFreezeRead[] {
-    return activeFreezes.filter(
-      (freeze) => freeze.folderPath === path || freeze.folderPath.startsWith(`${path}/`)
-    );
-  }
+      return (
+        coveringFreezes.sort((left, right) => right.folderPath.length - left.folderPath.length)[0] ??
+        null
+      );
+    },
+    [coveringActiveFreezes, freezesByFolderPath]
+  );
 
-  function isMutatingPath(path: string): boolean {
-    return (
-      (freezeMutation.isPending && freezeMutation.variables?.folderPath === path) ||
+  const intersectingActiveFreezes = useCallback(
+    (path: string): JenkinsFreezeRead[] =>
+      activeFreezes.filter(
+        (freeze) =>
+          isSameOrNestedPath(freeze.folderPath, path) || isSameOrNestedPath(path, freeze.folderPath)
+      ),
+    [activeFreezes]
+  );
+
+  const absorbableActiveFreezes = useCallback(
+    (path: string): JenkinsFreezeRead[] =>
+      activeFreezes.filter((freeze) => isSameOrNestedPath(freeze.folderPath, path)),
+    [activeFreezes]
+  );
+
+  const isMutatingPath = useCallback(
+    (path: string): boolean =>
+      (freezeMutation.isPending && isSameOrNestedPath(freezeMutation.variables?.folderPath ?? "", path)) ||
       (startResumeCampaignMutation.isPending &&
-        startResumeCampaignMutation.variables?.folderPath === path)
-    );
-  }
+        isSameOrNestedPath(startResumeCampaignMutation.variables?.folderPath ?? "", path)),
+    [
+      freezeMutation.isPending,
+      freezeMutation.variables?.folderPath,
+      startResumeCampaignMutation.isPending,
+      startResumeCampaignMutation.variables?.folderPath,
+    ]
+  );
+
+  const cancelResumeRun = useCallback(async () => {
+    if (activeResumeRun) {
+      await cancelResumeRunMutation.mutateAsync(activeResumeRun.id);
+    }
+  }, [activeResumeRun, cancelResumeRunMutation]);
+
+  const closeResumeRunSummary = useCallback(() => {
+    setTrackedResumeRunId(null);
+  }, []);
+
+  const freezeFolder = useCallback(
+    async (args: FreezeFolderArgs) => {
+      await freezeMutation.mutateAsync(args);
+    },
+    [freezeMutation]
+  );
+
+  const startResumeCampaign = useCallback(
+    async (
+      freeze: JenkinsFreezeRead,
+      snapshot: JenkinsFreezeSnapshotItem[],
+      restartPipelines = true,
+      folderPath = freeze.folderPath
+    ) => {
+      await startResumeCampaignMutation.mutateAsync({
+        folderPath,
+        freeze,
+        restartPipelines,
+        snapshot,
+      });
+    },
+    [startResumeCampaignMutation]
+  );
 
   return {
     absorbableActiveFreezes,
     activeFreezeForPath,
     activeFreezes,
     activeResumeRun,
-    cancelResumeRun: async () => {
-      if (activeResumeRun) {
-        await cancelResumeRunMutation.mutateAsync(activeResumeRun.id);
-      }
-    },
-    closeResumeRunSummary: () => {
-      setTrackedResumeRunId(null);
-    },
+    cancelResumeRun,
+    closeResumeRunSummary,
     coveringActiveFreezes,
     error:
       freezesQuery.error ??
@@ -319,15 +421,13 @@ export function useJenkinsFreezes({
       cancelResumeRunMutation.error ??
       resumeRunQuery.error ??
       trackedResumeRunQuery.error,
-    freezeFolder: freezeMutation.mutateAsync,
+    freezeFolder,
     freezesByFolderPath,
     intersectingActiveFreezes,
     isLoading: freezesQuery.isLoading || resumeRunQuery.isLoading,
     isLocked,
     isMutatingPath,
-    startResumeCampaign: async (freeze) => {
-      await startResumeCampaignMutation.mutateAsync(freeze);
-    },
+    startResumeCampaign,
     visibleResumeRun,
   };
 }

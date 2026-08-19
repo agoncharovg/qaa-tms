@@ -13,10 +13,12 @@ from fastapi.responses import StreamingResponse
 
 from app.api.deps import AuthContext, get_job_manager, get_settings, require_auth
 from app.core import env_file
-from app.core.config import Settings
+from app.core.config import JenkinsRootGroup, Settings
 from app.core.config import get_settings as load_settings
 from app.core.constants import (
     DEFAULT_KUBE_LOG_TAIL,
+    GROUP_LABEL_SEPARATOR,
+    GROUP_LIST_SEPARATOR,
     AgentPath,
     EnvKey,
     ErrorMessage,
@@ -124,7 +126,7 @@ logger = logging.getLogger(__name__)
 AGENT_SETTINGS_ENV_KEY_BY_FIELD = {
     "jenkins_history_limit": EnvKey.JENKINS_HISTORY_LIMIT,
     "jenkins_root_folders": EnvKey.JENKINS_ROOT_FOLDERS,
-    "jenkins_root_path": EnvKey.JENKINS_ROOT_PATH,
+    "jenkins_root_groups": EnvKey.JENKINS_ROOT_GROUPS,
     "qaa_generator_token": EnvKey.QAA_GENERATOR_TOKEN,
     "jenkins_request_timeout": EnvKey.JENKINS_REQUEST_TIMEOUT,
     "jenkins_stuck_min_idle_hours": EnvKey.JENKINS_STUCK_MIN_IDLE_HOURS,
@@ -149,6 +151,10 @@ CSV_SEPARATOR = ","
 
 def serialize_env_value(value: object) -> str:
     if isinstance(value, list):
+        if all(isinstance(item, JenkinsRootGroup) for item in value):
+            return GROUP_LIST_SEPARATOR.join(
+                f"{item.label}{GROUP_LABEL_SEPARATOR}{item.path}" for item in value
+            )
         return CSV_SEPARATOR.join(str(item) for item in value)
     return str(value)
 
@@ -237,7 +243,7 @@ async def get_jenkins_scope(
 ) -> JenkinsScopeResponse:
     return JenkinsScopeResponse(
         signature=jenkins_scope_signature(settings),
-        root_path=settings.jenkins_root_path,
+        root_groups=list(settings.jenkins_root_groups),
         root_folders=list(settings.jenkins_root_folders),
         tree_depth=settings.jenkins_tree_depth,
         history_limit=settings.jenkins_history_limit,
@@ -357,6 +363,7 @@ async def post_jenkins_resume_run(
                     request_body.run_id,
                     auth.token,
                     request_body.snapshot,
+                    restart_pipelines=request_body.restart_pipelines,
                     backend_client=backend_client,
                 )
             except Exception:

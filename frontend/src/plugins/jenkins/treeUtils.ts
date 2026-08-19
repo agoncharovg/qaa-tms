@@ -21,11 +21,26 @@ export function createEmptyJenkinsStatusCounts(): JenkinsStatusCounts {
   };
 }
 
-export function collectExpandableNodePaths(roots: JenkinsNode[]): string[] {
-  return roots.flatMap((node) => collectNodePaths(node));
+const SYNTHETIC_NODE_KEY_PREFIX = "synthetic" as const;
+
+export function buildJenkinsNodeKey(node: JenkinsNode, parentKey = ""): string {
+  if (node.path) {
+    return node.path;
+  }
+  if (parentKey) {
+    return `${parentKey}/${node.name}`;
+  }
+  return `${SYNTHETIC_NODE_KEY_PREFIX}/${node.name}`;
+}
+
+export function collectExpandableNodeKeys(roots: JenkinsNode[]): string[] {
+  return roots.flatMap((node) => collectNodeKeys(node));
 }
 
 export function findNodeByPath(roots: JenkinsNode[], path: string): JenkinsNode | null {
+  if (!path) {
+    return null;
+  }
   for (const root of roots) {
     if (root.path === path) {
       return root;
@@ -81,6 +96,7 @@ export function statusKey(status: JenkinsStatusType | null): string {
   return status ?? JenkinsStatus.NOTBUILT;
 }
 
-function collectNodePaths(node: JenkinsNode): string[] {
-  return [node.path, ...node.children.flatMap((child) => collectNodePaths(child))];
+function collectNodeKeys(node: JenkinsNode, parentKey = ""): string[] {
+  const nodeKey = buildJenkinsNodeKey(node, parentKey);
+  return [nodeKey, ...node.children.flatMap((child) => collectNodeKeys(child, nodeKey))];
 }

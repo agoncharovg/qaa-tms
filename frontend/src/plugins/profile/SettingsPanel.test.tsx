@@ -29,8 +29,12 @@ const agentSettingsResponse = {
   jenkins_username: "agent-user",
   jenkins_token_set: true,
   qaa_generator_token_set: false,
-  jenkins_root_path: "job/.QAA/job/E2E",
+  jenkins_root_groups: [
+    { label: "BE", path: "job/.QAA/job/E2E" },
+    { label: "FE", path: "job/.QAA/job/UI_E2E" },
+  ],
   jenkins_root_folders: ["PREPROD", "PROD"],
+  jenkins_history_limit: 8,
   jenkins_request_timeout: 15,
   jenkins_tree_depth: 5,
   jenkins_stuck_min_idle_hours: 6,

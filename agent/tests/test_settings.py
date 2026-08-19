@@ -17,7 +17,7 @@ def write_agent_env(path: Path) -> None:
                 "AGENT_JENKINS_USERNAME=initial-user",
                 "AGENT_JENKINS_TOKEN=initial-token",
                 "AGENT_QAA_GENERATOR_TOKEN=initial-qaa-token",
-                "AGENT_JENKINS_ROOT_PATH=job/.QAA/job/E2E",
+                "AGENT_JENKINS_ROOT_GROUPS=BE=job/.QAA/job/E2E,FE=job/.QAA/job/UI_E2E",
                 "AGENT_JENKINS_ROOT_FOLDERS=PREPROD,PROD",
                 "AGENT_JENKINS_HISTORY_LIMIT=8",
                 "AGENT_JENKINS_REQUEST_TIMEOUT=15",
@@ -67,6 +67,10 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
     body = get_response.json()
     assert body["jenkins_token_set"] is True
     assert body["qaa_generator_token_set"] is True
+    assert body["jenkins_root_groups"] == [
+        {"label": "BE", "path": "job/.QAA/job/E2E"},
+        {"label": "FE", "path": "job/.QAA/job/UI_E2E"},
+    ]
     assert body["jenkins_root_folders"] == ["PREPROD", "PROD"]
     assert body["jenkins_history_limit"] == 8
     assert "jenkins_token" not in body
@@ -82,7 +86,10 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
             "jenkins_username": "updated-user",
             "jenkins_token": "",
             "qaa_generator_token": "",
-            "jenkins_root_path": "job/.QAA/job/E2E/job/UPDATED",
+            "jenkins_root_groups": [
+                {"label": "BE", "path": "job/.QAA/job/E2E/job/UPDATED"},
+                {"label": "FE", "path": "job/.QAA/job/UI_E2E/job/UPDATED"},
+            ],
             "jenkins_root_folders": ["UPDATED", "MORE"],
             "jenkins_history_limit": 10,
             "jenkins_request_timeout": 22,
@@ -106,6 +113,10 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
     assert updated["jenkins_username"] == "updated-user"
     assert updated["jenkins_token_set"] is False
     assert updated["qaa_generator_token_set"] is False
+    assert updated["jenkins_root_groups"] == [
+        {"label": "BE", "path": "job/.QAA/job/E2E/job/UPDATED"},
+        {"label": "FE", "path": "job/.QAA/job/UI_E2E/job/UPDATED"},
+    ]
     assert updated["jenkins_root_folders"] == ["UPDATED", "MORE"]
     assert updated["jenkins_history_limit"] == 10
     assert updated["staging_bin"] == "/opt/staging"
@@ -116,6 +127,10 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
     assert runtime_settings.jenkins_username == "updated-user"
     assert runtime_settings.jenkins_token == ""
     assert runtime_settings.qaa_generator_token == ""
+    assert [(group.label, group.path) for group in runtime_settings.jenkins_root_groups] == [
+        ("BE", "job/.QAA/job/E2E/job/UPDATED"),
+        ("FE", "job/.QAA/job/UI_E2E/job/UPDATED"),
+    ]
     assert runtime_settings.jenkins_root_folders == ["UPDATED", "MORE"]
     assert runtime_settings.jenkins_history_limit == 10
     assert (
@@ -125,5 +140,9 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
     serialized_env = env_path.read_text(encoding="utf-8")
     assert "AGENT_JENKINS_TOKEN=\n" in serialized_env
     assert "AGENT_QAA_GENERATOR_TOKEN=\n" in serialized_env
+    assert (
+        "AGENT_JENKINS_ROOT_GROUPS="
+        "BE=job/.QAA/job/E2E/job/UPDATED,FE=job/.QAA/job/UI_E2E/job/UPDATED\n" in serialized_env
+    )
     assert "AGENT_JENKINS_ROOT_FOLDERS=UPDATED,MORE\n" in serialized_env
     assert "AGENT_JENKINS_HISTORY_LIMIT=10\n" in serialized_env

@@ -521,6 +521,7 @@ def build_resume_campaign_backend_transport(
     progress_updates: list[dict[str, Any]],
     *,
     cancel_after_path: str | None = None,
+    restart_pipelines: bool = True,
 ) -> httpx.MockTransport:
     current_status = JenkinsResumeRunStatus.RUNNING
     started_count = 0
@@ -530,6 +531,7 @@ def build_resume_campaign_backend_transport(
         return {
             "id": run_id,
             "freezeId": str(uuid4()),
+            "restartPipelines": restart_pipelines,
             "signature": "scope-jenkins",
             "status": current_status.value,
             "total": 2,
@@ -1217,6 +1219,81 @@ async def test_run_resume_campaign_starts_items_in_order_reports_progress_and_re
         f"{PREPROD_BE_PATH}/job/Deploy/build",
     ]
     assert captured_build_data[PIPELINE_PATH] == {"BRANCH": "main"}
+    assert progress_updates == [
+        {
+            "nextName": "Deploy",
+            "nextPath": f"{PREPROD_BE_PATH}/job/Deploy",
+            "path": PIPELINE_PATH,
+            "reason": None,
+            "state": "started",
+        },
+        {
+            "nextName": None,
+            "nextPath": None,
+            "path": f"{PREPROD_BE_PATH}/job/Deploy",
+            "reason": None,
+            "state": "started",
+        },
+    ]
+
+
+async def test_run_resume_campaign_does_not_restart_pipelines_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = build_settings()
+    run_id = uuid4()
+    requests: list[str] = []
+    progress_updates: list[dict[str, Any]] = []
+    sleep_calls: list[float] = []
+
+    async def fake_sleep(delay: float) -> None:
+        sleep_calls.append(delay)
+
+    monkeypatch.setattr("app.services.jenkins.asyncio.sleep", fake_sleep)
+    backend_transport = build_resume_campaign_backend_transport(
+        str(run_id),
+        progress_updates,
+        restart_pipelines=False,
+    )
+    jenkins_transport = build_resume_fallback_transport(requests)
+
+    async with httpx.AsyncClient(
+        base_url="http://backend.test",
+        transport=backend_transport,
+    ) as backend_client:
+        await run_resume_campaign(
+            settings,
+            run_id,
+            "valid-token",
+            [
+                JenkinsFreezeSnapshotItem(
+                    path=PIPELINE_PATH,
+                    full_name=".QAA/E2E/PREPROD/Smoke",
+                    name="Smoke",
+                    was_disabled=False,
+                    scheduled=False,
+                    was_building=False,
+                ),
+                JenkinsFreezeSnapshotItem(
+                    path=f"{PREPROD_BE_PATH}/job/Deploy",
+                    full_name=".QAA/E2E/PREPROD/Deploy",
+                    name="Deploy",
+                    was_disabled=False,
+                    scheduled=False,
+                    was_building=False,
+                ),
+            ],
+            restart_pipelines=False,
+            backend_client=backend_client,
+            transport=jenkins_transport,
+        )
+
+    assert sleep_calls == [settings.jenkins_resume_pause_seconds]
+    assert requests == [
+        "crumbIssuer/api/json",
+        f"{PIPELINE_PATH}/enable",
+        f"{PREPROD_BE_PATH}/job/Deploy/enable",
+    ]
     assert progress_updates == [
         {
             "nextName": "Deploy",

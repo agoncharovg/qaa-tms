@@ -223,6 +223,7 @@ function buildResumeRun(status: "running" | "done" | "cancelled" = "running") {
     finishedAt: status === "running" ? null : "2026-08-18T10:05:00Z",
     freezeId: "freeze-exact",
     id: "run-1",
+    restartPipelines: true,
     items: [
       {
         fullName: ".QAA/E2E/PREPROD/Smoke",
@@ -510,6 +511,66 @@ describe("TreePanel", () => {
     await user.type(screen.getByLabelText("Reason"), "DR freeze");
 
     expect(buildHistoryLineMock.renderCount).toBe(renderCountBeforeTyping);
+  });
+
+  it("does not rerender the tree when opening the resume dialog or toggling automatic restart", async () => {
+    const user = userEvent.setup();
+
+    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsTreeCache.mockResolvedValue({
+      fetchedAt: "2026-08-17T10:00:00Z",
+      refreshLease: null,
+      roots: buildTreeRoots(),
+      signature: "scope-1234",
+      stale: false,
+    });
+    backendClientMock.getJenkinsFreezes.mockResolvedValue([
+      {
+        applied: true,
+        createdAt: "2026-08-17T10:00:00Z",
+        createdBy: "test",
+        folderName: "BE",
+        folderPath: "job/.QAA/job/E2E/job/PREPROD",
+        id: "freeze-exact",
+        killBuilds: false,
+        mergedIntoId: null,
+        reason: "DR freeze",
+        resolvedAt: null,
+        resolvedBy: null,
+        signature: "scope-1234",
+        snapshot: [
+          {
+            fullName: ".QAA/E2E/PREPROD/Smoke",
+            name: "Smoke",
+            path: "job/.QAA/job/E2E/job/PREPROD/job/Smoke",
+            scheduled: false,
+            wasBuilding: false,
+            wasDisabled: false,
+          },
+        ],
+        status: "active",
+      },
+    ]);
+
+    renderWithProviders(<TreePanel agentPort={47600} />);
+
+    expect(await screen.findByText("Smoke")).toBeInTheDocument();
+    const beRow = screen.getAllByText("BE")[0]?.closest('[data-frozen="true"]');
+    expect(beRow).not.toBeNull();
+
+    const renderCountBeforeResume = buildHistoryLineMock.renderCount;
+    await user.click(within(beRow as HTMLElement).getByRole("button", { name: "Resume folder" }));
+
+    const resumeDialog = await screen.findByRole("dialog", { name: "Resume Jenkins folder" });
+    expect(buildHistoryLineMock.renderCount).toBe(renderCountBeforeResume);
+
+    await user.click(
+      within(resumeDialog).getByRole("checkbox", {
+        name: "Automatically restart resumed pipelines",
+      })
+    );
+
+    expect(buildHistoryLineMock.renderCount).toBe(renderCountBeforeResume);
   });
 
   it("freezes a folder through reserve, agent snapshot, and snapshot put in order", async () => {
@@ -825,20 +886,28 @@ describe("TreePanel", () => {
     expect(await screen.findByText("DR freeze")).toBeInTheDocument();
 
     expect(screen.getAllByText("BE")[0]?.closest('[data-frozen="true"]')).not.toBeNull();
-    expect(screen.getByText("IAM").closest('[data-frozen="true"]')).not.toBeNull();
+    const iamRow = screen.getByText("IAM").closest('[data-frozen="true"]');
+    expect(iamRow).not.toBeNull();
 
     await user.click(screen.getAllByText("BE")[0]!);
     expect(await screen.findByText("Smoke")).toBeInTheDocument();
     expect(screen.getByText("Smoke").closest('[data-frozen="true"]')).not.toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "Resume folder" }));
+    await user.click(within(iamRow as HTMLElement).getByRole("button", { name: "Resume folder" }));
 
     const resumeDialog = await screen.findByRole("dialog", { name: "Resume Jenkins folder" });
+    expect(
+      within(resumeDialog).getByRole("checkbox", {
+        name: "Automatically restart resumed pipelines",
+      })
+    ).toBeChecked();
     await user.click(within(resumeDialog).getByRole("button", { name: "Resume folder" }));
 
     await waitFor(() => {
       expect(backendClientMock.createJenkinsResumeRun).toHaveBeenCalledWith("token-123", {
         freezeId: "freeze-exact",
+        restartPipelines: true,
+        folderPath: "job/.QAA/job/E2E/job/PREPROD/job/IAM",
       });
       expect(agentClientMock.startJenkinsResumeRun).toHaveBeenCalledWith(47600, expect.anything(), {
         runId: "run-1",
@@ -852,11 +921,302 @@ describe("TreePanel", () => {
             wasDisabled: false,
           },
         ],
+        restartPipelines: true,
       });
     });
 
     expect(agentClientMock.resumeJenkinsFolder).not.toHaveBeenCalled();
     expect(backendClientMock.resolveJenkinsFreeze).not.toHaveBeenCalled();
+  });
+
+  it("allows resuming without automatic restart", async () => {
+    const user = userEvent.setup();
+
+    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsTreeCache.mockResolvedValue({
+      fetchedAt: "2026-08-17T10:00:00Z",
+      refreshLease: null,
+      roots: buildTreeRoots(),
+      signature: "scope-1234",
+      stale: false,
+    });
+    backendClientMock.getJenkinsFreezes.mockResolvedValue([
+      {
+        applied: true,
+        createdAt: "2026-08-17T10:00:00Z",
+        createdBy: "test",
+        folderName: "BE",
+        folderPath: "job/.QAA/job/E2E/job/PREPROD",
+        id: "freeze-exact",
+        killBuilds: false,
+        mergedIntoId: null,
+        reason: "DR freeze",
+        resolvedAt: null,
+        resolvedBy: null,
+        signature: "scope-1234",
+        snapshot: [
+          {
+            fullName: ".QAA/E2E/PREPROD/IAM/Smoke",
+            name: "Smoke",
+            path: "job/.QAA/job/E2E/job/PREPROD/job/IAM/job/Smoke",
+            scheduled: false,
+            wasBuilding: false,
+            wasDisabled: false,
+          },
+        ],
+        status: "active",
+      },
+    ]);
+    backendClientMock.createJenkinsResumeRun.mockResolvedValue(buildResumeRun("running"));
+    agentClientMock.startJenkinsResumeRun.mockResolvedValue({ runId: "run-1" });
+
+    renderWithProviders(<TreePanel agentPort={47600} />);
+
+    await screen.findAllByText("Frozen");
+    const beRow = screen.getAllByText("BE")[0]?.closest('[data-frozen="true"]');
+    expect(beRow).not.toBeNull();
+    await user.click(within(beRow as HTMLElement).getByRole("button", { name: "Resume folder" }));
+
+    const resumeDialog = await screen.findByRole("dialog", { name: "Resume Jenkins folder" });
+    await user.click(
+      within(resumeDialog).getByRole("checkbox", {
+        name: "Automatically restart resumed pipelines",
+      })
+    );
+    await user.click(within(resumeDialog).getByRole("button", { name: "Resume folder" }));
+
+    expect(await screen.findByRole("dialog", { name: "Resume campaign" })).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(backendClientMock.createJenkinsResumeRun).toHaveBeenCalledWith("token-123", {
+        freezeId: "freeze-exact",
+        restartPipelines: false,
+        folderPath: "job/.QAA/job/E2E/job/PREPROD",
+      });
+      expect(agentClientMock.startJenkinsResumeRun).toHaveBeenCalledWith(47600, expect.anything(), {
+        runId: "run-1",
+        snapshot: [
+          {
+            fullName: ".QAA/E2E/PREPROD/IAM/Smoke",
+            name: "Smoke",
+            path: "job/.QAA/job/E2E/job/PREPROD/job/IAM/job/Smoke",
+            scheduled: false,
+            wasBuilding: false,
+            wasDisabled: false,
+          },
+        ],
+        restartPipelines: false,
+      });
+    });
+  });
+
+  it("resumes only the selected covered child subtree", async () => {
+    const user = userEvent.setup();
+    const roots = [
+      {
+        builds: [],
+        children: [
+          {
+            builds: [],
+            children: [
+              {
+                builds: [],
+                children: [
+                  {
+                    builds: [],
+                    children: [],
+                    color: null,
+                    kind: "folder",
+                    name: "IAM Client portal",
+                    scheduled: false,
+                    synthetic: false,
+                    path: "job/.QAA/job/UI_E2E/job/PREPROD/job/IAM/job/IAM%20Client%20portal",
+                    status: null,
+                    url: "https://jenkins.p.gc.onl/job/.QAA/job/UI_E2E/job/PREPROD/job/IAM/job/IAM%20Client%20portal/",
+                  },
+                ],
+                color: null,
+                kind: "folder",
+                name: "IAM",
+                scheduled: false,
+                synthetic: false,
+                path: "job/.QAA/job/UI_E2E/job/PREPROD/job/IAM",
+                status: null,
+                url: "https://jenkins.p.gc.onl/job/.QAA/job/UI_E2E/job/PREPROD/job/IAM/",
+              },
+            ],
+            color: null,
+            kind: "folder",
+            name: "FE",
+            scheduled: false,
+            synthetic: false,
+            path: "job/.QAA/job/UI_E2E/job/PREPROD",
+            status: null,
+            url: "https://jenkins.p.gc.onl/job/.QAA/job/UI_E2E/job/PREPROD/",
+          },
+        ],
+        color: null,
+        kind: "folder",
+        name: "PREPROD",
+        scheduled: false,
+        synthetic: true,
+        path: "",
+        status: null,
+        url: "",
+      },
+    ];
+
+    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsTreeCache.mockResolvedValue({
+      fetchedAt: "2026-08-17T10:00:00Z",
+      refreshLease: null,
+      roots,
+      signature: "scope-1234",
+      stale: false,
+    });
+    backendClientMock.getJenkinsFreezes.mockResolvedValue([
+      {
+        applied: true,
+        createdAt: "2026-08-17T10:00:00Z",
+        createdBy: "test",
+        folderName: "IAM",
+        folderPath: "job/.QAA/job/UI_E2E/job/PREPROD/job/IAM",
+        id: "freeze-iam",
+        killBuilds: false,
+        mergedIntoId: null,
+        reason: "DR freeze",
+        resolvedAt: null,
+        resolvedBy: null,
+        signature: "scope-1234",
+        snapshot: [
+          {
+            fullName: ".QAA/UI_E2E/PREPROD/IAM/Smoke",
+            name: "Smoke",
+            path: "job/.QAA/job/UI_E2E/job/PREPROD/job/IAM/job/Smoke",
+            scheduled: false,
+            wasBuilding: false,
+            wasDisabled: false,
+          },
+          {
+            fullName: ".QAA/UI_E2E/PREPROD/IAM/Auth",
+            name: "Auth",
+            path: "job/.QAA/job/UI_E2E/job/PREPROD/job/IAM/job/Auth",
+            scheduled: false,
+            wasBuilding: false,
+            wasDisabled: false,
+          },
+          {
+            fullName: ".QAA/UI_E2E/PREPROD/IAM/Other",
+            name: "Other",
+            path: "job/.QAA/job/UI_E2E/job/PREPROD/job/IAM/job/Other",
+            scheduled: false,
+            wasBuilding: false,
+            wasDisabled: false,
+          },
+          {
+            fullName: ".QAA/UI_E2E/PREPROD/IAM/IAM Client portal/Web",
+            name: "Web",
+            path: "job/.QAA/job/UI_E2E/job/PREPROD/job/IAM/job/IAM Client portal/job/Web",
+            scheduled: false,
+            wasBuilding: false,
+            wasDisabled: false,
+          },
+          {
+            fullName: ".QAA/UI_E2E/PREPROD/IAM/IAM Client portal/Admin",
+            name: "Admin",
+            path: "job/.QAA/job/UI_E2E/job/PREPROD/job/IAM/job/IAM Client portal/job/Admin",
+            scheduled: false,
+            wasBuilding: false,
+            wasDisabled: false,
+          },
+          {
+            fullName: ".QAA/UI_E2E/PREPROD/IAM/IAM Client portal/API",
+            name: "API",
+            path: "job/.QAA/job/UI_E2E/job/PREPROD/job/IAM/job/IAM Client portal/job/API",
+            scheduled: false,
+            wasBuilding: false,
+            wasDisabled: false,
+          },
+          {
+            fullName: ".QAA/UI_E2E/PREPROD/IAM/IAM Client portal/E2E",
+            name: "E2E",
+            path: "job/.QAA/job/UI_E2E/job/PREPROD/job/IAM/job/IAM Client portal/job/E2E",
+            scheduled: false,
+            wasBuilding: false,
+            wasDisabled: false,
+          },
+        ],
+        status: "active",
+      },
+    ]);
+    backendClientMock.createJenkinsResumeRun.mockResolvedValue(buildResumeRun("running"));
+    agentClientMock.startJenkinsResumeRun.mockResolvedValue({ runId: "run-1" });
+
+    renderWithProviders(<TreePanel agentPort={47600} />);
+
+    await screen.findByText("FE");
+    await user.click(screen.getAllByText("FE")[0]!);
+    await user.click(screen.getByText("IAM"));
+
+    const portalRow = await screen.findByText("IAM Client portal");
+    await user.click(
+      within(portalRow.closest('[data-frozen="true"]') as HTMLElement).getByRole("button", {
+        name: "Resume folder",
+      })
+    );
+
+    const resumeDialog = await screen.findByRole("dialog", { name: "Resume Jenkins folder" });
+    expect(resumeDialog).toHaveTextContent(
+      "Restore 4 pipeline(s) in IAM Client portal. 4 will be rebuilt now; 0 scheduled pipeline(s) will only be re-enabled."
+    );
+
+    await user.click(within(resumeDialog).getByRole("button", { name: "Resume folder" }));
+
+    await waitFor(() => {
+      expect(backendClientMock.createJenkinsResumeRun).toHaveBeenCalledWith("token-123", {
+        freezeId: "freeze-iam",
+        restartPipelines: true,
+        folderPath: "job/.QAA/job/UI_E2E/job/PREPROD/job/IAM/job/IAM%20Client%20portal",
+      });
+      expect(agentClientMock.startJenkinsResumeRun).toHaveBeenCalledWith(47600, expect.anything(), {
+        runId: "run-1",
+        restartPipelines: true,
+        snapshot: [
+          {
+            fullName: ".QAA/UI_E2E/PREPROD/IAM/IAM Client portal/Web",
+            name: "Web",
+            path: "job/.QAA/job/UI_E2E/job/PREPROD/job/IAM/job/IAM Client portal/job/Web",
+            scheduled: false,
+            wasBuilding: false,
+            wasDisabled: false,
+          },
+          {
+            fullName: ".QAA/UI_E2E/PREPROD/IAM/IAM Client portal/Admin",
+            name: "Admin",
+            path: "job/.QAA/job/UI_E2E/job/PREPROD/job/IAM/job/IAM Client portal/job/Admin",
+            scheduled: false,
+            wasBuilding: false,
+            wasDisabled: false,
+          },
+          {
+            fullName: ".QAA/UI_E2E/PREPROD/IAM/IAM Client portal/API",
+            name: "API",
+            path: "job/.QAA/job/UI_E2E/job/PREPROD/job/IAM/job/IAM Client portal/job/API",
+            scheduled: false,
+            wasBuilding: false,
+            wasDisabled: false,
+          },
+          {
+            fullName: ".QAA/UI_E2E/PREPROD/IAM/IAM Client portal/E2E",
+            name: "E2E",
+            path: "job/.QAA/job/UI_E2E/job/PREPROD/job/IAM/job/IAM Client portal/job/E2E",
+            scheduled: false,
+            wasBuilding: false,
+            wasDisabled: false,
+          },
+        ],
+      });
+    });
   });
 
   it("renders the shared progress modal from poll results and disables resume actions while locked", async () => {

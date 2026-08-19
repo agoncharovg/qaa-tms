@@ -160,6 +160,7 @@ describe("agentClient jenkins requests", () => {
           kind: "folder",
           name: "PREPROD",
           scheduled: false,
+          synthetic: false,
           path: "job/.QAA/job/E2E/job/PREPROD",
           status: null,
           url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/",
@@ -229,6 +230,7 @@ describe("agentClient jenkins requests", () => {
           wasDisabled: false,
         },
       ],
+      restartPipelines: true,
     };
 
     fetchMock.mockResolvedValue(new Response(JSON.stringify(response), { status: 202 }));

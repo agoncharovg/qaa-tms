@@ -8,7 +8,8 @@ import { JenkinsResumeProgressModal } from "@/plugins/jenkins/JenkinsResumeProgr
 import { renderWithProviders } from "@/test/render";
 
 function buildResumeRun(
-  status: JenkinsResumeRunRead["status"] = JenkinsResumeRunStatus.RUNNING
+  status: JenkinsResumeRunRead["status"] = JenkinsResumeRunStatus.RUNNING,
+  restartPipelines = true
 ): JenkinsResumeRunRead {
   return {
     cancelledBy: status === JenkinsResumeRunStatus.CANCELLED ? "admin" : null,
@@ -23,6 +24,7 @@ function buildResumeRun(
     finishedAt: status === JenkinsResumeRunStatus.RUNNING ? null : "2026-08-18T10:05:00Z",
     freezeId: "freeze-1",
     id: "run-1",
+    restartPipelines,
     items: [
       {
         fullName: ".QAA/E2E/PREPROD/Smoke",
@@ -68,6 +70,20 @@ describe("JenkinsResumeProgressModal", () => {
     await user.click(screen.getByRole("button", { name: "Cancel" }));
 
     expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders enabled wording when restart is disabled", () => {
+    renderWithProviders(
+      <JenkinsResumeProgressModal
+        onCancel={vi.fn()}
+        onClose={vi.fn()}
+        run={buildResumeRun(JenkinsResumeRunStatus.RUNNING, false)}
+      />
+    );
+
+    expect(screen.getByText("Enabling now")).toBeInTheDocument();
+    expect(screen.getByText("1/2 enabled")).toBeInTheDocument();
+    expect(screen.getAllByText("Enabled")).not.toHaveLength(0);
   });
 
   it("renders the terminal summary with a local close action", async () => {

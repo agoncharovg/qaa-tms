@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Integer, String, Uuid
+from sqlalchemy import Boolean, JSON, DateTime, Enum, ForeignKey, Index, Integer, String, Uuid, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -35,9 +35,22 @@ items_column = JSON().with_variant(JSONB(), DatabaseDialect.POSTGRESQL.value)
 
 class JenkinsResumeRun(Base):
     __tablename__ = "jenkins_resume_runs"
+    # DB-level global lock: at most one RUNNING campaign per scope signature, so two
+    # concurrent creates cannot both launch a campaign and double-trigger every build.
+    __table_args__ = (
+        Index(
+            "uq_jenkins_resume_runs_active",
+            "signature",
+            unique=True,
+            postgresql_where=text("status = 'running'"),
+            sqlite_where=text("status = 'running'"),
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     freeze_id: Mapped[UUID] = mapped_column(ForeignKey("jenkins_freezes.id"), index=True)
+    restart_pipelines: Mapped[bool] = mapped_column(Boolean, default=True)
+    target_path: Mapped[str | None] = mapped_column(String(DEFAULT_STRING_LENGTH), nullable=True)
     signature: Mapped[str] = mapped_column(String(DEFAULT_STRING_LENGTH), index=True)
     status: Mapped[JenkinsResumeRunStatus] = mapped_column(
         Enum(JenkinsResumeRunStatus, native_enum=False, values_callable=enum_values),

@@ -28,32 +28,46 @@ def test_jenkins_tree_cache_round_trip_returns_fresh_snapshot(client: TestClient
                     "builds": [],
                     "children": [
                         {
-                            "builds": [
+                            "builds": [],
+                            "children": [
                                 {
-                                    "allureUrl": "https://jenkins.example/build/42/allure/",
-                                    "building": False,
-                                    "durationMs": 120000,
-                                    "number": 42,
-                                    "result": "SUCCESS",
-                                    "timestamp": 1720000000000,
-                                    "url": "https://jenkins.example/build/42/",
+                                    "builds": [
+                                        {
+                                            "allureUrl": "https://jenkins.example/build/42/allure/",
+                                            "building": False,
+                                            "durationMs": 120000,
+                                            "number": 42,
+                                            "result": "SUCCESS",
+                                            "timestamp": 1720000000000,
+                                            "url": "https://jenkins.example/build/42/",
+                                        }
+                                    ],
+                                    "children": [],
+                                    "color": "blue",
+                                    "kind": "pipeline",
+                                    "name": "Smoke",
+                                    "path": "job/.QAA/job/E2E/job/PREPROD/job/Smoke",
+                                    "status": "passed",
+                                    "synthetic": False,
+                                    "url": "https://jenkins.example/job/.QAA/job/E2E/job/PREPROD/job/Smoke/",
                                 }
                             ],
-                            "children": [],
-                            "color": "blue",
-                            "kind": "pipeline",
-                            "name": "Smoke",
-                            "path": "job/.QAA/job/E2E/job/PREPROD/job/Smoke",
-                            "status": "passed",
-                            "url": "https://jenkins.example/job/.QAA/job/E2E/job/PREPROD/job/Smoke/",
+                            "color": None,
+                            "kind": "folder",
+                            "name": "BE",
+                            "path": "job/.QAA/job/E2E/job/PREPROD",
+                            "status": None,
+                            "synthetic": False,
+                            "url": "https://jenkins.example/job/.QAA/job/E2E/job/PREPROD/",
                         }
                     ],
                     "color": None,
                     "kind": "folder",
                     "name": "PREPROD",
-                    "path": "job/.QAA/job/E2E/job/PREPROD",
+                    "path": "",
                     "status": None,
-                    "url": "https://jenkins.example/job/.QAA/job/E2E/job/PREPROD/",
+                    "synthetic": True,
+                    "url": "",
                 }
             ],
             "refreshLease": initial_response.json()["refreshLease"],
@@ -74,10 +88,16 @@ def test_jenkins_tree_cache_round_trip_returns_fresh_snapshot(client: TestClient
     assert put_body["stale"] is False
     assert put_body["refreshLease"] is None
     assert put_body["fetchedAt"] is not None
-    assert put_body["roots"][0]["children"][0]["builds"][0]["number"] == 42
+    assert put_body["roots"][0]["synthetic"] is True
+    assert put_body["roots"][0]["children"][0]["path"] == "job/.QAA/job/E2E/job/PREPROD"
+    assert put_body["roots"][0]["children"][0]["children"][0]["builds"][0]["number"] == 42
 
     assert final_response.status_code == 200
     final_body = final_response.json()
     assert final_body["stale"] is False
     assert final_body["refreshLease"] is None
-    assert final_body["roots"][0]["children"][0]["builds"][0]["allureUrl"].endswith("/allure/")
+    assert final_body["roots"][0]["synthetic"] is True
+    assert final_body["roots"][0]["children"][0]["path"] == "job/.QAA/job/E2E/job/PREPROD"
+    assert final_body["roots"][0]["children"][0]["children"][0]["builds"][0]["allureUrl"].endswith(
+        "/allure/"
+    )

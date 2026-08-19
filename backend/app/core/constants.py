@@ -260,4 +260,7 @@ DEFAULT_QAA_GENERATOR_PORT_FORWARD_REMOTE_PORT = 8080
 JENKINS_TREE_CACHE_TTL_SECONDS = 900
 JENKINS_BUILDS_CACHE_TTL_SECONDS = 60
 JENKINS_REFRESH_LEASE_TTL_SECONDS = 30
-JENKINS_RESUME_RUN_STALE_SECONDS = 30
+# Must exceed the worst-case single-pipeline resume (enable + last-build params +
+# build ≈ 3× the 15s Jenkins request timeout, plus the inter-item pause), otherwise a
+# slow-but-live campaign is falsely judged abandoned and could be relaunched.
+JENKINS_RESUME_RUN_STALE_SECONDS = 120

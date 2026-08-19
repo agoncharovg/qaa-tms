@@ -26,6 +26,8 @@ class JenkinsResumeRunCreate(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     freeze_id: UUID = Field(alias="freezeId")
+    restart_pipelines: bool = Field(default=True, alias="restartPipelines")
+    folder_path: str | None = Field(default=None, alias="folderPath")
 
 
 class JenkinsResumeProgressPut(BaseModel):
@@ -43,6 +45,7 @@ class JenkinsResumeRunRead(BaseModel):
 
     id: UUID
     freeze_id: UUID = Field(alias="freezeId")
+    restart_pipelines: bool = Field(alias="restartPipelines")
     signature: str
     status: JenkinsResumeRunStatus
     total: int
