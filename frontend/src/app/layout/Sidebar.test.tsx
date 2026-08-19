@@ -116,6 +116,37 @@ describe("Sidebar", () => {
     });
   });
 
+  it("sorts the main menu plugins alphabetically by label", () => {
+    useAuthStore.setState({
+      currentUser: {
+        auto_login: false,
+        created_at: "2026-08-09T00:00:00Z",
+        display_name: "Admin User",
+        enabled_plugins: [PluginId.STAGINGS, PluginId.QAA_GENERATOR, PluginId.KUBER, PluginId.JENKINS],
+        qaa_generator_token_set: false,
+        id: 1,
+        is_admin: true,
+        updated_at: "2026-08-09T00:00:00Z",
+        username: "admin",
+      },
+      token: "token-123",
+    });
+
+    renderSidebar(PluginId.STAGINGS);
+
+    const menuLabels = new Set(["Administration", "Jenkins", "Kuber", "QAA generator", "Stagings"]);
+    const mainMenuButtons = [
+      ...new Set(
+        screen
+          .getAllByRole("button")
+          .map((button) => button.getAttribute("aria-label") ?? button.textContent ?? "")
+          .filter((label) => menuLabels.has(label))
+      ),
+    ];
+
+    expect(mainMenuButtons).toEqual(["Administration", "Jenkins", "Kuber", "QAA generator", "Stagings"]);
+  });
+
   it("opens a nested admin tab directly from the sidebar tree", async () => {
     const user = userEvent.setup();
 

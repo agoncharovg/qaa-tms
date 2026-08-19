@@ -58,6 +58,14 @@ const SidebarCopy = {
   UNKNOWN_USER: "Unknown user",
 } as const;
 
+function sortPluginsByLabel<T extends { id: string; label: string }>(plugins: readonly T[]): T[] {
+  return [...plugins].sort(
+    (left, right) =>
+      left.label.localeCompare(right.label, undefined, { sensitivity: "base" }) ||
+      left.id.localeCompare(right.id)
+  );
+}
+
 function buildItemButtonStyle(active: boolean, collapsed: boolean, palette: Palette): CSSProperties {
   return {
     alignItems: "center",
@@ -104,7 +112,7 @@ export function Sidebar({ activePluginId }: SidebarProps) {
   const [logoutConfirmOpened, logoutConfirm] = useDisclosure(false);
 
   const enabledOptionalIds = enabledOptionalPluginIdSet(currentUser?.enabled_plugins);
-  const plugins = primaryVisiblePlugins(currentUser, enabledOptionalIds);
+  const plugins = sortPluginsByLabel(primaryVisiblePlugins(currentUser, enabledOptionalIds));
   const accountPlugins = accountVisiblePlugins(currentUser, enabledOptionalIds);
   const profilePlugin = pluginById(PluginId.PROFILE);
 
