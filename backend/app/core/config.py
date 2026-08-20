@@ -8,6 +8,7 @@ from typing import Annotated, Any
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
 from app.core import env_file
 from app.core.constants import (
@@ -19,6 +20,20 @@ from app.core.constants import (
     DEFAULT_STATIC_DIR,
     EnvKey,
 )
+
+
+def coerce_async_database_url(value: str) -> str:
+    url = make_url(value)
+    if url.drivername.split("+")[0] not in ("postgresql", "postgres"):
+        return value
+
+    url = url.set(drivername="postgresql+asyncpg")
+    query = dict(url.query)
+    sslmode = query.pop("sslmode", None)
+    if sslmode is not None and "ssl" not in query:
+        query["ssl"] = "false" if sslmode == "disable" else "true"
+    url = url.set(query=query)
+    return url.render_as_string(hide_password=False)
 
 
 class Settings(BaseSettings):
@@ -53,6 +68,11 @@ class Settings(BaseSettings):
         default=DEFAULT_QAA_GENERATOR_SUPERUSER_TOKEN,
         alias=EnvKey.QAA_GENERATOR_SUPERUSER_TOKEN.value,
     )
+
+    @field_validator("database_url", mode="after")
+    @classmethod
+    def normalize_database_url(cls, value: str) -> str:
+        return coerce_async_database_url(value)
 
     @field_validator("cors_origins", mode="before")
     @classmethod
