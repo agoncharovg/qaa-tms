@@ -52,7 +52,6 @@ class ResumeRunErrorMessage(StrEnum):
     RUN_NOT_FOUND = "Jenkins resume campaign not found."
 
 
-
 def ensure_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
@@ -119,7 +118,6 @@ async def get_freeze_or_404(db: AsyncSession, freeze_id: UUID) -> JenkinsFreeze:
             detail=ResumeRunErrorMessage.FREEZE_NOT_FOUND.value,
         )
     return freeze
-
 
 
 def is_same_or_nested_path(path: str, prefix: str) -> bool:
@@ -257,9 +255,7 @@ async def list_jenkins_resume_runs(
     _: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
     signature: Annotated[str, Query(...)],
-    status_: Annotated[
-        JenkinsResumeRunStatus | None, Query(alias=QueryParam.STATUS.value)
-    ] = (
+    status_: Annotated[JenkinsResumeRunStatus | None, Query(alias=QueryParam.STATUS.value)] = (
         JenkinsResumeRunStatus.RUNNING
     ),
 ) -> list[JenkinsResumeRunRead]:
@@ -330,11 +326,9 @@ async def put_jenkins_resume_progress(
         # partial-resume promise in JenkinsFreezeCopy.RESUME_PARTIAL_MESSAGE).
         if run.error_count == 0:
             freeze = await get_freeze_or_404(db, run.freeze_id)
-            if (
-                freeze.status is JenkinsFreezeStatus.ACTIVE
-                and normalize_jenkins_path(run.target_path or freeze.folder_path)
-                == normalize_jenkins_path(freeze.folder_path)
-            ):
+            if freeze.status is JenkinsFreezeStatus.ACTIVE and normalize_jenkins_path(
+                run.target_path or freeze.folder_path
+            ) == normalize_jenkins_path(freeze.folder_path):
                 freeze.status = JenkinsFreezeStatus.RESOLVED
                 freeze.resolved_by_id = run.created_by_id
                 freeze.resolved_at = now

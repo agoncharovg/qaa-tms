@@ -32,7 +32,6 @@ from app.services.qaa_generator import (
 router = APIRouter(tags=[ApiTag.QAA_GENERATOR.value])
 
 
-
 class QaaAdminListQueryParam(StrEnum):
     EMAIL = "email"
     KIND = "kind"

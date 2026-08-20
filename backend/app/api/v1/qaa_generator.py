@@ -85,7 +85,6 @@ QaaPersonalTokenHeader = Annotated[
 ]
 
 
-
 def get_qaa_client(request: Request) -> httpx.AsyncClient:
     return cast(httpx.AsyncClient, request.app.state.qaa_generator_client)
 
@@ -148,9 +147,7 @@ def normalize_qaa_runs_list_payload(payload: Any) -> Any:
         return payload
 
     normalized = dict(payload)
-    normalized[QaaPayloadField.ITEMS.value] = [
-        normalize_qaa_run_payload(item) for item in items
-    ]
+    normalized[QaaPayloadField.ITEMS.value] = [normalize_qaa_run_payload(item) for item in items]
     return normalized
 
 

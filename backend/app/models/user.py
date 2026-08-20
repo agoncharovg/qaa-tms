@@ -22,7 +22,6 @@ if TYPE_CHECKING:
     from app.models.operation import Operation
 
 
-
 class User(Base):
     __tablename__ = "users"
 
