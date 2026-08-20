@@ -47,7 +47,6 @@ class FreezeErrorMessage(StrEnum):
     RESUME_LOCK_CONFLICT = "Another Jenkins resume campaign is already running for this scope."
 
 
-
 async def has_running_resume_lock(db: AsyncSession, signature: str) -> bool:
     cutoff = utcnow() - timedelta(seconds=JENKINS_RESUME_RUN_STALE_SECONDS)
     running_run = await db.scalar(
@@ -58,7 +57,6 @@ async def has_running_resume_lock(db: AsyncSession, signature: str) -> bool:
         )
     )
     return running_run is not None
-
 
 
 def intersects_path(left: str, right: str) -> bool:

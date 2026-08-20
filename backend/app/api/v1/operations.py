@@ -37,7 +37,6 @@ from app.schemas.operation import (
 router = APIRouter(prefix=RoutePath.OPERATIONS.value, tags=[ApiTag.OPERATIONS.value])
 
 
-
 def to_operation_summary(operation: Operation) -> OperationSummary:
     return OperationSummary.model_validate(operation)
 

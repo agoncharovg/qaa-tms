@@ -362,7 +362,7 @@ describe("TreePanel", () => {
     expect(useJenkinsStore.getState().pinnedPaths).toEqual(["job/.QAA/job/E2E/job/PREPROD"]);
     expect(folderPinButton).toHaveAttribute("aria-label", "Unpin from board");
 
-    await user.click(screen.getAllByText("BE")[0]!);
+    await user.click(screen.getAllByText("BE")[0]);
     const [pipelinePinButton] = screen.getAllByRole("button", { name: "Pin to board" });
     await user.click(pipelinePinButton);
     expect(useJenkinsStore.getState().pinnedPaths).toEqual([
@@ -555,7 +555,7 @@ describe("TreePanel", () => {
     const firstRender = renderWithProviders(<TreePanel agentPort={47600} />);
 
     await screen.findByText("Smoke");
-    await user.click(screen.getAllByText("BE")[0]!);
+    await user.click(screen.getAllByText("BE")[0]);
     await user.click(screen.getByText("Smoke"));
     expect(await screen.findByText("#42")).toBeInTheDocument();
     expect(JSON.parse(localStorage.getItem(StorageKey.JENKINS_PINNED) ?? "{}")).toMatchObject({
@@ -1011,7 +1011,7 @@ describe("TreePanel", () => {
     const iamRow = screen.getByText("IAM").closest('[data-frozen="true"]');
     expect(iamRow).not.toBeNull();
 
-    await user.click(screen.getAllByText("BE")[0]!);
+    await user.click(screen.getAllByText("BE")[0]);
     expect(await screen.findByText("Smoke")).toBeInTheDocument();
     expect(screen.getByText("Smoke").closest('[data-frozen="true"]')).not.toBeNull();
 
@@ -1326,7 +1326,7 @@ describe("TreePanel", () => {
     renderWithProviders(<TreePanel agentPort={47600} />);
 
     await screen.findByText("FE");
-    await user.click(screen.getAllByText("FE")[0]!);
+    await user.click(screen.getAllByText("FE")[0]);
     await user.click(screen.getByText("IAM"));
 
     const portalRow = await screen.findByText("IAM Client portal");
@@ -1498,7 +1498,7 @@ describe("TreePanel", () => {
     renderWithProviders(<TreePanel agentPort={47600} />);
 
     await screen.findByText("FE");
-    await user.click(screen.getAllByText("FE")[0]!);
+    await user.click(screen.getAllByText("FE")[0]);
     await user.click(screen.getByText("IAM"));
 
     const portalRow = await screen.findByText("IAM Client portal");
