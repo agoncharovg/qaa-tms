@@ -4,10 +4,13 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from app.api.v1 import router as api_v1_router
@@ -77,6 +80,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail=ErrorMessage.DATABASE_NOT_READY.value,
             ) from exc
         return {HealthFieldName.STATUS.value: HealthStatus.READY.value}
+
+    static_dir = Path(resolved_settings.static_dir).resolve()
+    if static_dir.is_dir():
+        assets_dir = static_dir / "assets"
+        if assets_dir.is_dir():
+            app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+        index_file = static_dir / "index.html"
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        async def serve_spa(full_path: str) -> FileResponse:
+            if full_path.startswith("api"):
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+            candidate = (static_dir / full_path).resolve(strict=False)
+            if not candidate.is_relative_to(static_dir):
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+            if candidate.is_file():
+                return FileResponse(candidate)
+            return FileResponse(index_file)
 
     return app
 

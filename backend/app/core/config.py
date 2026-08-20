@@ -16,6 +16,7 @@ from app.core.constants import (
     DEFAULT_JWT_SECRET,
     DEFAULT_QAA_GENERATOR_BASE_URL,
     DEFAULT_QAA_GENERATOR_SUPERUSER_TOKEN,
+    DEFAULT_STATIC_DIR,
     EnvKey,
 )
 
@@ -43,6 +44,7 @@ class Settings(BaseSettings):
         default_factory=list,
         alias=EnvKey.CORS_ORIGINS.value,
     )
+    static_dir: str = Field(default=DEFAULT_STATIC_DIR, alias=EnvKey.STATIC_DIR.value)
     qaa_generator_base_url: str = Field(
         default=DEFAULT_QAA_GENERATOR_BASE_URL,
         alias=EnvKey.QAA_GENERATOR_BASE_URL.value,

@@ -125,7 +125,11 @@ export class BackendHttpError extends Error {
 const apiBaseUrl = resolveApiBaseUrl().trim();
 
 function buildBackendUrl(path: string): string {
-  return new URL(path, apiBaseUrl).toString();
+  if (apiBaseUrl) {
+    return new URL(path, apiBaseUrl).toString();
+  }
+
+  return new URL(path, getBrowserOrigin() ?? apiBaseUrl).toString();
 }
 
 function getBrowserOrigin(): string | null {

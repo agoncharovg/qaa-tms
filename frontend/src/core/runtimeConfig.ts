@@ -72,9 +72,9 @@ export function resolveApiBaseUrl(): string {
     return localOverride;
   }
 
-  const buildValue = import.meta.env.VITE_API_BASE_URL?.trim();
-  if (buildValue) {
-    return buildValue;
+  const buildValue = import.meta.env.VITE_API_BASE_URL;
+  if (buildValue !== undefined) {
+    return buildValue.trim();
   }
 
   return DEFAULT_API_BASE_URL;

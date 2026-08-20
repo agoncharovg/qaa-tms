@@ -7,32 +7,31 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REGISTRY="${REGISTRY:-harbor.p.gc.onl}"
 PROJECT="${PROJECT:-qaa}"
 PLATFORM="${PLATFORM:-linux/amd64}"
-SERVICE="${SERVICE:-all}"
 PUSH_IMAGE=0
-API_BASE_URL="${VITE_API_BASE_URL:-http://localhost:8000}"
+API_BASE_URL="${VITE_API_BASE_URL:-}"
 AGENT_PORTS="${VITE_AGENT_PORTS:-47600-47605}"
 
 usage() {
   cat <<'EOF'
 Usage:
-  build/build-image.sh [backend|frontend|all] [options]
+  build/build-image.sh [options]
 
 Options:
   --tag <tag>              Docker tag. Default: sanitized current git branch.
   --registry <registry>    Registry host. Default: harbor.p.gc.onl
   --project <project>      Harbor project/repository namespace. Default: qaa
   --platform <platform>    Docker platform. Default: linux/amd64
-  --push                   Push built images to registry
-  --api-base-url <url>     Frontend runtime/build fallback API URL
-  --agent-ports <range>    Frontend runtime/build fallback agent port range
+  --push                   Push the built image to the registry
+  --api-base-url <url>     Frontend build-time API base URL. Default: empty for same-origin
+  --agent-ports <range>    Frontend build-time fallback agent port range
   -h, --help               Show this help
 
 Environment overrides:
   REGISTRY, PROJECT, PLATFORM, VITE_API_BASE_URL, VITE_AGENT_PORTS
 
 Examples:
-  build/build-image.sh all --tag feature-qaa-123
-  build/build-image.sh frontend --tag latest --push --api-base-url https://tms.example.com
+  build/build-image.sh --tag feature-qaa-123
+  build/build-image.sh --tag latest --push --api-base-url https://tms.example.com
 EOF
 }
 
@@ -61,10 +60,6 @@ TAG="${TAG:-$(detect_default_tag)}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    backend|frontend|all)
-      SERVICE="$1"
-      shift
-      ;;
     --tag)
       TAG="$(sanitize_tag "${2:?missing value for --tag}")"
       shift 2
@@ -105,68 +100,26 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-BACKEND_IMAGE="${REGISTRY}/${PROJECT}/qaa-tms-backend:${TAG}"
-FRONTEND_IMAGE="${REGISTRY}/${PROJECT}/qaa-tms-frontend:${TAG}"
+IMAGE="${REGISTRY}/${PROJECT}/qaa-tms:${TAG}"
 
-build_backend() {
-  printf '==> Building %s\n' "${BACKEND_IMAGE}"
-  docker build \
-    --platform "${PLATFORM}" \
-    -t "${BACKEND_IMAGE}" \
-    -f "${REPO_ROOT}/build/backend.Dockerfile" \
-    "${REPO_ROOT}"
-}
-
-build_frontend() {
-  printf '==> Building %s\n' "${FRONTEND_IMAGE}"
+build_image() {
+  printf '==> Building %s\n' "${IMAGE}"
   docker build \
     --platform "${PLATFORM}" \
     --build-arg "VITE_API_BASE_URL=${API_BASE_URL}" \
     --build-arg "VITE_AGENT_PORTS=${AGENT_PORTS}" \
-    -t "${FRONTEND_IMAGE}" \
-    -f "${REPO_ROOT}/build/frontend.Dockerfile" \
+    -t "${IMAGE}" \
+    -f "${REPO_ROOT}/build/Dockerfile" \
     "${REPO_ROOT}"
 }
 
 push_image() {
-  local image="$1"
-  printf '==> Pushing %s\n' "${image}"
-  docker push "${image}"
+  printf '==> Pushing %s\n' "${IMAGE}"
+  docker push "${IMAGE}"
 }
 
-case "${SERVICE}" in
-  backend)
-    build_backend
-    [[ "${PUSH_IMAGE}" -eq 1 ]] && push_image "${BACKEND_IMAGE}"
-    ;;
-  frontend)
-    build_frontend
-    [[ "${PUSH_IMAGE}" -eq 1 ]] && push_image "${FRONTEND_IMAGE}"
-    ;;
-  all)
-    build_backend
-    build_frontend
-    if [[ "${PUSH_IMAGE}" -eq 1 ]]; then
-      push_image "${BACKEND_IMAGE}"
-      push_image "${FRONTEND_IMAGE}"
-    fi
-    ;;
-  *)
-    printf 'Unsupported service: %s\n' "${SERVICE}" >&2
-    exit 1
-    ;;
-esac
+build_image
+[[ "${PUSH_IMAGE}" -eq 1 ]] && push_image
 
 printf '\nBuilt images:\n'
-case "${SERVICE}" in
-  backend)
-    printf '  %s\n' "${BACKEND_IMAGE}"
-    ;;
-  frontend)
-    printf '  %s\n' "${FRONTEND_IMAGE}"
-    ;;
-  all)
-    printf '  %s\n' "${BACKEND_IMAGE}"
-    printf '  %s\n' "${FRONTEND_IMAGE}"
-    ;;
-esac
+printf '  %s\n' "${IMAGE}"
