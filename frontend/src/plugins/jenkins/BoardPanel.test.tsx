@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const agentClientMock = vi.hoisted(() => ({
-  getJenkinsScope: vi.fn(),
   getJenkinsTree: vi.fn(),
 }));
 
 const backendClientMock = vi.hoisted(() => ({
   getJenkinsFreezes: vi.fn(),
+  getJenkinsScope: vi.fn(),
   getJenkinsTreeCache: vi.fn(),
   putJenkinsTreeCache: vi.fn(),
 }));
@@ -220,9 +220,9 @@ function buildTreeRoots() {
 
 describe("BoardPanel", () => {
   beforeEach(() => {
-    agentClientMock.getJenkinsScope.mockReset();
     agentClientMock.getJenkinsTree.mockReset();
     backendClientMock.getJenkinsFreezes.mockReset();
+    backendClientMock.getJenkinsScope.mockReset();
     backendClientMock.getJenkinsTreeCache.mockReset();
     backendClientMock.putJenkinsTreeCache.mockReset();
     openMock.mockReset();
@@ -250,6 +250,7 @@ describe("BoardPanel", () => {
       },
       token: "token-123",
     });
+    backendClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsFreezes.mockResolvedValue([]);
   });
 
@@ -259,7 +260,6 @@ describe("BoardPanel", () => {
     useJenkinsStore.setState({
       pinnedPaths: ["job/.QAA/job/E2E/job/PREPROD"],
     });
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       fetchedAt: "2026-08-17T10:00:00Z",
       refreshLease: null,
@@ -268,7 +268,7 @@ describe("BoardPanel", () => {
       stale: false,
     });
 
-    renderWithProviders(<BoardPanel agentPort={47600} />);
+    renderWithProviders(<BoardPanel />);
 
     expect(await screen.findByText("BE")).toBeInTheDocument();
     expect(screen.getByText("Passed 1")).toBeInTheDocument();
@@ -299,7 +299,6 @@ describe("BoardPanel", () => {
         "job/.QAA/job/UI_E2E/job/PREPROD",
       ],
     });
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       fetchedAt: "2026-08-17T10:00:00Z",
       refreshLease: null,
@@ -308,7 +307,7 @@ describe("BoardPanel", () => {
       stale: false,
     });
 
-    renderWithProviders(<BoardPanel agentPort={47600} />);
+    renderWithProviders(<BoardPanel />);
 
     const sectionHeadings = await screen.findAllByRole("heading", { level: 4 });
     expect(sectionHeadings.map((heading) => heading.textContent)).toEqual([
@@ -349,7 +348,6 @@ describe("BoardPanel", () => {
     useJenkinsStore.setState({
       pinnedPaths: ["job/.QAA/job/E2E/job/PREPROD"],
     });
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       fetchedAt: "2026-08-17T10:00:00Z",
       refreshLease: null,
@@ -358,7 +356,7 @@ describe("BoardPanel", () => {
       stale: false,
     });
 
-    renderWithProviders(<BoardPanel agentPort={47600} />);
+    renderWithProviders(<BoardPanel />);
 
     await user.click(await screen.findByText("BE"));
     expect(await screen.findByLabelText("#42: SUCCESS")).toBeInTheDocument();
@@ -370,7 +368,6 @@ describe("BoardPanel", () => {
     useJenkinsStore.setState({
       pinnedPaths: ["job/.QAA/job/E2E/job/PREPROD"],
     });
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       fetchedAt: "2026-08-17T10:00:00Z",
       refreshLease: null,
@@ -397,7 +394,7 @@ describe("BoardPanel", () => {
       },
     ]);
 
-    renderWithProviders(<BoardPanel agentPort={47600} />);
+    renderWithProviders(<BoardPanel />);
 
     const badge = await screen.findByText("Frozen");
     await user.hover(badge);
@@ -409,7 +406,6 @@ describe("BoardPanel", () => {
     useJenkinsStore.setState({
       pinnedPaths: ["job/.QAA/job/E2E/job/PREPROD/job/Smoke"],
     });
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       fetchedAt: "2026-08-17T10:00:00Z",
       refreshLease: null,
@@ -436,17 +432,16 @@ describe("BoardPanel", () => {
       },
     ]);
 
-    renderWithProviders(<BoardPanel agentPort={47600} />);
+    renderWithProviders(<BoardPanel />);
 
     expect(await screen.findByText("Smoke")).toBeInTheDocument();
     expect(screen.getByText("Smoke").closest('[data-frozen="true"]')).not.toBeNull();
   });
 
-  it("refreshes the shared cache once when the backend returns stale data with a lease", async () => {
+  it("renders stale shared cache data without requiring companion discovery", async () => {
     useJenkinsStore.setState({
       pinnedPaths: ["job/.QAA/job/E2E/job/PREPROD"],
     });
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       fetchedAt: "2026-08-17T09:45:00Z",
       refreshLease: "lease-1",
@@ -454,25 +449,11 @@ describe("BoardPanel", () => {
       signature: "scope-1234",
       stale: true,
     });
-    agentClientMock.getJenkinsTree.mockResolvedValue({
-      roots: buildTreeRoots(),
-      signature: "scope-1234",
-    });
-    backendClientMock.putJenkinsTreeCache.mockResolvedValue({
-      fetchedAt: "2026-08-17T10:00:00Z",
-      refreshLease: null,
-      roots: buildTreeRoots(),
-      signature: "scope-1234",
-      stale: false,
-    });
 
-    renderWithProviders(<BoardPanel agentPort={47600} />);
+    renderWithProviders(<BoardPanel />);
 
     expect(await screen.findByText("BE")).toBeInTheDocument();
-
-    await waitFor(() => {
-      expect(agentClientMock.getJenkinsTree).toHaveBeenCalledTimes(1);
-      expect(backendClientMock.putJenkinsTreeCache).toHaveBeenCalledTimes(1);
-    });
+    expect(agentClientMock.getJenkinsTree).not.toHaveBeenCalled();
+    expect(backendClientMock.putJenkinsTreeCache).not.toHaveBeenCalled();
   });
 });

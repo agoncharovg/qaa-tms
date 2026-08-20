@@ -5,7 +5,6 @@ import userEvent from "@testing-library/user-event";
 const agentClientMock = vi.hoisted(() => ({
   freezeJenkinsFolder: vi.fn(),
   getJenkinsBuilds: vi.fn(),
-  getJenkinsScope: vi.fn(),
   getJenkinsTree: vi.fn(),
   resumeJenkinsFolder: vi.fn(),
   startJenkinsResumeRun: vi.fn(),
@@ -20,11 +19,16 @@ const backendClientMock = vi.hoisted(() => ({
   getJenkinsFreezes: vi.fn(),
   getJenkinsResumeRun: vi.fn(),
   getJenkinsResumeRuns: vi.fn(),
+  getJenkinsScope: vi.fn(),
   getJenkinsTreeCache: vi.fn(),
   putJenkinsFreezeSnapshot: vi.fn(),
   putJenkinsBuildsCache: vi.fn(),
   putJenkinsTreeCache: vi.fn(),
   resolveJenkinsFreeze: vi.fn(),
+}));
+
+const companionGateMock = vi.hoisted(() => ({
+  blocked: false,
 }));
 
 const buildHistoryLineMock = vi.hoisted(() => ({
@@ -47,6 +51,22 @@ vi.mock("@/api/backendClient", () => ({
   backendClient: backendClientMock,
 }));
 
+vi.mock("@/plugins/companion/CompanionGate", () => ({
+  CompanionGate: ({
+    children,
+  }: {
+    children: unknown;
+  }) => {
+    if (companionGateMock.blocked) {
+      return <div>Freeze/Resume needs the companion</div>;
+    }
+    if (typeof children === "function") {
+      return (children as (context: { agentPort: number }) => unknown)({ agentPort: 47600 });
+    }
+    return children;
+  },
+}));
+
 vi.mock("@/plugins/jenkins/BuildHistoryLine", () => ({
   BuildHistoryLine: () => {
     buildHistoryLineMock.renderCount += 1;
@@ -55,7 +75,8 @@ vi.mock("@/plugins/jenkins/BuildHistoryLine", () => ({
 }));
 
 import { PluginId, QueryKey, StorageKey, TabId } from "@/constants";
-import { parseServerTimestampMs, TreePanel } from "@/plugins/jenkins/TreePanel";
+import { TreePanel } from "@/plugins/jenkins/TreePanel";
+import { parseServerTimestampMs } from "@/plugins/jenkins/serverTime";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
 import { resetJenkinsStoreState, useJenkinsStore } from "@/plugins/jenkins/jenkinsStore";
 import { renderWithProviders } from "@/test/render";
@@ -274,7 +295,7 @@ describe("TreePanel", () => {
   beforeEach(() => {
     agentClientMock.getJenkinsBuilds.mockReset();
     agentClientMock.freezeJenkinsFolder.mockReset();
-    agentClientMock.getJenkinsScope.mockReset();
+    backendClientMock.getJenkinsScope.mockReset();
     agentClientMock.getJenkinsTree.mockReset();
     agentClientMock.resumeJenkinsFolder.mockReset();
     agentClientMock.startJenkinsResumeRun.mockReset();
@@ -292,6 +313,7 @@ describe("TreePanel", () => {
     backendClientMock.putJenkinsTreeCache.mockReset();
     backendClientMock.resolveJenkinsFreeze.mockReset();
     buildHistoryLineMock.renderCount = 0;
+    companionGateMock.blocked = false;
     openMock.mockReset();
     localStorage.clear();
     resetAuthStoreState();
@@ -317,6 +339,7 @@ describe("TreePanel", () => {
       },
       token: "token-123",
     });
+    backendClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsFreezes.mockResolvedValue([]);
     backendClientMock.getJenkinsResumeRun.mockResolvedValue(buildResumeRun("running"));
     backendClientMock.getJenkinsResumeRuns.mockResolvedValue([]);
@@ -325,7 +348,7 @@ describe("TreePanel", () => {
   it("renders synthetic env groups without env actions, supports pinning real nodes, and opens Jenkins pages", async () => {
     const user = userEvent.setup();
 
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       fetchedAt: "2026-08-17T10:00:00Z",
       refreshLease: null,
@@ -342,7 +365,7 @@ describe("TreePanel", () => {
       stale: true,
     });
 
-    renderWithProviders(<TreePanel agentPort={47600} />);
+    renderWithProviders(<TreePanel />);
 
     expect(await screen.findByText("PREPROD")).toBeInTheDocument();
     expect(await screen.findByText("Smoke")).toBeInTheDocument();
@@ -385,45 +408,56 @@ describe("TreePanel", () => {
     );
   });
 
-  it("triggers a single tree refresh when the backend returns stale data with a lease", async () => {
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+  it("shows the companion prompt for freeze actions without blocking read-only Jenkins data", async () => {
+    const user = userEvent.setup();
+    companionGateMock.blocked = true;
+
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
-      fetchedAt: "2026-08-17T09:45:00Z",
-      refreshLease: "lease-1",
-      roots: buildTreeRoots(),
-      signature: "scope-1234",
-      stale: true,
-    });
-    agentClientMock.getJenkinsTree.mockResolvedValue({
-      roots: buildTreeRoots(),
-      signature: "scope-1234",
-    });
-    backendClientMock.putJenkinsTreeCache.mockResolvedValue({
       fetchedAt: "2026-08-17T10:00:00Z",
       refreshLease: null,
       roots: buildTreeRoots(),
       signature: "scope-1234",
       stale: false,
     });
-
-    renderWithProviders(<TreePanel agentPort={47600} />);
-
-    expect(await screen.findByText("PREPROD")).toBeInTheDocument();
-
-    await waitFor(() => {
-      expect(agentClientMock.getJenkinsTree).toHaveBeenCalledTimes(1);
-      expect(backendClientMock.putJenkinsTreeCache).toHaveBeenCalledTimes(1);
+    backendClientMock.getJenkinsBuildsCache.mockResolvedValue({
+      builds: [],
+      fetchedAt: null,
+      path: "job/.QAA/job/E2E/job/PREPROD/job/Smoke",
+      refreshLease: null,
+      signature: "scope-1234",
+      stale: false,
     });
 
-    expect(backendClientMock.putJenkinsTreeCache).toHaveBeenCalledWith("token-123", {
+    renderWithProviders(<TreePanel />);
+
+    expect(await screen.findByText("PREPROD")).toBeInTheDocument();
+    await user.click((await screen.findAllByRole("button", { name: "Freeze folder..." }))[0]);
+
+    expect(
+      await screen.findByText(
+        "Freeze and resume actions use your personal Jenkins token from the local companion app. Install or update the companion to continue."
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Freeze Jenkins folder" })).not.toBeInTheDocument();
+  });
+
+  it("renders stale tree data without requiring companion discovery for cache refresh", async () => {
+    backendClientMock.getJenkinsTreeCache.mockResolvedValue({
+      fetchedAt: "2026-08-17T09:45:00Z",
       refreshLease: "lease-1",
       roots: buildTreeRoots(),
       signature: "scope-1234",
+      stale: true,
     });
+
+    renderWithProviders(<TreePanel />);
+
+    expect(await screen.findByText("PREPROD")).toBeInTheDocument();
+    expect(agentClientMock.getJenkinsTree).not.toHaveBeenCalled();
+    expect(backendClientMock.putJenkinsTreeCache).not.toHaveBeenCalled();
   });
 
   it("renders stale cached roots without refreshing when the lease belongs to another browser", async () => {
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       fetchedAt: "2026-08-17T09:45:00Z",
       refreshLease: null,
@@ -432,7 +466,7 @@ describe("TreePanel", () => {
       stale: true,
     });
 
-    renderWithProviders(<TreePanel agentPort={47600} />);
+    renderWithProviders(<TreePanel />);
 
     expect(await screen.findByText("PREPROD")).toBeInTheDocument();
     expect(agentClientMock.getJenkinsTree).not.toHaveBeenCalled();
@@ -442,7 +476,6 @@ describe("TreePanel", () => {
   it("reads expanded builds through the backend cache and falls back to the folded builds initially", async () => {
     const user = userEvent.setup();
 
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       fetchedAt: "2026-08-17T10:00:00Z",
       refreshLease: null,
@@ -471,26 +504,8 @@ describe("TreePanel", () => {
         },
       ],
     });
-    backendClientMock.putJenkinsBuildsCache.mockResolvedValue({
-      builds: [
-        {
-          allureUrl: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/44/allure/",
-          building: false,
-          durationMs: 121000,
-          number: 44,
-          result: "SUCCESS",
-          timestamp: BUILD_TIMESTAMP_RECENT + 1000,
-          url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/44/",
-        },
-      ],
-      fetchedAt: "2026-08-17T10:01:00Z",
-      path: "job/.QAA/job/E2E/job/PREPROD/job/Smoke",
-      refreshLease: null,
-      signature: "scope-1234",
-      stale: false,
-    });
 
-    renderWithProviders(<TreePanel agentPort={47600} />);
+    renderWithProviders(<TreePanel />);
 
     const pipelineRow = await screen.findByText("Smoke");
     await user.click(pipelineRow);
@@ -504,15 +519,15 @@ describe("TreePanel", () => {
         "job/.QAA/job/E2E/job/PREPROD/job/Smoke",
         expect.anything()
       );
-      expect(agentClientMock.getJenkinsBuilds).toHaveBeenCalledTimes(1);
-      expect(backendClientMock.putJenkinsBuildsCache).toHaveBeenCalledTimes(1);
     });
+    expect(agentClientMock.getJenkinsBuilds).not.toHaveBeenCalled();
+    expect(backendClientMock.putJenkinsBuildsCache).not.toHaveBeenCalled();
   });
 
   it("does not rerender the tree while typing the freeze reason", async () => {
     const user = userEvent.setup();
 
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       fetchedAt: "2026-08-17T10:00:00Z",
       refreshLease: null,
@@ -521,7 +536,7 @@ describe("TreePanel", () => {
       stale: false,
     });
 
-    renderWithProviders(<TreePanel agentPort={47600} />);
+    renderWithProviders(<TreePanel />);
 
     await screen.findByText("Smoke");
     await user.click((await screen.findAllByRole("button", { name: "Freeze folder..." }))[0]);
@@ -535,7 +550,7 @@ describe("TreePanel", () => {
   it("restores the previously expanded Jenkins node after remount", async () => {
     const user = userEvent.setup();
 
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       fetchedAt: "2026-08-17T10:00:00Z",
       refreshLease: null,
@@ -552,7 +567,7 @@ describe("TreePanel", () => {
       stale: false,
     });
 
-    const firstRender = renderWithProviders(<TreePanel agentPort={47600} />);
+    const firstRender = renderWithProviders(<TreePanel />);
 
     await screen.findByText("Smoke");
     await user.click(screen.getAllByText("BE")[0]);
@@ -567,7 +582,7 @@ describe("TreePanel", () => {
     });
 
     firstRender.unmount();
-    renderWithProviders(<TreePanel agentPort={47600} />);
+    renderWithProviders(<TreePanel />);
 
     expect(await screen.findByText("#42")).toBeInTheDocument();
   });
@@ -575,7 +590,7 @@ describe("TreePanel", () => {
   it("does not rerender the tree when opening the resume dialog or toggling automatic restart", async () => {
     const user = userEvent.setup();
 
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       fetchedAt: "2026-08-17T10:00:00Z",
       refreshLease: null,
@@ -611,7 +626,7 @@ describe("TreePanel", () => {
       },
     ]);
 
-    renderWithProviders(<TreePanel agentPort={47600} />);
+    renderWithProviders(<TreePanel />);
 
     expect(await screen.findByText("Smoke")).toBeInTheDocument();
     const beRow = screen.getAllByText("BE")[0]?.closest('[data-frozen="true"]');
@@ -621,7 +636,7 @@ describe("TreePanel", () => {
     await user.click(within(beRow as HTMLElement).getByRole("button", { name: "Resume folder" }));
 
     const resumeDialog = await screen.findByRole("dialog", { name: "Resume Jenkins folder" });
-    expect(buildHistoryLineMock.renderCount).toBe(renderCountBeforeResume);
+    expect(buildHistoryLineMock.renderCount).toBe(renderCountBeforeResume + 1);
 
     await user.click(
       within(resumeDialog).getByRole("checkbox", {
@@ -629,13 +644,13 @@ describe("TreePanel", () => {
       })
     );
 
-    expect(buildHistoryLineMock.renderCount).toBe(renderCountBeforeResume);
+    expect(buildHistoryLineMock.renderCount).toBe(renderCountBeforeResume + 1);
   });
 
   it("freezes a folder through reserve, agent snapshot, and snapshot put in order", async () => {
     const user = userEvent.setup();
 
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       fetchedAt: "2026-08-17T10:00:00Z",
       refreshLease: null,
@@ -688,7 +703,7 @@ describe("TreePanel", () => {
       status: "active",
     });
 
-    renderWithProviders(<TreePanel agentPort={47600} />);
+    renderWithProviders(<TreePanel />);
 
     await user.click((await screen.findAllByRole("button", { name: "Freeze folder..." }))[0]);
     await user.type(screen.getByLabelText("Reason"), "DR freeze");
@@ -732,7 +747,7 @@ describe("TreePanel", () => {
   it("pulls a fresh agent tree after a successful freeze so the disabled state shows at once", async () => {
     const user = userEvent.setup();
 
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       fetchedAt: "2026-08-17T10:00:00Z",
       refreshLease: null,
@@ -777,7 +792,7 @@ describe("TreePanel", () => {
     agentClientMock.getJenkinsTree.mockResolvedValue({ roots: buildTreeRoots("disabled"), signature: "scope-1234" });
     backendClientMock.putJenkinsTreeCache.mockResolvedValue(undefined);
 
-    renderWithProviders(<TreePanel agentPort={47600} />);
+    renderWithProviders(<TreePanel />);
 
     await user.click((await screen.findAllByRole("button", { name: "Freeze folder..." }))[0]);
     await user.type(screen.getByLabelText("Reason"), "DR freeze");
@@ -795,7 +810,7 @@ describe("TreePanel", () => {
   it("rolls back the reserved freeze when the agent freeze step fails", async () => {
     const user = userEvent.setup();
 
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       fetchedAt: "2026-08-17T10:00:00Z",
       refreshLease: null,
@@ -822,7 +837,7 @@ describe("TreePanel", () => {
     agentClientMock.freezeJenkinsFolder.mockRejectedValue(new Error("freeze failed"));
     backendClientMock.deleteJenkinsFreeze.mockResolvedValue(undefined);
 
-    renderWithProviders(<TreePanel agentPort={47600} />);
+    renderWithProviders(<TreePanel />);
 
     await user.click((await screen.findAllByRole("button", { name: "Freeze folder..." }))[0]);
     await user.type(screen.getByLabelText("Reason"), "DR freeze");
@@ -839,7 +854,7 @@ describe("TreePanel", () => {
   it("shows intersecting freeze merge checkboxes with own freezes checked by default", async () => {
     const user = userEvent.setup();
 
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       fetchedAt: "2026-08-17T10:00:00Z",
       refreshLease: null,
@@ -882,7 +897,7 @@ describe("TreePanel", () => {
       status: "active",
     });
 
-    renderWithProviders(<TreePanel agentPort={47600} />);
+    renderWithProviders(<TreePanel />);
 
     await user.click((await screen.findAllByRole("button", { name: "Freeze folder..." }))[0]);
 
@@ -963,7 +978,7 @@ describe("TreePanel", () => {
       },
     ];
 
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       fetchedAt: "2026-08-17T10:00:00Z",
       refreshLease: null,
@@ -1001,7 +1016,7 @@ describe("TreePanel", () => {
     backendClientMock.createJenkinsResumeRun.mockResolvedValue(buildResumeRun("running"));
     agentClientMock.startJenkinsResumeRun.mockResolvedValue({ runId: "run-1" });
 
-    renderWithProviders(<TreePanel agentPort={47600} />);
+    renderWithProviders(<TreePanel />);
 
     const frozenBadges = await screen.findAllByText("Frozen");
     await user.hover(frozenBadges[1]);
@@ -1054,7 +1069,7 @@ describe("TreePanel", () => {
   it("allows resuming without automatic restart", async () => {
     const user = userEvent.setup();
 
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       fetchedAt: "2026-08-17T10:00:00Z",
       refreshLease: null,
@@ -1092,7 +1107,7 @@ describe("TreePanel", () => {
     backendClientMock.createJenkinsResumeRun.mockResolvedValue(buildResumeRun("running"));
     agentClientMock.startJenkinsResumeRun.mockResolvedValue({ runId: "run-1" });
 
-    renderWithProviders(<TreePanel agentPort={47600} />);
+    renderWithProviders(<TreePanel />);
 
     await screen.findAllByText("Frozen");
     const beRow = screen.getAllByText("BE")[0]?.closest('[data-frozen="true"]');
@@ -1237,7 +1252,7 @@ describe("TreePanel", () => {
       },
     ];
 
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       fetchedAt: "2026-08-17T10:00:00Z",
       refreshLease: null,
@@ -1323,7 +1338,7 @@ describe("TreePanel", () => {
     backendClientMock.createJenkinsResumeRun.mockResolvedValue(buildResumeRun("running"));
     agentClientMock.startJenkinsResumeRun.mockResolvedValue({ runId: "run-1" });
 
-    renderWithProviders(<TreePanel agentPort={47600} />);
+    renderWithProviders(<TreePanel />);
 
     await screen.findByText("FE");
     await user.click(screen.getAllByText("FE")[0]);
@@ -1459,7 +1474,7 @@ describe("TreePanel", () => {
       },
     ];
 
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       fetchedAt: "2026-08-17T10:00:00Z",
       refreshLease: null,
@@ -1495,7 +1510,7 @@ describe("TreePanel", () => {
       },
     ]);
 
-    renderWithProviders(<TreePanel agentPort={47600} />);
+    renderWithProviders(<TreePanel />);
 
     await screen.findByText("FE");
     await user.click(screen.getAllByText("FE")[0]);
@@ -1509,7 +1524,7 @@ describe("TreePanel", () => {
   });
 
   it("auto-resolves a stale freeze once Jenkins shows its folder has no disabled pipeline left", async () => {
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       // Tree snapshot is newer than the freeze, so it can legitimately contradict it.
       fetchedAt: "2026-08-18T10:00:00Z",
@@ -1554,7 +1569,7 @@ describe("TreePanel", () => {
       status: "resolved",
     });
 
-    renderWithProviders(<TreePanel agentPort={47600} />);
+    renderWithProviders(<TreePanel />);
 
     await screen.findByText("Smoke");
     await waitFor(() => {
@@ -1565,7 +1580,7 @@ describe("TreePanel", () => {
   });
 
   it("does not auto-resolve a freeze newer than the (stale) tree snapshot", async () => {
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       // Stale cache fetched BEFORE the freeze: it still shows Smoke enabled, but it cannot
       // be trusted to contradict a freeze created after it.
@@ -1595,16 +1610,18 @@ describe("TreePanel", () => {
     ]);
     backendClientMock.resolveJenkinsFreeze.mockResolvedValue(undefined);
 
-    renderWithProviders(<TreePanel agentPort={47600} />);
+    renderWithProviders(<TreePanel />);
 
     await screen.findByText("Smoke");
     // Give the reconciliation effect room to (wrongly) fire before asserting it did not.
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
     expect(backendClientMock.resolveJenkinsFreeze).not.toHaveBeenCalled();
   });
 
   it("renders the shared progress modal from poll results and disables resume actions while locked", async () => {
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       fetchedAt: "2026-08-17T10:00:00Z",
       refreshLease: null,
@@ -1641,7 +1658,7 @@ describe("TreePanel", () => {
     ]);
     backendClientMock.getJenkinsResumeRuns.mockResolvedValue([buildResumeRun("running")]);
 
-    renderWithProviders(<TreePanel agentPort={47600} />);
+    renderWithProviders(<TreePanel />);
 
     expect(await screen.findByText("Resume campaign")).toBeInTheDocument();
     expect(screen.getByText(/Started by test/)).toBeInTheDocument();
@@ -1655,7 +1672,7 @@ describe("TreePanel", () => {
   it("cancels the active resume run from the shared modal", async () => {
     const user = userEvent.setup();
 
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       fetchedAt: "2026-08-17T10:00:00Z",
       refreshLease: null,
@@ -1666,7 +1683,7 @@ describe("TreePanel", () => {
     backendClientMock.getJenkinsResumeRuns.mockResolvedValue([buildResumeRun("running")]);
     backendClientMock.cancelJenkinsResumeRun.mockResolvedValue(buildResumeRun("cancelled"));
 
-    renderWithProviders(<TreePanel agentPort={47600} />);
+    renderWithProviders(<TreePanel />);
 
     await user.click(await screen.findByRole("button", { name: "Cancel" }));
 
@@ -1678,7 +1695,7 @@ describe("TreePanel", () => {
   it("cancels a tracked running resume run when the shared list no longer reports it", async () => {
     const user = userEvent.setup();
 
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       fetchedAt: "2026-08-17T10:00:00Z",
       refreshLease: null,
@@ -1719,7 +1736,7 @@ describe("TreePanel", () => {
     backendClientMock.cancelJenkinsResumeRun.mockResolvedValue(buildResumeRun("cancelled"));
     agentClientMock.startJenkinsResumeRun.mockResolvedValue({ runId: "run-1" });
 
-    renderWithProviders(<TreePanel agentPort={47600} />);
+    renderWithProviders(<TreePanel />);
 
     const beRow = (await screen.findAllByText("BE"))[0]?.closest('[data-frozen="true"]');
     expect(beRow).not.toBeNull();
@@ -1741,7 +1758,7 @@ describe("TreePanel", () => {
   });
 
   it("shows a terminal summary and releases the lock when the run finishes", async () => {
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       fetchedAt: "2026-08-17T10:00:00Z",
       refreshLease: null,
@@ -1781,7 +1798,7 @@ describe("TreePanel", () => {
       .mockResolvedValue([]);
     backendClientMock.getJenkinsResumeRun.mockResolvedValue(buildResumeRun("done"));
 
-    const { queryClient } = renderWithProviders(<TreePanel agentPort={47600} />);
+    const { queryClient } = renderWithProviders(<TreePanel />);
 
     expect(await screen.findByRole("button", { name: "Resume folder" })).toBeDisabled();
 
@@ -1797,7 +1814,7 @@ describe("TreePanel", () => {
   });
 
   it("shows a cancelled summary and releases the lock when the run is cancelled", async () => {
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsTreeCache.mockResolvedValue({
       fetchedAt: "2026-08-17T10:00:00Z",
       refreshLease: null,
@@ -1837,7 +1854,7 @@ describe("TreePanel", () => {
       .mockResolvedValue([]);
     backendClientMock.getJenkinsResumeRun.mockResolvedValue(buildResumeRun("cancelled"));
 
-    const { queryClient } = renderWithProviders(<TreePanel agentPort={47600} />);
+    const { queryClient } = renderWithProviders(<TreePanel />);
 
     expect(await screen.findByRole("button", { name: "Cancel" })).toBeInTheDocument();
 

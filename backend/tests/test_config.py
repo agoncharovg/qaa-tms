@@ -40,3 +40,26 @@ def test_qaa_generator_base_url_loads_from_env(monkeypatch: pytest.MonkeyPatch) 
     settings = Settings()
 
     assert settings.qaa_generator_base_url == "https://qaa-generator-prod.i.gc.onl/api/v1"
+
+
+def test_jenkins_common_settings_load_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(EnvKey.JENKINS_COMMON_URL.value, "https://jenkins.example/")
+    monkeypatch.setenv(EnvKey.JENKINS_COMMON_USERNAME.value, "common-user")
+    monkeypatch.setenv(EnvKey.JENKINS_COMMON_TOKEN.value, "common-token")
+    monkeypatch.setenv(
+        EnvKey.JENKINS_ROOT_GROUPS.value,
+        "BE=job/.QAA/job/E2E,FE=job/.QAA/job/UI_E2E",
+    )
+    monkeypatch.setenv(EnvKey.JENKINS_ROOT_FOLDERS.value, "PREPROD,PROD")
+
+    settings = Settings()
+
+    assert settings.jenkins_common_url == "https://jenkins.example"
+    assert settings.jenkins_common_username == "common-user"
+    assert settings.jenkins_common_token == "common-token"
+    assert settings.jenkins_common_configured is True
+    assert [group.model_dump() for group in settings.jenkins_root_groups] == [
+        {"label": "BE", "path": "job/.QAA/job/E2E"},
+        {"label": "FE", "path": "job/.QAA/job/UI_E2E"},
+    ]
+    assert settings.jenkins_root_folders == ["PREPROD", "PROD"]

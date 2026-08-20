@@ -61,6 +61,7 @@ import {
   formatRelativeAge,
   formatRelativeAgeFromIso,
 } from "@/plugins/jenkins/relativeTime";
+import { parseServerTimestampMs } from "@/plugins/jenkins/serverTime";
 import {
   buildJenkinsNodeKey,
   collectExpandableNodeKeys,
@@ -71,12 +72,9 @@ import {
 import { useJenkinsBuilds } from "@/plugins/jenkins/useJenkinsBuilds";
 import { useJenkinsFreezes } from "@/plugins/jenkins/useJenkinsFreezes";
 import { useJenkinsTree } from "@/plugins/jenkins/useJenkinsTree";
+import { CompanionGate } from "@/plugins/companion/CompanionGate";
 import { useAuthStore } from "@/store/authStore";
 import { useUiStore } from "@/store/uiStoreCore";
-
-interface TreePanelProps {
-  agentPort: number;
-}
 
 interface FreezeModalRequest {
   folderName: string;
@@ -91,21 +89,15 @@ interface ResumeModalRequest {
   snapshot: JenkinsFreezeSnapshotItem[];
 }
 
-function normalizeJenkinsPath(path: string): string {
-  return decodeURIComponent(path).replace(/^\/+|\/+$/g, "");
+interface MutationCompanionRequest {
+  action: "freeze" | "resume";
+  folderName: string;
+  folderPath: string;
+  freeze?: JenkinsFreezeRead;
 }
 
-// Server clocks are UTC, but SQLite-backed timestamps (e.g. freeze.createdAt) come back
-// without a tz designator while the in-memory tree cache emits an explicit offset. Date.parse
-// would then read the tz-less one as LOCAL time, skewing cross-source comparisons by the
-// local offset. Normalize a missing tz to UTC so both sides compare on the same clock.
-export function parseServerTimestampMs(value: string | null | undefined): number {
-  if (!value) {
-    return Number.NaN;
-  }
-  const trimmed = value.trim();
-  const hasTimezone = /([zZ])|([+-]\d{2}:?\d{2})$/.test(trimmed);
-  return Date.parse(hasTimezone ? trimmed : `${trimmed}Z`);
+function normalizeJenkinsPath(path: string): string {
+  return decodeURIComponent(path).replace(/^\/+|\/+$/g, "");
 }
 
 function isSameOrNestedPath(path: string, prefix: string): boolean {
@@ -127,7 +119,7 @@ function haveSameNodeKeys(left: string[], right: string[]): boolean {
 
 interface TreeNodeRowProps {
   activeFreezeForPath: (path: string) => JenkinsFreezeRead | null;
-  agentPort: number;
+  agentPort: number | null;
   coveringActiveFreezes: (path: string) => JenkinsFreezeRead[];
   depth: number;
   expandedNodeKeys: string[];
@@ -148,7 +140,7 @@ interface TreeNodeRowProps {
 
 interface JenkinsTreeRowsProps {
   activeFreezeForPath: (path: string) => JenkinsFreezeRead | null;
-  agentPort: number;
+  agentPort: number | null;
   coveringActiveFreezes: (path: string) => JenkinsFreezeRead[];
   expandedNodeKeys: string[];
   historyLimit: number | null;
@@ -167,13 +159,16 @@ interface JenkinsTreeRowsProps {
 
 const TreePanelCopy = {
   BUILDS_EMPTY: "No recent builds were returned.",
+  COMPANION_PROMPT_BODY:
+    "Freeze and resume actions use your personal Jenkins token from the local companion app. Install or update the companion to continue.",
+  COMPANION_PROMPT_TITLE: "Freeze/Resume needs the companion",
   EMPTY_BODY: "No Jenkins folders were returned for the configured Jenkins scope.",
   EMPTY_TITLE: "No Jenkins data",
   ERROR_GENERIC: "Jenkins data request failed",
   ERROR_NOT_CONFIGURED_BODY:
-    "Set AGENT_JENKINS_URL, AGENT_JENKINS_USERNAME, and AGENT_JENKINS_TOKEN in the companion app.",
-  ERROR_NOT_CONFIGURED_TITLE: "Jenkins is not configured in the companion app",
-  ERROR_UNREACHABLE_BODY: "Connect VPN and confirm Jenkins is reachable from this machine.",
+    "Ask an administrator to configure the shared Jenkins read-only credentials on the backend.",
+  ERROR_NOT_CONFIGURED_TITLE: "Shared Jenkins read access is not configured",
+  ERROR_UNREACHABLE_BODY: "Confirm Jenkins is reachable from the backend environment.",
   ERROR_UNREACHABLE_TITLE: "Jenkins is unreachable",
   EXPAND_ALL: "Expand all",
   COLLAPSE_ALL: "Collapse all",
@@ -202,8 +197,7 @@ const TreePanelValue = {
   STATUS_SLOT_PX: 104,
 } as const;
 
-
-export function TreePanel({ agentPort }: TreePanelProps) {
+export function TreePanel() {
   const token = useAuthStore((state) => state.token);
   const currentUser = useAuthStore((state) => state.currentUser);
   const expandedNodeKeys = useJenkinsStore((state) => state.expandedNodeKeys);
@@ -215,7 +209,10 @@ export function TreePanel({ agentPort }: TreePanelProps) {
   const isActive = useUiStore(
     (state) => state.tabsByPlugin[PluginId.JENKINS].activeTabId === TabId.JENKINS_TREE
   );
+  const [agentPort, setAgentPort] = useState<number | null>(null);
   const [freezeModal, setFreezeModal] = useState<FreezeModalRequest | null>(null);
+  const [mutationCompanionRequest, setMutationCompanionRequest] =
+    useState<MutationCompanionRequest | null>(null);
   const [resumeModal, setResumeModal] = useState<ResumeModalRequest | null>(null);
   const treeState = useJenkinsTree({
     agentPort,
@@ -231,6 +228,10 @@ export function TreePanel({ agentPort }: TreePanelProps) {
     signature: treeState.signature,
     token,
   });
+  const absorbableActiveFreezes = freezesState.absorbableActiveFreezes;
+  const activeFreezes = freezesState.activeFreezes;
+  const resolveFreeze = freezesState.resolveFreeze;
+  const startResumeCampaign = freezesState.startResumeCampaign;
 
   const didHydrateExpandedNodeKeysRef = useRef(false);
   useEffect(() => {
@@ -275,7 +276,7 @@ export function TreePanel({ agentPort }: TreePanelProps) {
     if (Number.isNaN(treeFetchedAtMs)) {
       return;
     }
-    for (const freeze of freezesState.activeFreezes) {
+    for (const freeze of activeFreezes) {
       if (resolvingFreezeIdsRef.current.has(freeze.id)) {
         continue;
       }
@@ -295,25 +296,23 @@ export function TreePanel({ agentPort }: TreePanelProps) {
         continue;
       }
       resolvingFreezeIdsRef.current.add(freeze.id);
-      void freezesState
-        .resolveFreeze(freeze.id)
+      void resolveFreeze(freeze.id)
         .catch(() => undefined)
         .finally(() => {
           resolvingFreezeIdsRef.current.delete(freeze.id);
         });
     }
   }, [
-    freezesState.activeFreezes,
     freezesState.isLocked,
-    freezesState.resolveFreeze,
+    activeFreezes,
+    resolveFreeze,
     treeState.fetchedAt,
     treeState.roots,
   ]);
 
   const openFreezeModal = useCallback(
     (folderPath: string, folderName: string): void => {
-      const initialMergeFreezeIds = freezesState
-        .absorbableActiveFreezes(folderPath)
+      const initialMergeFreezeIds = absorbableActiveFreezes(folderPath)
         .filter((freeze) => freeze.createdBy === currentUser?.username)
         .map((freeze) => freeze.id);
       setFreezeModal({
@@ -322,7 +321,17 @@ export function TreePanel({ agentPort }: TreePanelProps) {
         initialMergeFreezeIds,
       });
     },
-    [currentUser?.username, freezesState.absorbableActiveFreezes]
+    [absorbableActiveFreezes, currentUser?.username]
+  );
+  const requestFreezeAction = useCallback(
+    (folderPath: string, folderName: string): void => {
+      setMutationCompanionRequest({
+        action: "freeze",
+        folderName,
+        folderPath,
+      });
+    },
+    []
   );
 
   const openResumeModal = useCallback(
@@ -332,6 +341,17 @@ export function TreePanel({ agentPort }: TreePanelProps) {
         folderName,
         folderPath,
         snapshot: filterSnapshotForFolder(freeze.snapshot, folderPath),
+      });
+    },
+    []
+  );
+  const requestResumeAction = useCallback(
+    (freeze: JenkinsFreezeRead, folderPath: string, folderName: string): void => {
+      setMutationCompanionRequest({
+        action: "resume",
+        folderName,
+        folderPath,
+        freeze,
       });
     },
     []
@@ -370,7 +390,7 @@ export function TreePanel({ agentPort }: TreePanelProps) {
       }
 
       try {
-        await freezesState.startResumeCampaign(
+        await startResumeCampaign(
           resumeModal.freeze,
           resumeModal.snapshot,
           restartPipelines,
@@ -381,7 +401,29 @@ export function TreePanel({ agentPort }: TreePanelProps) {
         // Keep the modal open so the operator can retry.
       }
     },
-    [freezesState.startResumeCampaign, resumeModal]
+    [resumeModal, startResumeCampaign]
+  );
+  const handleMutationCompanionReady = useCallback(
+    (nextAgentPort: number): void => {
+      if (!mutationCompanionRequest) {
+        return;
+      }
+      setAgentPort(nextAgentPort);
+      if (mutationCompanionRequest.action === "freeze") {
+        openFreezeModal(
+          mutationCompanionRequest.folderPath,
+          mutationCompanionRequest.folderName
+        );
+      } else if (mutationCompanionRequest.freeze) {
+        openResumeModal(
+          mutationCompanionRequest.freeze,
+          mutationCompanionRequest.folderPath,
+          mutationCompanionRequest.folderName
+        );
+      }
+      setMutationCompanionRequest(null);
+    },
+    [mutationCompanionRequest, openFreezeModal, openResumeModal]
   );
 
   if (treeState.isLoading) {
@@ -452,6 +494,12 @@ export function TreePanel({ agentPort }: TreePanelProps) {
       ) : null}
 
       <Stack gap="lg">
+        {mutationCompanionRequest ? (
+          <JenkinsMutationCompanionPrompt
+            onClose={() => setMutationCompanionRequest(null)}
+            onReady={handleMutationCompanionReady}
+          />
+        ) : null}
         <Group justify="space-between" wrap="wrap">
           <div>
             <Title order={3}>{TreePanelCopy.TITLE}</Title>
@@ -485,9 +533,9 @@ export function TreePanel({ agentPort }: TreePanelProps) {
           isActive={isActive}
           isLocked={freezesState.isLocked}
           isMutatingPath={freezesState.isMutatingPath}
-          onFreezeRequest={openFreezeModal}
+          onFreezeRequest={requestFreezeAction}
           onPinToggle={togglePinnedPath}
-          onResumeRequest={openResumeModal}
+          onResumeRequest={requestResumeAction}
           onToggle={toggleNode}
           pinnedPaths={pinnedPaths}
           roots={treeState.roots}
@@ -692,6 +740,44 @@ function ResumeFolderModal({ isLocked, isMutating, onClose, onSubmit, resume }: 
         </Group>
       </Stack>
     </Modal>
+  );
+}
+
+function JenkinsMutationCompanionPrompt({
+  onClose,
+  onReady,
+}: {
+  onClose: () => void;
+  onReady: (agentPort: number) => void;
+}) {
+  const token = useAuthStore((state) => state.token);
+  const didHandleReadyRef = useRef(false);
+
+  return (
+    <Paper p="md" radius="md" withBorder>
+      <Stack gap="sm">
+        <Text fw={600}>{TreePanelCopy.COMPANION_PROMPT_TITLE}</Text>
+        <Text c="dimmed" size="sm">
+          {TreePanelCopy.COMPANION_PROMPT_BODY}
+        </Text>
+        <CompanionGate enabled={Boolean(token)} loadingMessage={TreePanelCopy.COMPANION_PROMPT_TITLE}>
+          {({ agentPort: readyAgentPort }) => {
+            if (!didHandleReadyRef.current) {
+              didHandleReadyRef.current = true;
+              queueMicrotask(() => {
+                onReady(readyAgentPort);
+              });
+            }
+            return null;
+          }}
+        </CompanionGate>
+        <Group justify="flex-end">
+          <Button onClick={onClose} variant="default">
+            {JenkinsFreezeCopy.FREEZE_CANCEL}
+          </Button>
+        </Group>
+      </Stack>
+    </Paper>
   );
 }
 

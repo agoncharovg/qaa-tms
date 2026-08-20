@@ -63,6 +63,26 @@ outside the UI.
 
 Changing `QAA_GENERATOR_BASE_URL` through the UI still requires a backend restart, because the outbound HTTP client is created at startup.
 
+## Shared Jenkins read-only settings
+
+Read-only Jenkins explorer endpoints now use a backend-held basic-auth pair for
+server-side cache fills and for the shared scope returned by `GET /api/v1/jenkins/scope`.
+Those credentials are strictly read-only and must never be reused for freeze/resume or
+any Jenkins write path, which stays companion-only under the engineer's personal token.
+
+- `JENKINS_COMMON_URL`: Jenkins base URL for backend-side read-only requests. Default: `https://jenkins.p.gc.onl`
+- `JENKINS_COMMON_USERNAME`: shared read-only Jenkins username. Leave empty to disable backend-side Jenkins reads.
+- `JENKINS_COMMON_TOKEN`: shared read-only Jenkins token. Leave empty to disable backend-side Jenkins reads.
+- `JENKINS_ROOT_GROUPS`: shared grouped roots served by the backend scope endpoint. Default: `BE=job/.QAA/job/E2E,FE=job/.QAA/job/UI_E2E`
+- `JENKINS_ROOT_FOLDERS`: shared environment folders. Default: `PREPROD,PROD`
+- `JENKINS_TREE_DEPTH`: shared read-only tree depth. Default: `5`
+- `JENKINS_HISTORY_LIMIT`: shared build-history length per pipeline. Default: `8`
+- `JENKINS_REQUEST_TIMEOUT`: backend Jenkins request timeout in seconds. Default: `15`
+
+For deployment, wire `JENKINS_COMMON_USERNAME` and `JENKINS_COMMON_TOKEN` from Vault into
+the backend container environment through the existing Kubernetes secret reference path.
+No plaintext Jenkins secrets belong in this repository.
+
 ## Local run
 
 1. Ensure Python 3.12+ and PostgreSQL 16 are available.

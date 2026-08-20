@@ -35,10 +35,6 @@ import { useJenkinsTree } from "@/plugins/jenkins/useJenkinsTree";
 import { useAuthStore } from "@/store/authStore";
 import { useUiStore } from "@/store/uiStoreCore";
 
-interface BoardPanelProps {
-  agentPort: number;
-}
-
 interface PinnedSection {
   key: string;
   label: string | null;
@@ -57,9 +53,9 @@ const BoardPanelCopy = {
   EMPTY_TITLE: "Nothing is pinned",
   ERROR_GENERIC: "Jenkins data request failed",
   ERROR_NOT_CONFIGURED_BODY:
-    "Set AGENT_JENKINS_URL, AGENT_JENKINS_USERNAME, and AGENT_JENKINS_TOKEN in the companion app.",
-  ERROR_NOT_CONFIGURED_TITLE: "Jenkins is not configured in the companion app",
-  ERROR_UNREACHABLE_BODY: "Connect VPN and confirm Jenkins is reachable from this machine.",
+    "Ask an administrator to configure the shared Jenkins read-only credentials on the backend.",
+  ERROR_NOT_CONFIGURED_TITLE: "Shared Jenkins read access is not configured",
+  ERROR_UNREACHABLE_BODY: "Confirm Jenkins is reachable from the backend environment.",
   ERROR_UNREACHABLE_TITLE: "Jenkins is unreachable",
   ITEM_MISSING: "This pinned item is no longer available inside the configured Jenkins scope.",
   GRAY: "Gray",
@@ -82,20 +78,20 @@ const BoardPanelValue = {
   STATUS_SLOT_PX: 104,
 } as const;
 
-export function BoardPanel({ agentPort }: BoardPanelProps) {
+export function BoardPanel() {
   const token = useAuthStore((state) => state.token);
   const pinnedPaths = useJenkinsStore((state) => state.pinnedPaths);
   const unpin = useJenkinsStore((state) => state.unpin);
   const isActive = useUiStore((state) => state.tabsByPlugin[PluginId.JENKINS].activeTabId === TabId.JENKINS_BOARD);
   const [expandedPaths, setExpandedPaths] = useState<string[]>([]);
   const treeState = useJenkinsTree({
-    agentPort,
+    agentPort: null,
     enabled: true,
     isActive,
     token,
   });
   const freezesState = useJenkinsFreezes({
-    agentPort,
+    agentPort: null,
     enabled: true,
     isActive,
     signature: treeState.signature,

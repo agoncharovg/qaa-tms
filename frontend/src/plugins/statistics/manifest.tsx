@@ -25,7 +25,7 @@ const statisticsPlugin = definePlugin({
   label: "Statistics",
   origin: PluginOrigin.BUILTIN,
   order: STATISTICS_PLUGIN_ORDER,
-  requiresAgent: true,
+  requiresAgent: false,
   route: STATISTICS_PLUGIN_ROUTE,
   tabs: [
     {

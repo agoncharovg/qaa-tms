@@ -6,7 +6,7 @@ import json
 from functools import lru_cache
 from typing import Annotated, Any
 
-from pydantic import Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
@@ -14,11 +14,19 @@ from app.core import env_file
 from app.core.constants import (
     DEFAULT_AGENT_DIST_DIR,
     DEFAULT_DATABASE_URL,
+    DEFAULT_JENKINS_COMMON_URL,
+    DEFAULT_JENKINS_HISTORY_LIMIT,
+    DEFAULT_JENKINS_REQUEST_TIMEOUT,
+    DEFAULT_JENKINS_ROOT_FOLDERS,
+    DEFAULT_JENKINS_ROOT_GROUPS,
+    DEFAULT_JENKINS_TREE_DEPTH,
     DEFAULT_JWT_EXPIRE_MINUTES,
     DEFAULT_JWT_SECRET,
     DEFAULT_QAA_GENERATOR_BASE_URL,
     DEFAULT_QAA_GENERATOR_SUPERUSER_TOKEN,
     DEFAULT_STATIC_DIR,
+    GROUP_LABEL_SEPARATOR,
+    GROUP_LIST_SEPARATOR,
     EnvKey,
 )
 
@@ -35,6 +43,22 @@ def coerce_async_database_url(value: str) -> str:
         query["ssl"] = "false" if sslmode == "disable" else "true"
     url = url.set(query=query)
     return url.render_as_string(hide_password=False)
+
+
+class JenkinsRootGroup(BaseModel):
+    """Configured Jenkins source root grouped under a display label."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: str
+    path: str
+
+
+def build_default_jenkins_root_groups() -> list[JenkinsRootGroup]:
+    return [
+        JenkinsRootGroup(label="BE", path="job/.QAA/job/E2E"),
+        JenkinsRootGroup(label="FE", path="job/.QAA/job/UI_E2E"),
+    ]
 
 
 class Settings(BaseSettings):
@@ -65,6 +89,32 @@ class Settings(BaseSettings):
         default=DEFAULT_AGENT_DIST_DIR,
         alias=EnvKey.AGENT_DIST_DIR.value,
     )
+    jenkins_common_url: str = Field(
+        default=DEFAULT_JENKINS_COMMON_URL,
+        alias=EnvKey.JENKINS_COMMON_URL.value,
+    )
+    jenkins_common_username: str = Field(default="", alias=EnvKey.JENKINS_COMMON_USERNAME.value)
+    jenkins_common_token: str = Field(default="", alias=EnvKey.JENKINS_COMMON_TOKEN.value)
+    jenkins_root_groups: Annotated[list[JenkinsRootGroup], NoDecode] = Field(
+        default_factory=build_default_jenkins_root_groups,
+        alias=EnvKey.JENKINS_ROOT_GROUPS.value,
+    )
+    jenkins_root_folders: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: list(DEFAULT_JENKINS_ROOT_FOLDERS),
+        alias=EnvKey.JENKINS_ROOT_FOLDERS.value,
+    )
+    jenkins_history_limit: int = Field(
+        default=DEFAULT_JENKINS_HISTORY_LIMIT,
+        alias=EnvKey.JENKINS_HISTORY_LIMIT.value,
+    )
+    jenkins_request_timeout: float = Field(
+        default=DEFAULT_JENKINS_REQUEST_TIMEOUT,
+        alias=EnvKey.JENKINS_REQUEST_TIMEOUT.value,
+    )
+    jenkins_tree_depth: int = Field(
+        default=DEFAULT_JENKINS_TREE_DEPTH,
+        alias=EnvKey.JENKINS_TREE_DEPTH.value,
+    )
     qaa_generator_base_url: str = Field(
         default=DEFAULT_QAA_GENERATOR_BASE_URL,
         alias=EnvKey.QAA_GENERATOR_BASE_URL.value,
@@ -78,6 +128,62 @@ class Settings(BaseSettings):
     @classmethod
     def normalize_database_url(cls, value: str) -> str:
         return coerce_async_database_url(value)
+
+    @field_validator("jenkins_common_url", "qaa_generator_base_url", mode="after")
+    @classmethod
+    def normalize_base_url(cls, value: str) -> str:
+        return value.rstrip("/")
+
+    @field_validator("jenkins_root_groups", mode="before")
+    @classmethod
+    def parse_jenkins_root_groups(cls, value: Any) -> list[JenkinsRootGroup]:
+        if value is None:
+            return cls._parse_root_group_items(list(DEFAULT_JENKINS_ROOT_GROUPS))
+        if isinstance(value, list):
+            parsed = cls._parse_root_group_items(value)
+            return parsed or cls._parse_root_group_items(list(DEFAULT_JENKINS_ROOT_GROUPS))
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return cls._parse_root_group_items(list(DEFAULT_JENKINS_ROOT_GROUPS))
+            if stripped.startswith("["):
+                parsed = json.loads(stripped)
+                if not isinstance(parsed, list):
+                    raise ValueError("JENKINS_ROOT_GROUPS must be a JSON array or CSV string.")
+                parsed_groups = cls._parse_root_group_items(parsed)
+                return parsed_groups or cls._parse_root_group_items(
+                    list(DEFAULT_JENKINS_ROOT_GROUPS)
+                )
+            values: list[Any] = [
+                item.strip() for item in stripped.split(GROUP_LIST_SEPARATOR) if item.strip()
+            ]
+            parsed = cls._parse_root_group_items(values)
+            return parsed or cls._parse_root_group_items(list(DEFAULT_JENKINS_ROOT_GROUPS))
+        raise ValueError("JENKINS_ROOT_GROUPS must be a list or string.")
+
+    @field_validator("jenkins_root_folders", mode="before")
+    @classmethod
+    def parse_jenkins_root_folders(cls, value: Any) -> list[str]:
+        if value is None:
+            return list(DEFAULT_JENKINS_ROOT_FOLDERS)
+        if isinstance(value, list):
+            parsed = [str(item).strip() for item in value if str(item).strip()]
+            return parsed or list(DEFAULT_JENKINS_ROOT_FOLDERS)
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return list(DEFAULT_JENKINS_ROOT_FOLDERS)
+            if stripped.startswith("["):
+                parsed = json.loads(stripped)
+                if not isinstance(parsed, list):
+                    raise ValueError("JENKINS_ROOT_FOLDERS must be a JSON array or CSV string.")
+                values = [str(item).strip() for item in parsed if str(item).strip()]
+                return values or list(DEFAULT_JENKINS_ROOT_FOLDERS)
+            values = [
+                item.strip() for item in stripped.split(GROUP_LIST_SEPARATOR) if item.strip()
+            ]
+            return values or list(DEFAULT_JENKINS_ROOT_FOLDERS)
+        raise ValueError("JENKINS_ROOT_FOLDERS must be a list or string.")
 
     @field_validator("cors_origins", mode="before")
     @classmethod
@@ -97,6 +203,42 @@ class Settings(BaseSettings):
                 return [str(item).strip() for item in parsed if str(item).strip()]
             return [item.strip() for item in stripped.split(",") if item.strip()]
         raise ValueError("CORS_ORIGINS must be a list or string.")
+
+    @property
+    def jenkins_common_configured(self) -> bool:
+        return bool(
+            self.jenkins_common_url
+            and self.jenkins_common_username.strip()
+            and self.jenkins_common_token.strip()
+        )
+
+    @classmethod
+    def _parse_root_group_items(cls, items: list[Any]) -> list[JenkinsRootGroup]:
+        parsed_groups: list[JenkinsRootGroup] = []
+        for item in items:
+            if isinstance(item, JenkinsRootGroup):
+                parsed_groups.append(item)
+                continue
+            if isinstance(item, dict):
+                label = str(item.get("label", "")).strip()
+                path = str(item.get("path", "")).strip().strip("/")
+            elif isinstance(item, str):
+                label, separator, path = item.partition(GROUP_LABEL_SEPARATOR)
+                if separator != GROUP_LABEL_SEPARATOR:
+                    raise ValueError(
+                        "JENKINS_ROOT_GROUPS entries must use LABEL=job/path syntax."
+                    )
+                label = label.strip()
+                path = path.strip().strip("/")
+            else:
+                raise ValueError("JENKINS_ROOT_GROUPS entries must be strings or objects.")
+
+            if not label or not path:
+                raise ValueError(
+                    "JENKINS_ROOT_GROUPS entries must include both label and path."
+                )
+            parsed_groups.append(JenkinsRootGroup(label=label, path=path))
+        return parsed_groups
 
 
 @lru_cache

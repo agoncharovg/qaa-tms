@@ -73,6 +73,7 @@ export const BackendPath = {
   AGENT_MANIFEST: "/api/v1/agent/manifest",
   AGENT_DOWNLOAD: "/api/v1/agent/download",
   AUTH_LOGIN: "/api/v1/auth/login",
+  JENKINS_SCOPE: "/api/v1/jenkins/scope",
   JENKINS_TREE: "/api/v1/jenkins/tree",
   JENKINS_BUILDS: "/api/v1/jenkins/builds",
   JENKINS_FOLDER: "/api/v1/jenkins/folder",
@@ -103,6 +104,10 @@ export type BackendPath = (typeof BackendPath)[keyof typeof BackendPath];
 
 export function buildBackendUserPath(userId: number): string {
   return `${BackendPath.USERS}/${userId}`;
+}
+
+export function buildBackendJenkinsScopePath(): string {
+  return BackendPath.JENKINS_SCOPE;
 }
 
 export function buildBackendJenkinsTreePath(signature: string): string {

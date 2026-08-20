@@ -30,6 +30,10 @@ def get_jenkins_cache(request: Request) -> JenkinsCache:
     return cast(JenkinsCache, request.app.state.jenkins_cache)
 
 
+def get_settings(request: Request) -> Settings:
+    return cast(Settings, request.app.state.settings)
+
+
 async def get_current_user(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
