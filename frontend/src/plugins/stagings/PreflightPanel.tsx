@@ -12,20 +12,21 @@ import {
   Text,
   Title,
 } from "@mantine/core";
-import { IconAlertCircle, IconPlugConnectedX, IconRotateClockwise } from "@tabler/icons-react";
+import { IconAlertCircle, IconRotateClockwise } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 
-import { getPreflight } from "@/api/agentClient";
+import { agentClient } from "@/api/agentClient";
 import { PreflightLabel, QueryKey } from "@/constants";
+import { CompanionGate } from "@/plugins/companion/CompanionGate";
 import { useAuthStore } from "@/store/authStore";
 
-export function PreflightPanel() {
+function PreflightPanelContent({ agentVersion, port }: { agentVersion: string; port: number }) {
   const token = useAuthStore((state) => state.token);
 
   const query = useQuery({
     enabled: Boolean(token),
-    queryFn: ({ signal }) => getPreflight(token ?? "", signal),
-    queryKey: [QueryKey.AGENT_PREFLIGHT, token],
+    queryFn: ({ signal }) => agentClient.getPreflightItems(port, token ?? "", signal),
+    queryKey: [QueryKey.AGENT_PREFLIGHT, port, token],
     refetchOnWindowFocus: false,
     retry: false,
   });
@@ -34,6 +35,7 @@ export function PreflightPanel() {
     () => (query.dataUpdatedAt ? new Date(query.dataUpdatedAt).toLocaleTimeString() : "Not checked yet"),
     [query.dataUpdatedAt]
   );
+  const checklist = query.data ?? [];
 
   if (query.isLoading) {
     return (
@@ -59,31 +61,6 @@ export function PreflightPanel() {
     );
   }
 
-  if (!query.data?.detected) {
-    return (
-      <Alert
-        color="yellow"
-        icon={<IconPlugConnectedX size={18} />}
-        title="Companion app is not running"
-      >
-        <Stack gap="sm">
-          <Text>
-            Start the local companion app, then retry the probe. This empty state is expected until
-            the companion app exists.
-          </Text>
-          <Text c="dimmed" size="sm">
-            Probed ports: {query.data?.ports.join(", ")}
-          </Text>
-          <Group>
-            <Button leftSection={<IconRotateClockwise size={16} />} onClick={() => void query.refetch()}>
-              Retry
-            </Button>
-          </Group>
-        </Stack>
-      </Alert>
-    );
-  }
-
   return (
     <Stack gap="lg">
       <SimpleGrid cols={{ base: 1, md: 3 }}>
@@ -91,13 +68,13 @@ export function PreflightPanel() {
           <Text c="dimmed" size="sm">
             Agent version
           </Text>
-          <Title order={4}>{query.data.agent.version}</Title>
+          <Title order={4}>{agentVersion}</Title>
         </Card>
         <Card padding="lg" radius="lg" withBorder>
           <Text c="dimmed" size="sm">
             Listening port
           </Text>
-          <Title order={4}>{query.data.port}</Title>
+          <Title order={4}>{port}</Title>
         </Card>
         <Card padding="lg" radius="lg" withBorder>
           <Text c="dimmed" size="sm">
@@ -118,7 +95,7 @@ export function PreflightPanel() {
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {query.data.checklist.map((item) => (
+            {checklist.map((item) => (
               <Table.Tr key={item.key}>
                 <Table.Td>{PreflightLabel[item.key]}</Table.Td>
                 <Table.Td>
@@ -134,5 +111,15 @@ export function PreflightPanel() {
         </Table>
       </Table.ScrollContainer>
     </Stack>
+  );
+}
+
+export function PreflightPanel() {
+  const token = useAuthStore((state) => state.token);
+
+  return (
+    <CompanionGate enabled={Boolean(token)} loadingMessage="Checking the local companion app and staging prerequisites.">
+      {({ agent, agentPort }) => <PreflightPanelContent agentVersion={agent.version} port={agentPort} />}
+    </CompanionGate>
   );
 }

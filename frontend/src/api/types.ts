@@ -98,6 +98,18 @@ export interface AgentPingResponse {
   os: string;
 }
 
+export interface AgentManifest {
+  version: string;
+  minSupported: string;
+  downloadUrl: string;
+  sha256: string;
+  os: string | null;
+}
+
+export interface AgentUpdateAccepted {
+  status: "accepted";
+}
+
 export interface PreflightItem {
   key: PreflightKey;
   ok: boolean;

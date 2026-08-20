@@ -31,6 +31,7 @@ import {
 } from "@/constants";
 import type {
   AdoptRequest,
+  AgentUpdateAccepted,
   AgentSettings,
   AgentSettingsUpdate,
   AgentPingResponse,
@@ -194,6 +195,44 @@ export async function getPreflight(token: string, signal?: AbortSignal): Promise
     detected: true,
     port: discovery.port,
   };
+}
+
+export function getPing(port: number, signal?: AbortSignal): Promise<AgentPingResponse> {
+  return readAgentJson<AgentPingResponse>(
+    port,
+    AgentPath.PING,
+    { method: HttpMethod.GET },
+    undefined,
+    signal
+  );
+}
+
+export function getPreflightItems(
+  port: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<PreflightItem[]> {
+  return readAgentJson<PreflightItem[]>(
+    port,
+    AgentPath.PREFLIGHT,
+    { method: HttpMethod.GET },
+    token,
+    signal
+  );
+}
+
+export function requestAgentUpdate(
+  port: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<AgentUpdateAccepted> {
+  return readAgentJson<AgentUpdateAccepted>(
+    port,
+    AgentPath.UPDATE,
+    { method: HttpMethod.POST },
+    token,
+    signal
+  );
 }
 
 export function getJenkinsTree(
@@ -720,7 +759,10 @@ export const agentClient = {
     );
   },
   getKubeconfigStatus,
+  getPing,
+  getPreflightItems,
   refreshKubeconfig,
+  requestUpdate: requestAgentUpdate,
   resumeJenkinsFolder,
   startJenkinsResumeRun,
 };

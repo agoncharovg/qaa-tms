@@ -20,6 +20,7 @@ from app.core.constants import (
     GROUP_LABEL_SEPARATOR,
     GROUP_LIST_SEPARATOR,
     AgentPath,
+    AgentUpdateStatus,
     EnvKey,
     ErrorMessage,
     HeaderName,
@@ -34,6 +35,7 @@ from app.schemas import (
     AgentPingResponse,
     AgentSettingsRead,
     AgentSettingsUpdate,
+    AgentUpdateAccepted,
     DeployFlags,
     DeployRecipePayload,
     DeployRequest,
@@ -118,6 +120,7 @@ from app.services.namespaces import (
 )
 from app.services.preflight import collect_preflight
 from app.services.staging import StagingNotInstalledError, build_ping_response
+from app.services.update import spawn_update_helper
 
 router = APIRouter()
 AuthDep = Annotated[AuthContext, Depends(require_auth)]
@@ -215,6 +218,22 @@ async def update_companion_settings(
 @router.get(AgentPath.PREFLIGHT.value, response_model=list[PreflightItem])
 async def preflight(_: AuthDep, settings: SettingsDep) -> list[PreflightItem]:
     return await collect_preflight(settings)
+
+
+@router.post(
+    AgentPath.UPDATE.value,
+    response_model=AgentUpdateAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def update_agent(_: AuthDep) -> AgentUpdateAccepted:
+    try:
+        spawn_update_helper()
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    return AgentUpdateAccepted(status=AgentUpdateStatus.ACCEPTED)
 
 
 @router.get(AgentPath.JENKINS_TREE.value, response_model=JenkinsTreeResponse)

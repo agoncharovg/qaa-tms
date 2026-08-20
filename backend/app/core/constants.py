@@ -69,6 +69,9 @@ class ApiPrefix(StrEnum):
 class RoutePath(StrEnum):
     HEALTH = "/health"
     READY = "/ready"
+    AGENT = "/agent"
+    MANIFEST = "/manifest"
+    DOWNLOAD = "/download"
     AUTH = "/auth"
     LOGIN = "/login"
     JENKINS = "/jenkins"
@@ -141,6 +144,7 @@ class HttpMethod(StrEnum):
 
 
 class MediaType(StrEnum):
+    GZIP = "application/gzip"
     JSON = "application/json"
     TEXT_EVENT_STREAM = "text/event-stream"
 
@@ -161,6 +165,7 @@ class EnvKey(StrEnum):
     JWT_EXPIRE_MINUTES = "JWT_EXPIRE_MINUTES"
     CORS_ORIGINS = "CORS_ORIGINS"
     STATIC_DIR = "STATIC_DIR"
+    AGENT_DIST_DIR = "AGENT_DIST_DIR"
     QAA_GENERATOR_BASE_URL = "QAA_GENERATOR_BASE_URL"
     QAA_GENERATOR_SUPERUSER_TOKEN = "QAA_GENERATOR_SUPERUSER_TOKEN"
 
@@ -221,6 +226,8 @@ class QaaRunStatus(StrEnum):
 
 
 class ErrorMessage(StrEnum):
+    AGENT_BUNDLE_NOT_AVAILABLE = "The bundled companion source artifact is not available."
+    AGENT_MANIFEST_NOT_AVAILABLE = "The bundled companion manifest metadata is not available."
     ADMIN_ACCESS_REQUIRED = "Admin access is required."
     CANNOT_DELETE_OWN_ACCOUNT = "You cannot delete your own account."
     CANNOT_REMOVE_OWN_ADMIN_ACCESS = "You cannot remove your own admin access."
@@ -280,9 +287,11 @@ DEFAULT_DATABASE_URL = "postgresql+asyncpg://qaa_tms:qaa_tms@localhost:5432/qaa_
 DEFAULT_JWT_SECRET = "dev-secret-change-me"
 DEFAULT_JWT_EXPIRE_MINUTES = 720
 DEFAULT_STATIC_DIR = "/app/static"
+DEFAULT_AGENT_DIST_DIR = "/app/agent-dist"
 DEFAULT_QAA_GENERATOR_BASE_URL = "https://qaa-generator-prod.i.gc.onl/api/v1"
 DEFAULT_QAA_GENERATOR_SUPERUSER_TOKEN = ""
 DEFAULT_QAA_GENERATOR_TIMEOUT_SECONDS = 30.0
+AGENT_MIN_SUPPORTED_VERSION = "0.1.0"
 JENKINS_TREE_CACHE_TTL_SECONDS = 900
 JENKINS_BUILDS_CACHE_TTL_SECONDS = 60
 JENKINS_REFRESH_LEASE_TTL_SECONDS = 30
