@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 
+from app.api.v1.agent import router as agent_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.jenkins import router as jenkins_router
 from app.api.v1.jenkins_freeze import router as jenkins_freeze_router
@@ -14,6 +15,7 @@ from app.api.v1.users import router as users_router
 from app.core.constants import ApiPrefix
 
 router = APIRouter(prefix=ApiPrefix.V1.value)
+router.include_router(agent_router)
 router.include_router(auth_router)
 router.include_router(jenkins_router)
 router.include_router(jenkins_freeze_router)

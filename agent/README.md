@@ -1,14 +1,20 @@
 # QAA-TMS Agent
 
-Headless local HTTP service for staging and Jenkins companion workflows. This is the dev-mode form of
-the future companion app: the browser talks to `127.0.0.1`, the agent runs the
-real `staging` CLI with the engineer's local VPN, kubeconfig, and Docker creds,
-makes authenticated read-only Jenkins API calls with the engineer's own personal token,
-and the agent best-effort pushes audit records to the central backend.
+Headless local HTTP service for staging and Jenkins companion workflows. The
+browser talks to `127.0.0.1`, the agent runs the real `staging` CLI with the
+engineer's local VPN, kubeconfig, and Docker creds, makes authenticated
+read-only Jenkins API calls with the engineer's own personal token, and the
+agent best-effort pushes audit records to the central backend.
+
+The companion is delivered as source code from the deployed backend. Engineers
+download the source tarball, run `install.sh`, and the script creates an
+autostarting user service (systemd on Linux, launchd on macOS). Every service
+start runs `update.sh --if-newer` before launching the agent, and the browser
+can also trigger `POST /update` for an immediate in-place refresh.
 
 ## Run
 
-From `agent/`:
+From `agent/` in a source checkout:
 
 ```bash
 python3 -m venv .venv
@@ -25,6 +31,16 @@ python -m app.main
 
 The service binds `127.0.0.1` only. The SPA probes `http://127.0.0.1:47600`
 through `47605` and identifies the agent via `GET /ping`.
+
+For the deployed installation flow, extract the downloaded tarball and run:
+
+```bash
+./install.sh --backend-url https://your-qaa-tms.example
+```
+
+The installer records one-time consent, bootstraps `.venv`, writes
+`AGENT_CORS_ORIGINS` and `AGENT_BACKEND_URL` into `.env`, installs the
+autostart service, and starts it immediately.
 
 ## Environment
 
@@ -109,6 +125,7 @@ the binary seam exists only so tests can exercise the full job and SSE lifecycle
 Implemented in this slice:
 
 - `GET /ping`
+- `POST /update`
 - `GET /settings`
 - `PUT /settings`
 - `GET /preflight`
@@ -184,7 +201,7 @@ Not implemented here:
 - `/setup`
 - grafana endpoints
 
-## Companion App Scope
-
-This package is only the headless service. The Tauri/Electron shell that will
-embed the same agent code is a later slice.
+`POST /update` returns `202 Accepted`, spawns the detached `update.sh` helper,
+downloads the latest source tarball from the backend, verifies the manifest
+sha256, updates the local install while preserving `.env`, and lets the service
+manager restart the process.

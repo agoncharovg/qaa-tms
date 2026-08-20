@@ -1,0 +1,154 @@
+Обсуждение №12 — Companion: доставка исходниками + install.sh + автозапуск-сервис
+                    (упрощение discuss/11: без Tauri, без подписи, без CI-матрицы)
+
+====================================================================
+0. КОНТЕКСТ / ПОЧЕМУ ПЕРЕСМОТР
+====================================================================
+
+  discuss/11 предлагал Tauri desktop app с подписанным self-updater'ом,
+  матрицей сборок под каждую ОС, macOS-нодой в CI и Apple Developer /
+  нотаризацией. Для парка 10–15 инженеров (Ubuntu + macOS) за VPN это
+  избыточно и непрозрачно: тянет ровно те открытые вопросы, что в discuss/11
+  так и остались нерешёнными (macOS build node, code-sign/notarization).
+
+  Решение: доставлять агента ИСХОДНИКАМИ (как они лежат в текущем репо),
+  ставить и запускать через install.sh как автостартующий сервис,
+  обновляться подтягиванием свежего тарбола с backend. Это снимает
+  кросс-сборку, ключи подписи, Gatekeeper и оба открытых вопроса целиком.
+
+  Факты кодовой базы (актуально на 2026-08-20):
+   - Агент — headless FastAPI, пакет `qaa-tms-agent`, версия из
+     agent/pyproject.toml (0.1.0). /ping отдаёт {app, version,
+     stagingsInstalled, stagingsSha, os} (agent/app/services/staging.py:72).
+   - Настройки — pydantic-settings из agent/.env. Bootstrap-ключи:
+     AGENT_CORS_ORIGINS, AGENT_BACKEND_URL (agent/app/core/config.py).
+   - CORS у агента жёсткий, дефолт localhost:3000/127.0.0.1:3000
+     (agent/app/main.py:47). Prod-origin в него не входит → преднастройка
+     обязательна.
+   - Фронт ищет агента перебором портов 47600–47605 через discoverAgent()
+     (frontend/src/api/agentClient.ts:161). Баннер "Companion app is not
+     running" ДУБЛИРУЕТСЯ в 6 местах (JenkinsSection, KuberSection,
+     QaaGeneratorSection, StatisticsSmokeSection, profile/SettingsPanel,
+     stagings/PreflightPanel) — единого AgentProvider нет.
+   - Single image: backend (FastAPI) отдаёт SPA same-origin и api/v1
+     (backend/app/main.py). Образ (build/Dockerfile) сейчас кладёт только
+     backend/ + frontend dist; agent/ в образ НЕ попадает.
+
+====================================================================
+1. ПРИНЯТЫЕ РЕШЕНИЯ (подтверждены пользователем)
+====================================================================
+
+  Р1. ФОРМА ДОСТАВКИ = исходники агента + install.sh. Никакого Tauri,
+      нативных бинарей, подписи, нотаризации, CI-матрицы. Python-исходники
+      одинаково едут на Ubuntu и macOS.
+
+  Р2. ИСТОЧНИК ПРАВДЫ И ОБНОВЛЕНИЙ = тарбол с backend, всегда актуальный и
+      под рукой. Версия companion всегда совпадает с задеплоенным образом.
+      Отдельный хостинг/git-доступ инженеру не нужен.
+        - Backend отдаёт манифест И тарбол исходников агента.
+        - "Actual version" фронт тянет из манифеста НА ЛЕТУ (не зависит от
+          ре-деплоя SPA — снимает открытый вопрос К4в/раздел4 discuss/11).
+        - Развилка git-vs-tarball и "ветка vs тег" из моего разбора
+          РАСТВОРЯЕТСЯ: источник = тарбол задеплоенного образа.
+
+  Р3. ТРИГГЕР ОБНОВЛЕНИЯ = комбинация, без поллинга агентом:
+        (а) на каждом (пере)старте сервиса лаунчер сверяет версию и, если на
+            backend новее, подтягивает тарбол и обновляется ПЕРЕД стартом;
+        (б) плюс портал-инициируемый POST /update → агент запускает
+            обновление и перезапускается (сервис-менеджер поднимает обратно).
+      Инициатива всегда у портала/пользователя; агент сам ничего не поллит и
+      не сигналит (сохраняем принцип "без колокольного звона" из discuss/11).
+      (б) закрывает дыру "машина не перезагружалась неделями → застряла на
+      старой версии".
+
+  Р4. РЕАКЦИЯ ФРОНТА (три состояния, как в discuss/11 Р3/Р6, источник —
+      манифест):
+        - агент не найден (discoverAgent == null) → баннер "Companion не
+          установлен" + кнопка Download (тарбол с backend) + краткая
+          инструкция запуска install.sh;
+        - agent.version < minSupported → блокирующий баннер "Update required"
+          + [Update] (плагины заблокированы; старый агент может быть
+          несовместим с API);
+        - minSupported <= agent.version < manifest.version → неблокирующий
+          баннер "Update available" + [Update].
+      [Update] → POST agent /update → фронт пере-опрашивает /ping.version до
+      смены версии или таймаута.
+
+  Р5. СОГЛАСИЕ = интерактивный шаг install.sh (не нативный диалог, не
+      curl|sh — оба мешают консенту). Явно перечислить, что агент делает под
+      ЛИЧНЫМИ кредами инженера (VPN, kubeconfig, личный токен Jenkins,
+      запуск staging/kubectl), потребовать подтверждение. Факт согласия
+      писать маркером (напр. ~/.config/qaa-tms-agent/consent), чтобы
+      обновления не переспрашивали.
+
+  Р6. АВТОЗАПУСК + БУТСТРАП = install.sh по `uname` ветвится:
+        - Linux → systemd USER-юнит (~/.config/systemd/user/), enable --now;
+          упомянуть `loginctl enable-linger` (работа без активной сессии);
+        - macOS → launchd LaunchAgent (~/Library/LaunchAgents/), launchctl.
+      Бутстрап: проверить python>=3.12, создать venv (uv если есть, иначе
+      python -m venv + pip), editable-install агента. ExecStart = лаунчер,
+      который делает check-then-update (Р3а) и затем поднимает uvicorn.
+
+  Р7. ПРЕДНАСТРОЙКА (К1 discuss/11 сохраняется, но делает install.sh):
+      install.sh пишет agent/.env с AGENT_CORS_ORIGINS = prod-origin и
+      AGENT_BACKEND_URL = prod-backend. Origin инжектится backend'ом в
+      скачиваемый install.sh (backend знает свой публичный origin), либо
+      передаётся аргументом; пользователь деталей не касается — копирует одну
+      команду из портала. Существующий пользовательский .env при обновлении
+      НЕ затирать.
+
+  Р8. PNA preflight (К2 discuss/11 сохраняется, от формы доставки не зависит):
+      агент обрабатывает OPTIONS c Access-Control-Request-Private-Network и
+      отвечает Access-Control-Allow-Private-Network: true. Включить в этот
+      слайс — блокирует связку https prod-origin → http://127.0.0.1.
+
+====================================================================
+2. ФОРМА (разбиение; детальный бриф — briefs/25)
+====================================================================
+
+  Часть A — Backend (k8s, single image):
+    - build/Dockerfile: упаковать agent/ исходники в ДЕТЕРМИНИРОВАННЫЙ
+      тарбол (sorted entries + фиксированный mtime → стабильный sha256),
+      исключив .venv/__pycache__/кэши/.env; положить туда, откуда backend
+      его отдаёт (env-путь по аналогии со STATIC_DIR).
+    - GET /api/v1/agent/manifest → {version, minSupported, downloadUrl,
+      sha256, os?}. version читать из bundled agent pyproject; minSupported —
+      backend-константа. Эндпоинты неаутентифицированные (только исходники +
+      версия, секретов нет), same-origin к SPA.
+    - GET /api/v1/agent/download → тарбол (application/gzip), FileResponse.
+    - (Опция Р7) GET /api/v1/agent/install.sh → install.sh с вшитым origin.
+
+  Часть B — Агент + install.sh:
+    - POST /update: запускает detached-хелпер (update.sh): download+verify
+      sha256 против манифеста → распаковка поверх install-dir с сохранением
+      .env → переустановка зависимостей если менялись → exit, сервис-менеджер
+      перезапускает. Возврат 202.
+    - PNA preflight middleware (Р8).
+    - install.sh: consent (Р5), bootstrap venv, .env-преднастройка (Р7),
+      автостарт-юнит (Р6), первый запуск. update.sh: check-then-update (Р3а),
+      используется и лаунчером на старте, и хелпером /update (Р3б).
+
+  Часть C — Frontend:
+    - Тянуть манифест GET /api/v1/agent/manifest (same-origin), сравнивать
+      semver с /ping.version.
+    - Единый хук/компонент статуса companion (useCompanionStatus +
+      <CompanionGate>): три состояния Р4; провести через него 6 нынешних
+      мест с "Companion app is not running", убрав дублирование.
+    - [Update] → POST agent /update → пере-опрос /ping.version.
+    - semver-compare утилита в constants/util; строковые константы —
+      по CONVENTIONS.md (StrEnum/литеральные юнионы, без inline-литералов).
+
+====================================================================
+3. ОТКРЫТЫЕ ВОПРОСЫ
+====================================================================
+
+  СНЯТО пересмотром: macOS build node, Apple Developer / нотаризация,
+  подпись апдейта, git-vs-tarball, ветка-vs-тег, "actual version" вшивать в
+  SPA (берём манифест на лету).
+
+  ОСТАЁТСЯ (мелочь реализации):
+   - Точное имя/путь env для тарбола в образе (по аналогии со STATIC_DIR).
+   - Формат minSupported (backend-константа) и политика её поднятия.
+   - macOS launchd KeepAlive: check-then-update срабатывает только на
+     реальном (пере)старте процесса — для не-перезагружаемых Mac основной
+     путь обновления это POST /update (Р3б), что и задумано.

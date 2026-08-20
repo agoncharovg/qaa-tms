@@ -32,6 +32,7 @@ import {
   buildBackendUserPath,
 } from "@/constants";
 import type {
+  AgentManifest,
   JenkinsBuildsCachePut,
   JenkinsBuildsCacheRead,
   JenkinsFolderCachePut,
@@ -317,6 +318,10 @@ function buildQaaUsersListPath(params: QaaUsersListParams): string {
 }
 
 export const backendClient = {
+  getAgentManifest(signal?: AbortSignal): Promise<AgentManifest> {
+    return request<AgentManifest>(BackendPath.AGENT_MANIFEST, { method: HttpMethod.GET }, undefined, signal);
+  },
+
   getJenkinsTreeCache(
     token: string,
     signature: string,

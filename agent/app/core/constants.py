@@ -9,6 +9,7 @@ class AgentPath(StrEnum):
     PING = "/ping"
     SETTINGS = "/settings"
     PREFLIGHT = "/preflight"
+    UPDATE = "/update"
     JENKINS_SCOPE = "/jenkins/scope"
     JENKINS_TREE = "/jenkins/tree"
     JENKINS_BUILDS = "/jenkins/builds"
@@ -145,12 +146,21 @@ class EnvFile(StrEnum):
 
 class HeaderName(StrEnum):
     ACCEPT = "Accept"
+    ACCESS_CONTROL_ALLOW_HEADERS = "Access-Control-Allow-Headers"
+    ACCESS_CONTROL_ALLOW_METHODS = "Access-Control-Allow-Methods"
+    ACCESS_CONTROL_ALLOW_ORIGIN = "Access-Control-Allow-Origin"
+    ACCESS_CONTROL_ALLOW_PRIVATE_NETWORK = "Access-Control-Allow-Private-Network"
+    ACCESS_CONTROL_REQUEST_HEADERS = "Access-Control-Request-Headers"
+    ACCESS_CONTROL_REQUEST_METHOD = "Access-Control-Request-Method"
+    ACCESS_CONTROL_REQUEST_PRIVATE_NETWORK = "Access-Control-Request-Private-Network"
     AUTHORIZATION = "Authorization"
     CACHE_CONTROL = "Cache-Control"
     CONNECTION = "Connection"
     CONTENT_TYPE = "Content-Type"
     IDEMPOTENCY_KEY = "Idempotency-Key"
     LAST_EVENT_ID = "Last-Event-ID"
+    ORIGIN = "Origin"
+    VARY = "Vary"
     X_QAA_GENERATOR_TOKEN = "X-QAA-Generator-Token"
     X_QAA_TMS = "X-QAA-TMS"
 
@@ -162,6 +172,7 @@ class HeaderValue(StrEnum):
     EVENT_STREAM_UTF8 = "text/event-stream; charset=utf-8"
     KEEP_ALIVE = "keep-alive"
     NO_CACHE = "no-cache"
+    TRUE = "true"
     X_QAA_TMS_ENABLED = "1"
 
 
@@ -313,6 +324,7 @@ class JobEventType(StrEnum):
 
 class ErrorMessage(StrEnum):
     JOB_NOT_FOUND = "Job not found."
+    UPDATE_HELPER_NOT_AVAILABLE = "The update helper is not available in this installation."
     STAGING_BINARY_NOT_INSTALLED = "The staging binary is not installed."
     UNAUTHORIZED = "Unauthorized."
     JENKINS_NOT_CONFIGURED = "Jenkins is not configured (set AGENT_JENKINS_URL/USERNAME/TOKEN)."
@@ -347,6 +359,10 @@ class KubeconfigReason(StrEnum):
     CONTENT_INVALID = "content_invalid"
     NOT_ACTIVE = "not_active"
     HEALTHY = "healthy"
+
+
+class AgentUpdateStatus(StrEnum):
+    ACCEPTED = "accepted"
 
 
 AGENT_APP_NAME = "qaa-tms-agent"

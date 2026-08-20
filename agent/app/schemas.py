@@ -12,6 +12,7 @@ from app.core.config import JenkinsRootGroup, Settings
 from app.core.constants import (
     MAX_STAGE,
     MIN_STAGE,
+    AgentUpdateStatus,
     JenkinsNodeKind,
     JenkinsResumeItemState,
     JenkinsResumeResult,
@@ -35,6 +36,14 @@ class AgentPingResponse(BaseModel):
     stagings_installed: bool = Field(alias="stagingsInstalled")
     stagings_sha: str | None = Field(alias="stagingsSha")
     os: str
+
+
+class AgentUpdateAccepted(BaseModel):
+    """Accepted response for the detached update workflow."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: AgentUpdateStatus
 
 
 class PreflightItem(BaseModel):

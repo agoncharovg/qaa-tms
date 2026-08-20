@@ -4,18 +4,30 @@ import userEvent from "@testing-library/user-event";
 
 const agentClientMock = vi.hoisted(() => ({
   discoverAgent: vi.fn(),
-  getConfiguredAgentPorts: vi.fn(),
+  getPing: vi.fn(),
   getSettings: vi.fn(),
+  requestUpdate: vi.fn(),
   updateSettings: vi.fn(),
+}));
+
+const backendClientMock = vi.hoisted(() => ({
+  getAgentManifest: vi.fn(),
 }));
 
 vi.mock("@/api/agentClient", () => ({
   agentClient: {
+    getPing: agentClientMock.getPing,
     getSettings: agentClientMock.getSettings,
+    requestUpdate: agentClientMock.requestUpdate,
     updateSettings: agentClientMock.updateSettings,
   },
   discoverAgent: agentClientMock.discoverAgent,
-  getConfiguredAgentPorts: agentClientMock.getConfiguredAgentPorts,
+}));
+
+vi.mock("@/api/backendClient", () => ({
+  backendClient: {
+    getAgentManifest: backendClientMock.getAgentManifest,
+  },
 }));
 
 import { SettingsPanel } from "@/plugins/profile/SettingsPanel";
@@ -67,13 +79,21 @@ describe("SettingsPanel", () => {
     localStorage.clear();
     resetAuthStoreState();
     agentClientMock.discoverAgent.mockReset();
-    agentClientMock.getConfiguredAgentPorts.mockReset();
+    agentClientMock.getPing.mockReset();
     agentClientMock.getSettings.mockReset();
+    agentClientMock.requestUpdate.mockReset();
     agentClientMock.updateSettings.mockReset();
-    agentClientMock.getConfiguredAgentPorts.mockReturnValue([47600, 47601]);
+    backendClientMock.getAgentManifest.mockReset();
+    backendClientMock.getAgentManifest.mockResolvedValue({
+      downloadUrl: "/api/v1/agent/download",
+      minSupported: "0.1.0",
+      os: null,
+      sha256: "abc123",
+      version: "0.1.0",
+    });
   });
 
-  it("renders only the enabled plugin cards and shows the companion-unavailable note once", async () => {
+  it("renders the shared companion install gate when the companion is missing", async () => {
     useAuthStore.setState({
       currentUser: createCurrentUser([PluginId.JENKINS]),
       token: "token-123",
@@ -82,11 +102,12 @@ describe("SettingsPanel", () => {
 
     renderWithProviders(<SettingsPanel />);
 
-    expect(await screen.findByText("Companion app is not running")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Jenkins" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Stagings" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Kuber" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "QAA generator" })).not.toBeInTheDocument();
+    expect(await screen.findByText("Companion is not installed")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Download" })).toHaveAttribute(
+      "href",
+      "/api/v1/agent/download"
+    );
+    expect(screen.queryByRole("heading", { name: "Jenkins" })).not.toBeInTheDocument();
   });
 
   it("saves each companion-backed plugin with a partial payload", async () => {

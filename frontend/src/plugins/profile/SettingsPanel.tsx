@@ -15,27 +15,21 @@ import {
 import {
   IconAlertCircle,
   IconCheck,
-  IconPlugConnectedX,
-  IconRotateClockwise,
 } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { agentClient, discoverAgent, getConfiguredAgentPorts } from "@/api/agentClient";
+import { agentClient } from "@/api/agentClient";
 import type { AgentSettings, AgentSettingsUpdate } from "@/api/types";
 import { usePalette } from "@/app/theme/usePalette";
 import { PluginId, QueryKey, type PluginId as PluginIdType } from "@/constants";
+import { CompanionGate } from "@/plugins/companion/CompanionGate";
 import { usePluginsContext } from "@/plugins/context";
 import { useAuthStore } from "@/store/authStore";
 
 const SettingsPanelCopy = {
   AGENT_ERROR: "Companion settings failed to load",
   AGENT_LOADING: "Checking the local companion app.",
-  AGENT_RETRY: "Retry",
   AGENT_SETTINGS_LOADING: "Loading companion settings.",
-  AGENT_UNAVAILABLE_BODY:
-    "Start the local companion app, then retry discovery before editing this machine's settings.",
-  AGENT_UNAVAILABLE_PORTS: "Probed ports:",
-  AGENT_UNAVAILABLE_TITLE: "Companion app is not running",
   CLEAR_SECRET: "Clear stored value",
   EMPTY_STATE: "No plugin-specific settings are enabled for this user.",
   JENKINS_DESCRIPTION:
@@ -79,16 +73,11 @@ const NoticeStatus = {
   SUCCESS: "success",
 } as const;
 
-const AgentQueryKey = {
-  DISCOVERY: "discovery",
-} as const;
-
 const EMPTY_VALUE = "" as const;
 const ALERT_ICON_SIZE_PX = 18 as const;
 const CARD_TITLE_ORDER = 3 as const;
 const FORM_COLUMNS = { base: 1, md: 2 } as const;
 const PAGE_TITLE_ORDER = 2 as const;
-const RETRY_ICON_SIZE_PX = 16 as const;
 
 const SECRET_INPUT_AUTOCOMPLETE = "new-password" as const;
 const SECRET_INPUT_NAME = {
@@ -196,21 +185,22 @@ function CardShell({
   );
 }
 
-export function SettingsPanel() {
+function SettingsPanelAgentSettings({
+  agentPort,
+  showJenkins,
+  showKuber,
+  showQaaGenerator,
+  showStagings,
+  token,
+}: {
+  agentPort: number;
+  showJenkins: boolean;
+  showKuber: boolean;
+  showQaaGenerator: boolean;
+  showStagings: boolean;
+  token: string;
+}) {
   const queryClient = useQueryClient();
-  const { enabledOptionalPluginIdSet } = usePluginsContext();
-  const currentUser = useAuthStore((state) => state.currentUser);
-  const token = useAuthStore((state) => state.token);
-  const enabledPluginIds = currentUser
-    ? enabledOptionalPluginIdSet(currentUser.enabled_plugins)
-    : new Set<PluginIdType>();
-  const showJenkins = enabledPluginIds.has(PluginId.JENKINS);
-  const showStagings = enabledPluginIds.has(PluginId.STAGINGS);
-  const showKuber = enabledPluginIds.has(PluginId.KUBER);
-  const showQaaGenerator = enabledPluginIds.has(PluginId.QAA_GENERATOR);
-  const hasEnabledAgentPlugins = showJenkins || showStagings || showKuber || showQaaGenerator;
-  const hasVisiblePluginSettings = hasEnabledAgentPlugins || showQaaGenerator;
-
   const [agentForm, setAgentForm] = useState<AgentFormState | null>(null);
   const [jenkinsNotice, setJenkinsNotice] = useState<Notice | null>(null);
   const [stagingsNotice, setStagingsNotice] = useState<Notice | null>(null);
@@ -218,19 +208,9 @@ export function SettingsPanel() {
   const [qaaGeneratorForm, setQaaGeneratorForm] = useState<QaaGeneratorFormState | null>(null);
   const [qaaGeneratorNotice, setQaaGeneratorNotice] = useState<Notice | null>(null);
 
-  const discoveryQuery = useQuery({
-    enabled: Boolean(token) && hasEnabledAgentPlugins,
-    queryFn: ({ signal }) => discoverAgent(signal),
-    queryKey: [QueryKey.AGENT_SETTINGS, AgentQueryKey.DISCOVERY, token],
-    refetchOnWindowFocus: false,
-    retry: false,
-  });
-
   const agentSettingsQuery = useQuery({
-    enabled: Boolean(token) && Boolean(discoveryQuery.data?.port) && hasEnabledAgentPlugins,
-    queryFn: ({ signal }) =>
-      agentClient.getSettings(discoveryQuery.data!.port, token ?? EMPTY_VALUE, signal),
-    queryKey: [QueryKey.AGENT_SETTINGS, discoveryQuery.data?.port, token],
+    queryFn: ({ signal }) => agentClient.getSettings(agentPort, token, signal),
+    queryKey: [QueryKey.AGENT_SETTINGS, agentPort, token],
   });
 
   useEffect(() => {
@@ -242,11 +222,7 @@ export function SettingsPanel() {
 
   const jenkinsUpdateMutation = useMutation({
     mutationFn: async (payload: AgentSettingsUpdate) => {
-      if (!token || !discoveryQuery.data) {
-        throw new Error(SettingsPanelCopy.UPDATE_REQUIRED);
-      }
-
-      return agentClient.updateSettings(discoveryQuery.data.port, token, payload);
+      return agentClient.updateSettings(agentPort, token, payload);
     },
     onSuccess: async (updatedSettings) => {
       setAgentForm(buildAgentFormState(updatedSettings));
@@ -266,11 +242,7 @@ export function SettingsPanel() {
 
   const stagingsUpdateMutation = useMutation({
     mutationFn: async (payload: AgentSettingsUpdate) => {
-      if (!token || !discoveryQuery.data) {
-        throw new Error(SettingsPanelCopy.UPDATE_REQUIRED);
-      }
-
-      return agentClient.updateSettings(discoveryQuery.data.port, token, payload);
+      return agentClient.updateSettings(agentPort, token, payload);
     },
     onSuccess: async (updatedSettings) => {
       setAgentForm(buildAgentFormState(updatedSettings));
@@ -290,11 +262,7 @@ export function SettingsPanel() {
 
   const kuberUpdateMutation = useMutation({
     mutationFn: async (payload: AgentSettingsUpdate) => {
-      if (!token || !discoveryQuery.data) {
-        throw new Error(SettingsPanelCopy.UPDATE_REQUIRED);
-      }
-
-      return agentClient.updateSettings(discoveryQuery.data.port, token, payload);
+      return agentClient.updateSettings(agentPort, token, payload);
     },
     onSuccess: async (updatedSettings) => {
       setAgentForm(buildAgentFormState(updatedSettings));
@@ -314,11 +282,7 @@ export function SettingsPanel() {
 
   const qaaGeneratorUpdateMutation = useMutation({
     mutationFn: async (qaaGeneratorToken: string) => {
-      if (!token || !discoveryQuery.data) {
-        throw new Error(SettingsPanelCopy.UPDATE_REQUIRED);
-      }
-
-      return agentClient.updateSettings(discoveryQuery.data.port, token, {
+      return agentClient.updateSettings(agentPort, token, {
         qaa_generator_token: qaaGeneratorToken,
       });
     },
@@ -337,15 +301,6 @@ export function SettingsPanel() {
       });
     },
   });
-
-  if (!currentUser) {
-    return (
-      <Stack align="center" gap="sm" py="xl">
-        <Loader size="lg" />
-        <Text c="dimmed">{SettingsPanelCopy.LOADING}</Text>
-      </Stack>
-    );
-  }
 
   function setAgentField<Key extends keyof AgentFormState>(key: Key, value: AgentFormState[Key]): void {
     setAgentForm((currentForm) => {
@@ -430,103 +385,27 @@ export function SettingsPanel() {
     qaaGeneratorUpdateMutation.mutate(EMPTY_VALUE);
   }
 
-  function renderAgentStatus(): ReactNode {
-    if (!hasEnabledAgentPlugins) {
-      return null;
-    }
+  if (agentSettingsQuery.isLoading) {
+    return (
+      <Stack align="center" gap="sm" py="md">
+        <Loader size="lg" />
+        <Text c="dimmed">{SettingsPanelCopy.AGENT_SETTINGS_LOADING}</Text>
+      </Stack>
+    );
+  }
 
-    if (discoveryQuery.isLoading) {
-      return (
-        <Stack align="center" gap="sm" py="md">
-          <Loader size="lg" />
-          <Text c="dimmed">{SettingsPanelCopy.AGENT_LOADING}</Text>
-        </Stack>
-      );
-    }
-
-    if (discoveryQuery.isError) {
-      return (
-        <Alert color="red" icon={<IconAlertCircle size={ALERT_ICON_SIZE_PX} />} title={SettingsPanelCopy.AGENT_ERROR}>
-          <Stack gap="sm">
-            <Text>
-              {discoveryQuery.error instanceof Error
-                ? discoveryQuery.error.message
-                : SettingsPanelCopy.AGENT_ERROR}
-            </Text>
-            <Group>
-              <Button
-                leftSection={<IconRotateClockwise size={RETRY_ICON_SIZE_PX} />}
-                onClick={() => void discoveryQuery.refetch()}
-              >
-                {SettingsPanelCopy.AGENT_RETRY}
-              </Button>
-            </Group>
-          </Stack>
-        </Alert>
-      );
-    }
-
-    if (!discoveryQuery.data) {
-      return (
-        <Alert
-          color="yellow"
-          icon={<IconPlugConnectedX size={ALERT_ICON_SIZE_PX} />}
-          title={SettingsPanelCopy.AGENT_UNAVAILABLE_TITLE}
-        >
-          <Stack gap="sm">
-            <Text>{SettingsPanelCopy.AGENT_UNAVAILABLE_BODY}</Text>
-            <Text c="dimmed" size="sm">
-              {SettingsPanelCopy.AGENT_UNAVAILABLE_PORTS} {getConfiguredAgentPorts().join(", ")}
-            </Text>
-            <Group>
-              <Button
-                leftSection={<IconRotateClockwise size={RETRY_ICON_SIZE_PX} />}
-                onClick={() => void discoveryQuery.refetch()}
-                variant="light"
-              >
-                {SettingsPanelCopy.AGENT_RETRY}
-              </Button>
-            </Group>
-          </Stack>
-        </Alert>
-      );
-    }
-
-    if (agentSettingsQuery.isLoading) {
-      return (
-        <Stack align="center" gap="sm" py="md">
-          <Loader size="lg" />
-          <Text c="dimmed">{SettingsPanelCopy.AGENT_SETTINGS_LOADING}</Text>
-        </Stack>
-      );
-    }
-
-    if (agentSettingsQuery.isError) {
-      return (
-        <Alert color="red" icon={<IconAlertCircle size={ALERT_ICON_SIZE_PX} />} title={SettingsPanelCopy.AGENT_ERROR}>
-          {agentSettingsQuery.error instanceof Error
-            ? agentSettingsQuery.error.message
-            : SettingsPanelCopy.AGENT_ERROR}
-        </Alert>
-      );
-    }
-
-    return null;
+  if (agentSettingsQuery.isError) {
+    return (
+      <Alert color="red" icon={<IconAlertCircle size={ALERT_ICON_SIZE_PX} />} title={SettingsPanelCopy.AGENT_ERROR}>
+        {agentSettingsQuery.error instanceof Error
+          ? agentSettingsQuery.error.message
+          : SettingsPanelCopy.AGENT_ERROR}
+      </Alert>
+    );
   }
 
   return (
-    <Stack gap="lg">
-      <div>
-        <Title order={PAGE_TITLE_ORDER}>{SettingsPanelCopy.TITLE}</Title>
-        <Text c="dimmed">{SettingsPanelCopy.SECTION_DESCRIPTION}</Text>
-      </div>
-
-      {renderAgentStatus()}
-
-      {!hasVisiblePluginSettings ? (
-        <Alert title={SettingsPanelCopy.TITLE}>{SettingsPanelCopy.EMPTY_STATE}</Alert>
-      ) : null}
-
+    <>
       {showJenkins ? (
         <CardShell
           description={SettingsPanelCopy.JENKINS_DESCRIPTION}
@@ -664,6 +543,62 @@ export function SettingsPanel() {
             </Group>
           </Stack>
         </CardShell>
+      ) : null}
+    </>
+  );
+}
+
+export function SettingsPanel() {
+  const { enabledOptionalPluginIdSet } = usePluginsContext();
+  const currentUser = useAuthStore((state) => state.currentUser);
+  const token = useAuthStore((state) => state.token);
+  const enabledPluginIds = currentUser
+    ? enabledOptionalPluginIdSet(currentUser.enabled_plugins)
+    : new Set<PluginIdType>();
+  const showJenkins = enabledPluginIds.has(PluginId.JENKINS);
+  const showStagings = enabledPluginIds.has(PluginId.STAGINGS);
+  const showKuber = enabledPluginIds.has(PluginId.KUBER);
+  const showQaaGenerator = enabledPluginIds.has(PluginId.QAA_GENERATOR);
+  const hasEnabledAgentPlugins = showJenkins || showStagings || showKuber || showQaaGenerator;
+  const hasVisiblePluginSettings = hasEnabledAgentPlugins || showQaaGenerator;
+
+  if (!currentUser) {
+    return (
+      <Stack align="center" gap="sm" py="xl">
+        <Loader size="lg" />
+        <Text c="dimmed">{SettingsPanelCopy.LOADING}</Text>
+      </Stack>
+    );
+  }
+
+  return (
+    <Stack gap="lg">
+      <div>
+        <Title order={PAGE_TITLE_ORDER}>{SettingsPanelCopy.TITLE}</Title>
+        <Text c="dimmed">{SettingsPanelCopy.SECTION_DESCRIPTION}</Text>
+      </div>
+
+      {!hasVisiblePluginSettings ? (
+        <Alert title={SettingsPanelCopy.TITLE}>{SettingsPanelCopy.EMPTY_STATE}</Alert>
+      ) : null}
+
+      {hasEnabledAgentPlugins ? (
+        <CompanionGate
+          enabled={Boolean(token)}
+          errorTitle={SettingsPanelCopy.AGENT_ERROR}
+          loadingMessage={SettingsPanelCopy.AGENT_LOADING}
+        >
+          {({ agentPort }) => (
+            <SettingsPanelAgentSettings
+              agentPort={agentPort}
+              showJenkins={showJenkins}
+              showKuber={showKuber}
+              showQaaGenerator={showQaaGenerator}
+              showStagings={showStagings}
+              token={token ?? EMPTY_VALUE}
+            />
+          )}
+        </CompanionGate>
       ) : null}
     </Stack>
   );

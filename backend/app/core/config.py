@@ -12,6 +12,7 @@ from sqlalchemy.engine import make_url
 
 from app.core import env_file
 from app.core.constants import (
+    DEFAULT_AGENT_DIST_DIR,
     DEFAULT_DATABASE_URL,
     DEFAULT_JWT_EXPIRE_MINUTES,
     DEFAULT_JWT_SECRET,
@@ -60,6 +61,10 @@ class Settings(BaseSettings):
         alias=EnvKey.CORS_ORIGINS.value,
     )
     static_dir: str = Field(default=DEFAULT_STATIC_DIR, alias=EnvKey.STATIC_DIR.value)
+    agent_dist_dir: str = Field(
+        default=DEFAULT_AGENT_DIST_DIR,
+        alias=EnvKey.AGENT_DIST_DIR.value,
+    )
     qaa_generator_base_url: str = Field(
         default=DEFAULT_QAA_GENERATOR_BASE_URL,
         alias=EnvKey.QAA_GENERATOR_BASE_URL.value,

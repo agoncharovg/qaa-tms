@@ -70,6 +70,8 @@ export const StorageKey = {
 export type StorageKey = (typeof StorageKey)[keyof typeof StorageKey];
 
 export const BackendPath = {
+  AGENT_MANIFEST: "/api/v1/agent/manifest",
+  AGENT_DOWNLOAD: "/api/v1/agent/download",
   AUTH_LOGIN: "/api/v1/auth/login",
   JENKINS_TREE: "/api/v1/jenkins/tree",
   JENKINS_BUILDS: "/api/v1/jenkins/builds",
@@ -220,6 +222,7 @@ export const AgentPath = {
   PING: "/ping",
   SETTINGS: "/settings",
   PREFLIGHT: "/preflight",
+  UPDATE: "/update",
   JENKINS_SCOPE: "/jenkins/scope",
   JENKINS_TREE: "/jenkins/tree",
   JENKINS_BUILDS: "/jenkins/builds",
@@ -591,6 +594,7 @@ export const MediaType = {
 export type MediaType = (typeof MediaType)[keyof typeof MediaType];
 
 export const HttpStatus = {
+  ACCEPTED: 202,
   CONFLICT: 409,
   NO_CONTENT: 204,
 } as const;
@@ -686,6 +690,8 @@ export const PROFILE_SECTION_ORDER = [
 
 export const QueryKey = {
   ME: "me",
+  AGENT_DISCOVERY: "agent-discovery",
+  AGENT_MANIFEST: "agent-manifest",
   AGENT_PREFLIGHT: "agent-preflight",
   AGENT_SETTINGS: "agent-settings",
   AGENT_JOB: "agent-job",
@@ -720,6 +726,18 @@ export const QueryKey = {
 } as const;
 
 export type QueryKey = (typeof QueryKey)[keyof typeof QueryKey];
+
+export const CompanionStatusKind = {
+  LOADING: "loading",
+  ERROR: "error",
+  NOT_INSTALLED: "not-installed",
+  UPDATE_REQUIRED: "update-required",
+  UPDATE_AVAILABLE: "update-available",
+  OK: "ok",
+} as const;
+
+export type CompanionStatusKind =
+  (typeof CompanionStatusKind)[keyof typeof CompanionStatusKind];
 
 export const QaaAdminSubTab = {
   USERS: "users",
