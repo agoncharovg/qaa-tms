@@ -45,4 +45,12 @@ describe("runtimeConfig", () => {
     expect(resolveApiBaseUrl()).toBe(DEFAULT_API_BASE_URL);
     expect(resolveAgentPortRange()).toEqual([...DEFAULT_AGENT_PORT_RANGE]);
   });
+
+  it("respects an explicitly empty build-time API base URL", () => {
+    vi.stubEnv("VITE_API_BASE_URL", "");
+
+    clearApiBaseUrlOverride();
+
+    expect(resolveApiBaseUrl()).toBe("");
+  });
 });
