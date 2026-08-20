@@ -506,6 +506,14 @@ class JenkinsTreeResponse(BaseModel):
     roots: list[JenkinsNode] = Field(default_factory=list)
 
 
+class JenkinsFolderResponse(BaseModel):
+    """`/jenkins/folder` response shape (a single folder's child pipelines)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    roots: list[JenkinsNode] = Field(default_factory=list)
+
+
 class JenkinsScopeResponse(BaseModel):
     """`/jenkins/scope` response shape."""
 

@@ -11,6 +11,7 @@ DEFAULT_OPTIONAL_PLUGIN_IDS = [
     PluginId.KUBER.value,
     PluginId.QAA_GENERATOR.value,
     PluginId.JENKINS.value,
+    PluginId.STATISTICS.value,
 ]
 
 

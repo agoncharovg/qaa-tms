@@ -499,6 +499,10 @@ export interface JenkinsBuildsResponse {
   builds: JenkinsBuild[];
 }
 
+export interface JenkinsFolderResponse {
+  roots: JenkinsNode[];
+}
+
 export interface JenkinsFreezeSnapshotItem {
   path: string;
   fullName: string;
@@ -641,6 +645,22 @@ export interface JenkinsBuildsCachePut {
   signature: string;
   path: string;
   builds: JenkinsBuild[];
+  refreshLease: string | null;
+}
+
+export interface JenkinsFolderCacheRead {
+  roots: JenkinsNode[];
+  signature: string;
+  path: string;
+  fetchedAt: string | null;
+  stale: boolean;
+  refreshLease: string | null;
+}
+
+export interface JenkinsFolderCachePut {
+  signature: string;
+  path: string;
+  roots: JenkinsNode[];
   refreshLease: string | null;
 }
 

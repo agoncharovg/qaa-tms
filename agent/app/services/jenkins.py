@@ -23,6 +23,7 @@ from app.core.constants import (
     JENKINS_JOB_PATH_SEGMENT,
     JENKINS_SCM_TRIGGER_CLASS,
     JENKINS_TIMER_TRIGGER_CLASS,
+    SMOKE_FOLDER_HISTORY_LIMIT,
     ErrorMessage,
     HeaderName,
     HeaderValue,
@@ -567,6 +568,41 @@ async def fetch_builds(
     for raw_build in _read_object_list(payload, "builds"):
         builds.append(_map_build(raw_build))
     return builds
+
+
+async def fetch_folder(
+    settings: Settings,
+    folder_path: str,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> list[JenkinsNode]:
+    """Fetch one in-scope folder's child pipelines with recent builds for a live view.
+
+    Unlike fetch_tree this targets a single folder subtree so a dashboard can poll it
+    cheaply at short intervals, and it skips the Script Console scheduled-paths scan for
+    latency (the Statistics/Smoke board does not render the scheduled marker).
+    """
+
+    require_configured(settings)
+    validated_path = validate_job_path(settings, folder_path)
+    tree_expression = (
+        "jobs["
+        + _build_tree_field_expression(
+            max(settings.jenkins_tree_depth, 1),
+            SMOKE_FOLDER_HISTORY_LIMIT,
+        )
+        + "]"
+    )
+    payload = await _get_json(
+        settings,
+        validated_path,
+        tree=tree_expression,
+        transport=transport,
+    )
+    return [
+        _map_node(settings, raw_child, set())
+        for raw_child in _read_object_list(payload, CHILDREN_KEY)
+    ]
 
 
 async def freeze_folder(

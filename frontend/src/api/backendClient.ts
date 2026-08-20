@@ -9,6 +9,7 @@ import {
   buildBackendJenkinsResumeRunsPath,
   buildBackendJenkinsFreezeSnapshotPath,
   buildBackendJenkinsBuildsPath,
+  buildBackendJenkinsFolderPath,
   buildBackendJenkinsTreePath,
   buildBackendQaaServiceTokenRegeneratePath,
   buildBackendQaaServiceTokenRevokePath,
@@ -33,6 +34,8 @@ import {
 import type {
   JenkinsBuildsCachePut,
   JenkinsBuildsCacheRead,
+  JenkinsFolderCachePut,
+  JenkinsFolderCacheRead,
   JenkinsFreezeCreateRequest,
   JenkinsFreezeRead,
   JenkinsResumeRunCreateRequest,
@@ -360,6 +363,37 @@ export const backendClient = {
   ): Promise<JenkinsBuildsCacheRead> {
     return request<JenkinsBuildsCacheRead>(
       BackendPath.JENKINS_BUILDS,
+      {
+        body: JSON.stringify(payload),
+        method: HttpMethod.PUT,
+      },
+      token,
+      signal
+    );
+  },
+
+  getJenkinsFolderCache(
+    token: string,
+    signature: string,
+    path: string,
+    ttlSeconds: number,
+    signal?: AbortSignal
+  ): Promise<JenkinsFolderCacheRead> {
+    return request<JenkinsFolderCacheRead>(
+      buildBackendJenkinsFolderPath(signature, path, ttlSeconds),
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
+  putJenkinsFolderCache(
+    token: string,
+    payload: JenkinsFolderCachePut,
+    signal?: AbortSignal
+  ): Promise<JenkinsFolderCacheRead> {
+    return request<JenkinsFolderCacheRead>(
+      BackendPath.JENKINS_FOLDER,
       {
         body: JSON.stringify(payload),
         method: HttpMethod.PUT,

@@ -98,6 +98,7 @@ export function createBootstrapTabsByPlugin(): TabsByPlugin {
     [PluginId.PROFILE]: createEmptyPluginState(),
     [PluginId.QAA_GENERATOR]: createEmptyPluginState(),
     [PluginId.STAGINGS]: createEmptyPluginState(),
+    [PluginId.STATISTICS]: createEmptyPluginState(),
   };
 }
 

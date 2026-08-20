@@ -3,6 +3,7 @@ export const PluginId = {
   KUBER: "kuber",
   QAA_GENERATOR: "qaa-generator",
   JENKINS: "jenkins",
+  STATISTICS: "statistics",
   ADMIN: "admin",
   PROFILE: "profile",
 } as const;
@@ -29,6 +30,7 @@ export const IconName = {
   ROCKET: "rocket",
   SPARKLES: "sparkles",
   SETTINGS: "settings",
+  STATISTICS: "statistics",
   USER: "user",
 } as const;
 
@@ -62,6 +64,7 @@ export const StorageKey = {
   JENKINS_PINNED: "qaa-tms.jenkins-pinned",
   APP_API_BASE_URL: "qaa-tms.api-base-url",
   APP_AGENT_PORTS: "qaa-tms.agent-ports",
+  SMOKE_REFRESH: "qaa-tms.smoke-refresh-ms",
 } as const;
 
 export type StorageKey = (typeof StorageKey)[keyof typeof StorageKey];
@@ -70,6 +73,7 @@ export const BackendPath = {
   AUTH_LOGIN: "/api/v1/auth/login",
   JENKINS_TREE: "/api/v1/jenkins/tree",
   JENKINS_BUILDS: "/api/v1/jenkins/builds",
+  JENKINS_FOLDER: "/api/v1/jenkins/folder",
   JENKINS_FREEZES: "/api/v1/jenkins/freezes",
   JENKINS_RESUME_RUNS: "/api/v1/jenkins/resume-runs",
   ME: "/api/v1/me",
@@ -107,6 +111,19 @@ export function buildBackendJenkinsTreePath(signature: string): string {
 export function buildBackendJenkinsBuildsPath(signature: string, path: string): string {
   const params = new URLSearchParams({ path, signature });
   return `${BackendPath.JENKINS_BUILDS}?${params.toString()}`;
+}
+
+export function buildBackendJenkinsFolderPath(
+  signature: string,
+  path: string,
+  ttlSeconds: number
+): string {
+  const params = new URLSearchParams({
+    path,
+    signature,
+    ttl_seconds: String(ttlSeconds),
+  });
+  return `${BackendPath.JENKINS_FOLDER}?${params.toString()}`;
 }
 
 export function buildBackendJenkinsFreezesPath(
@@ -206,6 +223,7 @@ export const AgentPath = {
   JENKINS_SCOPE: "/jenkins/scope",
   JENKINS_TREE: "/jenkins/tree",
   JENKINS_BUILDS: "/jenkins/builds",
+  JENKINS_FOLDER: "/jenkins/folder",
   JENKINS_FREEZE: "/jenkins/freeze",
   JENKINS_RESUME: "/jenkins/resume",
   JENKINS_RESUME_RUN: "/jenkins/resume-run",
@@ -295,6 +313,13 @@ export function buildAgentJenkinsBuildsPath(path: string): string {
     path,
   });
   return `${AgentPath.JENKINS_BUILDS}?${params.toString()}`;
+}
+
+export function buildAgentJenkinsFolderPath(path: string): string {
+  const params = new URLSearchParams({
+    path,
+  });
+  return `${AgentPath.JENKINS_FOLDER}?${params.toString()}`;
 }
 
 export function buildAgentKubeNamespacesPath(context?: string | null): string {
@@ -576,6 +601,7 @@ export const ViewKey = {
   STAGINGS_PREFLIGHT: "stagings-preflight",
   JENKINS_TREE: "jenkins-tree",
   JENKINS_BOARD: "jenkins-board",
+  STATISTICS_SMOKE: "statistics-smoke",
   STAGINGS_DEPLOY: "stagings-deploy",
   STAGINGS_HISTORY: "stagings-history",
   STAGINGS_NAMESPACES: "stagings-namespaces",
@@ -598,6 +624,7 @@ export const TabId = {
   STAGINGS_PREFLIGHT: "tab-stagings-preflight",
   JENKINS_TREE: "tab-jenkins-tree",
   JENKINS_BOARD: "tab-jenkins-board",
+  STATISTICS_SMOKE: "tab-statistics-smoke",
   STAGINGS_DEPLOY: "tab-stagings-deploy",
   STAGINGS_HISTORY: "tab-stagings-history",
   STAGINGS_NAMESPACES: "tab-stagings-namespaces",
@@ -620,6 +647,7 @@ export const TabTitle: Record<TabId, string> = {
   [TabId.STAGINGS_PREFLIGHT]: "Preflight",
   [TabId.JENKINS_TREE]: "Tree",
   [TabId.JENKINS_BOARD]: "Pinned",
+  [TabId.STATISTICS_SMOKE]: "Smoke",
   [TabId.STAGINGS_DEPLOY]: "Deploy",
   [TabId.STAGINGS_HISTORY]: "History",
   [TabId.STAGINGS_NAMESPACES]: "Namespaces",
@@ -669,6 +697,8 @@ export const QueryKey = {
   JENKINS_TREE: "jenkins-tree",
   JENKINS_TREE_CACHE: "jenkins-tree-cache",
   JENKINS_BUILDS: "jenkins-builds",
+  JENKINS_FOLDER: "jenkins-folder",
+  JENKINS_FOLDER_CACHE: "jenkins-folder-cache",
   JENKINS_FREEZES: "jenkins-freezes",
   JENKINS_RESUME_RUN: "jenkins-resume-run",
   KUBECONFIG_STATUS: "kubeconfig-status",
@@ -720,6 +750,14 @@ export const DEFAULT_KUBE_LOG_TAIL = 200 as const;
 export const DEFAULT_JENKINS_TREE_REFETCH_MS = 900000 as const;
 export const DEFAULT_JENKINS_BUILDS_REFETCH_MS = 60000 as const;
 export const JENKINS_RESUME_RUN_REFETCH_MS = 1500 as const;
+
+// Statistics/Smoke live dashboard: online status of the SMOKE folder pipelines.
+export const SMOKE_REFRESH_OPTIONS_MS = [60000, 120000, 300000] as const;
+export const DEFAULT_SMOKE_REFRESH_MS = 60000 as const;
+// The E2E preprod SMOKE folder (https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/SMOKE/).
+// This path sits inside the agent's allowed Jenkins scope (.QAA/E2E/PREPROD).
+export const DEFAULT_SMOKE_FOLDER_PATH = "job/.QAA/job/E2E/job/PREPROD/job/SMOKE" as const;
+export const SMOKE_TIMELINE_WINDOW_MS = 3600000 as const;
 export const DEFAULT_IMAGE_TAG = "latest" as const;
 export const MIN_DEPLOY_STAGE = 0 as const;
 export const MAX_DEPLOY_STAGE = 7 as const;

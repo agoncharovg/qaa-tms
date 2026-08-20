@@ -5,6 +5,7 @@ import {
   AGENT_REQUEST_HEADER_VALUE,
   AgentPath,
   buildAgentJenkinsBuildsPath,
+  buildAgentJenkinsFolderPath,
   buildAgentJenkinsScopePath,
   buildAgentJenkinsTreePath,
   AUTH_SCHEME_BEARER,
@@ -39,6 +40,7 @@ import type {
   E2eRunRequest,
   E2eSuitesResponse,
   JenkinsBuildsResponse,
+  JenkinsFolderResponse,
   JenkinsFreezeRequest,
   JenkinsFreezeResponse,
   JenkinsResumeRequest,
@@ -231,6 +233,21 @@ export function getJenkinsBuilds(
   return readAgentJson<JenkinsBuildsResponse>(
     port,
     buildAgentJenkinsBuildsPath(path),
+    { method: HttpMethod.GET },
+    token,
+    signal
+  );
+}
+
+export function getJenkinsFolder(
+  port: number,
+  token: string,
+  path: string,
+  signal?: AbortSignal
+): Promise<JenkinsFolderResponse> {
+  return readAgentJson<JenkinsFolderResponse>(
+    port,
+    buildAgentJenkinsFolderPath(path),
     { method: HttpMethod.GET },
     token,
     signal
@@ -449,6 +466,7 @@ export const agentClient = {
 
   freezeJenkinsFolder,
   getJenkinsBuilds,
+  getJenkinsFolder,
   getJenkinsScope,
   getJenkinsTree,
 

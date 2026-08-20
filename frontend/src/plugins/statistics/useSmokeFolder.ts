@@ -2,36 +2,33 @@ import { useQuery } from "@tanstack/react-query";
 
 import { agentClient } from "@/api/agentClient";
 import { backendClient } from "@/api/backendClient";
-import type { JenkinsNode, JenkinsRootGroup } from "@/api/types";
-import { DEFAULT_JENKINS_TREE_REFETCH_MS, QueryKey } from "@/constants";
+import type { JenkinsNode } from "@/api/types";
+import { QueryKey } from "@/constants";
 import { useCachedJenkinsResource } from "@/plugins/jenkins/useCachedJenkinsResource";
 
-interface UseJenkinsTreeOptions {
+interface UseSmokeFolderOptions {
   agentPort: number;
   enabled: boolean;
-  isActive: boolean;
+  folderPath: string;
+  refreshMs: number;
   token: string | null;
 }
 
-interface UseJenkinsTreeResult {
+interface UseSmokeFolderResult {
   error: unknown;
-  fetchedAt: string | null;
-  historyLimit: number | null;
   isLoading: boolean;
   isRefreshing: boolean;
   refetch: () => Promise<void>;
-  rootFolders: string[];
-  rootGroups: JenkinsRootGroup[];
   roots: JenkinsNode[];
-  signature: string | null;
 }
 
-export function useJenkinsTree({
+export function useSmokeFolder({
   agentPort,
   enabled,
-  isActive,
+  folderPath,
+  refreshMs,
   token,
-}: UseJenkinsTreeOptions): UseJenkinsTreeResult {
+}: UseSmokeFolderOptions): UseSmokeFolderResult {
   const scopeQuery = useQuery({
     enabled: Boolean(enabled && token),
     queryFn: ({ signal }) => agentClient.getJenkinsScope(agentPort, token ?? "", signal),
@@ -41,21 +38,24 @@ export function useJenkinsTree({
   });
 
   const signature = scopeQuery.data?.signature ?? null;
+  const ttlSeconds = Math.round(refreshMs / 1000);
 
-  const cachedTree = useCachedJenkinsResource<JenkinsNode>({
+  const cachedFolder = useCachedJenkinsResource<JenkinsNode>({
     enabled: Boolean(enabled && token && signature),
     fetchLive: async () => {
       if (!signature || !token) {
         return null;
       }
-      const response = await agentClient.getJenkinsTree(agentPort, token);
+      const response = await agentClient.getJenkinsFolder(agentPort, token, folderPath);
       return response.roots;
     },
-    queryKey: [QueryKey.JENKINS_TREE_CACHE, token, signature],
+    queryKey: [QueryKey.JENKINS_FOLDER_CACHE, token, signature, folderPath],
     readCache: async (signal) => {
-      const response = await backendClient.getJenkinsTreeCache(
+      const response = await backendClient.getJenkinsFolderCache(
         token ?? "",
         signature ?? "",
+        folderPath,
+        ttlSeconds,
         signal
       );
       return {
@@ -65,26 +65,26 @@ export function useJenkinsTree({
         stale: response.stale,
       };
     },
-    refetchInterval: isActive ? DEFAULT_JENKINS_TREE_REFETCH_MS : false,
-    staleTime: DEFAULT_JENKINS_TREE_REFETCH_MS,
+    refetchInterval: enabled ? refreshMs : false,
+    staleTime: refreshMs,
     writeCache: (roots, refreshLease) => {
       if (!signature || !token) {
         return Promise.resolve(undefined);
       }
-      return backendClient.putJenkinsTreeCache(token, { refreshLease, roots, signature });
+      return backendClient.putJenkinsFolderCache(token, {
+        path: folderPath,
+        refreshLease,
+        roots,
+        signature,
+      });
     },
   });
 
   return {
-    error: scopeQuery.error ?? cachedTree.error,
-    fetchedAt: cachedTree.fetchedAt,
-    historyLimit: scopeQuery.data?.historyLimit ?? null,
-    isLoading: scopeQuery.isLoading || cachedTree.isLoading,
-    isRefreshing: cachedTree.isRefreshing,
-    refetch: cachedTree.refetch,
-    rootFolders: scopeQuery.data?.rootFolders ?? [],
-    rootGroups: scopeQuery.data?.rootGroups ?? [],
-    roots: cachedTree.data,
-    signature,
+    error: scopeQuery.error ?? cachedFolder.error,
+    isLoading: scopeQuery.isLoading || cachedFolder.isLoading,
+    isRefreshing: cachedFolder.isRefreshing,
+    refetch: cachedFolder.refetch,
+    roots: cachedFolder.data,
   };
 }

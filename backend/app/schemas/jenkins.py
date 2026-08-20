@@ -86,4 +86,28 @@ class JenkinsBuildsCachePut(BaseModel):
     refresh_lease: str | None = Field(default=None, alias="refreshLease")
 
 
+class JenkinsFolderCacheRead(BaseModel):
+    """Shared folder cache read response."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    roots: list[JenkinsNode] = Field(default_factory=list)
+    signature: str
+    path: str
+    fetched_at: datetime | None = Field(default=None, alias="fetchedAt")
+    stale: bool
+    refresh_lease: str | None = Field(default=None, alias="refreshLease")
+
+
+class JenkinsFolderCachePut(BaseModel):
+    """Shared folder cache write request."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    signature: str
+    path: str
+    roots: list[JenkinsNode] = Field(default_factory=list)
+    refresh_lease: str | None = Field(default=None, alias="refreshLease")
+
+
 JenkinsNode.model_rebuild()

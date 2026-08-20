@@ -30,6 +30,7 @@ from app.services.jenkins import (
     _map_node,
     derive_status,
     fetch_builds,
+    fetch_folder,
     fetch_scheduled_paths,
     fetch_tree,
     freeze_folder,
@@ -788,6 +789,67 @@ async def test_fetch_builds_parses_allure_urls_and_running_builds() -> None:
     assert requests[0][1] == "builds[number,result,building,timestamp,duration,url]{0,15}"
 
 
+@pytest.mark.asyncio
+async def test_fetch_folder_returns_child_pipelines_with_builds() -> None:
+    settings = build_settings()
+    smoke_path = f"{PREPROD_BE_PATH}/job/SMOKE"
+    requests: list[tuple[str, str | None]] = []
+    roots = await fetch_folder(
+        settings,
+        smoke_path,
+        transport=build_transport(
+            {
+                f"{smoke_path}/api/json": {
+                    "jobs": [
+                        {
+                            "_class": "org.jenkinsci.plugins.workflow.job.WorkflowJob",
+                            "name": "Billing Smoke",
+                            "url": (f"{JENKINS_BASE_URL}/{smoke_path}/job/Billing%20Smoke/"),
+                            "color": "blue",
+                            "buildable": True,
+                            "disabled": False,
+                            "builds": [
+                                {
+                                    "building": False,
+                                    "duration": 120000,
+                                    "number": 42,
+                                    "result": "SUCCESS",
+                                    "timestamp": FRESH_BUILD_TIMESTAMP,
+                                    "url": (
+                                        f"{JENKINS_BASE_URL}/{smoke_path}/job/Billing%20Smoke/42/"
+                                    ),
+                                }
+                            ],
+                        }
+                    ]
+                }
+            },
+            requests,
+        ),
+    )
+
+    assert [node.name for node in roots] == ["Billing Smoke"]
+    assert roots[0].kind == "pipeline"
+    assert roots[0].status == JenkinsStatus.PASSED
+    assert [build.number for build in roots[0].builds] == [42]
+    assert requests[0][1] is not None
+    assert "builds[number,result,building,timestamp,duration,url]{0,30}" in requests[0][1]
+    # The live folder view must not trigger the Script Console scheduled-paths scan.
+    assert all("/scriptText" not in url for url, _ in requests)
+
+
+@pytest.mark.asyncio
+async def test_fetch_folder_rejects_out_of_scope_path() -> None:
+    settings = build_settings()
+    requests: list[tuple[str, str | None]] = []
+    with pytest.raises(JenkinsPathOutOfScopeError):
+        await fetch_folder(
+            settings,
+            OUT_OF_SCOPE_PATH,
+            transport=build_transport({}, requests),
+        )
+
+
 def test_jenkins_scope_signature_is_stable_and_changes_with_scope() -> None:
     settings = build_settings()
 
@@ -915,13 +977,13 @@ async def test_freeze_folder_decodes_urlencoded_folder_names_in_fullname_prefix(
             script_text=(
                 "Result: null\n"
                 "[{"
-                "\"path\":\"job/.QAA/job/UI_E2E/job/PREPROD/job/IAM/job/"
-                "IAM Client portal/job/Web\","
-                "\"fullName\":\".QAA/UI_E2E/PREPROD/IAM/IAM Client portal/Web\","
-                "\"name\":\"Web\","
-                "\"wasDisabled\":false,"
-                "\"scheduled\":false,"
-                "\"wasBuilding\":false}]\n"
+                '"path":"job/.QAA/job/UI_E2E/job/PREPROD/job/IAM/job/'
+                'IAM Client portal/job/Web",'
+                '"fullName":".QAA/UI_E2E/PREPROD/IAM/IAM Client portal/Web",'
+                '"name":"Web",'
+                '"wasDisabled":false,'
+                '"scheduled":false,'
+                '"wasBuilding":false}]\n'
             ),
         ),
     )
@@ -1052,12 +1114,12 @@ async def test_freeze_folder_kill_builds_toggles_abort_branch() -> None:
             scripts,
             script_text=(
                 "Result: null\n"
-                "[{\"path\":\"job/.QAA/job/E2E/job/PREPROD/job/Smoke\","
-                "\"fullName\":\".QAA/E2E/PREPROD/Smoke\","
-                "\"name\":\"Smoke\","
-                "\"wasDisabled\":false,"
-                "\"scheduled\":false,"
-                "\"wasBuilding\":false}]\n"
+                '[{"path":"job/.QAA/job/E2E/job/PREPROD/job/Smoke",'
+                '"fullName":".QAA/E2E/PREPROD/Smoke",'
+                '"name":"Smoke",'
+                '"wasDisabled":false,'
+                '"scheduled":false,'
+                '"wasBuilding":false}]\n'
             ),
         ),
     )

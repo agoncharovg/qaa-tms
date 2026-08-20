@@ -42,6 +42,7 @@ from app.schemas import (
     E2eSuite,
     E2eSuitesResponse,
     JenkinsBuildsResponse,
+    JenkinsFolderResponse,
     JenkinsFreezeRequest,
     JenkinsFreezeResponse,
     JenkinsResumeRequest,
@@ -78,6 +79,7 @@ from app.services.jenkins import (
     JenkinsPathOutOfScopeError,
     JenkinsUnreachableError,
     fetch_builds,
+    fetch_folder,
     fetch_tree,
     freeze_folder,
     jenkins_scope_signature,
@@ -273,6 +275,32 @@ async def get_jenkins_builds(
             detail=str(exc),
         ) from exc
     return JenkinsBuildsResponse(builds=builds)
+
+
+@router.get(AgentPath.JENKINS_FOLDER.value, response_model=JenkinsFolderResponse)
+async def get_jenkins_folder(
+    _: AuthDep,
+    settings: SettingsDep,
+    path: str = Query(...),
+) -> JenkinsFolderResponse:
+    try:
+        roots = await fetch_folder(settings, path)
+    except JenkinsNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except (JenkinsPathOutOfScopeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except JenkinsUnreachableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+    return JenkinsFolderResponse(roots=roots)
 
 
 @router.post(AgentPath.JENKINS_FREEZE.value, response_model=JenkinsFreezeResponse)

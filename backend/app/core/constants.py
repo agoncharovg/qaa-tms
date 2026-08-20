@@ -8,6 +8,7 @@ class PluginId(StrEnum):
     KUBER = "kuber"
     QAA_GENERATOR = "qaa-generator"
     JENKINS = "jenkins"
+    STATISTICS = "statistics"
     ADMIN = "admin"
     PROFILE = "profile"
 
@@ -81,6 +82,7 @@ class RoutePath(StrEnum):
     RESUME_RUN_CANCEL = "/resume-runs/{run_id}/cancel"
     TREE = "/tree"
     BUILDS = "/builds"
+    FOLDER = "/folder"
     ME = "/me"
     ME_PLUGINS = "/me/plugins"
     SETTINGS = "/settings"
@@ -250,7 +252,13 @@ class DevPassword(StrEnum):
     ADMIN = "admin"
 
 
-OPTIONAL_PLUGIN_IDS = (PluginId.STAGINGS, PluginId.KUBER, PluginId.QAA_GENERATOR, PluginId.JENKINS)
+OPTIONAL_PLUGIN_IDS = (
+    PluginId.STAGINGS,
+    PluginId.KUBER,
+    PluginId.QAA_GENERATOR,
+    PluginId.JENKINS,
+    PluginId.STATISTICS,
+)
 SYSTEM_PLUGIN_IDS = (PluginId.ADMIN, PluginId.PROFILE)
 OPTIONAL_PLUGIN_ID_VALUES = tuple(plugin_id.value for plugin_id in OPTIONAL_PLUGIN_IDS)
 SYSTEM_PLUGIN_ID_VALUES = tuple(plugin_id.value for plugin_id in SYSTEM_PLUGIN_IDS)
@@ -276,6 +284,10 @@ DEFAULT_QAA_GENERATOR_TIMEOUT_SECONDS = 30.0
 JENKINS_TREE_CACHE_TTL_SECONDS = 900
 JENKINS_BUILDS_CACHE_TTL_SECONDS = 60
 JENKINS_REFRESH_LEASE_TTL_SECONDS = 30
+JENKINS_FOLDER_CACHE_MIN_TTL_SECONDS = 30
+JENKINS_FOLDER_CACHE_MAX_TTL_SECONDS = 600
+JENKINS_FOLDER_HISTORY_RETENTION_SECONDS = 3600
+JENKINS_FOLDER_HISTORY_RETENTION_MS = JENKINS_FOLDER_HISTORY_RETENTION_SECONDS * 1000
 # Must exceed the worst-case single-pipeline resume (enable + last-build params +
 # build ≈ 3× the 15s Jenkins request timeout, plus the inter-item pause), otherwise a
 # slow-but-live campaign is falsely judged abandoned and could be relaunched.
