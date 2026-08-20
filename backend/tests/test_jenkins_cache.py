@@ -127,6 +127,43 @@ def test_builds_cache_expired_lease_can_be_reminted(monkeypatch) -> None:
     assert lease is None
 
 
+def test_tree_cache_ignores_late_write_from_stale_lease(monkeypatch) -> None:
+    current_time = [datetime(2026, 8, 17, tzinfo=UTC)]
+    monkeypatch.setattr(cache_service, "utcnow", lambda: current_time[0])
+
+    cache = JenkinsCache()
+    signature = "scope-1"
+
+    _, _, _, first_lease = asyncio.run(cache.read_tree(signature))
+    assert first_lease is not None
+
+    current_time[0] += timedelta(seconds=31)
+    _, _, _, second_lease = asyncio.run(cache.read_tree(signature))
+    assert second_lease is not None
+    assert second_lease != first_lease
+
+    asyncio.run(
+        cache.write_tree(
+            signature,
+            [build_node("job/.QAA/job/E2E/job/PREPROD", name="fresh")],
+            second_lease,
+        )
+    )
+    asyncio.run(
+        cache.write_tree(
+            signature,
+            [build_node("job/.QAA/job/E2E/job/PROD", name="stale")],
+            first_lease,
+        )
+    )
+
+    roots, _, stale, lease = asyncio.run(cache.read_tree(signature))
+
+    assert [root.name for root in roots] == ["fresh"]
+    assert stale is False
+    assert lease is None
+
+
 def test_folder_cache_single_flight_flow_with_custom_ttl(monkeypatch) -> None:
     current_time = [datetime(2026, 8, 17, tzinfo=UTC)]
     monkeypatch.setattr(cache_service, "utcnow", lambda: current_time[0])

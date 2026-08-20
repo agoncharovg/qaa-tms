@@ -86,6 +86,7 @@ class RoutePath(StrEnum):
     TREE = "/tree"
     BUILDS = "/builds"
     FOLDER = "/folder"
+    SCOPE = "/scope"
     ME = "/me"
     ME_PLUGINS = "/me/plugins"
     SETTINGS = "/settings"
@@ -168,6 +169,14 @@ class EnvKey(StrEnum):
     AGENT_DIST_DIR = "AGENT_DIST_DIR"
     QAA_GENERATOR_BASE_URL = "QAA_GENERATOR_BASE_URL"
     QAA_GENERATOR_SUPERUSER_TOKEN = "QAA_GENERATOR_SUPERUSER_TOKEN"
+    JENKINS_COMMON_URL = "JENKINS_COMMON_URL"
+    JENKINS_COMMON_USERNAME = "JENKINS_COMMON_USERNAME"
+    JENKINS_COMMON_TOKEN = "JENKINS_COMMON_TOKEN"
+    JENKINS_ROOT_GROUPS = "JENKINS_ROOT_GROUPS"
+    JENKINS_ROOT_FOLDERS = "JENKINS_ROOT_FOLDERS"
+    JENKINS_HISTORY_LIMIT = "JENKINS_HISTORY_LIMIT"
+    JENKINS_REQUEST_TIMEOUT = "JENKINS_REQUEST_TIMEOUT"
+    JENKINS_TREE_DEPTH = "JENKINS_TREE_DEPTH"
 
 
 class EnvFile(StrEnum):
@@ -175,7 +184,10 @@ class EnvFile(StrEnum):
 
 
 class QueryParam(StrEnum):
+    PATH = "path"
+    SIGNATURE = "signature"
     STATUS = "status"
+    TTL_SECONDS = "ttl_seconds"
     TYPE = "type"
 
 
@@ -240,6 +252,8 @@ class ErrorMessage(StrEnum):
         "This user has recorded operations; audit history must be preserved."
     )
     INVALID_AUTHENTICATION_CREDENTIALS = "Invalid authentication credentials."
+    JENKINS_PATH_OUT_OF_SCOPE = "Requested job path is outside the allowed Jenkins scope."
+    JENKINS_UNREACHABLE = "Jenkins is unreachable."
     OPERATION_NOT_FOUND = "Operation not found."
     USER_NOT_FOUND = "User not found."
     INVALID_ENABLED_PLUGINS = "enabled_plugins must contain only optional plugin ids."
@@ -288,10 +302,30 @@ DEFAULT_JWT_SECRET = "dev-secret-change-me"
 DEFAULT_JWT_EXPIRE_MINUTES = 720
 DEFAULT_STATIC_DIR = "/app/static"
 DEFAULT_AGENT_DIST_DIR = "/app/agent-dist"
+DEFAULT_JENKINS_COMMON_URL = "https://jenkins.p.gc.onl"
+DEFAULT_JENKINS_ROOT_GROUPS = (
+    "BE=job/.QAA/job/E2E",
+    "FE=job/.QAA/job/UI_E2E",
+)
+DEFAULT_JENKINS_ROOT_FOLDERS = ("PREPROD", "PROD")
+DEFAULT_JENKINS_HISTORY_LIMIT = 8
+DEFAULT_JENKINS_REQUEST_TIMEOUT = 15.0
+DEFAULT_JENKINS_STUCK_MIN_IDLE_HOURS = 6
+DEFAULT_JENKINS_TREE_DEPTH = 5
+DEFAULT_JENKINS_BUILDS_LIMIT = 15
+DEFAULT_SMOKE_FOLDER_HISTORY_LIMIT = 30
 DEFAULT_QAA_GENERATOR_BASE_URL = "https://qaa-generator-prod.i.gc.onl/api/v1"
 DEFAULT_QAA_GENERATOR_SUPERUSER_TOKEN = ""
 DEFAULT_QAA_GENERATOR_TIMEOUT_SECONDS = 30.0
 AGENT_MIN_SUPPORTED_VERSION = "0.1.0"
+GROUP_LABEL_SEPARATOR = "="
+GROUP_LIST_SEPARATOR = ","
+JENKINS_ANIME_SUFFIX = "_anime"
+JENKINS_FOLDER_CLASS = "com.cloudbees.hudson.plugins.folder.Folder"
+JENKINS_JOB_PATH_SEGMENT = "job"
+JENKINS_SCOPE_SIGNATURE_LENGTH = 16
+JENKINS_SCM_TRIGGER_CLASS = "hudson.triggers.SCMTrigger"
+JENKINS_TIMER_TRIGGER_CLASS = "hudson.triggers.TimerTrigger"
 JENKINS_TREE_CACHE_TTL_SECONDS = 900
 JENKINS_BUILDS_CACHE_TTL_SECONDS = 60
 JENKINS_REFRESH_LEASE_TTL_SECONDS = 30

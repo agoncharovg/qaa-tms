@@ -5,7 +5,7 @@ import { DEFAULT_JENKINS_BUILDS_REFETCH_MS, QueryKey } from "@/constants";
 import { useCachedJenkinsResource } from "@/plugins/jenkins/useCachedJenkinsResource";
 
 interface UseJenkinsBuildsOptions {
-  agentPort: number;
+  agentPort: number | null;
   enabled: boolean;
   path: string;
   signature: string | null;
@@ -31,7 +31,7 @@ export function useJenkinsBuilds({
   const cachedBuilds = useCachedJenkinsResource<JenkinsBuild>({
     enabled: Boolean(enabled && token && signature),
     fetchLive: async () => {
-      if (!signature || !token) {
+      if (!signature || !token || agentPort === null) {
         return null;
       }
       const response = await agentClient.getJenkinsBuilds(agentPort, token, path);

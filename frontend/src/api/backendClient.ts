@@ -4,6 +4,7 @@ import {
   buildBackendJenkinsFreezePath,
   buildBackendJenkinsFreezeResolvePath,
   buildBackendJenkinsFreezesPath,
+  buildBackendJenkinsScopePath,
   buildBackendJenkinsResumeRunCancelPath,
   buildBackendJenkinsResumeRunPath,
   buildBackendJenkinsResumeRunsPath,
@@ -44,6 +45,7 @@ import type {
   JenkinsFreezeSnapshotPutRequest,
   JenkinsTreeCachePut,
   JenkinsTreeCacheRead,
+  JenkinsScopeResponse,
   LoginRequest,
   LoginResponse,
   MeUpdateRequest,
@@ -320,6 +322,15 @@ function buildQaaUsersListPath(params: QaaUsersListParams): string {
 export const backendClient = {
   getAgentManifest(signal?: AbortSignal): Promise<AgentManifest> {
     return request<AgentManifest>(BackendPath.AGENT_MANIFEST, { method: HttpMethod.GET }, undefined, signal);
+  },
+
+  getJenkinsScope(token: string, signal?: AbortSignal): Promise<JenkinsScopeResponse> {
+    return request<JenkinsScopeResponse>(
+      buildBackendJenkinsScopePath(),
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
   },
 
   getJenkinsTreeCache(

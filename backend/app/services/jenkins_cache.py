@@ -72,10 +72,15 @@ class SharedCache:
         _lease: str | None,
         *,
         merge: Callable[[DataT | None, DataT], DataT] | None = None,
-    ) -> tuple[DataT, datetime]:
+    ) -> tuple[DataT, datetime | None]:
         async with self._lock:
             now = utcnow()
             entry = cast("CacheEntry[DataT] | None", self._entries.get(key))
+            if _lease is not None:
+                current_lease = entry.refresh_lease if entry is not None else None
+                if current_lease != _lease:
+                    current_data = entry.data if entry is not None else data
+                    return current_data, entry.fetched_at if entry is not None else None
             stored = merge(entry.data if entry is not None else None, data) if merge else data
             entry = entry or CacheEntry(data=stored)
             entry.data = stored
@@ -107,7 +112,7 @@ class JenkinsCache:
         signature: str,
         roots: list[JenkinsNode],
         _lease: str | None,
-    ) -> tuple[list[JenkinsNode], datetime]:
+    ) -> tuple[list[JenkinsNode], datetime | None]:
         return await self._store.write(("tree", signature), roots, _lease)
 
     async def read_builds(
@@ -127,7 +132,7 @@ class JenkinsCache:
         path: str,
         builds: list[JenkinsBuild],
         _lease: str | None,
-    ) -> tuple[list[JenkinsBuild], datetime]:
+    ) -> tuple[list[JenkinsBuild], datetime | None]:
         return await self._store.write(("builds", signature, path), builds, _lease)
 
     async def read_folder(
@@ -148,7 +153,7 @@ class JenkinsCache:
         path: str,
         roots: list[JenkinsNode],
         _lease: str | None,
-    ) -> tuple[list[JenkinsNode], datetime]:
+    ) -> tuple[list[JenkinsNode], datetime | None]:
         return await self._store.write(
             ("folder", signature, path),
             roots,

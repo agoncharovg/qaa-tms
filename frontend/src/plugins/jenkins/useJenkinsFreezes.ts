@@ -34,6 +34,7 @@ async function putSnapshotWithRetry(
 
 const FreezeErrorMessage = {
   AUTH: "Authentication is required.",
+  COMPANION: "Freeze/Resume needs the companion.",
   SIGNATURE: "Jenkins scope is unavailable.",
 } as const;
 
@@ -46,7 +47,7 @@ interface FreezeFolderArgs {
 }
 
 interface UseJenkinsFreezesOptions {
-  agentPort: number;
+  agentPort: number | null;
   enabled: boolean;
   isActive: boolean;
   // Forces a fresh agent-backed tree fetch (not just a cache re-read) so freeze/resume
@@ -206,6 +207,9 @@ export function useJenkinsFreezes({
       if (!signature) {
         throw new Error(FreezeErrorMessage.SIGNATURE);
       }
+      if (agentPort === null) {
+        throw new Error(FreezeErrorMessage.COMPANION);
+      }
 
       const reservedFreeze = await backendClient.createJenkinsFreeze(token, {
         folderName,
@@ -247,6 +251,9 @@ export function useJenkinsFreezes({
     mutationFn: async ({ folderPath, freeze, restartPipelines, snapshot }: StartResumeCampaignArgs) => {
       if (!token) {
         throw new Error(FreezeErrorMessage.AUTH);
+      }
+      if (agentPort === null) {
+        throw new Error(FreezeErrorMessage.COMPANION);
       }
 
       const run = await backendClient.createJenkinsResumeRun(token, {

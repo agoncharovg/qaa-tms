@@ -29,9 +29,9 @@ interface UseCachedJenkinsResourceResult<TItem> {
 
 /**
  * Read-through cache with single-flight refresh lease, shared by every Jenkins
- * surface backed by the agent-fetch/backend-cache pattern: read the shared
- * backend snapshot, and when it reports itself stale and hands back a lease,
- * fetch live via the agent and PUT the result back before the next read.
+ * surface backed by the shared backend cache: read the shared backend snapshot,
+ * let the backend fill stale leases server-side, and optionally use the agent
+ * as a personal fast-path when it is already available.
  */
 export function useCachedJenkinsResource<TItem>({
   enabled,
@@ -88,7 +88,7 @@ export function useCachedJenkinsResource<TItem>({
   // every render. Forces a fresh agent fetch, bypassing the stale cache.
   const refetch = useCallback(async () => {
     await refreshMutation.mutateAsync(null);
-  }, [refreshMutation.mutateAsync]);
+  }, [refreshMutation]);
 
   return {
     data: cacheQuery.data?.data ?? [],

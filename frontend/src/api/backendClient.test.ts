@@ -113,6 +113,28 @@ describe("backendClient operations", () => {
     expect(new Headers(updateInit?.headers).get("Authorization")).toBe("Bearer token-123");
   });
 
+  it("reads the shared Jenkins scope from the backend", async () => {
+    const response = {
+      historyLimit: 8,
+      rootFolders: ["PREPROD", "PROD"],
+      rootGroups: [
+        { label: "BE", path: "job/.QAA/job/E2E" },
+        { label: "FE", path: "job/.QAA/job/UI_E2E" },
+      ],
+      signature: "scope-1234",
+      treeDepth: 5,
+    };
+
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(response), { status: 200 }));
+
+    expect(await backendClient.getJenkinsScope("token-123")).toEqual(response);
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe("http://localhost:8000/api/v1/jenkins/scope");
+    expect(init?.method).toBe("GET");
+    expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer token-123");
+  });
+
   it("creates, lists, reads, and cancels Jenkins resume runs with the correct wire shape", async () => {
     const run: JenkinsResumeRunRead = {
       cancelledBy: null,

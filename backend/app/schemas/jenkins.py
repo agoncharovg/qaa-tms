@@ -6,6 +6,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.config import JenkinsRootGroup
 from app.core.constants import JenkinsNodeKind, JenkinsStatus
 
 
@@ -50,6 +51,18 @@ class JenkinsTreeCacheRead(BaseModel):
     fetched_at: datetime | None = Field(default=None, alias="fetchedAt")
     stale: bool
     refresh_lease: str | None = Field(default=None, alias="refreshLease")
+
+
+class JenkinsScopeRead(BaseModel):
+    """Read-only Jenkins scope returned by the backend."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    signature: str
+    root_groups: list[JenkinsRootGroup] = Field(default_factory=list, alias="rootGroups")
+    root_folders: list[str] = Field(default_factory=list, alias="rootFolders")
+    tree_depth: int = Field(alias="treeDepth")
+    history_limit: int = Field(alias="historyLimit")
 
 
 class JenkinsTreeCachePut(BaseModel):

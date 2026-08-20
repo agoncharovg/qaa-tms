@@ -83,8 +83,9 @@ describe("plugin discovery", () => {
     expect(PLUGINS[1]?.requiresAgent).toBe(true);
     expect(PLUGINS[2]?.requiresAgent).toBe(false);
     expect(PLUGINS[3]?.kind).toBe(PluginKind.OPTIONAL);
+    expect(PLUGINS[3]?.requiresAgent).toBe(false);
     expect(PLUGINS[4]?.kind).toBe(PluginKind.OPTIONAL);
-    expect(PLUGINS[4]?.requiresAgent).toBe(true);
+    expect(PLUGINS[4]?.requiresAgent).toBe(false);
     expect(PLUGINS[5]?.kind).toBe(PluginKind.SYSTEM);
     expect(PLUGINS[6]?.kind).toBe(PluginKind.SYSTEM);
   });

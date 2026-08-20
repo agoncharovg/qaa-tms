@@ -8,6 +8,7 @@ from app.core.constants import (
     JENKINS_FOLDER_CACHE_MAX_TTL_SECONDS,
     JENKINS_FOLDER_CACHE_MIN_TTL_SECONDS,
 )
+from app.services.jenkins_client import jenkins_scope_signature
 
 
 def test_jenkins_cache_routes_require_authentication(client: TestClient) -> None:
@@ -25,6 +26,12 @@ def test_jenkins_folder_cache_route_requires_authentication(client: TestClient) 
             "ttl_seconds": 60,
         },
     )
+
+    assert response.status_code == 401
+
+
+def test_jenkins_scope_route_requires_authentication(client: TestClient) -> None:
+    response = client.get("/api/v1/jenkins/scope")
 
     assert response.status_code == 401
 
@@ -193,3 +200,96 @@ def test_jenkins_tree_cache_round_trip_returns_fresh_snapshot(client: TestClient
     assert final_body["roots"][0]["children"][0]["children"][0]["builds"][0]["allureUrl"].endswith(
         "/allure/"
     )
+
+
+def test_jenkins_scope_returns_backend_scope_config(client: TestClient) -> None:
+    token, _ = login(client, "test", "")
+
+    response = client.get("/api/v1/jenkins/scope", headers=auth_header(token))
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "historyLimit": 8,
+        "rootFolders": ["PREPROD", "PROD"],
+        "rootGroups": [
+            {"label": "BE", "path": "job/.QAA/job/E2E"},
+            {"label": "FE", "path": "job/.QAA/job/UI_E2E"},
+        ],
+        "signature": jenkins_scope_signature(client.app.state.settings),
+        "treeDepth": 5,
+    }
+
+
+def test_jenkins_tree_stale_read_triggers_common_token_fill(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    token, _ = login(client, "test", "")
+    client.app.state.settings.jenkins_common_username = "common-user"
+    client.app.state.settings.jenkins_common_token = "common-token"
+    signature = jenkins_scope_signature(client.app.state.settings)
+    fetch_calls: list[str] = []
+
+    async def fake_fetch_tree(settings) -> list[dict]:
+        fetch_calls.append(settings.jenkins_common_username)
+        return [
+            {
+                "builds": [],
+                "children": [],
+                "color": None,
+                "kind": "folder",
+                "name": "PREPROD",
+                "path": "",
+                "scheduled": False,
+                "status": None,
+                "synthetic": True,
+                "url": "",
+            }
+        ]
+
+    monkeypatch.setattr("app.api.v1.jenkins.fetch_tree", fake_fetch_tree)
+
+    first_response = client.get(
+        "/api/v1/jenkins/tree",
+        headers=auth_header(token),
+        params={"signature": signature},
+    )
+    second_response = client.get(
+        "/api/v1/jenkins/tree",
+        headers=auth_header(token),
+        params={"signature": signature},
+    )
+
+    assert first_response.status_code == 200
+    assert first_response.json()["stale"] is True
+    assert second_response.status_code == 200
+    assert second_response.json()["stale"] is False
+    assert second_response.json()["roots"][0]["name"] == "PREPROD"
+    assert fetch_calls == ["common-user"]
+
+
+def test_jenkins_tree_stale_read_does_not_fill_without_common_token(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    token, _ = login(client, "test", "")
+    signature = jenkins_scope_signature(client.app.state.settings)
+    called = False
+
+    async def fake_fetch_tree(_settings) -> list[dict]:
+        nonlocal called
+        called = True
+        return []
+
+    monkeypatch.setattr("app.api.v1.jenkins.fetch_tree", fake_fetch_tree)
+
+    response = client.get(
+        "/api/v1/jenkins/tree",
+        headers=auth_header(token),
+        params={"signature": signature},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["stale"] is True
+    assert response.json()["refreshLease"] is not None
+    assert called is False

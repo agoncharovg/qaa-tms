@@ -1,13 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
-
 import { agentClient } from "@/api/agentClient";
 import { backendClient } from "@/api/backendClient";
 import type { JenkinsNode } from "@/api/types";
 import { QueryKey } from "@/constants";
 import { useCachedJenkinsResource } from "@/plugins/jenkins/useCachedJenkinsResource";
+import { useJenkinsScope } from "@/plugins/jenkins/useJenkinsScope";
 
 interface UseSmokeFolderOptions {
-  agentPort: number;
+  agentPort: number | null;
   enabled: boolean;
   folderPath: string;
   refreshMs: number;
@@ -29,13 +28,7 @@ export function useSmokeFolder({
   refreshMs,
   token,
 }: UseSmokeFolderOptions): UseSmokeFolderResult {
-  const scopeQuery = useQuery({
-    enabled: Boolean(enabled && token),
-    queryFn: ({ signal }) => agentClient.getJenkinsScope(agentPort, token ?? "", signal),
-    queryKey: [QueryKey.JENKINS_SCOPE, agentPort, token],
-    refetchOnWindowFocus: false,
-    retry: false,
-  });
+  const scopeQuery = useJenkinsScope(token, enabled);
 
   const signature = scopeQuery.data?.signature ?? null;
   const ttlSeconds = Math.round(refreshMs / 1000);
@@ -43,7 +36,7 @@ export function useSmokeFolder({
   const cachedFolder = useCachedJenkinsResource<JenkinsNode>({
     enabled: Boolean(enabled && token && signature),
     fetchLive: async () => {
-      if (!signature || !token) {
+      if (!signature || !token || agentPort === null) {
         return null;
       }
       const response = await agentClient.getJenkinsFolder(agentPort, token, folderPath);

@@ -30,7 +30,7 @@ import {
 import { useSmokeFolder } from "@/plugins/statistics/useSmokeFolder";
 
 const SmokePanelCopy = {
-  ERROR_BODY: "The local companion app could not read the SMOKE folder. Retry shortly.",
+  ERROR_BODY: "The shared Jenkins cache could not read the SMOKE folder. Retry shortly.",
   ERROR_TITLE: "Could not load the SMOKE folder",
   EMPTY: "No pipelines found in this folder.",
   LOADING: "Loading SMOKE pipelines…",
@@ -67,10 +67,8 @@ function formatAxisTick(timestampMs: number): string {
 }
 
 export function SmokePanel({
-  agentPort,
   folderPath = DEFAULT_SMOKE_FOLDER_PATH,
 }: {
-  agentPort: number;
   folderPath?: string;
 }) {
   const palette = usePalette();
@@ -78,7 +76,7 @@ export function SmokePanel({
   const [refreshMs, setRefreshMs] = useState<number>(readStoredSmokeRefreshMs);
 
   const { roots, error, isLoading, isRefreshing, refetch } = useSmokeFolder({
-    agentPort,
+    agentPort: null,
     enabled: true,
     folderPath,
     refreshMs,

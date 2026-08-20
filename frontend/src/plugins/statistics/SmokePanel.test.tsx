@@ -4,11 +4,11 @@ import userEvent from "@testing-library/user-event";
 
 const agentClientMock = vi.hoisted(() => ({
   getJenkinsFolder: vi.fn(),
-  getJenkinsScope: vi.fn(),
 }));
 
 const backendClientMock = vi.hoisted(() => ({
   getJenkinsFolderCache: vi.fn(),
+  getJenkinsScope: vi.fn(),
   putJenkinsFolderCache: vi.fn(),
 }));
 
@@ -86,10 +86,10 @@ describe("SmokePanel", () => {
     useAuthStore.setState({ token: "test-token" });
     localStorage.clear();
     agentClientMock.getJenkinsFolder.mockReset();
-    agentClientMock.getJenkinsScope.mockReset();
     backendClientMock.getJenkinsFolderCache.mockReset();
+    backendClientMock.getJenkinsScope.mockReset();
     backendClientMock.putJenkinsFolderCache.mockReset();
-    agentClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsScope.mockResolvedValue(buildScope());
   });
 
   it("renders each SMOKE pipeline with status summary counts", async () => {
@@ -101,7 +101,7 @@ describe("SmokePanel", () => {
       ])
     );
 
-    renderWithProviders(<SmokePanel agentPort={47600} />);
+    renderWithProviders(<SmokePanel />);
 
     await waitFor(() => {
       expect(screen.getByText("Balancer Smoke")).toBeInTheDocument();
@@ -119,37 +119,25 @@ describe("SmokePanel", () => {
     expect(screen.getByRole("radio", { name: "5m" })).toBeInTheDocument();
   });
 
-  it("fetches live via the agent and writes the shared cache when the snapshot is stale", async () => {
+  it("renders stale cache reads without requiring agent discovery", async () => {
     backendClientMock.getJenkinsFolderCache.mockResolvedValue(
       buildFolderCache([], { refreshLease: "lease-1", stale: true })
     );
-    agentClientMock.getJenkinsFolder.mockResolvedValue({ roots: [] });
-    backendClientMock.putJenkinsFolderCache.mockResolvedValue(buildFolderCache([]));
 
-    renderWithProviders(<SmokePanel agentPort={47600} />);
+    renderWithProviders(<SmokePanel />);
 
     await waitFor(() => {
-      expect(agentClientMock.getJenkinsFolder).toHaveBeenCalledWith(
-        47600,
-        "test-token",
-        "job/.QAA/job/E2E/job/PREPROD/job/SMOKE"
-      );
+      expect(screen.getByText("No pipelines found in this folder.")).toBeInTheDocument();
     });
-    await waitFor(() => {
-      expect(backendClientMock.putJenkinsFolderCache).toHaveBeenCalledWith("test-token", {
-        path: "job/.QAA/job/E2E/job/PREPROD/job/SMOKE",
-        refreshLease: "lease-1",
-        roots: [],
-        signature: SIGNATURE,
-      });
-    });
+    expect(agentClientMock.getJenkinsFolder).not.toHaveBeenCalled();
+    expect(backendClientMock.putJenkinsFolderCache).not.toHaveBeenCalled();
   });
 
   it("persists the selected refresh period across remounts via localStorage", async () => {
     const user = userEvent.setup();
     backendClientMock.getJenkinsFolderCache.mockResolvedValue(buildFolderCache([]));
 
-    const { unmount } = renderWithProviders(<SmokePanel agentPort={47600} />);
+    const { unmount } = renderWithProviders(<SmokePanel />);
 
     await waitFor(() => {
       expect(screen.getByRole("radio", { name: "1m" })).toBeChecked();
@@ -161,7 +149,7 @@ describe("SmokePanel", () => {
 
     unmount();
 
-    renderWithProviders(<SmokePanel agentPort={47600} />);
+    renderWithProviders(<SmokePanel />);
 
     await waitFor(() => {
       expect(screen.getByRole("radio", { name: "2m" })).toBeChecked();

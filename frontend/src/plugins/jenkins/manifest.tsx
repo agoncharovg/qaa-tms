@@ -23,7 +23,7 @@ const jenkinsPlugin = definePlugin({
   label: "Jenkins",
   origin: PluginOrigin.BUILTIN,
   order: JENKINS_PLUGIN_ORDER,
-  requiresAgent: true,
+  requiresAgent: false,
   route: JENKINS_PLUGIN_ROUTE,
   tabs: [
     {
