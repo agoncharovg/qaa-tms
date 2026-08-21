@@ -11,6 +11,7 @@ import {
   Stack,
   Switch,
   Table,
+  Tabs,
   Text,
   TextInput,
   Title,
@@ -233,7 +234,13 @@ export function ObjectsPanel({ agentPort }: ObjectsPanelProps) {
           <Text c="dimmed">Loading Leonid objects.</Text>
         </Stack>
       ) : (
-        <>
+        <Tabs defaultValue="definitions">
+          <Tabs.List>
+            <Tabs.Tab value="definitions">Definitions</Tabs.Tab>
+            <Tabs.Tab value="values">Values</Tabs.Tab>
+          </Tabs.List>
+
+          <Tabs.Panel keepMounted={false} pt="md" value="definitions">
           <Paper p="md" withBorder>
             <Stack gap="md">
               <Group justify="space-between">
@@ -302,7 +309,9 @@ export function ObjectsPanel({ agentPort }: ObjectsPanelProps) {
               )}
             </Stack>
           </Paper>
+          </Tabs.Panel>
 
+          <Tabs.Panel keepMounted={false} pt="md" value="values">
           <Paper p="md" withBorder>
             <Stack gap="md">
               <Group justify="space-between">
@@ -369,7 +378,8 @@ export function ObjectsPanel({ agentPort }: ObjectsPanelProps) {
               )}
             </Stack>
           </Paper>
-        </>
+          </Tabs.Panel>
+        </Tabs>
       )}
 
       <Modal

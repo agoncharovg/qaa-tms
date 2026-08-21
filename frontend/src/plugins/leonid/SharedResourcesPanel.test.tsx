@@ -41,16 +41,19 @@ describe("SharedResourcesPanel", () => {
     agentClientMock.toggleLeonidSharedResource.mockResolvedValue({});
   });
 
-  it("renders limits and resources from the agent", async () => {
+  it("renders limits and resources on separate tabs", async () => {
+    const user = userEvent.setup();
     renderWithProviders(<SharedResourcesPanel agentPort={PORT} />);
-    expect(await screen.findByText("1.2.3.4")).toBeInTheDocument();
-    expect(screen.getAllByText("cdn-ip-pool").length).toBeGreaterThan(0);
+    expect(await screen.findByRole("button", { name: "Edit limit cdn-ip-pool" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Resources" }));
+    expect(await screen.findByRole("button", { name: "Edit resource 1.2.3.4" })).toBeInTheDocument();
   });
 
   it("creates a limit through the modal", async () => {
     const user = userEvent.setup();
     renderWithProviders(<SharedResourcesPanel agentPort={PORT} />);
-    await screen.findByText("1.2.3.4");
+    await screen.findByRole("button", { name: "Edit limit cdn-ip-pool" });
 
     await user.click(screen.getByRole("button", { name: "Add limit" }));
     const dialog = await screen.findByRole("dialog");
@@ -70,16 +73,17 @@ describe("SharedResourcesPanel", () => {
   it("toggles a resource", async () => {
     const user = userEvent.setup();
     renderWithProviders(<SharedResourcesPanel agentPort={PORT} />);
-    await screen.findByText("1.2.3.4");
+    await screen.findByRole("button", { name: "Edit limit cdn-ip-pool" });
 
-    await user.click(screen.getByRole("button", { name: "Toggle resource 1.2.3.4" }));
+    await user.click(screen.getByRole("tab", { name: "Resources" }));
+    await user.click(await screen.findByRole("button", { name: "Toggle resource 1.2.3.4" }));
     expect(agentClientMock.toggleLeonidSharedResource).toHaveBeenCalledWith(PORT, TOKEN, 20);
   });
 
   it("deletes a limit after confirmation", async () => {
     const user = userEvent.setup();
     renderWithProviders(<SharedResourcesPanel agentPort={PORT} />);
-    await screen.findByText("1.2.3.4");
+    await screen.findByRole("button", { name: "Edit limit cdn-ip-pool" });
 
     await user.click(screen.getByRole("button", { name: "Delete limit cdn-ip-pool" }));
     const dialog = await screen.findByRole("dialog");

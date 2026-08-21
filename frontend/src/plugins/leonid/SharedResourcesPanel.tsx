@@ -11,6 +11,7 @@ import {
   Stack,
   Switch,
   Table,
+  Tabs,
   Text,
   TextInput,
   Title,
@@ -236,7 +237,13 @@ export function SharedResourcesPanel({ agentPort }: SharedResourcesPanelProps) {
           <Text c="dimmed">Loading Leonid shared resources.</Text>
         </Stack>
       ) : (
-        <>
+        <Tabs defaultValue="limits">
+          <Tabs.List>
+            <Tabs.Tab value="limits">Limits</Tabs.Tab>
+            <Tabs.Tab value="resources">Resources</Tabs.Tab>
+          </Tabs.List>
+
+          <Tabs.Panel keepMounted={false} pt="md" value="limits">
           <Paper p="md" withBorder>
             <Stack gap="md">
               <Group justify="space-between">
@@ -298,7 +305,9 @@ export function SharedResourcesPanel({ agentPort }: SharedResourcesPanelProps) {
               )}
             </Stack>
           </Paper>
+          </Tabs.Panel>
 
+          <Tabs.Panel keepMounted={false} pt="md" value="resources">
           <Paper p="md" withBorder>
             <Stack gap="md">
               <Group justify="space-between">
@@ -365,7 +374,8 @@ export function SharedResourcesPanel({ agentPort }: SharedResourcesPanelProps) {
               )}
             </Stack>
           </Paper>
-        </>
+          </Tabs.Panel>
+        </Tabs>
       )}
 
       <Modal
