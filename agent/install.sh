@@ -128,8 +128,8 @@ EOF
 
 bootstrap_venv() {
   if command -v uv >/dev/null 2>&1; then
+    # uv-created venvs ship without pip on purpose; `uv pip install` does not need it.
     uv venv "${SCRIPT_DIR}/.venv"
-    "${SCRIPT_DIR}/.venv/bin/python" -m pip install --upgrade pip
     uv pip install --python "${SCRIPT_DIR}/.venv/bin/python" -e "${SCRIPT_DIR}"
     return
   fi
