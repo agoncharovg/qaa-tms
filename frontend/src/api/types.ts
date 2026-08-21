@@ -175,6 +175,43 @@ export interface AgentSettingsUpdate {
   kubectl_request_timeout?: string;
 }
 
+export interface LeonidFailedStep {
+  step_name: string | null;
+  error_message: string | null;
+}
+
+export interface LeonidFailedTest {
+  test_name: string | null;
+  steps: LeonidFailedStep[] | null;
+}
+
+export interface LeonidProductStatus {
+  product: string;
+  allow_to_deploy: boolean | null;
+  reason: string | null;
+  failed_tests: LeonidFailedTest[] | null;
+  last_build_date: string | null;
+  build_link: string | null;
+  force_deploy: boolean | null;
+}
+
+export interface LeonidTopFailedTest {
+  name: string;
+  count: number;
+}
+
+export interface LeonidReportSummary {
+  failed_total: number;
+  success_total: number;
+  top_failed_tests: LeonidTopFailedTest[];
+  test_added: number;
+}
+
+export interface LeonidProductsResponse {
+  products: string[];
+  configured: boolean;
+}
+
 export interface KubeconfigStatus {
   path: string;
   activePath: string;
@@ -192,7 +229,6 @@ export interface KubeconfigStatus {
   reasons: KubeconfigReason[];
   url: string;
 }
-
 export interface KubeconfigRefreshRequest {
   activate: boolean;
 }

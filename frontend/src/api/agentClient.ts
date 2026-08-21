@@ -6,6 +6,9 @@ import {
   AgentPath,
   buildAgentJenkinsBuildsPath,
   buildAgentJenkinsFolderPath,
+  buildAgentLeonidProductsPath,
+  buildAgentLeonidReportPath,
+  buildAgentLeonidStatusPath,
   buildAgentJenkinsScopePath,
   buildAgentJenkinsTreePath,
   AUTH_SCHEME_BEARER,
@@ -44,6 +47,9 @@ import type {
   JenkinsFolderResponse,
   JenkinsFreezeRequest,
   JenkinsFreezeResponse,
+  LeonidProductStatus,
+  LeonidProductsResponse,
+  LeonidReportSummary,
   JenkinsResumeRequest,
   JenkinsResumeRunAccepted,
   JenkinsResumeRunRequest,
@@ -293,6 +299,56 @@ export function getJenkinsFolder(
   );
 }
 
+export function getLeonidProducts(
+  port: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<LeonidProductsResponse> {
+  return readAgentJson<LeonidProductsResponse>(
+    port,
+    buildAgentLeonidProductsPath(),
+    { method: HttpMethod.GET },
+    token,
+    signal
+  );
+}
+
+export function getLeonidStatus(
+  port: number,
+  token: string,
+  product: string,
+  signal?: AbortSignal
+): Promise<LeonidProductStatus> {
+  return readAgentJson<LeonidProductStatus>(
+    port,
+    buildAgentLeonidStatusPath(product),
+    { method: HttpMethod.GET },
+    token,
+    signal
+  );
+}
+
+export function getLeonidReport(
+  port: number,
+  token: string,
+  product: string,
+  params: {
+    startDate: string;
+    endDate: string;
+    environment?: string | null;
+    testType?: string | null;
+  },
+  signal?: AbortSignal
+): Promise<LeonidReportSummary> {
+  return readAgentJson<LeonidReportSummary>(
+    port,
+    buildAgentLeonidReportPath(product, params),
+    { method: HttpMethod.GET },
+    token,
+    signal
+  );
+}
+
 export function freezeJenkinsFolder(
   port: number,
   token: string,
@@ -505,6 +561,9 @@ export const agentClient = {
 
   freezeJenkinsFolder,
   getJenkinsBuilds,
+  getLeonidProducts,
+  getLeonidReport,
+  getLeonidStatus,
   getJenkinsFolder,
   getJenkinsScope,
   getJenkinsTree,

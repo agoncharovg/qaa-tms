@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncIterator
+from datetime import date
 from typing import Annotated, cast
 
 import httpx
@@ -67,6 +68,9 @@ from app.schemas import (
     KubePodsResponse,
     KubeTopResponse,
     KubeUseContextRequest,
+    LeonidProductsResponse,
+    LeonidProductStatus,
+    LeonidReportSummary,
     NamespaceCredsResponse,
     NamespaceDeployRecipeResponse,
     NamespaceListResponse,
@@ -110,6 +114,12 @@ from app.services.kubeconfig import (
     push_kubeconfig_operation,
     read_status,
     refresh,
+)
+from app.services.leonid import (
+    LeonidNotConfiguredError,
+    LeonidUnreachableError,
+    fetch_report,
+    fetch_status,
 )
 from app.services.namespaces import (
     list_namespaces,
@@ -182,6 +192,17 @@ def merge_runtime_settings(current_settings: Settings, refreshed_settings: Setti
     )
 
 
+def parse_query_date(value: str, field_name: str) -> str:
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{field_name} must use YYYY-MM-DD format.",
+        ) from exc
+    return parsed.isoformat()
+
+
 @router.get(AgentPath.PING.value, response_model=AgentPingResponse)
 async def ping(settings: SettingsDep) -> AgentPingResponse:
     return build_ping_response(settings)
@@ -218,6 +239,81 @@ async def update_companion_settings(
 @router.get(AgentPath.PREFLIGHT.value, response_model=list[PreflightItem])
 async def preflight(_: AuthDep, settings: SettingsDep) -> list[PreflightItem]:
     return await collect_preflight(settings)
+
+
+@router.get(AgentPath.LEONID_PRODUCTS.value, response_model=LeonidProductsResponse)
+async def get_leonid_products(
+    _: AuthDep,
+    settings: SettingsDep,
+) -> LeonidProductsResponse:
+    return LeonidProductsResponse(
+        products=list(settings.leonid_products),
+        configured=settings.leonid_configured,
+    )
+
+
+@router.get(AgentPath.LEONID_STATUS.value, response_model=LeonidProductStatus)
+async def get_leonid_status(
+    _: AuthDep,
+    settings: SettingsDep,
+    product: str = Query(..., min_length=1),
+) -> LeonidProductStatus:
+    try:
+        payload = await fetch_status(settings, product)
+    except LeonidNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except LeonidUnreachableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Leonid has no data for this product.",
+        )
+
+    return LeonidProductStatus(product=product.strip().lower(), **payload)
+
+
+@router.get(AgentPath.LEONID_REPORT.value, response_model=LeonidReportSummary)
+async def get_leonid_report(
+    _: AuthDep,
+    settings: SettingsDep,
+    product: str = Query(..., min_length=1),
+    start_date: str = Query(...),
+    end_date: str = Query(...),
+    environment: str | None = Query(default=None),
+    test_type: str | None = Query(default=None),
+) -> LeonidReportSummary:
+    parsed_start_date = parse_query_date(start_date, "start_date")
+    parsed_end_date = parse_query_date(end_date, "end_date")
+
+    try:
+        payload = await fetch_report(
+            settings,
+            product,
+            parsed_start_date,
+            parsed_end_date,
+            environment=environment or None,
+            test_type=test_type or None,
+        )
+    except LeonidNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except LeonidUnreachableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+
+    return LeonidReportSummary(**payload)
 
 
 @router.post(

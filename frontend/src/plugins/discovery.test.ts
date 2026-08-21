@@ -70,6 +70,7 @@ describe("plugin discovery", () => {
       PluginId.KUBER,
       PluginId.QAA_GENERATOR,
       PluginId.JENKINS,
+      PluginId.LEONID,
       PluginId.STATISTICS,
       PluginId.ADMIN,
       PluginId.PROFILE,
@@ -85,9 +86,11 @@ describe("plugin discovery", () => {
     expect(PLUGINS[3]?.kind).toBe(PluginKind.OPTIONAL);
     expect(PLUGINS[3]?.requiresAgent).toBe(false);
     expect(PLUGINS[4]?.kind).toBe(PluginKind.OPTIONAL);
-    expect(PLUGINS[4]?.requiresAgent).toBe(false);
-    expect(PLUGINS[5]?.kind).toBe(PluginKind.SYSTEM);
+    expect(PLUGINS[4]?.requiresAgent).toBe(true);
+    expect(PLUGINS[5]?.kind).toBe(PluginKind.OPTIONAL);
+    expect(PLUGINS[5]?.requiresAgent).toBe(false);
     expect(PLUGINS[6]?.kind).toBe(PluginKind.SYSTEM);
+    expect(PLUGINS[7]?.kind).toBe(PluginKind.SYSTEM);
   });
 
   it("rejects duplicate plugin ids", () => {

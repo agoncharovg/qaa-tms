@@ -74,3 +74,33 @@ def test_jenkins_root_groups_reject_missing_label_or_path(
 
     with pytest.raises(ValueError, match="AGENT_JENKINS_ROOT_GROUPS entries must include"):
         Settings(_env_file=None)
+
+
+def test_leonid_url_can_be_disabled_with_an_empty_env_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(EnvKey.LEONID_URL.value, "")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.leonid_url == ""
+    assert settings.leonid_configured is False
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("IAM, Storage ,QAA", ["iam", "storage", "qaa"]),
+        ('["IAM", "storage", "cdn"]', ["iam", "storage", "cdn"]),
+    ],
+)
+def test_leonid_products_load_from_csv_or_json(
+    monkeypatch: pytest.MonkeyPatch,
+    value: str,
+    expected: list[str],
+) -> None:
+    monkeypatch.setenv(EnvKey.LEONID_PRODUCTS.value, value)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.leonid_products == expected

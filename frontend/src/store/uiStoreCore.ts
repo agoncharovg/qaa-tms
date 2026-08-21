@@ -99,6 +99,7 @@ export function createBootstrapTabsByPlugin(): TabsByPlugin {
     [PluginId.QAA_GENERATOR]: createEmptyPluginState(),
     [PluginId.STAGINGS]: createEmptyPluginState(),
     [PluginId.STATISTICS]: createEmptyPluginState(),
+    [PluginId.LEONID]: createEmptyPluginState(),
   };
 }
 

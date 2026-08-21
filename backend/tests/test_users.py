@@ -12,6 +12,7 @@ DEFAULT_OPTIONAL_PLUGIN_IDS = [
     PluginId.QAA_GENERATOR.value,
     PluginId.JENKINS.value,
     PluginId.STATISTICS.value,
+    PluginId.LEONID.value,
 ]
 
 

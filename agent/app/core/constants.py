@@ -10,6 +10,9 @@ class AgentPath(StrEnum):
     SETTINGS = "/settings"
     PREFLIGHT = "/preflight"
     UPDATE = "/update"
+    LEONID_PRODUCTS = "/leonid/products"
+    LEONID_STATUS = "/leonid/status"
+    LEONID_REPORT = "/leonid/report"
     JENKINS_SCOPE = "/jenkins/scope"
     JENKINS_TREE = "/jenkins/tree"
     JENKINS_BUILDS = "/jenkins/builds"
@@ -115,6 +118,9 @@ class JenkinsResumeItemState(StrEnum):
 
 
 class EnvKey(StrEnum):
+    LEONID_URL = "AGENT_LEONID_URL"
+    LEONID_PRODUCTS = "AGENT_LEONID_PRODUCTS"
+    LEONID_REQUEST_TIMEOUT = "AGENT_LEONID_REQUEST_TIMEOUT"
     HOST = "AGENT_HOST"
     PORT = "AGENT_PORT"
     CORS_ORIGINS = "AGENT_CORS_ORIGINS"
@@ -327,6 +333,8 @@ class ErrorMessage(StrEnum):
     UPDATE_HELPER_NOT_AVAILABLE = "The update helper is not available in this installation."
     STAGING_BINARY_NOT_INSTALLED = "The staging binary is not installed."
     UNAUTHORIZED = "Unauthorized."
+    LEONID_NOT_CONFIGURED = "Leonid is not configured (set AGENT_LEONID_URL)."
+    LEONID_UNREACHABLE = "Leonid is unreachable."
     JENKINS_NOT_CONFIGURED = "Jenkins is not configured (set AGENT_JENKINS_URL/USERNAME/TOKEN)."
     JENKINS_UNREACHABLE = "Jenkins is unreachable."
     JENKINS_PATH_OUT_OF_SCOPE = "Requested job path is outside the allowed Jenkins scope."
@@ -369,6 +377,21 @@ AGENT_APP_NAME = "qaa-tms-agent"
 DEFAULT_AGENT_VERSION = "0.1.0"
 DEFAULT_AGENT_HOST = "127.0.0.1"
 DEFAULT_AGENT_PORT = 47600
+DEFAULT_LEONID_URL = "https://leonid-prod.i.gc.onl"
+DEFAULT_LEONID_PRODUCTS = (
+    "iam",
+    "storage",
+    "qaa",
+    "billing",
+    "cdn",
+    "cloud",
+    "balancer",
+    "dns",
+    "streaming",
+    "notifications",
+    "waap",
+)
+DEFAULT_LEONID_REQUEST_TIMEOUT = 15.0
 DEFAULT_BACKEND_URL = "http://localhost:8000"
 DEFAULT_CORS_ORIGINS = (
     "http://localhost:3000",

@@ -26,6 +26,9 @@ from app.core.constants import (
     DEFAULT_KUBECONFIG_ACTIVE_PATH,
     DEFAULT_KUBECTL_BIN,
     DEFAULT_KUBECTL_REQUEST_TIMEOUT,
+    DEFAULT_LEONID_PRODUCTS,
+    DEFAULT_LEONID_REQUEST_TIMEOUT,
+    DEFAULT_LEONID_URL,
     DEFAULT_STAGING_KUBECONFIG,
     DEFAULT_STAGING_KUBECONFIG_MAX_AGE_HOURS,
     DEFAULT_STAGING_KUBECONFIG_URL,
@@ -69,6 +72,15 @@ class Settings(BaseSettings):
         alias=EnvKey.CORS_ORIGINS.value,
     )
     backend_url: str = Field(default=DEFAULT_BACKEND_URL, alias=EnvKey.BACKEND_URL.value)
+    leonid_url: str = Field(default=DEFAULT_LEONID_URL, alias=EnvKey.LEONID_URL.value)
+    leonid_products: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: list(DEFAULT_LEONID_PRODUCTS),
+        alias=EnvKey.LEONID_PRODUCTS.value,
+    )
+    leonid_request_timeout: float = Field(
+        default=DEFAULT_LEONID_REQUEST_TIMEOUT,
+        alias=EnvKey.LEONID_REQUEST_TIMEOUT.value,
+    )
     jenkins_url: str = Field(default=DEFAULT_JENKINS_URL, alias=EnvKey.JENKINS_URL.value)
     jenkins_username: str = Field(default="", alias=EnvKey.JENKINS_USERNAME.value)
     jenkins_token: str = Field(default="", alias=EnvKey.JENKINS_TOKEN.value)
@@ -147,6 +159,15 @@ class Settings(BaseSettings):
     def normalize_base_url(cls, value: str) -> str:
         return value.rstrip("/")
 
+    @field_validator("leonid_url", mode="before")
+    @classmethod
+    def normalize_optional_base_url(cls, value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str) and not value.strip():
+            return ""
+        return str(value).rstrip("/")
+
     @field_validator("jenkins_root_groups", mode="before")
     @classmethod
     def parse_jenkins_root_groups(cls, value: Any) -> list[JenkinsRootGroup]:
@@ -222,6 +243,38 @@ class Settings(BaseSettings):
             ]
             return values or list(DEFAULT_JENKINS_ROOT_FOLDERS)
         raise ValueError("AGENT_JENKINS_ROOT_FOLDERS must be a list or string.")
+
+    @field_validator("leonid_products", mode="before")
+    @classmethod
+    def parse_leonid_products(cls, value: Any) -> list[str]:
+        if value is None:
+            return list(DEFAULT_LEONID_PRODUCTS)
+        if isinstance(value, list):
+            parsed = [str(item).strip().lower() for item in value if str(item).strip()]
+            return parsed or list(DEFAULT_LEONID_PRODUCTS)
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return list(DEFAULT_LEONID_PRODUCTS)
+            if stripped.startswith("["):
+                parsed = json.loads(stripped)
+                if not isinstance(parsed, list):
+                    raise ValueError(
+                        "AGENT_LEONID_PRODUCTS must be a JSON array or CSV string."
+                    )
+                values = [str(item).strip().lower() for item in parsed if str(item).strip()]
+                return values or list(DEFAULT_LEONID_PRODUCTS)
+            values = [
+                item.strip().lower()
+                for item in stripped.split(GROUP_LIST_SEPARATOR)
+                if item.strip()
+            ]
+            return values or list(DEFAULT_LEONID_PRODUCTS)
+        raise ValueError("AGENT_LEONID_PRODUCTS must be a list or string.")
+
+    @property
+    def leonid_configured(self) -> bool:
+        return bool(self.leonid_url)
 
     @property
     def jenkins_configured(self) -> bool:

@@ -9,6 +9,7 @@ class PluginId(StrEnum):
     QAA_GENERATOR = "qaa-generator"
     JENKINS = "jenkins"
     STATISTICS = "statistics"
+    LEONID = "leonid"
     ADMIN = "admin"
     PROFILE = "profile"
 
@@ -285,6 +286,7 @@ OPTIONAL_PLUGIN_IDS = (
     PluginId.QAA_GENERATOR,
     PluginId.JENKINS,
     PluginId.STATISTICS,
+    PluginId.LEONID,
 )
 SYSTEM_PLUGIN_IDS = (PluginId.ADMIN, PluginId.PROFILE)
 OPTIONAL_PLUGIN_ID_VALUES = tuple(plugin_id.value for plugin_id in OPTIONAL_PLUGIN_IDS)

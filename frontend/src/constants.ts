@@ -3,6 +3,7 @@ export const PluginId = {
   KUBER: "kuber",
   QAA_GENERATOR: "qaa-generator",
   JENKINS: "jenkins",
+  LEONID: "leonid",
   STATISTICS: "statistics",
   ADMIN: "admin",
   PROFILE: "profile",
@@ -27,6 +28,7 @@ export type NavSection = (typeof NavSection)[keyof typeof NavSection];
 export const IconName = {
   CLUSTER: "cluster",
   JENKINS: "jenkins",
+  LEONID: "leonid",
   ROCKET: "rocket",
   SPARKLES: "sparkles",
   SETTINGS: "settings",
@@ -228,6 +230,9 @@ export const AgentPath = {
   SETTINGS: "/settings",
   PREFLIGHT: "/preflight",
   UPDATE: "/update",
+  LEONID_PRODUCTS: "/leonid/products",
+  LEONID_STATUS: "/leonid/status",
+  LEONID_REPORT: "/leonid/report",
   JENKINS_SCOPE: "/jenkins/scope",
   JENKINS_TREE: "/jenkins/tree",
   JENKINS_BUILDS: "/jenkins/builds",
@@ -330,6 +335,35 @@ export function buildAgentJenkinsFolderPath(path: string): string {
   return `${AgentPath.JENKINS_FOLDER}?${params.toString()}`;
 }
 
+export function buildAgentLeonidProductsPath(): string {
+  return AgentPath.LEONID_PRODUCTS;
+}
+
+export function buildAgentLeonidStatusPath(product: string): string {
+  const params = new URLSearchParams({
+    product,
+  });
+  return `${AgentPath.LEONID_STATUS}?${params.toString()}`;
+}
+
+export function buildAgentLeonidReportPath(
+  product: string,
+  params: {
+    startDate: string;
+    endDate: string;
+    environment?: string | null;
+    testType?: string | null;
+  }
+): string {
+  const searchParams = new URLSearchParams({
+    end_date: params.endDate,
+    product,
+    start_date: params.startDate,
+  });
+  setOptionalSearchParam(searchParams, "environment", params.environment);
+  setOptionalSearchParam(searchParams, "test_type", params.testType);
+  return `${AgentPath.LEONID_REPORT}?${searchParams.toString()}`;
+}
 export function buildAgentKubeNamespacesPath(context?: string | null): string {
   const params = new URLSearchParams();
   setOptionalSearchParam(params, "context", context);
@@ -610,6 +644,8 @@ export const ViewKey = {
   STAGINGS_PREFLIGHT: "stagings-preflight",
   JENKINS_TREE: "jenkins-tree",
   JENKINS_BOARD: "jenkins-board",
+  LEONID_DEPLOY: "leonid-deploy",
+  LEONID_REPORT: "leonid-report",
   STATISTICS_SMOKE: "statistics-smoke",
   STAGINGS_DEPLOY: "stagings-deploy",
   STAGINGS_HISTORY: "stagings-history",
@@ -633,6 +669,8 @@ export const TabId = {
   STAGINGS_PREFLIGHT: "tab-stagings-preflight",
   JENKINS_TREE: "tab-jenkins-tree",
   JENKINS_BOARD: "tab-jenkins-board",
+  LEONID_DEPLOY: "tab-leonid-deploy",
+  LEONID_REPORT: "tab-leonid-report",
   STATISTICS_SMOKE: "tab-statistics-smoke",
   STAGINGS_DEPLOY: "tab-stagings-deploy",
   STAGINGS_HISTORY: "tab-stagings-history",
@@ -656,6 +694,8 @@ export const TabTitle: Record<TabId, string> = {
   [TabId.STAGINGS_PREFLIGHT]: "Preflight",
   [TabId.JENKINS_TREE]: "Tree",
   [TabId.JENKINS_BOARD]: "Pinned",
+  [TabId.LEONID_DEPLOY]: "Deploy",
+  [TabId.LEONID_REPORT]: "Report",
   [TabId.STATISTICS_SMOKE]: "Smoke",
   [TabId.STAGINGS_DEPLOY]: "Deploy",
   [TabId.STAGINGS_HISTORY]: "History",
@@ -704,6 +744,9 @@ export const QueryKey = {
   AGENT_NAMESPACE_STATUS: "agent-namespace-status",
   AGENT_NAMESPACE_CREDS: "agent-namespace-creds",
   AGENT_E2E_SUITES: "agent-e2e-suites",
+  LEONID_PRODUCTS: "leonid-products",
+  LEONID_STATUS: "leonid-status",
+  LEONID_REPORT: "leonid-report",
   JENKINS_SCOPE: "jenkins-scope",
   JENKINS_TREE: "jenkins-tree",
   JENKINS_TREE_CACHE: "jenkins-tree-cache",

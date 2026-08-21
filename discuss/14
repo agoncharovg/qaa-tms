@@ -1,0 +1,213 @@
+Обсуждение №14 — Плагин Leonid (меню Leonid): витрина возможностей фазы 1
+                    (read-only ЧЕРЕЗ АГЕНТА; backend НЕ трогаем; БЕЗ изменений в Leonid)
+
+====================================================================
+0. КОНТЕКСТ / ЗАПРОС
+====================================================================
+
+  Leonid (~/Projects/qaa-leonid, Django) — сервис E2E-статистики и gatekeeper
+  деплоя (маскот — Леонид из «300», «не пройдёшь»). Задача: завести в qaa-tms
+  ГЛОБАЛЬНЫЙ плагин "Leonid" (отдельное меню). Сначала — ВИТРИНА возможностей на
+  том, что Leonid уже отдаёт БЕЗ правок в нём; затем (отдельные брифы) —
+  максимальный функционал (управление).
+
+  Мастер qaa-leonid подтянут (2026-08-21, до 700c41c).
+
+  РЕШЕНИЯ ПОЛЬЗОВАТЕЛЯ (2026-08-21):
+   - LEONID_URL = https://leonid-prod.i.gc.onl/
+   - Прямым доступом backend'а в k8s для получения данных НЕ пользуемся.
+     => данные тянем ЧЕРЕЗ COMPANION-АГЕНТА (как Jenkins-reads/Kuber/Stagings),
+        агент ходит в Leonid напрямую с машины пользователя. Backend НЕ трогаем.
+   - Список продуктов = "что сейчас доступны" (см. Р4: продукты без данных
+     скрываем по факту ответа Leonid).
+   - Иконку взять из проекта Leonid (аватар slack-бота — Леонид из «300»).
+
+  Что доступно СЕЙЧАС без правок в Leonid (permission=AllowAny, проверено):
+   - GET  /api/{product}/status/           -> ProductView.status
+          {allow_to_deploy: bool, reason: str|null,
+           failed_tests: [{test_name, steps:[{step_name,error_message}]}]|null,
+           last_build_date: str|null, build_link: str|null, force_deploy: bool}.
+          204 No Content, если продукта нет в Leonid.
+   - GET  /api/report/{product}/summary/?start_date&end_date&environment&test_type
+          -> {failed_total:int, success_total:int,
+              top_failed_tests:[{name,count}], test_added:int}.
+          start_date/end_date = YYYY-MM-DD; environment/test_type опциональны.
+   - GET  /api/healthcheck/                -> {status:"ok"}.
+   - POST /api/simple_test_report/         -> ["S"/"F", ...] за 10 прогонов
+          (без сайд-эффектов; опционально, вкладка Flakiness — фаза 1b).
+
+  ЗАБЛОКИРОВАНО без авторизации/правок (=> фаза 2, отдельные брифы):
+   - Дизейбл тестов (/api/tests, /api/disabled-tests, ...) — @login_required.
+   - Причины падений / конфиги / shared resources — только Django admin.
+   - v2 trigger / v2 pipeline_status — HasLeonidToken.
+   - Мутации (GET /api/{product}/force_deploy/, trigger_test_pipeline) —
+     технически открыты, но НЕ входят в витрину.
+
+  Опорные факты по архитектуре агента (проверено):
+   - Агент = локальный companion (FastAPI) на машине пользователя; ходит во
+     внешние сервисы НАПРЯМУЮ (agent/app/services/jenkins.py -> Jenkins).
+   - Персональные креды/URL живут в настройках агента (agent/app/core/config.py,
+     env AGENT_*). Роуты агента — AgentPath.*, гейт require_auth (тот же JWT
+     qaa-tms). Фронт зовёт агент через agentClient + порт из CompanionGate.
+   - CORS не при чём: агент->Leonid это server-side httpx.
+   - qaa.py агента РЕЛЕИТ в backend — нам НЕ подходит (мы backend не трогаем).
+     Наш образец — jenkins.py агента (прямой внешний вызов + own settings).
+
+====================================================================
+1. ПРИНЯТЫЕ РЕШЕНИЯ
+====================================================================
+
+  Р1. ФАЗА 1 = ВИТРИНА, read-only, ноль изменений в Leonid, ноль в backend
+      qaa-tms. Только AllowAny GET (status, report/summary, healthcheck).
+
+  Р2. ПУТЬ ДАННЫХ: frontend -> companion-агент -> Leonid (напрямую). Плагин
+      requiresAgent:true, обёрнут в CompanionGate (как qaa-generator/kuber).
+      LEONID_URL — настройка АГЕНТА (env AGENT_LEONID_URL, дефолт
+      https://leonid-prod.i.gc.onl). Kind: OPTIONAL, виден всем авторизованным.
+
+  Р3. МЕНЮ "Leonid" (PluginId.LEONID), витрина = 2 вкладки:
+        - "Deploy" (Deploy Gate) — по каждому доступному продукту: 🟢/🔴
+          allow_to_deploy, reason, последний билд (дата + ссылка), флаг
+          force_deploy (ТОЛЬКО показ), дрилл-даун failed_tests/steps.
+        - "Report" (Stability) — форма product + диапазон дат + environment +
+          test_type -> failed/success totals, top_failed_tests, test_added.
+      (Опц. фаза 1b: вкладка "Flakiness" на simple_test_report — не блокирует.)
+
+  Р4. СПИСОК ПРОДУКТОВ = "что доступно сейчас". Механика без list-API:
+      агент отдаёт КАНДИДАТОВ (env AGENT_LEONID_PRODUCTS, CSV). ДЕФОЛТ (реальные
+      Product.name из Leonid, lowercase — status/report делают product.lower()):
+        iam, storage, qaa, billing, cdn, cloud, balancer, dns, streaming,
+        notifications, waap
+      (источник: test_stats/fixtures/initial_data.json; dev-сид, на prod набор
+      может отличаться). Deploy-вкладка дергает status по каждому; продукты с 204
+      (нет данных) СКРЫВАЮТСЯ — список сам отражает реально доступное. ВАЖНО:
+      имена lowercase; НЕ использовать constants.Product qaa-tms (там иная
+      казность/набор) — завести отдельный дефолт для Leonid.
+
+  Р5. ГРАНИЦА С ФАЗОЙ 2 ЖЁСТКАЯ: в фазе 1 — только чтение, никаких мутаций
+      (force_deploy/trigger/disable — фаза 2, отдельные брифы, требуют
+      авторизации/новых API в Leonid). Заглушек "coming soon" в UI не делаем.
+
+  Р6. ИКОНКА (РЕШЕНО 2026-08-21): вендорим аватар из Leonid
+      (~/Projects/qaa-leonid/test_stats/static/leonid_slack_bot.jpg, 800x800)
+      в фронт как <img>-иконку плагина (округлую). Система иконок — монохромные
+      TablerIcon (recolor по теме); растровое фото НЕ перекрашивается — это
+      принято осознанно (одинаково в светлой/тёмной теме). SVG-альтернатива
+      (спартанский щит) отклонена. Учесть: это кадр из фильма — вопрос лицензии
+      оставлен на усмотрение (внутренний инструмент, 10-15 юзеров).
+
+  Р7. РЕАЛИЗУЕТ CODEX по §3; Claude — бриф и ревью (verification-команды +
+      границу Р5 + что LEONID_URL/данные идут через агента, backend чист).
+
+====================================================================
+2. ОТКРЫТЫЕ ВОПРОСЫ / БЛОКЕРЫ
+====================================================================
+
+  О1. (СНЯТО) Достижимость: агент на машине пользователя видит внутренние
+      *.i.gc.onl (как staging/kube). Backend-egress больше не нужен (Р2).
+  О2. (СНЯТО) Product.name в Leonid (из fixtures/initial_data.json): iam,
+      storage, qaa, billing, cdn, cloud, balancer, dns, streaming,
+      notifications, waap (lowercase). Зашито в дефолт AGENT_LEONID_PRODUCTS
+      (Р4). Prod-набор может отличаться — 204-скрытие это закрывает.
+  О3. (СНЯТО, подтверждено) environment ∈ {PREPROD, PROD} (сид; в choices модели
+      ещё CUSTOM, STAGING) + опция «любой»; test_type ∈ {UI, BACKEND} + «любой».
+      Фиксированные значения на фронте в форме Report.
+  О4. (СНЯТО) Иконка — вендорим аватар из «300» как есть (Р6).
+  О5. Редактирование AGENT_LEONID_URL из Profile->Settings (бриф 18) —
+      желательно (добавить в AgentSettingsRead/Update), но не блокирует витрину.
+
+====================================================================
+3. СПЕЦИФИКАЦИЯ ДЛЯ CODEX (файлы/точки; НЕ трогать backend qaa-tms)
+====================================================================
+
+  AGENT (companion, FastAPI):
+   1) agent/app/core/constants.py:
+        - DEFAULT_LEONID_URL="https://leonid-prod.i.gc.onl" ;
+          DEFAULT_LEONID_REQUEST_TIMEOUT=15.0 ;
+          DEFAULT_LEONID_PRODUCTS = ("iam","storage","qaa","billing","cdn",
+          "cloud","balancer","dns","streaming","notifications","waap")
+          (реальные Product.name Leonid, lowercase; НЕ constants.Product).
+        - EnvKey: LEONID_URL="AGENT_LEONID_URL",
+          LEONID_PRODUCTS="AGENT_LEONID_PRODUCTS",
+          LEONID_REQUEST_TIMEOUT="AGENT_LEONID_REQUEST_TIMEOUT".
+        - AgentPath: LEONID_PRODUCTS="/leonid/products",
+          LEONID_STATUS="/leonid/status", LEONID_REPORT="/leonid/report".
+        - ErrorMessage: LEONID_UNREACHABLE, LEONID_NOT_CONFIGURED.
+   2) agent/app/core/config.py: Settings += leonid_url (normalize_base_url,
+      rstrip '/'), leonid_products (Annotated[list[str],NoDecode] + before-
+      валидатор CSV/JSON как parse_jenkins_root_folders), leonid_request_timeout.
+      Property leonid_configured = bool(leonid_url).
+   3) agent/app/services/leonid.py (образец — jenkins.py агента): httpx.
+      AsyncClient per-request, timeout=settings.leonid_request_timeout,
+      follow_redirects=True. Классы LeonidNotConfiguredError / LeonidUnreachable
+      Error. Функции:
+        - async fetch_status(settings, product) -> dict|None (204 -> None).
+        - async fetch_report(settings, product, start_date, end_date,
+          environment|None, test_type|None) -> dict.
+      Ошибки таймаута/HTTP -> LeonidUnreachableError(ErrorMessage.
+      LEONID_UNREACHABLE); not configured -> LeonidNotConfiguredError. Логи —
+      warning без тела ответа.
+   4) agent/app/schemas: LeonidFailedStep, LeonidFailedTest, LeonidProductStatus
+      (все поля Optional под факт-ответ; product добавляем на стороне агента),
+      LeonidReportSummary (top_failed_tests: list[{name:str,count:int}]),
+      LeonidProductsResponse {products: list[str], configured: bool}.
+      (Опц. Р6/О5: leonid_url в AgentSettingsRead/Update + маппинг в routes.py
+      AGENT_SETTINGS_ENV_KEY_BY_FIELD.)
+   5) agent/app/api/routes.py: новые роуты (AuthDep, SettingsDep), паттерн
+      обработки ошибок как jenkins-роуты (503 not-configured / 502 unreachable):
+        - GET /leonid/products -> LeonidProductsResponse (кандидаты из settings
+          + configured).
+        - GET /leonid/status?product=... -> LeonidProductStatus; 204 -> 404
+          (или пустой маркер, чтобы фронт скрыл продукт — согласовать с §Р4:
+          вернуть 404 и фронт трактует как "нет данных").
+        - GET /leonid/report?product=&start_date=&end_date=&environment=&
+          test_type= -> LeonidReportSummary; валидация дат YYYY-MM-DD (400).
+   6) agent/tests: httpx MockTransport; кейсы 200 / 204->скрытие / not-configured
+      503 / unreachable 502 / парс дат.
+
+  FRONTEND (React + Mantine + TanStack Query):
+   7) src/constants.ts:
+        - PluginId.LEONID="leonid".
+        - IconName.LEONID (+ ICON_REGISTRY в core/plugins/icons.ts).
+        - ViewKey: LEONID_DEPLOY="leonid-deploy", LEONID_REPORT="leonid-report".
+        - TabId: LEONID_DEPLOY, LEONID_REPORT (+ TabTitle "Deploy"/"Report").
+        - QueryKey: LEONID_PRODUCTS, LEONID_STATUS, LEONID_REPORT.
+        - AgentPath-константы для agentClient: /leonid/products, /leonid/status,
+          /leonid/report (там, где определены прочие agent-пути фронта).
+   8) src/api/agentClient.ts: getLeonidProducts(port, token),
+      getLeonidStatus(port, token, product), getLeonidReport(port, token,
+      product, params) — паттерн существующих agent-методов (порт+token+signal).
+   9) src/api/types.ts: LeonidProductStatus, LeonidReportSummary,
+      LeonidProductsResponse (зеркало схем агента).
+   10) src/plugins/leonid/manifest.tsx: definePlugin (contractVersion:
+       CONTRACT_VERSION, kind: PluginKind.OPTIONAL, origin: BUILTIN,
+       requiresAgent:true, route "/leonid", icon: IconName.LEONID, order рядом с
+       jenkins(25)/statistics, 2 вкладки -> <LeonidSection mode=.../>).
+   11) src/plugins/leonid/LeonidSection.tsx: обёртка CompanionGate (как
+       QaaGeneratorSection) -> внутренняя секция по mode:
+         - DeployGatePanel.tsx: useQuery getLeonidProducts -> по каждому
+           продукту useQuery getLeonidStatus; продукт с 404/нет-данных не
+           рендерим; карточки Mantine 🟢/🔴 + reason + билд(ссылка) +
+           force_deploy(показ) + дрилл-даун failed_tests. token из useAuthStore.
+         - ReportPanel.tsx: форма product/dates/environment/test_type
+           (фиксир. значения О3) -> useQuery getLeonidReport -> числа + топы.
+       loading/error/empty — как в существующих секциях.
+   12) src/plugins/leonid/leonid-icon.<...> : вендорить
+       ~/Projects/qaa-leonid/test_stats/static/leonid_slack_bot.jpg в
+       src/plugins/leonid/ (или public/assets) + компонент-иконка <img>
+       (округлый), зарегистрировать в ICON_REGISTRY. (См. Р6 кавеат.)
+   13) Vitest на панели (loading/error/empty + happy path) как *.test.tsx рядом.
+
+  ВНЕ ОБЪЁМА (фаза 2, отдельные брифы): backend qaa-tms (не трогаем в фазе 1);
+  любые мутации (force_deploy/trigger/disable); причины падений/конфиги/shared
+  resources; iframe в Django admin.
+
+====================================================================
+4. СЛЕДУЮЩИЙ ШАГ
+====================================================================
+
+  1) Утвердить §3 (объём/имена/иконку Р6/order плагина).
+  2) Свериться по О2/О3 (имена продуктов и значения env/test_type на prod).
+  3) Отдать §3 Codex (codex exec -m gpt-5.4, high, workspace-write).
+  4) Claude ревьюит: verification-команды (агент+фронт) + граница Р5 (ноль
+     мутаций) + backend qaa-tms НЕ изменён + LEONID_URL только в агенте.

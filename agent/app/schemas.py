@@ -109,6 +109,67 @@ class AgentSettingsUpdate(BaseModel):
     kubectl_request_timeout: str | None = None
 
 
+class LeonidFailedStep(BaseModel):
+    """A failed Leonid test step."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    step_name: str | None = None
+    error_message: str | None = None
+
+
+class LeonidFailedTest(BaseModel):
+    """A failed Leonid test with its failed steps."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    test_name: str | None = None
+    steps: list[LeonidFailedStep] | None = None
+
+
+class LeonidProductStatus(BaseModel):
+    """`/leonid/status` response shape."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    product: str
+    allow_to_deploy: bool | None = None
+    reason: str | None = None
+    failed_tests: list[LeonidFailedTest] | None = None
+    last_build_date: str | None = None
+    build_link: str | None = None
+    force_deploy: bool | None = None
+
+
+class LeonidTopFailedTest(BaseModel):
+    """A top failed test item from the Leonid summary report."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    name: str
+    count: int
+
+
+class LeonidReportSummary(BaseModel):
+    """`/leonid/report` response shape."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    failed_total: int
+    success_total: int
+    top_failed_tests: list[LeonidTopFailedTest] = Field(default_factory=list)
+    test_added: int
+
+
+class LeonidProductsResponse(BaseModel):
+    """`/leonid/products` response shape."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    products: list[str] = Field(default_factory=list)
+    configured: bool
+
+
 def to_agent_settings_read(settings: Settings) -> AgentSettingsRead:
     return AgentSettingsRead(
         jenkins_url=settings.jenkins_url,
