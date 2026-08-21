@@ -7,14 +7,10 @@ import { TabBar } from "@/app/layout/TabBar";
 import { Workspace } from "@/app/layout/Workspace";
 import { usePalette } from "@/app/theme/usePalette";
 import { BuiltinHostApiProvider } from "@/core/plugins/host";
-import {
-  enabledOptionalPluginIdSet,
-  pluginByRoute,
-  visiblePlugins,
-} from "@/plugins/registry";
+import { enabledOptionalPluginIdSet, pluginByRoute, visiblePlugins } from "@/plugins/registry";
 import { PluginsProvider } from "@/plugins/provider";
-import { useAuthStore } from "@/store/authStore";
 import { RoutePath } from "@/constants";
+import { useAuthStore } from "@/store/authStore";
 import { activatePluginWorkspaceTab, syncTabsForUser, TAB_DEFINITIONS, useUiStore } from "@/store/uiStore";
 
 export function AppLayout() {
@@ -28,6 +24,7 @@ export function AppLayout() {
   const plugins = visiblePlugins(currentUser, enabledOptionalIds);
   const activePluginVisible = Boolean(activePlugin && plugins.some((plugin) => plugin.id === activePlugin.id));
   const workspaceBootstrappedRef = useRef(false);
+  const syncedPathnameRef = useRef<string | null>(null);
 
   useEffect(() => {
     syncTabsForUser(currentUser);
@@ -37,6 +34,9 @@ export function AppLayout() {
     if (!activePluginVisible || !activePlugin) {
       return;
     }
+
+    const pathnameChanged = syncedPathnameRef.current !== location.pathname;
+    syncedPathnameRef.current = location.pathname;
 
     if (!workspaceBootstrappedRef.current) {
       if (activeWorkspaceTabId) {
@@ -49,7 +49,7 @@ export function AppLayout() {
       return;
     }
 
-    if (!activeWorkspaceTabId) {
+    if (!pathnameChanged || !activeWorkspaceTabId) {
       return;
     }
 
@@ -57,7 +57,7 @@ export function AppLayout() {
     if (activeWorkspacePluginId !== activePlugin.id) {
       activatePluginWorkspaceTab(activePlugin.id);
     }
-  }, [activePlugin, activePluginVisible, activeWorkspaceTabId]);
+  }, [activePlugin, activePluginVisible, activeWorkspaceTabId, location.pathname]);
 
   if (!currentUser) {
     return <Navigate replace to={RoutePath.LOGIN} />;

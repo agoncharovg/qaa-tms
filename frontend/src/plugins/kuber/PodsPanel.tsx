@@ -8,6 +8,7 @@ import {
   Drawer,
   Group,
   Loader,
+  LoadingOverlay,
   NumberInput,
   Paper,
   Select,
@@ -225,6 +226,7 @@ export function PodsPanel({ agentPort }: PodsPanelProps) {
   const [tailCount, setTailCount] = useState<number>(DEFAULT_KUBE_LOG_TAIL);
   const [previousLogs, setPreviousLogs] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [logsState, dispatchLogs] = useReducer(reducePodLogsState, undefined, createPodLogsState);
   const logViewportRef = useRef<HTMLDivElement | null>(null);
 
@@ -305,6 +307,20 @@ export function PodsPanel({ agentPort }: PodsPanelProps) {
       }
     },
   });
+
+  async function handleRefresh(): Promise<void> {
+    setIsRefreshing(true);
+
+    try {
+      await Promise.all([
+        contextsQuery.refetch(),
+        namespacesQuery.refetch(),
+        podsQuery.refetch(),
+      ]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }
 
   useEffect(() => {
     if (!contextsQuery.data?.contexts.length) {
@@ -474,12 +490,10 @@ export function PodsPanel({ agentPort }: PodsPanelProps) {
           </Text>
         </div>
         <Button
+          disabled={isRefreshing}
           leftSection={<IconRefresh size={16} />}
-          onClick={() => {
-            void contextsQuery.refetch();
-            void namespacesQuery.refetch();
-            void podsQuery.refetch();
-          }}
+          loading={isRefreshing}
+          onClick={() => void handleRefresh()}
           variant="light"
         >
           {PodsPanelCopy.PODS_REFETCH}
@@ -542,40 +556,43 @@ export function PodsPanel({ agentPort }: PodsPanelProps) {
           <Text c="dimmed">{PodsPanelCopy.EMPTY_PODS}</Text>
         </Paper>
       ) : (
-        <Table.ScrollContainer minWidth={900}>
-          <Table highlightOnHover striped withTableBorder>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>{PodsPanelCopy.NAME_COLUMN}</Table.Th>
-                <Table.Th>{PodsPanelCopy.READY_COLUMN}</Table.Th>
-                <Table.Th>{PodsPanelCopy.PHASE_COLUMN}</Table.Th>
-                <Table.Th>{PodsPanelCopy.RESTARTS_COLUMN}</Table.Th>
-                <Table.Th>{PodsPanelCopy.NODE_COLUMN}</Table.Th>
-                <Table.Th>{PodsPanelCopy.AGE_COLUMN}</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {podsQuery.data.pods.map((pod) => (
-                <Table.Tr
-                  key={pod.name}
-                  onClick={() => setSelectedPod(pod)}
-                  style={{ cursor: "pointer" }}
-                >
-                  <Table.Td>{pod.name}</Table.Td>
-                  <Table.Td>{pod.ready}</Table.Td>
-                  <Table.Td>
-                    <Badge color={getPhaseColor(pod.phase)} variant="light">
-                      {pod.phase ?? "Unknown"}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>{pod.restarts}</Table.Td>
-                  <Table.Td>{pod.node ?? "n/a"}</Table.Td>
-                  <Table.Td>{formatRelativeAge(pod.createdAt)}</Table.Td>
+        <Box pos="relative">
+          <LoadingOverlay visible={isRefreshing} zIndex={1} />
+          <Table.ScrollContainer minWidth={900}>
+            <Table highlightOnHover striped withTableBorder>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>{PodsPanelCopy.NAME_COLUMN}</Table.Th>
+                  <Table.Th>{PodsPanelCopy.READY_COLUMN}</Table.Th>
+                  <Table.Th>{PodsPanelCopy.PHASE_COLUMN}</Table.Th>
+                  <Table.Th>{PodsPanelCopy.RESTARTS_COLUMN}</Table.Th>
+                  <Table.Th>{PodsPanelCopy.NODE_COLUMN}</Table.Th>
+                  <Table.Th>{PodsPanelCopy.AGE_COLUMN}</Table.Th>
                 </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
+              </Table.Thead>
+              <Table.Tbody>
+                {podsQuery.data.pods.map((pod) => (
+                  <Table.Tr
+                    key={pod.name}
+                    onClick={() => setSelectedPod(pod)}
+                    style={{ cursor: "pointer" }}
+                  >
+                    <Table.Td>{pod.name}</Table.Td>
+                    <Table.Td>{pod.ready}</Table.Td>
+                    <Table.Td>
+                      <Badge color={getPhaseColor(pod.phase)} variant="light">
+                        {pod.phase ?? "Unknown"}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>{pod.restarts}</Table.Td>
+                    <Table.Td>{pod.node ?? "n/a"}</Table.Td>
+                    <Table.Td>{formatRelativeAge(pod.createdAt)}</Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        </Box>
       )}
 
       <Drawer

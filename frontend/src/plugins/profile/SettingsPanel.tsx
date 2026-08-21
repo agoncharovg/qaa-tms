@@ -41,6 +41,8 @@ const SettingsPanelCopy = {
   JENKINS_USERNAME_LABEL: "Username",
   KUBER_DESCRIPTION:
     "Your personal kubeconfig is written to the local companion `.env` on this machine.",
+  KUBER_KUBECONFIG_DESCRIPTION:
+    "Leave empty to inherit ambient kubeconfig resolution (the KUBECONFIG env and/or ~/.kube/config), merged with the active-path symlink. Set a file to use it explicitly, or a directory to merge every *.yaml/*.yml inside it.",
   KUBER_KUBECONFIG_LABEL: "Kubeconfig path",
   KUBER_SAVE: "Save Kuber settings",
   KUBER_TITLE: "Kuber",
@@ -496,6 +498,7 @@ function SettingsPanelAgentSettings({
           {agentForm ? (
             <Stack gap="md">
               <TextInput
+                description={SettingsPanelCopy.KUBER_KUBECONFIG_DESCRIPTION}
                 label={SettingsPanelCopy.KUBER_KUBECONFIG_LABEL}
                 onChange={(event) => setAgentField("kubeconfig", event.currentTarget.value)}
                 value={agentForm.kubeconfig}

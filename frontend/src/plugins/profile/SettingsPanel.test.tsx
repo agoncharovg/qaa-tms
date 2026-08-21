@@ -133,6 +133,12 @@ describe("SettingsPanel", () => {
     renderWithProviders(<SettingsPanel />);
 
     expect(await screen.findByRole("heading", { name: "Jenkins" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("Kubeconfig path")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Leave empty to inherit ambient kubeconfig resolution (the KUBECONFIG env and/or ~/.kube/config), merged with the active-path symlink. Set a file to use it explicitly, or a directory to merge every *.yaml/*.yml inside it.",
+      ),
+    ).toBeInTheDocument();
 
     const jenkinsUrlInput = await screen.findByLabelText("URL");
     await user.clear(jenkinsUrlInput);

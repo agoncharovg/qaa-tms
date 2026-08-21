@@ -21,6 +21,33 @@ import { renderWithProviders } from "@/test/render";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
 import { resetKuberStoreState } from "@/plugins/kuber/kuberStore";
 
+function buildPodsResponse(context: string | null | undefined, namespace: string) {
+  return {
+    pods: [
+      {
+        containers: ["api"],
+        createdAt: "2026-08-11T08:00:00Z",
+        name: `${context ?? "current"}-${namespace}-pod`,
+        node: "node-a",
+        phase: "Running",
+        ready: "1/1",
+        restarts: 0,
+      },
+    ],
+    exitCode: 0,
+  };
+}
+
+function createDeferredPromise<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+
+  return { promise, resolve };
+}
+
 describe("PodsPanel", () => {
   beforeEach(() => {
     agentClientMock.deleteKubePod.mockReset();
@@ -89,20 +116,7 @@ describe("PodsPanel", () => {
     );
     agentClientMock.listKubePods.mockImplementation(
       (_port: number, _token: string, context: string | null | undefined, namespace: string) =>
-        Promise.resolve({
-          pods: [
-            {
-              containers: ["api"],
-              createdAt: "2026-08-11T08:00:00Z",
-              name: `${context ?? "current"}-${namespace}-pod`,
-              node: "node-a",
-              phase: "Running",
-              ready: "1/1",
-              restarts: 0,
-            },
-          ],
-          exitCode: 0,
-        })
+        Promise.resolve(buildPodsResponse(context, namespace))
     );
     agentClientMock.streamKubePodLogs.mockImplementation(
       (
@@ -160,6 +174,61 @@ describe("PodsPanel", () => {
     await waitFor(() => {
       expect(screen.getByText("team/prod-prod-ns-pod")).toBeInTheDocument();
     });
+  });
+
+  it("restores the persisted namespace on reload", async () => {
+    vi.resetModules();
+    const initialStoreModule = await import("@/plugins/kuber/kuberStore");
+
+    initialStoreModule.resetKuberStoreState();
+    initialStoreModule.useKuberStore.getState().setSelectedContext("team/prod");
+    initialStoreModule.useKuberStore.getState().setSelectedNamespace("prod-ns");
+
+    vi.resetModules();
+    const reloadedStoreModule = await import("@/plugins/kuber/kuberStore");
+
+    expect(reloadedStoreModule.useKuberStore.getState().selectedContext).toBe("team/prod");
+    expect(reloadedStoreModule.useKuberStore.getState().selectedNamespace).toBe("prod-ns");
+  });
+
+  it("shows loading feedback while manually refreshing pods", async () => {
+    const user = userEvent.setup();
+
+    renderWithProviders(<PodsPanel agentPort={47600} />);
+
+    expect(await screen.findByText("team/dev-qa-demo-pod")).toBeInTheDocument();
+
+    const refreshButton = screen.getByRole("button", { name: "Refresh" });
+    const deferredRefresh = createDeferredPromise<ReturnType<typeof buildPodsResponse>>();
+
+    agentClientMock.listKubePods.mockImplementationOnce(
+      (_port: number, _token: string, context: string | null | undefined, namespace: string) =>
+        deferredRefresh.promise.then(() => buildPodsResponse(context, namespace))
+    );
+
+    await user.click(refreshButton);
+
+    await waitFor(() => {
+      expect(agentClientMock.listKubePods).toHaveBeenNthCalledWith(
+        2,
+        47600,
+        "token-123",
+        "team/dev",
+        "qa-demo",
+        expect.anything()
+      );
+    });
+
+    expect(refreshButton).toBeDisabled();
+    expect(refreshButton).toHaveAttribute("data-loading");
+
+    deferredRefresh.resolve(buildPodsResponse("team/dev", "qa-demo"));
+
+    await waitFor(() => {
+      expect(refreshButton).toBeEnabled();
+    });
+
+    expect(refreshButton).not.toHaveAttribute("data-loading");
   });
 
   it("keeps delete behind the type-to-confirm gate", async () => {
