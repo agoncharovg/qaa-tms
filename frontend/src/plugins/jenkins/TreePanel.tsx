@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   ActionIcon,
   Alert,
@@ -34,7 +35,7 @@ import {
   IconSnowflake,
 } from "@tabler/icons-react";
 
-import { AgentRequestError } from "@/api/agentClient";
+import { AgentRequestError, discoverAgent } from "@/api/agentClient";
 import type {
   JenkinsBuild,
   JenkinsFreezeRead,
@@ -48,6 +49,7 @@ import {
   JenkinsStatusColor,
   JenkinsStatusLabel,
   PluginId,
+  QueryKey,
   TabId,
 } from "@/constants";
 import { BuildHistoryLine } from "@/plugins/jenkins/BuildHistoryLine";
@@ -164,6 +166,9 @@ const TreePanelCopy = {
   COMPANION_PROMPT_TITLE: "Freeze/Resume needs the companion",
   EMPTY_BODY: "No Jenkins folders were returned for the configured Jenkins scope.",
   EMPTY_TITLE: "No Jenkins data",
+  COMPANION_REQUIRED_BODY:
+    "The shared Jenkins cache is empty. Start the companion app so the tree can populate it from your personal Jenkins access.",
+  COMPANION_REQUIRED_TITLE: "Start the companion to load the tree",
   ERROR_GENERIC: "Jenkins data request failed",
   ERROR_NOT_CONFIGURED_BODY:
     "Ask an administrator to configure the shared Jenkins read-only credentials on the backend.",
@@ -174,6 +179,7 @@ const TreePanelCopy = {
   COLLAPSE_ALL: "Collapse all",
   LOADING_BUILDS: "Loading recent builds.",
   LOADING_TREE: "Loading Jenkins tree.",
+  WARMING_TREE: "Warming the shared Jenkins cache.",
   NODE_KIND_FOLDER: "Folder",
   NODE_KIND_PIPELINE: "Pipeline",
   OPEN_ALLURE: "Open Allure report",
@@ -209,7 +215,18 @@ export function TreePanel() {
   const isActive = useUiStore(
     (state) => state.tabsByPlugin[PluginId.JENKINS].activeTabId === TabId.JENKINS_TREE
   );
-  const [agentPort, setAgentPort] = useState<number | null>(null);
+  // Best-effort companion discovery so the tree can self-hydrate a cold/stale
+  // shared cache on load — the backend never fills the tree cache (common creds
+  // are not configured), and freeze/resume only set a port after a mutation.
+  const companionQuery = useQuery({
+    enabled: Boolean(token),
+    queryFn: ({ signal }) => discoverAgent(signal),
+    queryKey: [QueryKey.AGENT_DISCOVERY, token],
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+  const [manualAgentPort, setManualAgentPort] = useState<number | null>(null);
+  const agentPort = manualAgentPort ?? companionQuery.data?.port ?? null;
   const [freezeModal, setFreezeModal] = useState<FreezeModalRequest | null>(null);
   const [mutationCompanionRequest, setMutationCompanionRequest] =
     useState<MutationCompanionRequest | null>(null);
@@ -408,7 +425,7 @@ export function TreePanel() {
       if (!mutationCompanionRequest) {
         return;
       }
-      setAgentPort(nextAgentPort);
+      setManualAgentPort(nextAgentPort);
       if (mutationCompanionRequest.action === "freeze") {
         openFreezeModal(
           mutationCompanionRequest.folderPath,
@@ -440,6 +457,34 @@ export function TreePanel() {
   }
 
   if (treeState.roots.length === 0) {
+    // A cold/stale shared cache with no rows is not a genuinely empty scope:
+    // the tree fills itself from the companion (the backend has no common
+    // Jenkins creds to fill it server-side). Show honest warming / "start the
+    // companion" states instead of a misleading "No Jenkins data".
+    const isColdCache = treeState.stale;
+    const isWarming =
+      isColdCache && (companionQuery.isLoading || agentPort !== null || treeState.isRefreshing);
+
+    if (isWarming) {
+      return (
+        <Stack align="center" gap="md" py="xl">
+          <Loader size="lg" />
+          <Text c="dimmed">{TreePanelCopy.WARMING_TREE}</Text>
+        </Stack>
+      );
+    }
+
+    if (isColdCache && agentPort === null && !companionQuery.isLoading) {
+      return (
+        <Paper p="xl" radius="lg" withBorder>
+          <Stack gap="sm">
+            <Title order={3}>{TreePanelCopy.COMPANION_REQUIRED_TITLE}</Title>
+            <Text c="dimmed">{TreePanelCopy.COMPANION_REQUIRED_BODY}</Text>
+          </Stack>
+        </Paper>
+      );
+    }
+
     return (
       <Paper p="xl" radius="lg" withBorder>
         <Stack gap="sm">

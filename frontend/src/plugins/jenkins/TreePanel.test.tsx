@@ -10,6 +10,8 @@ const agentClientMock = vi.hoisted(() => ({
   startJenkinsResumeRun: vi.fn(),
 }));
 
+const discoverAgentMock = vi.hoisted(() => vi.fn());
+
 const backendClientMock = vi.hoisted(() => ({
   cancelJenkinsResumeRun: vi.fn(),
   createJenkinsFreeze: vi.fn(),
@@ -45,6 +47,7 @@ vi.mock("@/api/agentClient", () => ({
     }
   },
   agentClient: agentClientMock,
+  discoverAgent: discoverAgentMock,
 }));
 
 vi.mock("@/api/backendClient", () => ({
@@ -297,6 +300,8 @@ describe("TreePanel", () => {
     agentClientMock.freezeJenkinsFolder.mockReset();
     backendClientMock.getJenkinsScope.mockReset();
     agentClientMock.getJenkinsTree.mockReset();
+    discoverAgentMock.mockReset();
+    discoverAgentMock.mockResolvedValue(null);
     agentClientMock.resumeJenkinsFolder.mockReset();
     agentClientMock.startJenkinsResumeRun.mockReset();
     backendClientMock.cancelJenkinsResumeRun.mockReset();
@@ -1866,5 +1871,77 @@ describe("TreePanel", () => {
 
     expect(await screen.findByText("Resume cancelled.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Resume folder" })).not.toBeDisabled();
+  });
+
+  it("self-heals a cold shared tree cache by hydrating it from the discovered companion", async () => {
+    // Regression: the backend never fills the tree cache (no common creds), and
+    // agentPort used to stay null until a freeze/resume. After a backend restart
+    // the cold cache showed a false "No Jenkins data" forever. Discovering the
+    // companion on load lets the tree populate the shared cache itself.
+    discoverAgentMock.mockResolvedValue({ port: 47600 });
+    backendClientMock.getJenkinsTreeCache
+      .mockResolvedValueOnce({
+        fetchedAt: null,
+        refreshLease: "lease-1",
+        roots: [],
+        signature: "scope-1234",
+        stale: true,
+      })
+      .mockResolvedValue({
+        fetchedAt: "2026-08-21T10:00:00Z",
+        refreshLease: null,
+        roots: buildTreeRoots(),
+        signature: "scope-1234",
+        stale: false,
+      });
+    agentClientMock.getJenkinsTree.mockResolvedValue({
+      roots: buildTreeRoots(),
+      signature: "scope-1234",
+    });
+    backendClientMock.putJenkinsTreeCache.mockResolvedValue({
+      fetchedAt: "2026-08-21T10:00:00Z",
+      refreshLease: null,
+      roots: buildTreeRoots(),
+      signature: "scope-1234",
+      stale: false,
+    });
+
+    renderWithProviders(<TreePanel />);
+
+    expect(await screen.findByText("PREPROD")).toBeInTheDocument();
+    await waitFor(() => expect(agentClientMock.getJenkinsTree).toHaveBeenCalledWith(47600, "token-123"));
+    expect(backendClientMock.putJenkinsTreeCache).toHaveBeenCalled();
+  });
+
+  it("shows a start-the-companion prompt, not a false empty, when the cold cache cannot self-heal", async () => {
+    discoverAgentMock.mockResolvedValue(null);
+    backendClientMock.getJenkinsTreeCache.mockResolvedValue({
+      fetchedAt: null,
+      refreshLease: "lease-1",
+      roots: [],
+      signature: "scope-1234",
+      stale: true,
+    });
+
+    renderWithProviders(<TreePanel />);
+
+    expect(await screen.findByText("Start the companion to load the tree")).toBeInTheDocument();
+    expect(screen.queryByText("No Jenkins data")).not.toBeInTheDocument();
+    expect(agentClientMock.getJenkinsTree).not.toHaveBeenCalled();
+  });
+
+  it("still shows an honest empty state for a warm cache that genuinely has no folders", async () => {
+    discoverAgentMock.mockResolvedValue({ port: 47600 });
+    backendClientMock.getJenkinsTreeCache.mockResolvedValue({
+      fetchedAt: "2026-08-21T10:00:00Z",
+      refreshLease: null,
+      roots: [],
+      signature: "scope-1234",
+      stale: false,
+    });
+
+    renderWithProviders(<TreePanel />);
+
+    expect(await screen.findByText("No Jenkins data")).toBeInTheDocument();
   });
 });

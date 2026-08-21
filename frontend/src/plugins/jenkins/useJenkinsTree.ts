@@ -23,6 +23,7 @@ interface UseJenkinsTreeResult {
   rootGroups: JenkinsRootGroup[];
   roots: JenkinsNode[];
   signature: string | null;
+  stale: boolean;
 }
 
 export function useJenkinsTree({
@@ -80,6 +81,7 @@ export function useJenkinsTree({
     rootGroups: scopeQuery.data?.rootGroups ?? [],
     roots: cachedTree.data,
     signature,
+    stale: cachedTree.stale,
   };
 }
 
