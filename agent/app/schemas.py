@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -109,65 +109,201 @@ class AgentSettingsUpdate(BaseModel):
     kubectl_request_timeout: str | None = None
 
 
-class LeonidFailedStep(BaseModel):
-    """A failed Leonid test step."""
+class LeonidSharedResourceLimitTypeResponse(BaseModel):
+    """Read-only shared resource limit type."""
 
     model_config = ConfigDict(extra="ignore")
 
-    step_name: str | None = None
-    error_message: str | None = None
-
-
-class LeonidFailedTest(BaseModel):
-    """A failed Leonid test with its failed steps."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    test_name: str | None = None
-    steps: list[LeonidFailedStep] | None = None
-
-
-class LeonidProductStatus(BaseModel):
-    """`/leonid/status` response shape."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    product: str
-    allow_to_deploy: bool | None = None
-    reason: str | None = None
-    failed_tests: list[LeonidFailedTest] | None = None
-    last_build_date: str | None = None
-    build_link: str | None = None
-    force_deploy: bool | None = None
-
-
-class LeonidTopFailedTest(BaseModel):
-    """A top failed test item from the Leonid summary report."""
-
-    model_config = ConfigDict(extra="ignore")
-
+    id: int
     name: str
-    count: int
 
 
-class LeonidReportSummary(BaseModel):
-    """`/leonid/report` response shape."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    failed_total: int
-    success_total: int
-    top_failed_tests: list[LeonidTopFailedTest] = Field(default_factory=list)
-    test_added: int
-
-
-class LeonidProductsResponse(BaseModel):
-    """`/leonid/products` response shape."""
+class LeonidSharedResourceLimitCreate(BaseModel):
+    """Create payload for a shared resource limit."""
 
     model_config = ConfigDict(extra="forbid")
 
-    products: list[str] = Field(default_factory=list)
-    configured: bool
+    resource_name: str = Field(min_length=1)
+    limit_type: int
+    limit_value: int
+    reset_date: str | None = None
+
+
+class LeonidSharedResourceLimitUpdate(LeonidSharedResourceLimitCreate):
+    """Replace payload for a shared resource limit."""
+
+
+class LeonidSharedResourceLimitPatch(BaseModel):
+    """Partial update payload for a shared resource limit."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    resource_name: str | None = Field(default=None, min_length=1)
+    limit_type: int | None = None
+    limit_value: int | None = None
+    reset_date: str | None = None
+
+
+class LeonidSharedResourceLimitResponse(BaseModel):
+    """Shared resource limit response."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: int
+    resource_name: str
+    limit_type: int
+    limit_value: int
+    reset_date: str | None = None
+
+
+class LeonidSharedResourceCreate(BaseModel):
+    """Create payload for a shared resource value."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    resource_limit: int
+    value: str = Field(min_length=1)
+    count: int
+    enabled: bool = True
+
+
+class LeonidSharedResourceUpdate(LeonidSharedResourceCreate):
+    """Replace payload for a shared resource value."""
+
+
+class LeonidSharedResourcePatch(BaseModel):
+    """Partial update payload for a shared resource value."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    resource_limit: int | None = None
+    value: str | None = Field(default=None, min_length=1)
+    count: int | None = None
+    enabled: bool | None = None
+
+
+class LeonidSharedResourceResponse(BaseModel):
+    """Shared resource value response."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: int
+    resource_limit: int
+    value: str
+    count: int
+    enabled: bool
+
+
+class LeonidObjectDefinitionCreate(BaseModel):
+    """Create payload for an object definition."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    object_name: str = Field(min_length=1)
+    comment: str | None = None
+    enabled: bool = True
+
+
+class LeonidObjectDefinitionUpdate(LeonidObjectDefinitionCreate):
+    """Replace payload for an object definition."""
+
+
+class LeonidObjectDefinitionPatch(BaseModel):
+    """Partial update payload for an object definition."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    object_name: str | None = Field(default=None, min_length=1)
+    comment: str | None = None
+    enabled: bool | None = None
+
+
+class LeonidObjectDefinitionResponse(BaseModel):
+    """Object definition response."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: int
+    object_name: str
+    comment: str | None = None
+    enabled: bool
+
+
+class LeonidObjectValueCreate(BaseModel):
+    """Create payload for an object value."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    object: int
+    environment: int
+    value: str = Field(min_length=1)
+    comment: str | None = None
+    enabled: bool = True
+
+
+class LeonidObjectValueUpdate(LeonidObjectValueCreate):
+    """Replace payload for an object value."""
+
+
+class LeonidObjectValuePatch(BaseModel):
+    """Partial update payload for an object value."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    object: int | None = None
+    environment: int | None = None
+    value: str | None = Field(default=None, min_length=1)
+    comment: str | None = None
+    enabled: bool | None = None
+
+
+class LeonidObjectValueResponse(BaseModel):
+    """Object value response."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: int
+    object: int
+    environment: int
+    value: str
+    comment: str | None = None
+    enabled: bool
+
+
+class LeonidPipelineParamCreate(BaseModel):
+    """Create payload for a pipeline config."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    job_path: str = Field(min_length=1)
+    # Leonid stores params as an arbitrary JSON value (list or object seen live).
+    params: Any = Field(default_factory=list)
+
+
+class LeonidPipelineParamUpdate(LeonidPipelineParamCreate):
+    """Replace payload for a pipeline config."""
+
+
+class LeonidPipelineParamPatch(BaseModel):
+    """Partial update payload for a pipeline config."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1)
+    job_path: str | None = Field(default=None, min_length=1)
+    params: Any = None
+
+
+class LeonidPipelineParamResponse(BaseModel):
+    """Pipeline config response."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: int
+    name: str
+    job_path: str
+    params: Any = Field(default_factory=list)
 
 
 def to_agent_settings_read(settings: Settings) -> AgentSettingsRead:

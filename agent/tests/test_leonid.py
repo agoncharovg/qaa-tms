@@ -9,10 +9,41 @@ from app.api import routes as api_routes
 from app.core.config import Settings
 from app.core.constants import ErrorMessage
 from app.services.leonid import (
-    LeonidNotConfiguredError,
     LeonidUnreachableError,
-    fetch_report,
-    fetch_status,
+    create_object_definition,
+    create_object_value,
+    create_pipeline_param,
+    create_shared_resource,
+    create_shared_resource_limit,
+    delete_object_definition,
+    delete_object_value,
+    delete_pipeline_param,
+    delete_shared_resource,
+    delete_shared_resource_limit,
+    get_object_definition,
+    get_object_value,
+    get_pipeline_param,
+    get_shared_resource,
+    get_shared_resource_limit,
+    list_object_definitions,
+    list_object_values,
+    list_pipeline_params,
+    list_shared_resource_limit_types,
+    list_shared_resource_limits,
+    list_shared_resources,
+    patch_object_definition,
+    patch_object_value,
+    patch_pipeline_param,
+    patch_shared_resource,
+    patch_shared_resource_limit,
+    toggle_object_definition,
+    toggle_object_value,
+    toggle_shared_resource,
+    update_object_definition,
+    update_object_value,
+    update_pipeline_param,
+    update_shared_resource,
+    update_shared_resource_limit,
 )
 
 LEONID_BASE_URL = "https://leonid-prod.i.gc.onl"
@@ -21,466 +52,351 @@ LEONID_BASE_URL = "https://leonid-prod.i.gc.onl"
 def build_settings(
     *,
     leonid_url: str = LEONID_BASE_URL,
-    leonid_products: str | list[str] | None = None,
+    leonid_token: str = "shared-secret",
 ) -> Settings:
-    settings_kwargs: dict[str, Any] = {
-        "AGENT_HOST": "127.0.0.1",
-        "AGENT_PORT": 47600,
-        "AGENT_BACKEND_URL": "http://backend.test",
-        "AGENT_CORS_ORIGINS": "http://localhost:3000,http://127.0.0.1:3000",
-        "AGENT_LEONID_URL": leonid_url,
-        "AGENT_LEONID_REQUEST_TIMEOUT": 15.0,
+    return Settings(
+        AGENT_HOST="127.0.0.1",
+        AGENT_PORT=47600,
+        AGENT_BACKEND_URL="http://backend.test",
+        AGENT_CORS_ORIGINS="http://localhost:3000,http://127.0.0.1:3000",
+        AGENT_LEONID_URL=leonid_url,
+        AGENT_LEONID_TOKEN=leonid_token,
+        AGENT_LEONID_REQUEST_TIMEOUT=15.0,
+    )
+
+
+def shared_limit_payload(limit_id: int = 7, limit_value: int = 4) -> dict[str, Any]:
+    return {
+        "id": limit_id,
+        "resource_name": "gpu",
+        "limit_type": 1,
+        "limit_value": limit_value,
+        "reset_date": None,
     }
-    if leonid_products is not None:
-        settings_kwargs["AGENT_LEONID_PRODUCTS"] = leonid_products
-    return Settings(**settings_kwargs)
 
 
 @pytest.mark.asyncio
-async def test_fetch_status_reads_the_expected_product_endpoint() -> None:
+async def test_list_shared_resource_limit_types_reads_expected_endpoint() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "GET"
-        assert str(request.url) == f"{LEONID_BASE_URL}/api/iam/status/"
-        return httpx.Response(
-            status_code=200,
-            json={
-                "allow_to_deploy": True,
-                "reason": None,
-                "failed_tests": None,
-                "last_build_date": "2026-08-21T09:00:00Z",
-                "build_link": "https://jenkins.example/build/42",
-                "force_deploy": False,
-            },
-        )
+        assert str(request.url) == f"{LEONID_BASE_URL}/api/shared_resource_limit_types/"
+        assert request.headers.get("X-Leonid-Token") is None
+        return httpx.Response(status_code=200, json=[{"id": 1, "name": "day"}])
 
-    payload = await fetch_status(
+    payload = await list_shared_resource_limit_types(
         build_settings(),
-        "IAM",
         transport=httpx.MockTransport(handler),
     )
 
-    assert payload == {
-        "allow_to_deploy": True,
-        "reason": None,
-        "failed_tests": None,
-        "last_build_date": "2026-08-21T09:00:00Z",
-        "build_link": "https://jenkins.example/build/42",
-        "force_deploy": False,
-    }
+    assert payload == [{"id": 1, "name": "day"}]
 
 
 @pytest.mark.asyncio
-async def test_fetch_status_returns_none_when_leonid_has_no_product_data() -> None:
-    async def handler(_: httpx.Request) -> httpx.Response:
+async def test_shared_resource_limits_crud_uses_expected_endpoints() -> None:
+    requests: list[tuple[str, str, str | None]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append((request.method, request.url.path, request.headers.get("X-Leonid-Token")))
+        if request.method == "GET" and request.url.path.endswith("/shared_resource_limits/"):
+            return httpx.Response(status_code=200, json=[shared_limit_payload()])
+        if request.method == "GET":
+            return httpx.Response(status_code=200, json=shared_limit_payload())
+        if request.method == "POST":
+            assert request.headers["X-Leonid-Token"] == "shared-secret"
+            return httpx.Response(
+                status_code=201, json=shared_limit_payload(limit_id=8, limit_value=5)
+            )
+        if request.method in {"PUT", "PATCH"}:
+            assert request.headers["X-Leonid-Token"] == "shared-secret"
+            return httpx.Response(
+                status_code=200, json=shared_limit_payload(limit_id=8, limit_value=6)
+            )
         return httpx.Response(status_code=204)
 
-    payload = await fetch_status(
-        build_settings(),
-        "waap",
-        transport=httpx.MockTransport(handler),
+    transport = httpx.MockTransport(handler)
+    settings = build_settings()
+
+    assert await list_shared_resource_limits(settings, transport=transport) == [
+        shared_limit_payload()
+    ]
+    assert (
+        await get_shared_resource_limit(settings, 7, transport=transport) == shared_limit_payload()
     )
+    assert await create_shared_resource_limit(
+        settings,
+        {"resource_name": "gpu", "limit_type": 1, "limit_value": 5, "reset_date": None},
+        transport=transport,
+    ) == shared_limit_payload(limit_id=8, limit_value=5)
+    assert await update_shared_resource_limit(
+        settings,
+        8,
+        {"resource_name": "gpu", "limit_type": 1, "limit_value": 6, "reset_date": None},
+        transport=transport,
+    ) == shared_limit_payload(limit_id=8, limit_value=6)
+    assert await patch_shared_resource_limit(
+        settings,
+        8,
+        {"limit_value": 6},
+        transport=transport,
+    ) == shared_limit_payload(limit_id=8, limit_value=6)
+    await delete_shared_resource_limit(settings, 8, transport=transport)
 
-    assert payload is None
+    assert [item[0] for item in requests] == ["GET", "GET", "POST", "PUT", "PATCH", "DELETE"]
 
 
 @pytest.mark.asyncio
-async def test_fetch_status_requires_local_leonid_configuration() -> None:
-    with pytest.raises(LeonidNotConfiguredError, match="Leonid is not configured"):
-        await fetch_status(build_settings(leonid_url=""), "iam")
+async def test_shared_resources_crud_and_toggle_use_expected_endpoints() -> None:
+    seen_paths: list[str] = []
 
-
-@pytest.mark.asyncio
-async def test_fetch_report_passes_date_and_optional_filters() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
-        assert request.method == "GET"
-        assert str(request.url) == (
-            f"{LEONID_BASE_URL}/api/report/billing/summary/"
-            "?start_date=2026-08-01&end_date=2026-08-21&environment=PROD&test_type=UI"
-        )
-        return httpx.Response(
-            status_code=200,
-            json={
-                "failed_total": 3,
-                "success_total": 17,
-                "top_failed_tests": [{"name": "checkout smoke", "count": 2}],
-                "test_added": 1,
-            },
-        )
+        seen_paths.append(request.url.path)
+        payload = {"id": 3, "resource_limit": 8, "value": "spot-1", "count": 2, "enabled": True}
+        toggled = {"id": 3, "resource_limit": 8, "value": "spot-1", "count": 1, "enabled": False}
+        if request.method == "GET" and request.url.path.endswith("/shared_resources/"):
+            return httpx.Response(status_code=200, json=[payload])
+        if request.method == "GET":
+            return httpx.Response(status_code=200, json=payload)
+        if request.method == "DELETE":
+            return httpx.Response(status_code=204)
+        return httpx.Response(status_code=200, json=toggled)
 
-    payload = await fetch_report(
-        build_settings(),
-        "Billing",
-        "2026-08-01",
-        "2026-08-21",
-        environment="PROD",
-        test_type="UI",
-        transport=httpx.MockTransport(handler),
+    transport = httpx.MockTransport(handler)
+    settings = build_settings()
+
+    await list_shared_resources(settings, transport=transport)
+    await get_shared_resource(settings, 3, transport=transport)
+    await create_shared_resource(
+        settings,
+        {"resource_limit": 8, "value": "spot-1", "count": 2, "enabled": True},
+        transport=transport,
     )
+    await update_shared_resource(
+        settings,
+        3,
+        {"resource_limit": 8, "value": "spot-1", "count": 1, "enabled": True},
+        transport=transport,
+    )
+    await patch_shared_resource(settings, 3, {"enabled": False}, transport=transport)
+    await toggle_shared_resource(settings, 3, transport=transport)
+    await delete_shared_resource(settings, 3, transport=transport)
 
-    assert payload == {
-        "failed_total": 3,
-        "success_total": 17,
-        "top_failed_tests": [{"name": "checkout smoke", "count": 2}],
-        "test_added": 1,
-    }
+    assert "/api/shared_resources/3/toggle_enabled/" in seen_paths
 
 
 @pytest.mark.asyncio
-async def test_fetch_report_maps_http_errors_to_unreachable() -> None:
-    async def handler(_: httpx.Request) -> httpx.Response:
-        return httpx.Response(status_code=503, json={"detail": "upstream unavailable"})
+async def test_object_definition_crud_and_toggle_use_expected_endpoints() -> None:
+    seen_paths: list[str] = []
 
-    with pytest.raises(LeonidUnreachableError, match=ErrorMessage.LEONID_UNREACHABLE.value):
-        await fetch_report(
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen_paths.append(request.url.path)
+        payload = {"id": 2, "object_name": "bucket", "comment": None, "enabled": True}
+        toggled = {"id": 2, "object_name": "bucket", "comment": "keep", "enabled": False}
+        if request.method == "GET" and request.url.path.endswith("/object_definitions/"):
+            return httpx.Response(status_code=200, json=[payload])
+        if request.method == "GET":
+            return httpx.Response(status_code=200, json=payload)
+        if request.method == "DELETE":
+            return httpx.Response(status_code=204)
+        return httpx.Response(status_code=200, json=toggled)
+
+    transport = httpx.MockTransport(handler)
+    settings = build_settings()
+
+    await list_object_definitions(settings, transport=transport)
+    await get_object_definition(settings, 2, transport=transport)
+    await create_object_definition(
+        settings, {"object_name": "bucket", "comment": None, "enabled": True}, transport=transport
+    )
+    await update_object_definition(
+        settings,
+        2,
+        {"object_name": "bucket", "comment": "keep", "enabled": True},
+        transport=transport,
+    )
+    await patch_object_definition(settings, 2, {"enabled": False}, transport=transport)
+    await toggle_object_definition(settings, 2, transport=transport)
+    await delete_object_definition(settings, 2, transport=transport)
+
+    assert "/api/object_definitions/2/toggle_enabled/" in seen_paths
+
+
+@pytest.mark.asyncio
+async def test_object_value_crud_and_toggle_use_expected_endpoints() -> None:
+    seen_paths: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen_paths.append(request.url.path)
+        payload = {
+            "id": 4,
+            "object": 2,
+            "environment": 12,
+            "value": "arn:123",
+            "comment": None,
+            "enabled": True,
+        }
+        toggled = {
+            "id": 4,
+            "object": 2,
+            "environment": 12,
+            "value": "arn:123",
+            "comment": "prod",
+            "enabled": False,
+        }
+        if request.method == "GET" and request.url.path.endswith("/object_values/"):
+            return httpx.Response(status_code=200, json=[payload])
+        if request.method == "GET":
+            return httpx.Response(status_code=200, json=payload)
+        if request.method == "DELETE":
+            return httpx.Response(status_code=204)
+        return httpx.Response(status_code=200, json=toggled)
+
+    transport = httpx.MockTransport(handler)
+    settings = build_settings()
+
+    await list_object_values(settings, transport=transport)
+    await get_object_value(settings, 4, transport=transport)
+    await create_object_value(
+        settings,
+        {"object": 2, "environment": 12, "value": "arn:123", "comment": None, "enabled": True},
+        transport=transport,
+    )
+    await update_object_value(
+        settings,
+        4,
+        {"object": 2, "environment": 12, "value": "arn:123", "comment": "prod", "enabled": True},
+        transport=transport,
+    )
+    await patch_object_value(settings, 4, {"enabled": False}, transport=transport)
+    await toggle_object_value(settings, 4, transport=transport)
+    await delete_object_value(settings, 4, transport=transport)
+
+    assert "/api/object_values/4/toggle_enabled/" in seen_paths
+
+
+@pytest.mark.asyncio
+async def test_pipeline_params_crud_uses_expected_endpoints() -> None:
+    seen_paths: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen_paths.append(request.url.path)
+        payload = {"id": 9, "name": "nightly", "job_path": "job/nightly", "params": ["--smoke"]}
+        updated = {
+            "id": 9,
+            "name": "nightly",
+            "job_path": "job/nightly",
+            "params": ["--smoke", "--retries=2"],
+        }
+        if request.method == "GET" and request.url.path.endswith("/pipeline_params/"):
+            return httpx.Response(status_code=200, json=[payload])
+        if request.method == "GET":
+            return httpx.Response(status_code=200, json=payload)
+        if request.method == "DELETE":
+            return httpx.Response(status_code=204)
+        return httpx.Response(status_code=200, json=updated)
+
+    transport = httpx.MockTransport(handler)
+    settings = build_settings()
+
+    await list_pipeline_params(settings, transport=transport)
+    await get_pipeline_param(settings, 9, transport=transport)
+    await create_pipeline_param(
+        settings,
+        {"name": "nightly", "job_path": "job/nightly", "params": ["--smoke"]},
+        transport=transport,
+    )
+    await update_pipeline_param(
+        settings,
+        9,
+        {"name": "nightly", "job_path": "job/nightly", "params": ["--smoke", "--retries=2"]},
+        transport=transport,
+    )
+    await patch_pipeline_param(
+        settings, 9, {"params": ["--smoke", "--retries=2"]}, transport=transport
+    )
+    await delete_pipeline_param(settings, 9, transport=transport)
+
+    assert seen_paths[-1] == "/api/pipeline_params/9/"
+
+
+@pytest.mark.asyncio
+async def test_create_shared_resource_limit_maps_upstream_forbidden_to_unreachable() -> None:
+    async def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(status_code=403, json={"detail": "bad token"})
+
+    with pytest.raises(LeonidUnreachableError, match=ErrorMessage.LEONID_UPSTREAM_REJECTED.value):
+        await create_shared_resource_limit(
             build_settings(),
-            "iam",
-            "2026-08-01",
-            "2026-08-21",
-            environment=None,
-            test_type=None,
+            {"resource_name": "gpu", "limit_type": 1, "limit_value": 5, "reset_date": None},
             transport=httpx.MockTransport(handler),
         )
 
 
 @pytest.mark.asyncio
-async def test_leonid_products_route_returns_candidates_and_configured_flag(
+async def test_leonid_shared_resource_limits_route_returns_503_when_url_missing(
     client: httpx.AsyncClient,
     auth_headers: dict[str, str],
 ) -> None:
-    client._transport.app.state.settings = build_settings(
-        leonid_products="iam,storage,qaa",
+    client._transport.app.state.settings = build_settings(leonid_url="")
+
+    response = await client.get("/leonid/shared_resource_limits", headers=auth_headers)
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": ErrorMessage.LEONID_NOT_CONFIGURED.value}
+
+
+@pytest.mark.asyncio
+async def test_leonid_shared_resource_limit_create_returns_503_when_token_missing(
+    client: httpx.AsyncClient,
+    auth_headers: dict[str, str],
+) -> None:
+    client._transport.app.state.settings = build_settings(leonid_token="")
+
+    response = await client.post(
+        "/leonid/shared_resource_limits",
+        headers=auth_headers,
+        json={"resource_name": "gpu", "limit_type": 1, "limit_value": 5, "reset_date": None},
     )
 
-    response = await client.get("/leonid/products", headers=auth_headers)
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "configured": True,
-        "products": ["iam", "storage", "qaa"],
-    }
+    assert response.status_code == 503
+    assert response.json() == {"detail": ErrorMessage.LEONID_WRITE_NOT_CONFIGURED.value}
 
 
 @pytest.mark.asyncio
-async def test_leonid_status_route_returns_404_for_products_without_data(
+async def test_leonid_shared_resource_limit_create_returns_502_on_upstream_forbidden(
     client: httpx.AsyncClient,
     auth_headers: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def fake_fetch_status(settings: Settings, product: str) -> dict[str, Any] | None:
-        del settings, product
-        return None
+    client._transport.app.state.settings = build_settings()
 
-    monkeypatch.setattr(api_routes, "fetch_status", fake_fetch_status)
+    async def fake_create(settings: Settings, body: dict[str, Any]) -> dict[str, Any]:
+        del settings, body
+        raise LeonidUnreachableError(ErrorMessage.LEONID_UPSTREAM_REJECTED.value)
 
-    response = await client.get("/leonid/status", headers=auth_headers, params={"product": "cdn"})
+    monkeypatch.setattr(api_routes, "create_shared_resource_limit", fake_create)
 
-    assert response.status_code == 404
-    assert response.json() == {"detail": "Leonid has no data for this product."}
-
-
-@pytest.mark.asyncio
-async def test_leonid_status_route_maps_configuration_and_network_failures(
-    client: httpx.AsyncClient,
-    auth_headers: dict[str, str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def fake_not_configured(
-        settings: Settings,
-        product: str,
-    ) -> dict[str, Any] | None:
-        del settings, product
-        raise LeonidNotConfiguredError(ErrorMessage.LEONID_NOT_CONFIGURED.value)
-
-    async def fake_unreachable(
-        settings: Settings,
-        product: str,
-    ) -> dict[str, Any] | None:
-        del settings, product
-        raise LeonidUnreachableError(ErrorMessage.LEONID_UNREACHABLE.value)
-
-    monkeypatch.setattr(api_routes, "fetch_status", fake_not_configured)
-    not_configured = await client.get(
-        "/leonid/status",
+    response = await client.post(
+        "/leonid/shared_resource_limits",
         headers=auth_headers,
-        params={"product": "iam"},
+        json={"resource_name": "gpu", "limit_type": 1, "limit_value": 5, "reset_date": None},
     )
 
-    monkeypatch.setattr(api_routes, "fetch_status", fake_unreachable)
-    unreachable = await client.get(
-        "/leonid/status",
-        headers=auth_headers,
-        params={"product": "iam"},
-    )
-
-    assert not_configured.status_code == 503
-    assert not_configured.json() == {"detail": ErrorMessage.LEONID_NOT_CONFIGURED.value}
-    assert unreachable.status_code == 502
-    assert unreachable.json() == {"detail": ErrorMessage.LEONID_UNREACHABLE.value}
+    assert response.status_code == 502
+    assert response.json() == {"detail": ErrorMessage.LEONID_UPSTREAM_REJECTED.value}
 
 
 @pytest.mark.asyncio
-async def test_leonid_status_route_returns_agent_augmented_product_payload(
+async def test_leonid_shared_resource_limit_create_validates_request_body_as_400(
     client: httpx.AsyncClient,
     auth_headers: dict[str, str],
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def fake_fetch_status(settings: Settings, product: str) -> dict[str, Any] | None:
-        del settings
-        assert product == "IAM"
-        return {
-            "allow_to_deploy": False,
-            "reason": "2 failed UI tests",
-            "failed_tests": [
-                {
-                    "test_name": "billing smoke",
-                    "steps": [
-                        {
-                            "step_name": "checkout",
-                            "error_message": "Button stayed disabled",
-                        }
-                    ],
-                }
-            ],
-            "last_build_date": "2026-08-21T10:15:00Z",
-            "build_link": "https://jenkins.example/build/77",
-            "force_deploy": False,
-        }
+    client._transport.app.state.settings = build_settings()
 
-    monkeypatch.setattr(api_routes, "fetch_status", fake_fetch_status)
-
-    response = await client.get("/leonid/status", headers=auth_headers, params={"product": "IAM"})
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "product": "iam",
-        "allow_to_deploy": False,
-        "reason": "2 failed UI tests",
-        "failed_tests": [
-            {
-                "test_name": "billing smoke",
-                "steps": [
-                    {
-                        "step_name": "checkout",
-                        "error_message": "Button stayed disabled",
-                    }
-                ],
-            }
-        ],
-        "last_build_date": "2026-08-21T10:15:00Z",
-        "build_link": "https://jenkins.example/build/77",
-        "force_deploy": False,
-    }
-
-
-@pytest.mark.asyncio
-async def test_leonid_report_route_validates_dates_as_yyyy_mm_dd(
-    client: httpx.AsyncClient,
-    auth_headers: dict[str, str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def fake_fetch_report(*args: Any, **kwargs: Any) -> dict[str, Any]:
-        raise AssertionError("fetch_report should not be called for invalid dates")
-
-    monkeypatch.setattr(api_routes, "fetch_report", fake_fetch_report)
-
-    response = await client.get(
-        "/leonid/report",
+    response = await client.post(
+        "/leonid/shared_resource_limits",
         headers=auth_headers,
-        params={
-            "product": "iam",
-            "start_date": "2026/08/01",
-            "end_date": "2026-08-21",
-        },
+        json={"resource_name": "gpu"},
     )
 
     assert response.status_code == 400
-    assert response.json() == {"detail": "start_date must use YYYY-MM-DD format."}
-
-
-@pytest.mark.asyncio
-async def test_leonid_report_route_returns_summary_payload(
-    client: httpx.AsyncClient,
-    auth_headers: dict[str, str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def fake_fetch_report(
-        settings: Settings,
-        product: str,
-        start_date: str,
-        end_date: str,
-        environment: str | None,
-        test_type: str | None,
-    ) -> dict[str, Any]:
-        del settings
-        assert product == "billing"
-        assert start_date == "2026-08-01"
-        assert end_date == "2026-08-21"
-        assert environment == "PREPROD"
-        assert test_type is None
-        return {
-            "failed_total": 5,
-            "success_total": 21,
-            "top_failed_tests": [
-                {"name": "checkout smoke", "count": 3},
-                {"name": "refund smoke", "count": 1},
-            ],
-            "test_added": 2,
-        }
-
-    monkeypatch.setattr(api_routes, "fetch_report", fake_fetch_report)
-
-    response = await client.get(
-        "/leonid/report",
-        headers=auth_headers,
-        params={
-            "product": "billing",
-            "start_date": "2026-08-01",
-            "end_date": "2026-08-21",
-            "environment": "PREPROD",
-        },
-    )
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "failed_total": 5,
-        "success_total": 21,
-        "top_failed_tests": [
-            {"name": "checkout smoke", "count": 3},
-            {"name": "refund smoke", "count": 1},
-        ],
-        "test_added": 2,
-    }
-
-
-@pytest.mark.asyncio
-async def test_leonid_routes_ignore_unknown_fields_from_upstream_payloads(
-    client: httpx.AsyncClient,
-    auth_headers: dict[str, str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def status_handler(request: httpx.Request) -> httpx.Response:
-        assert request.method == "GET"
-        assert str(request.url) == f"{LEONID_BASE_URL}/api/iam/status/"
-        return httpx.Response(
-            status_code=200,
-            json={
-                "allow_to_deploy": True,
-                "reason": "green build",
-                "failed_tests": [
-                    {
-                        "test_name": "billing smoke",
-                        "unexpected_test_field": "ignored",
-                        "steps": [
-                            {
-                                "step_name": "checkout",
-                                "error_message": "Button stayed disabled",
-                                "unexpected_step_field": 7,
-                            }
-                        ],
-                    }
-                ],
-                "last_build_date": "2026-08-21T10:15:00Z",
-                "build_link": "https://jenkins.example/build/88",
-                "force_deploy": False,
-                "extra_field": 1,
-            },
-        )
-
-    async def fake_fetch_status(settings: Settings, product: str) -> dict[str, Any] | None:
-        del settings
-        return await fetch_status(
-            build_settings(),
-            product,
-            transport=httpx.MockTransport(status_handler),
-        )
-
-    monkeypatch.setattr(api_routes, "fetch_status", fake_fetch_status)
-
-    status_response = await client.get(
-        "/leonid/status",
-        headers=auth_headers,
-        params={"product": "IAM"},
-    )
-
-    assert status_response.status_code == 200
-    assert status_response.json() == {
-        "product": "iam",
-        "allow_to_deploy": True,
-        "reason": "green build",
-        "failed_tests": [
-            {
-                "test_name": "billing smoke",
-                "steps": [
-                    {
-                        "step_name": "checkout",
-                        "error_message": "Button stayed disabled",
-                    }
-                ],
-            }
-        ],
-        "last_build_date": "2026-08-21T10:15:00Z",
-        "build_link": "https://jenkins.example/build/88",
-        "force_deploy": False,
-    }
-
-    async def report_handler(request: httpx.Request) -> httpx.Response:
-        assert request.method == "GET"
-        assert str(request.url) == (
-            f"{LEONID_BASE_URL}/api/report/billing/summary/"
-            "?start_date=2026-08-01&end_date=2026-08-21"
-        )
-        return httpx.Response(
-            status_code=200,
-            json={
-                "failed_total": 5,
-                "success_total": 21,
-                "top_failed_tests": [
-                    {"name": "checkout smoke", "count": 3, "unexpected_rank": 1},
-                    {"name": "refund smoke", "count": 1, "unexpected_rank": 2},
-                ],
-                "test_added": 2,
-                "new_metric": 5,
-            },
-        )
-
-    async def fake_fetch_report(
-        settings: Settings,
-        product: str,
-        start_date: str,
-        end_date: str,
-        environment: str | None,
-        test_type: str | None,
-    ) -> dict[str, Any]:
-        del settings
-        return await fetch_report(
-            build_settings(),
-            product,
-            start_date,
-            end_date,
-            environment,
-            test_type,
-            transport=httpx.MockTransport(report_handler),
-        )
-
-    monkeypatch.setattr(api_routes, "fetch_report", fake_fetch_report)
-
-    report_response = await client.get(
-        "/leonid/report",
-        headers=auth_headers,
-        params={
-            "product": "billing",
-            "start_date": "2026-08-01",
-            "end_date": "2026-08-21",
-        },
-    )
-
-    assert report_response.status_code == 200
-    assert report_response.json() == {
-        "failed_total": 5,
-        "success_total": 21,
-        "top_failed_tests": [
-            {"name": "checkout smoke", "count": 3},
-            {"name": "refund smoke", "count": 1},
-        ],
-        "test_added": 2,
-    }
+    assert response.json()["detail"].startswith("Invalid request body:")

@@ -1,13 +1,16 @@
 import { CompanionGate } from "@/plugins/companion/CompanionGate";
 import { ViewKey, type ViewKey as ViewKeyType } from "@/constants";
-import { DeployGatePanel } from "@/plugins/leonid/DeployGatePanel";
-import { ReportPanel } from "@/plugins/leonid/ReportPanel";
+import { ObjectsPanel } from "@/plugins/leonid/ObjectsPanel";
+import { PipelineConfigsPanel } from "@/plugins/leonid/PipelineConfigsPanel";
+import { SharedResourcesPanel } from "@/plugins/leonid/SharedResourcesPanel";
 import { useAuthStore } from "@/store/authStore";
 
 interface LeonidSectionProps {
   mode: Extract<
     ViewKeyType,
-    typeof ViewKey.LEONID_DEPLOY | typeof ViewKey.LEONID_REPORT
+    typeof ViewKey.LEONID_SHARED_RESOURCES
+      | typeof ViewKey.LEONID_OBJECTS
+      | typeof ViewKey.LEONID_PIPELINE_CONFIGS
   >;
 }
 
@@ -23,11 +26,15 @@ function LeonidAgentSection({
   mode: LeonidSectionProps["mode"];
   port: number;
 }) {
-  if (mode === ViewKey.LEONID_REPORT) {
-    return <ReportPanel agentPort={port} />;
+  if (mode === ViewKey.LEONID_OBJECTS) {
+    return <ObjectsPanel agentPort={port} />;
   }
 
-  return <DeployGatePanel agentPort={port} />;
+  if (mode === ViewKey.LEONID_PIPELINE_CONFIGS) {
+    return <PipelineConfigsPanel agentPort={port} />;
+  }
+
+  return <SharedResourcesPanel agentPort={port} />;
 }
 
 export function LeonidSection({ mode }: LeonidSectionProps) {

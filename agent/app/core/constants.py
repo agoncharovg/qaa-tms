@@ -10,9 +10,12 @@ class AgentPath(StrEnum):
     SETTINGS = "/settings"
     PREFLIGHT = "/preflight"
     UPDATE = "/update"
-    LEONID_PRODUCTS = "/leonid/products"
-    LEONID_STATUS = "/leonid/status"
-    LEONID_REPORT = "/leonid/report"
+    LEONID_SHARED_RESOURCE_LIMIT_TYPES = "/leonid/shared_resource_limit_types"
+    LEONID_SHARED_RESOURCE_LIMITS = "/leonid/shared_resource_limits"
+    LEONID_SHARED_RESOURCES = "/leonid/shared_resources"
+    LEONID_OBJECT_DEFINITIONS = "/leonid/object_definitions"
+    LEONID_OBJECT_VALUES = "/leonid/object_values"
+    LEONID_PIPELINE_PARAMS = "/leonid/pipeline_params"
     JENKINS_SCOPE = "/jenkins/scope"
     JENKINS_TREE = "/jenkins/tree"
     JENKINS_BUILDS = "/jenkins/builds"
@@ -119,7 +122,7 @@ class JenkinsResumeItemState(StrEnum):
 
 class EnvKey(StrEnum):
     LEONID_URL = "AGENT_LEONID_URL"
-    LEONID_PRODUCTS = "AGENT_LEONID_PRODUCTS"
+    LEONID_TOKEN = "AGENT_LEONID_TOKEN"
     LEONID_REQUEST_TIMEOUT = "AGENT_LEONID_REQUEST_TIMEOUT"
     HOST = "AGENT_HOST"
     PORT = "AGENT_PORT"
@@ -168,6 +171,7 @@ class HeaderName(StrEnum):
     ORIGIN = "Origin"
     VARY = "Vary"
     X_QAA_GENERATOR_TOKEN = "X-QAA-Generator-Token"
+    X_LEONID_TOKEN = "X-Leonid-Token"
     X_QAA_TMS = "X-QAA-TMS"
 
 
@@ -334,7 +338,11 @@ class ErrorMessage(StrEnum):
     STAGING_BINARY_NOT_INSTALLED = "The staging binary is not installed."
     UNAUTHORIZED = "Unauthorized."
     LEONID_NOT_CONFIGURED = "Leonid is not configured (set AGENT_LEONID_URL)."
+    LEONID_WRITE_NOT_CONFIGURED = (
+        "Leonid write access is not configured (set AGENT_LEONID_URL and AGENT_LEONID_TOKEN)."
+    )
     LEONID_UNREACHABLE = "Leonid is unreachable."
+    LEONID_UPSTREAM_REJECTED = "Leonid rejected the shared token."
     JENKINS_NOT_CONFIGURED = "Jenkins is not configured (set AGENT_JENKINS_URL/USERNAME/TOKEN)."
     JENKINS_UNREACHABLE = "Jenkins is unreachable."
     JENKINS_PATH_OUT_OF_SCOPE = "Requested job path is outside the allowed Jenkins scope."
@@ -377,20 +385,7 @@ AGENT_APP_NAME = "qaa-tms-agent"
 DEFAULT_AGENT_VERSION = "0.1.0"
 DEFAULT_AGENT_HOST = "127.0.0.1"
 DEFAULT_AGENT_PORT = 47600
-DEFAULT_LEONID_URL = "https://leonid-prod.i.gc.onl"
-DEFAULT_LEONID_PRODUCTS = (
-    "iam",
-    "storage",
-    "qaa",
-    "billing",
-    "cdn",
-    "cloud",
-    "balancer",
-    "dns",
-    "streaming",
-    "notifications",
-    "waap",
-)
+DEFAULT_LEONID_URL = "https://leonid-preprod.i.gc.onl"
 DEFAULT_LEONID_REQUEST_TIMEOUT = 15.0
 DEFAULT_BACKEND_URL = "http://localhost:8000"
 DEFAULT_CORS_ORIGINS = (

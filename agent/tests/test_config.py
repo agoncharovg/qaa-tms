@@ -87,20 +87,16 @@ def test_leonid_url_can_be_disabled_with_an_empty_env_value(
     assert settings.leonid_configured is False
 
 
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        ("IAM, Storage ,QAA", ["iam", "storage", "qaa"]),
-        ('["IAM", "storage", "cdn"]', ["iam", "storage", "cdn"]),
-    ],
-)
-def test_leonid_products_load_from_csv_or_json(
+def test_leonid_write_configured_requires_both_url_and_token(
     monkeypatch: pytest.MonkeyPatch,
-    value: str,
-    expected: list[str],
 ) -> None:
-    monkeypatch.setenv(EnvKey.LEONID_PRODUCTS.value, value)
+    monkeypatch.setenv(EnvKey.LEONID_URL.value, "https://leonid.example")
+    monkeypatch.delenv(EnvKey.LEONID_TOKEN.value, raising=False)
 
-    settings = Settings(_env_file=None)
+    without_token = Settings(_env_file=None)
+    assert without_token.leonid_write_configured is False
 
-    assert settings.leonid_products == expected
+    monkeypatch.setenv(EnvKey.LEONID_TOKEN.value, "shared-secret")
+
+    with_token = Settings(_env_file=None)
+    assert with_token.leonid_write_configured is True

@@ -26,7 +26,6 @@ from app.core.constants import (
     DEFAULT_KUBECONFIG_ACTIVE_PATH,
     DEFAULT_KUBECTL_BIN,
     DEFAULT_KUBECTL_REQUEST_TIMEOUT,
-    DEFAULT_LEONID_PRODUCTS,
     DEFAULT_LEONID_REQUEST_TIMEOUT,
     DEFAULT_LEONID_URL,
     DEFAULT_STAGING_KUBECONFIG,
@@ -73,10 +72,7 @@ class Settings(BaseSettings):
     )
     backend_url: str = Field(default=DEFAULT_BACKEND_URL, alias=EnvKey.BACKEND_URL.value)
     leonid_url: str = Field(default=DEFAULT_LEONID_URL, alias=EnvKey.LEONID_URL.value)
-    leonid_products: Annotated[list[str], NoDecode] = Field(
-        default_factory=lambda: list(DEFAULT_LEONID_PRODUCTS),
-        alias=EnvKey.LEONID_PRODUCTS.value,
-    )
+    leonid_token: str = Field(default="", alias=EnvKey.LEONID_TOKEN.value)
     leonid_request_timeout: float = Field(
         default=DEFAULT_LEONID_REQUEST_TIMEOUT,
         alias=EnvKey.LEONID_REQUEST_TIMEOUT.value,
@@ -213,9 +209,7 @@ class Settings(BaseSettings):
                 if not isinstance(parsed, list):
                     raise ValueError("AGENT_CORS_ORIGINS must be a JSON array or CSV string.")
                 return [str(item).strip() for item in parsed if str(item).strip()]
-            return [
-                item.strip() for item in stripped.split(GROUP_LIST_SEPARATOR) if item.strip()
-            ]
+            return [item.strip() for item in stripped.split(GROUP_LIST_SEPARATOR) if item.strip()]
         raise ValueError("AGENT_CORS_ORIGINS must be a list or string.")
 
     @field_validator("jenkins_root_folders", mode="before")
@@ -238,43 +232,17 @@ class Settings(BaseSettings):
                     )
                 values = [str(item).strip() for item in parsed if str(item).strip()]
                 return values or list(DEFAULT_JENKINS_ROOT_FOLDERS)
-            values = [
-                item.strip() for item in stripped.split(GROUP_LIST_SEPARATOR) if item.strip()
-            ]
+            values = [item.strip() for item in stripped.split(GROUP_LIST_SEPARATOR) if item.strip()]
             return values or list(DEFAULT_JENKINS_ROOT_FOLDERS)
         raise ValueError("AGENT_JENKINS_ROOT_FOLDERS must be a list or string.")
-
-    @field_validator("leonid_products", mode="before")
-    @classmethod
-    def parse_leonid_products(cls, value: Any) -> list[str]:
-        if value is None:
-            return list(DEFAULT_LEONID_PRODUCTS)
-        if isinstance(value, list):
-            parsed = [str(item).strip().lower() for item in value if str(item).strip()]
-            return parsed or list(DEFAULT_LEONID_PRODUCTS)
-        if isinstance(value, str):
-            stripped = value.strip()
-            if not stripped:
-                return list(DEFAULT_LEONID_PRODUCTS)
-            if stripped.startswith("["):
-                parsed = json.loads(stripped)
-                if not isinstance(parsed, list):
-                    raise ValueError(
-                        "AGENT_LEONID_PRODUCTS must be a JSON array or CSV string."
-                    )
-                values = [str(item).strip().lower() for item in parsed if str(item).strip()]
-                return values or list(DEFAULT_LEONID_PRODUCTS)
-            values = [
-                item.strip().lower()
-                for item in stripped.split(GROUP_LIST_SEPARATOR)
-                if item.strip()
-            ]
-            return values or list(DEFAULT_LEONID_PRODUCTS)
-        raise ValueError("AGENT_LEONID_PRODUCTS must be a list or string.")
 
     @property
     def leonid_configured(self) -> bool:
         return bool(self.leonid_url)
+
+    @property
+    def leonid_write_configured(self) -> bool:
+        return bool(self.leonid_url and self.leonid_token)
 
     @property
     def jenkins_configured(self) -> bool:

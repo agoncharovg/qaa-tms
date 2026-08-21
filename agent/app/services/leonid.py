@@ -1,4 +1,4 @@
-"""Leonid read-only REST helpers for the local companion app."""
+"""Leonid CRUD REST helpers for the local companion app."""
 
 from __future__ import annotations
 
@@ -11,6 +11,13 @@ from app.core.config import Settings
 from app.core.constants import ErrorMessage, HeaderName, HeaderValue
 
 logger = logging.getLogger(__name__)
+
+LEONID_LIMIT_TYPE_PATH = "/api/shared_resource_limit_types/"
+LEONID_LIMIT_PATH = "/api/shared_resource_limits/"
+LEONID_RESOURCE_PATH = "/api/shared_resources/"
+LEONID_OBJECT_DEFINITION_PATH = "/api/object_definitions/"
+LEONID_OBJECT_VALUE_PATH = "/api/object_values/"
+LEONID_PIPELINE_PARAM_PATH = "/api/pipeline_params/"
 
 
 class LeonidNotConfiguredError(RuntimeError):
@@ -28,19 +35,30 @@ def require_configured(settings: Settings) -> None:
         raise LeonidNotConfiguredError(ErrorMessage.LEONID_NOT_CONFIGURED.value)
 
 
-async def _get_json(
+def _detail_path(collection_path: str, item_id: int) -> str:
+    return f"{collection_path}{item_id}/"
+
+
+def _toggle_path(collection_path: str, item_id: int) -> str:
+    return f"{collection_path}{item_id}/toggle_enabled/"
+
+
+async def _send_json(
     settings: Settings,
+    method: str,
     path: str,
     *,
-    params: dict[str, str] | None = None,
+    json: dict[str, Any] | None = None,
+    token: str | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
-    allow_no_content: bool = False,
-) -> dict[str, Any] | None:
-    """Fetch a Leonid JSON payload."""
+) -> list[dict[str, Any]] | dict[str, Any] | None:
+    """Send a JSON request to Leonid and return the decoded JSON body."""
 
     require_configured(settings)
     url = f"{settings.leonid_url}{path}"
     headers = {HeaderName.ACCEPT.value: HeaderValue.APPLICATION_JSON.value}
+    if token and method != "GET":
+        headers[HeaderName.X_LEONID_TOKEN.value] = token
 
     try:
         async with httpx.AsyncClient(
@@ -49,76 +67,484 @@ async def _get_json(
             timeout=settings.leonid_request_timeout,
             transport=transport,
         ) as client:
-            response = await client.get(url, params=params)
+            response = await client.request(method, url, json=json)
     except httpx.TimeoutException as exc:
-        logger.warning("Leonid request timed out for %s.", path)
+        logger.warning("Leonid request timed out for %s %s.", method, path)
         raise LeonidUnreachableError(ErrorMessage.LEONID_UNREACHABLE.value) from exc
     except httpx.HTTPError as exc:
-        logger.warning("Leonid request failed for %s: %s.", path, exc.__class__.__name__)
+        logger.warning(
+            "Leonid request failed for %s %s: %s.",
+            method,
+            path,
+            exc.__class__.__name__,
+        )
         raise LeonidUnreachableError(ErrorMessage.LEONID_UNREACHABLE.value) from exc
 
-    if response.status_code == httpx.codes.NO_CONTENT and allow_no_content:
-        return None
+    if response.status_code in (httpx.codes.UNAUTHORIZED, httpx.codes.FORBIDDEN):
+        logger.warning("Leonid rejected the shared token for %s %s.", method, path)
+        raise LeonidUnreachableError(ErrorMessage.LEONID_UPSTREAM_REJECTED.value)
 
     try:
         response.raise_for_status()
     except httpx.HTTPStatusError as exc:
-        logger.warning("Leonid returned HTTP %s for %s.", response.status_code, path)
+        logger.warning("Leonid returned HTTP %s for %s %s.", response.status_code, method, path)
         raise LeonidUnreachableError(ErrorMessage.LEONID_UNREACHABLE.value) from exc
 
-    payload = response.json()
-    if not isinstance(payload, dict):
-        logger.warning("Leonid returned a non-object payload for %s.", path)
+    if response.status_code == httpx.codes.NO_CONTENT or not response.content:
+        return None
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        logger.warning("Leonid returned invalid JSON for %s %s.", method, path)
+        raise LeonidUnreachableError(ErrorMessage.LEONID_UNREACHABLE.value) from exc
+
+    if not isinstance(payload, (dict, list)):
+        logger.warning("Leonid returned an unsupported JSON payload for %s %s.", method, path)
         raise LeonidUnreachableError(ErrorMessage.LEONID_UNREACHABLE.value)
 
     return payload
 
 
-async def fetch_status(
+async def _list_collection(
     settings: Settings,
-    product: str,
+    collection_path: str,
     *,
     transport: httpx.AsyncBaseTransport | None = None,
-) -> dict[str, Any] | None:
-    """Fetch deploy gate status for a Leonid product."""
-
-    normalized_product = product.strip().lower()
-    return await _get_json(
-        settings,
-        f"/api/{normalized_product}/status/",
-        allow_no_content=True,
-        transport=transport,
-    )
+) -> list[dict[str, Any]]:
+    payload = await _send_json(settings, "GET", collection_path, transport=transport)
+    return payload if isinstance(payload, list) else []
 
 
-async def fetch_report(
+async def _retrieve_item(
     settings: Settings,
-    product: str,
-    start_date: str,
-    end_date: str,
-    environment: str | None,
-    test_type: str | None,
+    collection_path: str,
+    item_id: int,
     *,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> dict[str, Any]:
-    """Fetch the Leonid report summary for a product and date range."""
-
-    normalized_product = product.strip().lower()
-    params = {
-        "start_date": start_date,
-        "end_date": end_date,
-    }
-    if environment:
-        params["environment"] = environment
-    if test_type:
-        params["test_type"] = test_type
-
-    payload = await _get_json(
+    payload = await _send_json(
         settings,
-        f"/api/report/{normalized_product}/summary/",
-        params=params,
+        "GET",
+        _detail_path(collection_path, item_id),
         transport=transport,
     )
-    if payload is None:
-        raise LeonidUnreachableError(ErrorMessage.LEONID_UNREACHABLE.value)
-    return payload
+    return payload if isinstance(payload, dict) else {}
+
+
+async def _create_item(
+    settings: Settings,
+    collection_path: str,
+    body: dict[str, Any],
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    payload = await _send_json(
+        settings,
+        "POST",
+        collection_path,
+        json=body,
+        token=settings.leonid_token,
+        transport=transport,
+    )
+    return payload if isinstance(payload, dict) else {}
+
+
+async def _update_item(
+    settings: Settings,
+    method: str,
+    collection_path: str,
+    item_id: int,
+    body: dict[str, Any],
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    payload = await _send_json(
+        settings,
+        method,
+        _detail_path(collection_path, item_id),
+        json=body,
+        token=settings.leonid_token,
+        transport=transport,
+    )
+    return payload if isinstance(payload, dict) else {}
+
+
+async def _delete_item(
+    settings: Settings,
+    collection_path: str,
+    item_id: int,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> None:
+    await _send_json(
+        settings,
+        "DELETE",
+        _detail_path(collection_path, item_id),
+        token=settings.leonid_token,
+        transport=transport,
+    )
+
+
+async def _toggle_item(
+    settings: Settings,
+    collection_path: str,
+    item_id: int,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    payload = await _send_json(
+        settings,
+        "POST",
+        _toggle_path(collection_path, item_id),
+        token=settings.leonid_token,
+        transport=transport,
+    )
+    return payload if isinstance(payload, dict) else {}
+
+
+async def list_shared_resource_limit_types(
+    settings: Settings,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> list[dict[str, Any]]:
+    return await _list_collection(settings, LEONID_LIMIT_TYPE_PATH, transport=transport)
+
+
+async def get_shared_resource_limit_type(
+    settings: Settings,
+    limit_type_id: int,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    return await _retrieve_item(
+        settings, LEONID_LIMIT_TYPE_PATH, limit_type_id, transport=transport
+    )
+
+
+async def list_shared_resource_limits(
+    settings: Settings,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> list[dict[str, Any]]:
+    return await _list_collection(settings, LEONID_LIMIT_PATH, transport=transport)
+
+
+async def get_shared_resource_limit(
+    settings: Settings,
+    limit_id: int,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    return await _retrieve_item(settings, LEONID_LIMIT_PATH, limit_id, transport=transport)
+
+
+async def create_shared_resource_limit(
+    settings: Settings,
+    body: dict[str, Any],
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    return await _create_item(settings, LEONID_LIMIT_PATH, body, transport=transport)
+
+
+async def update_shared_resource_limit(
+    settings: Settings,
+    limit_id: int,
+    body: dict[str, Any],
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    return await _update_item(
+        settings, "PUT", LEONID_LIMIT_PATH, limit_id, body, transport=transport
+    )
+
+
+async def patch_shared_resource_limit(
+    settings: Settings,
+    limit_id: int,
+    body: dict[str, Any],
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    return await _update_item(
+        settings, "PATCH", LEONID_LIMIT_PATH, limit_id, body, transport=transport
+    )
+
+
+async def delete_shared_resource_limit(
+    settings: Settings,
+    limit_id: int,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> None:
+    await _delete_item(settings, LEONID_LIMIT_PATH, limit_id, transport=transport)
+
+
+async def list_shared_resources(
+    settings: Settings,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> list[dict[str, Any]]:
+    return await _list_collection(settings, LEONID_RESOURCE_PATH, transport=transport)
+
+
+async def get_shared_resource(
+    settings: Settings,
+    resource_id: int,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    return await _retrieve_item(settings, LEONID_RESOURCE_PATH, resource_id, transport=transport)
+
+
+async def create_shared_resource(
+    settings: Settings,
+    body: dict[str, Any],
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    return await _create_item(settings, LEONID_RESOURCE_PATH, body, transport=transport)
+
+
+async def update_shared_resource(
+    settings: Settings,
+    resource_id: int,
+    body: dict[str, Any],
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    return await _update_item(
+        settings, "PUT", LEONID_RESOURCE_PATH, resource_id, body, transport=transport
+    )
+
+
+async def patch_shared_resource(
+    settings: Settings,
+    resource_id: int,
+    body: dict[str, Any],
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    return await _update_item(
+        settings, "PATCH", LEONID_RESOURCE_PATH, resource_id, body, transport=transport
+    )
+
+
+async def delete_shared_resource(
+    settings: Settings,
+    resource_id: int,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> None:
+    await _delete_item(settings, LEONID_RESOURCE_PATH, resource_id, transport=transport)
+
+
+async def toggle_shared_resource(
+    settings: Settings,
+    resource_id: int,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    return await _toggle_item(settings, LEONID_RESOURCE_PATH, resource_id, transport=transport)
+
+
+async def list_object_definitions(
+    settings: Settings,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> list[dict[str, Any]]:
+    return await _list_collection(settings, LEONID_OBJECT_DEFINITION_PATH, transport=transport)
+
+
+async def get_object_definition(
+    settings: Settings,
+    definition_id: int,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    return await _retrieve_item(
+        settings, LEONID_OBJECT_DEFINITION_PATH, definition_id, transport=transport
+    )
+
+
+async def create_object_definition(
+    settings: Settings,
+    body: dict[str, Any],
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    return await _create_item(settings, LEONID_OBJECT_DEFINITION_PATH, body, transport=transport)
+
+
+async def update_object_definition(
+    settings: Settings,
+    definition_id: int,
+    body: dict[str, Any],
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    return await _update_item(
+        settings, "PUT", LEONID_OBJECT_DEFINITION_PATH, definition_id, body, transport=transport
+    )
+
+
+async def patch_object_definition(
+    settings: Settings,
+    definition_id: int,
+    body: dict[str, Any],
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    return await _update_item(
+        settings, "PATCH", LEONID_OBJECT_DEFINITION_PATH, definition_id, body, transport=transport
+    )
+
+
+async def delete_object_definition(
+    settings: Settings,
+    definition_id: int,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> None:
+    await _delete_item(settings, LEONID_OBJECT_DEFINITION_PATH, definition_id, transport=transport)
+
+
+async def toggle_object_definition(
+    settings: Settings,
+    definition_id: int,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    return await _toggle_item(
+        settings, LEONID_OBJECT_DEFINITION_PATH, definition_id, transport=transport
+    )
+
+
+async def list_object_values(
+    settings: Settings,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> list[dict[str, Any]]:
+    return await _list_collection(settings, LEONID_OBJECT_VALUE_PATH, transport=transport)
+
+
+async def get_object_value(
+    settings: Settings,
+    value_id: int,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    return await _retrieve_item(settings, LEONID_OBJECT_VALUE_PATH, value_id, transport=transport)
+
+
+async def create_object_value(
+    settings: Settings,
+    body: dict[str, Any],
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    return await _create_item(settings, LEONID_OBJECT_VALUE_PATH, body, transport=transport)
+
+
+async def update_object_value(
+    settings: Settings,
+    value_id: int,
+    body: dict[str, Any],
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    return await _update_item(
+        settings, "PUT", LEONID_OBJECT_VALUE_PATH, value_id, body, transport=transport
+    )
+
+
+async def patch_object_value(
+    settings: Settings,
+    value_id: int,
+    body: dict[str, Any],
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    return await _update_item(
+        settings, "PATCH", LEONID_OBJECT_VALUE_PATH, value_id, body, transport=transport
+    )
+
+
+async def delete_object_value(
+    settings: Settings,
+    value_id: int,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> None:
+    await _delete_item(settings, LEONID_OBJECT_VALUE_PATH, value_id, transport=transport)
+
+
+async def toggle_object_value(
+    settings: Settings,
+    value_id: int,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    return await _toggle_item(settings, LEONID_OBJECT_VALUE_PATH, value_id, transport=transport)
+
+
+async def list_pipeline_params(
+    settings: Settings,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> list[dict[str, Any]]:
+    return await _list_collection(settings, LEONID_PIPELINE_PARAM_PATH, transport=transport)
+
+
+async def get_pipeline_param(
+    settings: Settings,
+    pipeline_param_id: int,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    return await _retrieve_item(
+        settings, LEONID_PIPELINE_PARAM_PATH, pipeline_param_id, transport=transport
+    )
+
+
+async def create_pipeline_param(
+    settings: Settings,
+    body: dict[str, Any],
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    return await _create_item(settings, LEONID_PIPELINE_PARAM_PATH, body, transport=transport)
+
+
+async def update_pipeline_param(
+    settings: Settings,
+    pipeline_param_id: int,
+    body: dict[str, Any],
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    return await _update_item(
+        settings, "PUT", LEONID_PIPELINE_PARAM_PATH, pipeline_param_id, body, transport=transport
+    )
+
+
+async def patch_pipeline_param(
+    settings: Settings,
+    pipeline_param_id: int,
+    body: dict[str, Any],
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    return await _update_item(
+        settings, "PATCH", LEONID_PIPELINE_PARAM_PATH, pipeline_param_id, body, transport=transport
+    )
+
+
+async def delete_pipeline_param(
+    settings: Settings,
+    pipeline_param_id: int,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> None:
+    await _delete_item(settings, LEONID_PIPELINE_PARAM_PATH, pipeline_param_id, transport=transport)

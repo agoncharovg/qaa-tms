@@ -6,9 +6,15 @@ import {
   AgentPath,
   buildAgentJenkinsBuildsPath,
   buildAgentJenkinsFolderPath,
-  buildAgentLeonidProductsPath,
-  buildAgentLeonidReportPath,
-  buildAgentLeonidStatusPath,
+  buildAgentLeonidObjectDefinitionTogglePath,
+  buildAgentLeonidObjectDefinitionsPath,
+  buildAgentLeonidObjectValueTogglePath,
+  buildAgentLeonidObjectValuesPath,
+  buildAgentLeonidPipelineParamsPath,
+  buildAgentLeonidSharedResourceLimitTypesPath,
+  buildAgentLeonidSharedResourceLimitsPath,
+  buildAgentLeonidSharedResourcesPath,
+  buildAgentLeonidSharedResourceTogglePath,
   buildAgentJenkinsScopePath,
   buildAgentJenkinsTreePath,
   AUTH_SCHEME_BEARER,
@@ -47,9 +53,17 @@ import type {
   JenkinsFolderResponse,
   JenkinsFreezeRequest,
   JenkinsFreezeResponse,
-  LeonidProductStatus,
-  LeonidProductsResponse,
-  LeonidReportSummary,
+  LeonidObjectDefinition,
+  LeonidObjectDefinitionInput,
+  LeonidObjectValue,
+  LeonidObjectValueInput,
+  LeonidPipelineParam,
+  LeonidPipelineParamInput,
+  LeonidSharedResource,
+  LeonidSharedResourceInput,
+  LeonidSharedResourceLimit,
+  LeonidSharedResourceLimitInput,
+  LeonidSharedResourceLimitType,
   JenkinsResumeRequest,
   JenkinsResumeRunAccepted,
   JenkinsResumeRunRequest,
@@ -131,6 +145,23 @@ async function readAgentJson<T>(
   }
 
   return (await response.json()) as T;
+}
+
+async function writeAgentJson<T>(
+  port: number,
+  path: string,
+  method: HttpMethod,
+  token: string,
+  body?: unknown,
+  signal?: AbortSignal
+): Promise<T> {
+  return readAgentJson<T>(
+    port,
+    path,
+    body === undefined ? { method } : createJsonBody(body, method),
+    token,
+    signal
+  );
 }
 
 async function probeAgentPort(port: number, signal?: AbortSignal): Promise<AgentDiscovery | null> {
@@ -299,52 +330,379 @@ export function getJenkinsFolder(
   );
 }
 
-export function getLeonidProducts(
+export function listLeonidSharedResourceLimitTypes(
   port: number,
   token: string,
   signal?: AbortSignal
-): Promise<LeonidProductsResponse> {
-  return readAgentJson<LeonidProductsResponse>(
+): Promise<LeonidSharedResourceLimitType[]> {
+  return readAgentJson<LeonidSharedResourceLimitType[]>(
     port,
-    buildAgentLeonidProductsPath(),
+    buildAgentLeonidSharedResourceLimitTypesPath(),
     { method: HttpMethod.GET },
     token,
     signal
   );
 }
 
-export function getLeonidStatus(
+export function listLeonidSharedResourceLimits(
   port: number,
   token: string,
-  product: string,
   signal?: AbortSignal
-): Promise<LeonidProductStatus> {
-  return readAgentJson<LeonidProductStatus>(
+): Promise<LeonidSharedResourceLimit[]> {
+  return readAgentJson<LeonidSharedResourceLimit[]>(
     port,
-    buildAgentLeonidStatusPath(product),
+    buildAgentLeonidSharedResourceLimitsPath(),
     { method: HttpMethod.GET },
     token,
     signal
   );
 }
 
-export function getLeonidReport(
+export function createLeonidSharedResourceLimit(
   port: number,
   token: string,
-  product: string,
-  params: {
-    startDate: string;
-    endDate: string;
-    environment?: string | null;
-    testType?: string | null;
-  },
+  payload: LeonidSharedResourceLimitInput,
   signal?: AbortSignal
-): Promise<LeonidReportSummary> {
-  return readAgentJson<LeonidReportSummary>(
+): Promise<LeonidSharedResourceLimit> {
+  return writeAgentJson<LeonidSharedResourceLimit>(
     port,
-    buildAgentLeonidReportPath(product, params),
+    buildAgentLeonidSharedResourceLimitsPath(),
+    HttpMethod.POST,
+    token,
+    payload,
+    signal
+  );
+}
+
+export function updateLeonidSharedResourceLimit(
+  port: number,
+  token: string,
+  limitId: number,
+  payload: LeonidSharedResourceLimitInput,
+  signal?: AbortSignal
+): Promise<LeonidSharedResourceLimit> {
+  return writeAgentJson<LeonidSharedResourceLimit>(
+    port,
+    buildAgentLeonidSharedResourceLimitsPath(limitId),
+    HttpMethod.PUT,
+    token,
+    payload,
+    signal
+  );
+}
+
+export function deleteLeonidSharedResourceLimit(
+  port: number,
+  token: string,
+  limitId: number,
+  signal?: AbortSignal
+): Promise<void> {
+  return writeAgentJson<void>(
+    port,
+    buildAgentLeonidSharedResourceLimitsPath(limitId),
+    HttpMethod.DELETE,
+    token,
+    undefined,
+    signal
+  );
+}
+
+export function listLeonidSharedResources(
+  port: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<LeonidSharedResource[]> {
+  return readAgentJson<LeonidSharedResource[]>(
+    port,
+    buildAgentLeonidSharedResourcesPath(),
     { method: HttpMethod.GET },
     token,
+    signal
+  );
+}
+
+export function createLeonidSharedResource(
+  port: number,
+  token: string,
+  payload: LeonidSharedResourceInput,
+  signal?: AbortSignal
+): Promise<LeonidSharedResource> {
+  return writeAgentJson<LeonidSharedResource>(
+    port,
+    buildAgentLeonidSharedResourcesPath(),
+    HttpMethod.POST,
+    token,
+    payload,
+    signal
+  );
+}
+
+export function updateLeonidSharedResource(
+  port: number,
+  token: string,
+  resourceId: number,
+  payload: LeonidSharedResourceInput,
+  signal?: AbortSignal
+): Promise<LeonidSharedResource> {
+  return writeAgentJson<LeonidSharedResource>(
+    port,
+    buildAgentLeonidSharedResourcesPath(resourceId),
+    HttpMethod.PUT,
+    token,
+    payload,
+    signal
+  );
+}
+
+export function deleteLeonidSharedResource(
+  port: number,
+  token: string,
+  resourceId: number,
+  signal?: AbortSignal
+): Promise<void> {
+  return writeAgentJson<void>(
+    port,
+    buildAgentLeonidSharedResourcesPath(resourceId),
+    HttpMethod.DELETE,
+    token,
+    undefined,
+    signal
+  );
+}
+
+export function toggleLeonidSharedResource(
+  port: number,
+  token: string,
+  resourceId: number,
+  signal?: AbortSignal
+): Promise<LeonidSharedResource> {
+  return writeAgentJson<LeonidSharedResource>(
+    port,
+    buildAgentLeonidSharedResourceTogglePath(resourceId),
+    HttpMethod.POST,
+    token,
+    undefined,
+    signal
+  );
+}
+
+export function listLeonidObjectDefinitions(
+  port: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<LeonidObjectDefinition[]> {
+  return readAgentJson<LeonidObjectDefinition[]>(
+    port,
+    buildAgentLeonidObjectDefinitionsPath(),
+    { method: HttpMethod.GET },
+    token,
+    signal
+  );
+}
+
+export function createLeonidObjectDefinition(
+  port: number,
+  token: string,
+  payload: LeonidObjectDefinitionInput,
+  signal?: AbortSignal
+): Promise<LeonidObjectDefinition> {
+  return writeAgentJson<LeonidObjectDefinition>(
+    port,
+    buildAgentLeonidObjectDefinitionsPath(),
+    HttpMethod.POST,
+    token,
+    payload,
+    signal
+  );
+}
+
+export function updateLeonidObjectDefinition(
+  port: number,
+  token: string,
+  definitionId: number,
+  payload: LeonidObjectDefinitionInput,
+  signal?: AbortSignal
+): Promise<LeonidObjectDefinition> {
+  return writeAgentJson<LeonidObjectDefinition>(
+    port,
+    buildAgentLeonidObjectDefinitionsPath(definitionId),
+    HttpMethod.PUT,
+    token,
+    payload,
+    signal
+  );
+}
+
+export function deleteLeonidObjectDefinition(
+  port: number,
+  token: string,
+  definitionId: number,
+  signal?: AbortSignal
+): Promise<void> {
+  return writeAgentJson<void>(
+    port,
+    buildAgentLeonidObjectDefinitionsPath(definitionId),
+    HttpMethod.DELETE,
+    token,
+    undefined,
+    signal
+  );
+}
+
+export function toggleLeonidObjectDefinition(
+  port: number,
+  token: string,
+  definitionId: number,
+  signal?: AbortSignal
+): Promise<LeonidObjectDefinition> {
+  return writeAgentJson<LeonidObjectDefinition>(
+    port,
+    buildAgentLeonidObjectDefinitionTogglePath(definitionId),
+    HttpMethod.POST,
+    token,
+    undefined,
+    signal
+  );
+}
+
+export function listLeonidObjectValues(
+  port: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<LeonidObjectValue[]> {
+  return readAgentJson<LeonidObjectValue[]>(
+    port,
+    buildAgentLeonidObjectValuesPath(),
+    { method: HttpMethod.GET },
+    token,
+    signal
+  );
+}
+
+export function createLeonidObjectValue(
+  port: number,
+  token: string,
+  payload: LeonidObjectValueInput,
+  signal?: AbortSignal
+): Promise<LeonidObjectValue> {
+  return writeAgentJson<LeonidObjectValue>(
+    port,
+    buildAgentLeonidObjectValuesPath(),
+    HttpMethod.POST,
+    token,
+    payload,
+    signal
+  );
+}
+
+export function updateLeonidObjectValue(
+  port: number,
+  token: string,
+  valueId: number,
+  payload: LeonidObjectValueInput,
+  signal?: AbortSignal
+): Promise<LeonidObjectValue> {
+  return writeAgentJson<LeonidObjectValue>(
+    port,
+    buildAgentLeonidObjectValuesPath(valueId),
+    HttpMethod.PUT,
+    token,
+    payload,
+    signal
+  );
+}
+
+export function deleteLeonidObjectValue(
+  port: number,
+  token: string,
+  valueId: number,
+  signal?: AbortSignal
+): Promise<void> {
+  return writeAgentJson<void>(
+    port,
+    buildAgentLeonidObjectValuesPath(valueId),
+    HttpMethod.DELETE,
+    token,
+    undefined,
+    signal
+  );
+}
+
+export function toggleLeonidObjectValue(
+  port: number,
+  token: string,
+  valueId: number,
+  signal?: AbortSignal
+): Promise<LeonidObjectValue> {
+  return writeAgentJson<LeonidObjectValue>(
+    port,
+    buildAgentLeonidObjectValueTogglePath(valueId),
+    HttpMethod.POST,
+    token,
+    undefined,
+    signal
+  );
+}
+
+export function listLeonidPipelineParams(
+  port: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<LeonidPipelineParam[]> {
+  return readAgentJson<LeonidPipelineParam[]>(
+    port,
+    buildAgentLeonidPipelineParamsPath(),
+    { method: HttpMethod.GET },
+    token,
+    signal
+  );
+}
+
+export function createLeonidPipelineParam(
+  port: number,
+  token: string,
+  payload: LeonidPipelineParamInput,
+  signal?: AbortSignal
+): Promise<LeonidPipelineParam> {
+  return writeAgentJson<LeonidPipelineParam>(
+    port,
+    buildAgentLeonidPipelineParamsPath(),
+    HttpMethod.POST,
+    token,
+    payload,
+    signal
+  );
+}
+
+export function updateLeonidPipelineParam(
+  port: number,
+  token: string,
+  pipelineParamId: number,
+  payload: LeonidPipelineParamInput,
+  signal?: AbortSignal
+): Promise<LeonidPipelineParam> {
+  return writeAgentJson<LeonidPipelineParam>(
+    port,
+    buildAgentLeonidPipelineParamsPath(pipelineParamId),
+    HttpMethod.PUT,
+    token,
+    payload,
+    signal
+  );
+}
+
+export function deleteLeonidPipelineParam(
+  port: number,
+  token: string,
+  pipelineParamId: number,
+  signal?: AbortSignal
+): Promise<void> {
+  return writeAgentJson<void>(
+    port,
+    buildAgentLeonidPipelineParamsPath(pipelineParamId),
+    HttpMethod.DELETE,
+    token,
+    undefined,
     signal
   );
 }
@@ -561,12 +919,33 @@ export const agentClient = {
 
   freezeJenkinsFolder,
   getJenkinsBuilds,
-  getLeonidProducts,
-  getLeonidReport,
-  getLeonidStatus,
   getJenkinsFolder,
   getJenkinsScope,
   getJenkinsTree,
+  listLeonidSharedResourceLimitTypes,
+  listLeonidSharedResourceLimits,
+  createLeonidSharedResourceLimit,
+  updateLeonidSharedResourceLimit,
+  deleteLeonidSharedResourceLimit,
+  listLeonidSharedResources,
+  createLeonidSharedResource,
+  updateLeonidSharedResource,
+  deleteLeonidSharedResource,
+  toggleLeonidSharedResource,
+  listLeonidObjectDefinitions,
+  createLeonidObjectDefinition,
+  updateLeonidObjectDefinition,
+  deleteLeonidObjectDefinition,
+  toggleLeonidObjectDefinition,
+  listLeonidObjectValues,
+  createLeonidObjectValue,
+  updateLeonidObjectValue,
+  deleteLeonidObjectValue,
+  toggleLeonidObjectValue,
+  listLeonidPipelineParams,
+  createLeonidPipelineParam,
+  updateLeonidPipelineParam,
+  deleteLeonidPipelineParam,
 
   getSettings(port: number, token: string, signal?: AbortSignal): Promise<AgentSettings> {
     return readAgentJson<AgentSettings>(

@@ -230,9 +230,12 @@ export const AgentPath = {
   SETTINGS: "/settings",
   PREFLIGHT: "/preflight",
   UPDATE: "/update",
-  LEONID_PRODUCTS: "/leonid/products",
-  LEONID_STATUS: "/leonid/status",
-  LEONID_REPORT: "/leonid/report",
+  LEONID_SHARED_RESOURCE_LIMIT_TYPES: "/leonid/shared_resource_limit_types",
+  LEONID_SHARED_RESOURCE_LIMITS: "/leonid/shared_resource_limits",
+  LEONID_SHARED_RESOURCES: "/leonid/shared_resources",
+  LEONID_OBJECT_DEFINITIONS: "/leonid/object_definitions",
+  LEONID_OBJECT_VALUES: "/leonid/object_values",
+  LEONID_PIPELINE_PARAMS: "/leonid/pipeline_params",
   JENKINS_SCOPE: "/jenkins/scope",
   JENKINS_TREE: "/jenkins/tree",
   JENKINS_BUILDS: "/jenkins/builds",
@@ -335,35 +338,66 @@ export function buildAgentJenkinsFolderPath(path: string): string {
   return `${AgentPath.JENKINS_FOLDER}?${params.toString()}`;
 }
 
-export function buildAgentLeonidProductsPath(): string {
-  return AgentPath.LEONID_PRODUCTS;
-}
-
-export function buildAgentLeonidStatusPath(product: string): string {
-  const params = new URLSearchParams({
-    product,
-  });
-  return `${AgentPath.LEONID_STATUS}?${params.toString()}`;
-}
-
-export function buildAgentLeonidReportPath(
-  product: string,
-  params: {
-    startDate: string;
-    endDate: string;
-    environment?: string | null;
-    testType?: string | null;
+export function buildAgentLeonidSharedResourceLimitTypesPath(limitTypeId?: number): string {
+  if (typeof limitTypeId === "number") {
+    return `${AgentPath.LEONID_SHARED_RESOURCE_LIMIT_TYPES}/${encodeURIComponent(String(limitTypeId))}`;
   }
-): string {
-  const searchParams = new URLSearchParams({
-    end_date: params.endDate,
-    product,
-    start_date: params.startDate,
-  });
-  setOptionalSearchParam(searchParams, "environment", params.environment);
-  setOptionalSearchParam(searchParams, "test_type", params.testType);
-  return `${AgentPath.LEONID_REPORT}?${searchParams.toString()}`;
+
+  return AgentPath.LEONID_SHARED_RESOURCE_LIMIT_TYPES;
 }
+
+export function buildAgentLeonidSharedResourceLimitsPath(limitId?: number): string {
+  if (typeof limitId === "number") {
+    return `${AgentPath.LEONID_SHARED_RESOURCE_LIMITS}/${encodeURIComponent(String(limitId))}`;
+  }
+
+  return AgentPath.LEONID_SHARED_RESOURCE_LIMITS;
+}
+
+export function buildAgentLeonidSharedResourcesPath(resourceId?: number): string {
+  if (typeof resourceId === "number") {
+    return `${AgentPath.LEONID_SHARED_RESOURCES}/${encodeURIComponent(String(resourceId))}`;
+  }
+
+  return AgentPath.LEONID_SHARED_RESOURCES;
+}
+
+export function buildAgentLeonidSharedResourceTogglePath(resourceId: number): string {
+  return `${buildAgentLeonidSharedResourcesPath(resourceId)}/toggle_enabled`;
+}
+
+export function buildAgentLeonidObjectDefinitionsPath(definitionId?: number): string {
+  if (typeof definitionId === "number") {
+    return `${AgentPath.LEONID_OBJECT_DEFINITIONS}/${encodeURIComponent(String(definitionId))}`;
+  }
+
+  return AgentPath.LEONID_OBJECT_DEFINITIONS;
+}
+
+export function buildAgentLeonidObjectDefinitionTogglePath(definitionId: number): string {
+  return `${buildAgentLeonidObjectDefinitionsPath(definitionId)}/toggle_enabled`;
+}
+
+export function buildAgentLeonidObjectValuesPath(valueId?: number): string {
+  if (typeof valueId === "number") {
+    return `${AgentPath.LEONID_OBJECT_VALUES}/${encodeURIComponent(String(valueId))}`;
+  }
+
+  return AgentPath.LEONID_OBJECT_VALUES;
+}
+
+export function buildAgentLeonidObjectValueTogglePath(valueId: number): string {
+  return `${buildAgentLeonidObjectValuesPath(valueId)}/toggle_enabled`;
+}
+
+export function buildAgentLeonidPipelineParamsPath(pipelineParamId?: number): string {
+  if (typeof pipelineParamId === "number") {
+    return `${AgentPath.LEONID_PIPELINE_PARAMS}/${encodeURIComponent(String(pipelineParamId))}`;
+  }
+
+  return AgentPath.LEONID_PIPELINE_PARAMS;
+}
+
 export function buildAgentKubeNamespacesPath(context?: string | null): string {
   const params = new URLSearchParams();
   setOptionalSearchParam(params, "context", context);
@@ -644,8 +678,9 @@ export const ViewKey = {
   STAGINGS_PREFLIGHT: "stagings-preflight",
   JENKINS_TREE: "jenkins-tree",
   JENKINS_BOARD: "jenkins-board",
-  LEONID_DEPLOY: "leonid-deploy",
-  LEONID_REPORT: "leonid-report",
+  LEONID_SHARED_RESOURCES: "leonid-shared-resources",
+  LEONID_OBJECTS: "leonid-objects",
+  LEONID_PIPELINE_CONFIGS: "leonid-pipeline-configs",
   STATISTICS_SMOKE: "statistics-smoke",
   STAGINGS_DEPLOY: "stagings-deploy",
   STAGINGS_HISTORY: "stagings-history",
@@ -669,8 +704,9 @@ export const TabId = {
   STAGINGS_PREFLIGHT: "tab-stagings-preflight",
   JENKINS_TREE: "tab-jenkins-tree",
   JENKINS_BOARD: "tab-jenkins-board",
-  LEONID_DEPLOY: "tab-leonid-deploy",
-  LEONID_REPORT: "tab-leonid-report",
+  LEONID_SHARED_RESOURCES: "tab-leonid-shared-resources",
+  LEONID_OBJECTS: "tab-leonid-objects",
+  LEONID_PIPELINE_CONFIGS: "tab-leonid-pipeline-configs",
   STATISTICS_SMOKE: "tab-statistics-smoke",
   STAGINGS_DEPLOY: "tab-stagings-deploy",
   STAGINGS_HISTORY: "tab-stagings-history",
@@ -694,8 +730,9 @@ export const TabTitle: Record<TabId, string> = {
   [TabId.STAGINGS_PREFLIGHT]: "Preflight",
   [TabId.JENKINS_TREE]: "Tree",
   [TabId.JENKINS_BOARD]: "Pinned",
-  [TabId.LEONID_DEPLOY]: "Deploy",
-  [TabId.LEONID_REPORT]: "Report",
+  [TabId.LEONID_SHARED_RESOURCES]: "Shared resources",
+  [TabId.LEONID_OBJECTS]: "Objects",
+  [TabId.LEONID_PIPELINE_CONFIGS]: "Pipeline configs",
   [TabId.STATISTICS_SMOKE]: "Smoke",
   [TabId.STAGINGS_DEPLOY]: "Deploy",
   [TabId.STAGINGS_HISTORY]: "History",
@@ -744,9 +781,12 @@ export const QueryKey = {
   AGENT_NAMESPACE_STATUS: "agent-namespace-status",
   AGENT_NAMESPACE_CREDS: "agent-namespace-creds",
   AGENT_E2E_SUITES: "agent-e2e-suites",
-  LEONID_PRODUCTS: "leonid-products",
-  LEONID_STATUS: "leonid-status",
-  LEONID_REPORT: "leonid-report",
+  LEONID_SHARED_RESOURCE_LIMIT_TYPES: "leonid-shared-resource-limit-types",
+  LEONID_SHARED_RESOURCE_LIMITS: "leonid-shared-resource-limits",
+  LEONID_SHARED_RESOURCES: "leonid-shared-resources",
+  LEONID_OBJECT_DEFINITIONS: "leonid-object-definitions",
+  LEONID_OBJECT_VALUES: "leonid-object-values",
+  LEONID_PIPELINE_PARAMS: "leonid-pipeline-params",
   JENKINS_SCOPE: "jenkins-scope",
   JENKINS_TREE: "jenkins-tree",
   JENKINS_TREE_CACHE: "jenkins-tree-cache",

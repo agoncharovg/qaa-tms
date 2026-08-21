@@ -1,0 +1,78 @@
+Обсуждение №16 — TODO: сделать Leonid URL/токен настраиваемыми по окружению
+                    (убрать хардкод дефолта в агенте; завести в Profile→Settings и qaa-deploy)
+
+  СТАТУС: тудушка/бриф на будущее. Возникло 2026-08-21 при переключении агента
+  на препрод Leonid (фаза 2, discuss/15).
+
+====================================================================
+0. ПРОБЛЕМА
+====================================================================
+
+  Сейчас адрес Leonid для qaa-tms задаётся в агенте так:
+   - agent/app/core/constants.py: DEFAULT_LEONID_URL (хардкод-дефолт).
+     ВРЕМЕННО переключён на https://leonid-preprod.i.gc.onl (в рабочем дереве
+     ветки feat/leonid-plugin, НЕ закоммичено) — чтобы тестировать препрод.
+     Это стопгап: препрод НЕ должен быть зашитым дефолтом.
+   - Оверрайд возможен через env AGENT_LEONID_URL, но его НЕТ ни в agent/.env,
+     ни в agent/.env.example (не задокументирован).
+   - AGENT_LEONID_TOKEN (нужен для ВСЕХ новых CRUD-ручек — они под
+     HasLeonidToken, включая чтение списков) тоже не в .env.example и не в
+     Profile→Settings.
+   - В Profile→Settings агента (AGENT_SETTINGS_ENV_KEY_BY_FIELD, routes.py)
+     есть jenkins_url/jenkins_token/qaa_generator_token и пр., но НЕТ
+     leonid_url/leonid_token.
+
+  Архитектурный нюанс: АГЕНТ — локальный companion на машине пользователя, а НЕ
+  под qaa-tms в k8s (qaa-tms/base/deployment.yaml — это только backend+SPA,
+  envFrom qaa-tms-secret; AGENT_* туда не идут). Поэтому «настраиваемость в
+  qaa-deploy» = (а) канонические per-env значения и секреты живут/документируются
+  в qaa-deploy, (б) агент берёт их через свой .env / Profile→Settings.
+
+  Что qaa-deploy УЖЕ параметризует (проверено):
+   - Сам Leonid по окружениям: leonid/overlays/preprod/custom_envs.yaml ->
+     SELF_HOSTNAME=https://leonid-preprod.i.gc.onl (+ ingress); prod-оверлей —
+     свой. Т.е. адреса Leonid per-env уже есть на стороне Leonid.
+   - НО записи "qaa-tms" в LEONID_API_TOKENS препрод-оверлея Leonid пока НЕТ
+     (grep пусто) — токен для qaa-tms не заведён.
+
+====================================================================
+1. ЦЕЛЬ
+====================================================================
+
+  Сделать AGENT_LEONID_URL и AGENT_LEONID_TOKEN полноценной, per-env
+  конфигурацией: без зашитого препрода в исходниках, редактируемой из
+  Profile→Settings, с каноническими значениями и секретами в qaa-deploy.
+
+====================================================================
+2. ЗАДАЧИ
+====================================================================
+
+  A) АГЕНТ (qaa-tms, ветка потом):
+     - Вернуть DEFAULT_LEONID_URL к вменяемому базовому значению (prod) ПОСЛЕ
+       того, как оверрайд по env/Settings налажен. Не оставлять препрод дефолтом.
+     - Добавить leonid_url и leonid_token в AGENT_SETTINGS_ENV_KEY_BY_FIELD +
+       AgentSettingsRead/Update (routes.py, schemas.py). Токен маскировать как
+       jenkins_token/qaa_generator_token (паттерн уже есть).
+     - Добавить AGENT_LEONID_URL и AGENT_LEONID_TOKEN в agent/.env.example с
+       комментариями (сейчас там нет ни одной AGENT_LEONID_* строки).
+
+  B) LEONID в qaa-deploy:
+     - Завести запись "qaa-tms" в LEONID_API_TOKENS в секрете КАЖДОГО окружения
+       (leonid/overlays/preprod и /prod). Значение — тот же секрет, что кладём
+       в агент (AGENT_LEONID_TOKEN).
+     - (SELF_HOSTNAME per-env уже есть — не трогаем.)
+
+  C) ДОКИ/qaa-deploy:
+     - Документировать канонические AGENT_LEONID_URL per-env (preprod=
+       https://leonid-preprod.i.gc.onl, prod=https://leonid-prod.i.gc.onl) и
+       как выдаётся/распространяется общий токен агентам. Явно отметить: агент —
+       локальный, конфиг в agent/.env или Profile→Settings, НЕ в поде qaa-tms.
+
+====================================================================
+3. ГРАНИЦЫ
+====================================================================
+
+  - Только конфиг/плейсмент значений и секрета; логика Leonid/агента/панелей
+    не меняется.
+  - Разграничение доступа к токену (per-user) — отдельная задача (см. discuss/15
+    О5), не здесь.

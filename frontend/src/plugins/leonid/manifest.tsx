@@ -27,16 +27,22 @@ const leonidPlugin = definePlugin({
   route: LEONID_PLUGIN_ROUTE,
   tabs: [
     {
-      id: TabId.LEONID_DEPLOY,
-      title: TabTitle[TabId.LEONID_DEPLOY],
-      viewKey: ViewKey.LEONID_DEPLOY,
-      element: <LeonidSection mode={ViewKey.LEONID_DEPLOY} />,
+      id: TabId.LEONID_SHARED_RESOURCES,
+      title: TabTitle[TabId.LEONID_SHARED_RESOURCES],
+      viewKey: ViewKey.LEONID_SHARED_RESOURCES,
+      element: <LeonidSection mode={ViewKey.LEONID_SHARED_RESOURCES} />,
     },
     {
-      id: TabId.LEONID_REPORT,
-      title: TabTitle[TabId.LEONID_REPORT],
-      viewKey: ViewKey.LEONID_REPORT,
-      element: <LeonidSection mode={ViewKey.LEONID_REPORT} />,
+      id: TabId.LEONID_OBJECTS,
+      title: TabTitle[TabId.LEONID_OBJECTS],
+      viewKey: ViewKey.LEONID_OBJECTS,
+      element: <LeonidSection mode={ViewKey.LEONID_OBJECTS} />,
+    },
+    {
+      id: TabId.LEONID_PIPELINE_CONFIGS,
+      title: TabTitle[TabId.LEONID_PIPELINE_CONFIGS],
+      viewKey: ViewKey.LEONID_PIPELINE_CONFIGS,
+      element: <LeonidSection mode={ViewKey.LEONID_PIPELINE_CONFIGS} />,
     },
   ],
 });

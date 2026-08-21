@@ -1,0 +1,233 @@
+Обсуждение №15 — Плагин Leonid, ФАЗА 2 (ПЕРЕИГРАНО 2026-08-21):
+                    Leonid как консоль управления справочниками
+                    (убираем Deploy/Report; 3 раздела с ПОЛНЫМ CRUD API;
+                     правки в Leonid — ветка feature/qaa-tms; backend qaa-tms НЕ трогаем)
+
+  ВНИМАНИЕ: этот бриф ЗАМЕНЯЕТ прежний план фазы 2 (Deploy Gate + force-deploy +
+  починка /status/). Тот план ОТМЕНЁН пользователем 2026-08-21. Ветка Leonid
+  feature/qaa-tms переиспользуется. Наблюдение про сломанный /status/ (500) и
+  Build.product=NULL сохранено в памяти (reference_leonid_service) на будущее,
+  но здесь /status/ и force-deploy НЕ трогаем.
+
+  TESTS FOR SKIP ИСКЛЮЧЁН из этого брифа (2026-08-21): пользователь хочет
+  скипать по СПИСКУ ТЕСТОВ, СПИСКУ МЕТОК или их КОМБИНАЦИИ. В текущей модели
+  DisabledTest есть только имя одного теста (нет меток/labels, нет группировки),
+  т.е. нужна более глубокая доработка модели Leonid -> выносим в ОТДЕЛЬНЫЙ бриф.
+
+====================================================================
+0. КОНТЕКСТ / ЗАПРОС
+====================================================================
+
+  Фаза 1 (discuss/14): read-only плагин "Leonid" с вкладками "Deploy" и
+  "Report", путь данных frontend -> companion-агент -> Leonid (напрямую,
+  server-side httpx). Backend qaa-tms в тракте НЕ участвует.
+
+  НОВЫЙ ЗАПРОС (2026-08-21): переиграть.
+   1) Убрать текущие подменю (вкладки Deploy и Report).
+   2) Добавить ПОЛНЫЙ API-функционал (CRUD) для управления справочниками Leonid,
+      которые сейчас редактируются ТОЛЬКО через Django-admin:
+        - Shared resources
+        - Objects not to delete
+        - Definitions of configs for triggering regular Jenkins pipelines
+        - (Tests for skip — ИСКЛЮЧЁН, см. шапку; отдельный бриф)
+
+  РЕШЕНИЯ ПОЛЬЗОВАТЕЛЯ (2026-08-21):
+   - Объём: ПОЛНЫЙ CRUD + enable/disable (toggle) для трёх разделов.
+   - Shared resources: управляем лимитами (SharedResourceLimits) И значениями
+     (SharedResources). LimitTypes (day/week/month) — фиксированный справочник
+     (только чтение для выбора).
+   - Новые пути CRUD — на том же /api (О1). Токен — общий, в .env агента (О5).
+   - Tests for skip — исключён (нужна доработка модели под метки/комбинации).
+
+  ПОДТВЕРЖДЁННОЕ СОСТОЯНИЕ LEONID (чтение кода master 700c41c):
+   - Все 3 справочника editable ТОЛЬКО через admin; DRF-сериализаторов для них
+     НЕТ. По HTTP есть лишь ручки-ПОТРЕБИТЕЛИ для раннера (не CRUD):
+       POST /api/shared_resource/         -> выдать значение, уменьшить count
+       POST /api/objects_not_to_delete/   -> вернуть values
+       POST /api/trigger_test_pipeline/start/ -> запуск по PipelineParams.name
+   - Авторизация автоматизации: HasLeonidToken (test_stats/permissions.py) —
+     X-Leonid-Token / Bearer, мапа LEONID_API_TOKENS={team: token},
+     fail-closed. ЭТО наш механизм для новых CRUD-ручек.
+   - Путь frontend -> агент -> Leonid; CORS ни при чём (server-side httpx).
+
+====================================================================
+1. МОДЕЛИ ДАННЫХ (что и где хранится) — ОСНОВА CRUD
+====================================================================
+
+  A) SHARED RESOURCES (test_stats/models.py):
+     - SharedResourceLimitTypes (:325): name ∈ {day, week, month} (unique).
+       ФИКС-справочник, только чтение (для выбора в форме лимита).
+     - SharedResourceLimits (:348): id, resource_name(char), limit_type(FK),
+       limit_value(int), reset_date(date, null). CRUD.
+     - SharedResources (:363): id, resource_limit(FK), value(char),
+       count(int, default 0), enabled(bool, default True). CRUD + toggle.
+     Потребитель SharedResourceManager.get (managers/shared_resource_manager.py):
+     сбрасывает count по reset_date/limit_type, выдаёт enabled-ресурс с
+     count>=запрошенного, уменьшает count. (НЕ трогаем.)
+
+  B) OBJECTS NOT TO DELETE (test_stats/models.py):
+     - ObjectsNotToDelete (:389): id, object_name(char), comment(char, null),
+       enabled(bool). CRUD + toggle.
+     - ObjectNotToDeleteValues (:403): id, object(FK), environment(FK), value,
+       comment(char, null), enabled(bool). CRUD + toggle.
+     Потребитель ObjectsNotToDeleteManager.get (managers/object_manager.py):
+     values по object_name+environment, где object.enabled и value.enabled.
+
+  C) PIPELINE CONFIGS = PipelineParams (test_stats/models.py:378):
+     id, name(char), job_path(char), params(JSONField, list, default []).
+     verbose_name = "Definition of config for triggering regular Jenkins
+     pipelines". CRUD одной таблицы. Потребитель — trigger_test_pipeline
+     (views.py:224) ищет config по name и шлёт в Jenkins.
+     (Сам запуск пайплайнов НЕ в объёме этой фазы — только управление конфигами.)
+
+====================================================================
+2. ПРИНЯТЫЕ РЕШЕНИЯ
+====================================================================
+
+  Р1. ПЛАГИН: убрать вкладки Deploy (DeployGatePanel) и Report (ReportPanel) и
+      весь их код/типы/константы/тесты фазы 1. Меню Leonid = 3 новые вкладки:
+      "Shared resources", "Objects", "Pipeline configs".
+      (TabId/ViewKey/TabTitle обновить; icon плагина оставить — IconShieldCheck.)
+
+  Р2. НОВЫЙ CRUD-API В LEONID (ветка feature/qaa-tms), под HasLeonidToken,
+      на СУЩЕСТВУЮЩЕМ DefaultRouter в src/urls.py, под /api/ (О1). Префиксы —
+      НЕПЕРЕСЕКАЮЩИЕСЯ с занятыми потребительскими ручками (заняты: singular
+      `shared_resource`, `objects_not_to_delete`; пустой префикс r"" -> ProductView).
+      Предлагаемые prefix/basename (DRF ModelViewSet на таблицу):
+        - shared_resource_limits   (SharedResourceLimits)        CRUD
+        - shared_resources         (SharedResources, мн.ч.!)     CRUD (+toggle enabled)
+        - shared_resource_limit_types (LimitTypes)               LIST (read-only)
+        - object_definitions       (ObjectsNotToDelete)          CRUD (+toggle)
+        - object_values            (ObjectNotToDeleteValues)     CRUD (+toggle)
+        - pipeline_params          (PipelineParams)              CRUD
+      permission_classes=[HasLeonidToken] на всех. Сериализаторы новые.
+      Существующие потребительские ручки, admin, slack — НЕ трогаем.
+
+  Р3. АГЕНТ qaa-tms: прокси-роуты ко всем CRUD Leonid (GET/POST/PUT/PATCH/
+      DELETE), заголовок X-Leonid-Token = settings.leonid_token
+      (env AGENT_LEONID_TOKEN). Требуется leonid_write_configured
+      (bool(leonid_url and leonid_token)) для мутаций (иначе 503). Read-list —
+      достаточно leonid_configured. Маппинг ошибок: not-configured 503,
+      upstream 401/403 -> 502 с понятным текстом, unreachable 502,
+      валидация тела 400. services/leonid.py — универсальные _send_json
+      (GET/POST/PUT/PATCH/DELETE) + функции на раздел. schemas — модели
+      запрос/ответ на каждую сущность.
+
+  Р4. ФРОНТ qaa-tms: 3 вкладки, каждая — таблица (Mantine) со списком + формы
+      create/edit (модалки) + delete (подтверждение) + toggle enabled где есть.
+      Общий паттерн: useQuery(list) + useMutation(create/update/delete/toggle)
+      с инвалидацией списка. CompanionGate + agentPort как в фазе 1.
+      Вложенность: Objects — мастер (ObjectsNotToDelete) + детейл значения по
+      окружениям; Shared resources — лимиты + их значения (count/enabled).
+
+  Р5. ТОКЕН (О5, О3): общий командный токен на текущем этапе. Один и тот же
+      секрет прописывается НА ДВУХ сторонах при деплое: в окружении Leonid
+      (LEONID_API_TOKENS={"qaa-tms":"<secret>"}) и в .env агента
+      (AGENT_LEONID_TOKEN="<secret>"). Leonid лишь ВАЛИДИРУЕТ заголовок; он не
+      управляет qaa-tms. Разграничение доступа/хранение — отдельный следующий
+      этап. Секрет НЕ коммитим.
+
+  Р6. BACKEND qaa-tms НЕ ТРОГАЕМ. Данные frontend -> агент -> Leonid.
+
+  Р7. ИСПОЛНЯЕТ CODEX по §4 (сначала Leonid CRUD на feature/qaa-tms, затем
+      agent, затем frontend); Claude — бриф и ревью.
+
+====================================================================
+3. ОТКРЫТЫЕ ВОПРОСЫ / БЛОКЕРЫ
+====================================================================
+
+  О1. (СНЯТО) Новые CRUD — на том же /api, отдельным набором register() на
+      существующем DefaultRouter. Единственная осторожность — не занимать имена
+      `shared_resource`/`objects_not_to_delete` (потребители) и не ломать пустой
+      префикс ProductView. Префиксы из Р2.
+  О2. (СНЯТО) Tests for skip исключён из брифа — нужна доработка модели под
+      "список тестов / список меток / комбинацию" (в DisabledTest этого нет).
+      Отдельный бриф.
+  О3. (СНЯТО, пояснено) Токен — общий секрет на двух сторонах (Р5). Значение
+      задаём сами при деплое препрода.
+  О5. (СНЯТО) Общий токен в .env; разграничение доступа — следующий этап.
+  О4. Валидация/семантика полей при create/update (SharedResourceLimits.
+      resource_name уникален де-факто? reset_date задаём вручную или авто по
+      потребителю? PipelineParams.params — произвольный JSON-list, редактируем
+      как JSON-textarea; ObjectNotToDeleteValues.environment — FK на Environment,
+      выбор из списка). Уточняем по ходу реализации/на живых данных.
+  О6. Раскатка на препрод и таргет — отдельным шагом.
+
+====================================================================
+4. СПЕЦИФИКАЦИЯ ДЛЯ CODEX (файлы/точки)
+====================================================================
+
+  LEONID (~/Projects/qaa-leonid, ветка feature/qaa-tms; Django 5.2 + DRF 3.16):
+   1) test_stats/serializers.py: ModelSerializer'ы для SharedResourceLimits,
+      SharedResources, SharedResourceLimitTypes(ro), ObjectsNotToDelete,
+      ObjectNotToDeleteValues, PipelineParams. Валидация FK (limit_type,
+      resource_limit, object, environment).
+   2) test_stats/views.py (или новый модуль views_manage.py): ModelViewSet'ы с
+      permission_classes=[HasLeonidToken]; @action(detail=True) toggle_enabled
+      где есть поле enabled (SharedResources, ObjectsNotToDelete,
+      ObjectNotToDeleteValues). LimitTypes — ReadOnlyModelViewSet.
+   3) src/urls.py: register() новых viewset'ов на СУЩЕСТВУЮЩЕМ router по Р2
+      (непересекающиеся префиксы). Swagger подхватит.
+   4) tests_leonid/: юниты на HasLeonidToken (401 без токена / 200 с токеном) и
+      на CRUD каждой сущности (create/list/update/delete/toggle). python-lint.sh,
+      run_tests.sh зелено; makemigrations --check (новых полей нет -> миграций
+      быть не должно).
+
+  AGENT qaa-tms (companion, FastAPI):
+   5) core/constants.py: EnvKey.LEONID_TOKEN="AGENT_LEONID_TOKEN"; AgentPath.*
+      для разделов (напр. /leonid/shared_resource_limits, /leonid/shared_resources,
+      /leonid/object_definitions, /leonid/object_values, /leonid/pipeline_params,
+      /leonid/shared_resource_limit_types).
+   6) core/config.py: settings.leonid_token; property leonid_write_configured.
+   7) services/leonid.py: _send_json(method, path, json?, token?) на httpx;
+      функции list/create/update/delete/toggle на каждый раздел; заголовок
+      X-Leonid-Token на мутациях. Маппинг ошибок (503/502/400).
+   8) schemas.py: pydantic-модели запрос/ответ на каждую сущность
+      (extra="ignore" на ответах для аддитивной устойчивости).
+   9) api/routes.py: прокси-роуты (AuthDep+SettingsDep) на все операции.
+  10) tests: httpx MockTransport — happy-path CRUD, 503 без токена агента,
+      502 при upstream 401/403. ruff / mypy app / pytest — чисто.
+
+  FRONTEND qaa-tms (React + Mantine + TanStack Query):
+  11) УДАЛИТЬ фазу-1 витрину: DeployGatePanel(.test), ReportPanel(.test),
+      LeonidSection-ветвление на них, и связанные типы/константы/QueryKey/
+      ViewKey/TabId + агент-схемы status/report/products, если больше не нужны
+      (мёртвый код не копим).
+  12) constants.ts: новые TabId/ViewKey/TabTitle (3 раздела), AgentPath+билдеры,
+      QueryKey.
+  13) api/types.ts: типы сущностей (list/create/update DTO) на 3 раздела.
+  14) api/agentClient.ts: методы list/create/update/delete/toggle (нужен
+      write-хелпер для POST/PUT/PATCH/DELETE — добавить по образцу readAgentJson).
+  15) manifest.tsx: 3 вкладки -> LeonidSection(mode) -> соответствующая панель.
+  16) plugins/leonid/: SharedResourcesPanel (лимиты + значения),
+      ObjectsPanel (объекты + значения по окружениям), PipelineConfigsPanel
+      (name/job_path/params-JSON) + модалки форм.
+  17) Тесты (vitest) на каждую панель: список, create/delete happy-path, toggle,
+      ошибки 503/502. tsc/eslint/vitest — чисто.
+
+====================================================================
+5. ПРИЁМКА / VERIFICATION
+====================================================================
+
+  LEONID: ./python-lint.sh ; ./run_tests.sh ; makemigrations --check.
+    Живьём (после препрод-деплоя): CRUD каждой сущности под X-Leonid-Token
+    (200/201/204), без токена -> 401; существующие потребительские ручки и
+    admin работают как прежде.
+  AGENT:  cd agent && ruff check . && mypy app && pytest.
+  FRONT:  cd frontend && npx tsc --noEmit && npx eslint <изм.> && npx vitest run
+          src/plugins/leonid.
+  Сквозная (после препрода): AGENT_LEONID_URL=<препрод>, AGENT_LEONID_TOKEN=<...>;
+  в UI все 3 вкладки создают/редактируют/удаляют/тогглят записи.
+
+====================================================================
+6. ГРАНИЦЫ (что НЕ делаем)
+====================================================================
+
+  - НЕ трогаем backend qaa-tms (frontend->агент->Leonid).
+  - НЕ трогаем существующие ручки-потребители Leonid, admin, slack, ingestion,
+    /status/, force-deploy, trigger-пайплайнов (запуск), Report-аналитику.
+  - НЕ добавляем новые поля в модели Leonid (миграций быть не должно).
+  - НЕ реализуем запуск Jenkins-пайплайнов — только CRUD конфигов PipelineParams.
+  - Tests for skip — НЕ в этом брифе (нужна доработка модели под метки/
+    комбинации; отдельный бриф).
+  - Раскатку на препрод и выбор таргета — отдельным шагом (О6).

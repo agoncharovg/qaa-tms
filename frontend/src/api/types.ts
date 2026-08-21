@@ -175,41 +175,83 @@ export interface AgentSettingsUpdate {
   kubectl_request_timeout?: string;
 }
 
-export interface LeonidFailedStep {
-  step_name: string | null;
-  error_message: string | null;
-}
-
-export interface LeonidFailedTest {
-  test_name: string | null;
-  steps: LeonidFailedStep[] | null;
-}
-
-export interface LeonidProductStatus {
-  product: string;
-  allow_to_deploy: boolean | null;
-  reason: string | null;
-  failed_tests: LeonidFailedTest[] | null;
-  last_build_date: string | null;
-  build_link: string | null;
-  force_deploy: boolean | null;
-}
-
-export interface LeonidTopFailedTest {
+export interface LeonidSharedResourceLimitType {
+  id: number;
   name: string;
+}
+
+export interface LeonidSharedResourceLimit {
+  id: number;
+  resource_name: string;
+  limit_type: number;
+  limit_value: number;
+  reset_date: string | null;
+}
+
+export interface LeonidSharedResourceLimitInput {
+  resource_name: string;
+  limit_type: number;
+  limit_value: number;
+  reset_date: string | null;
+}
+
+export interface LeonidSharedResource {
+  id: number;
+  resource_limit: number;
+  value: string;
   count: number;
+  enabled: boolean;
 }
 
-export interface LeonidReportSummary {
-  failed_total: number;
-  success_total: number;
-  top_failed_tests: LeonidTopFailedTest[];
-  test_added: number;
+export interface LeonidSharedResourceInput {
+  resource_limit: number;
+  value: string;
+  count: number;
+  enabled: boolean;
 }
 
-export interface LeonidProductsResponse {
-  products: string[];
-  configured: boolean;
+export interface LeonidObjectDefinition {
+  id: number;
+  object_name: string;
+  comment: string | null;
+  enabled: boolean;
+}
+
+export interface LeonidObjectDefinitionInput {
+  object_name: string;
+  comment: string | null;
+  enabled: boolean;
+}
+
+export interface LeonidObjectValue {
+  id: number;
+  object: number;
+  environment: number;
+  value: string;
+  comment: string | null;
+  enabled: boolean;
+}
+
+export interface LeonidObjectValueInput {
+  object: number;
+  environment: number;
+  value: string;
+  comment: string | null;
+  enabled: boolean;
+}
+
+export interface LeonidPipelineParam {
+  id: number;
+  name: string;
+  job_path: string;
+  // Leonid stores params as an arbitrary JSON value (list or object).
+  params: unknown;
+}
+
+export interface LeonidPipelineParamInput {
+  name: string;
+  job_path: string;
+  params: unknown;
 }
 
 export interface KubeconfigStatus {

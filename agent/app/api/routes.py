@@ -5,12 +5,12 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncIterator
-from datetime import date
-from typing import Annotated, cast
+from typing import Annotated, Any, cast
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, ValidationError
 
 from app.api.deps import AuthContext, get_job_manager, get_settings, require_auth
 from app.core import env_file
@@ -68,9 +68,27 @@ from app.schemas import (
     KubePodsResponse,
     KubeTopResponse,
     KubeUseContextRequest,
-    LeonidProductsResponse,
-    LeonidProductStatus,
-    LeonidReportSummary,
+    LeonidObjectDefinitionCreate,
+    LeonidObjectDefinitionPatch,
+    LeonidObjectDefinitionResponse,
+    LeonidObjectDefinitionUpdate,
+    LeonidObjectValueCreate,
+    LeonidObjectValuePatch,
+    LeonidObjectValueResponse,
+    LeonidObjectValueUpdate,
+    LeonidPipelineParamCreate,
+    LeonidPipelineParamPatch,
+    LeonidPipelineParamResponse,
+    LeonidPipelineParamUpdate,
+    LeonidSharedResourceCreate,
+    LeonidSharedResourceLimitCreate,
+    LeonidSharedResourceLimitPatch,
+    LeonidSharedResourceLimitResponse,
+    LeonidSharedResourceLimitTypeResponse,
+    LeonidSharedResourceLimitUpdate,
+    LeonidSharedResourcePatch,
+    LeonidSharedResourceResponse,
+    LeonidSharedResourceUpdate,
     NamespaceCredsResponse,
     NamespaceDeployRecipeResponse,
     NamespaceListResponse,
@@ -118,8 +136,41 @@ from app.services.kubeconfig import (
 from app.services.leonid import (
     LeonidNotConfiguredError,
     LeonidUnreachableError,
-    fetch_report,
-    fetch_status,
+    create_object_definition,
+    create_object_value,
+    create_pipeline_param,
+    create_shared_resource,
+    create_shared_resource_limit,
+    delete_object_definition,
+    delete_object_value,
+    delete_pipeline_param,
+    delete_shared_resource,
+    delete_shared_resource_limit,
+    get_object_definition,
+    get_object_value,
+    get_pipeline_param,
+    get_shared_resource,
+    get_shared_resource_limit,
+    get_shared_resource_limit_type,
+    list_object_definitions,
+    list_object_values,
+    list_pipeline_params,
+    list_shared_resource_limit_types,
+    list_shared_resource_limits,
+    list_shared_resources,
+    patch_object_definition,
+    patch_object_value,
+    patch_pipeline_param,
+    patch_shared_resource,
+    patch_shared_resource_limit,
+    toggle_object_definition,
+    toggle_object_value,
+    toggle_shared_resource,
+    update_object_definition,
+    update_object_value,
+    update_pipeline_param,
+    update_shared_resource,
+    update_shared_resource_limit,
 )
 from app.services.namespaces import (
     list_namespaces,
@@ -192,17 +243,6 @@ def merge_runtime_settings(current_settings: Settings, refreshed_settings: Setti
     )
 
 
-def parse_query_date(value: str, field_name: str) -> str:
-    try:
-        parsed = date.fromisoformat(value)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"{field_name} must use YYYY-MM-DD format.",
-        ) from exc
-    return parsed.isoformat()
-
-
 @router.get(AgentPath.PING.value, response_model=AgentPingResponse)
 async def ping(settings: SettingsDep) -> AgentPingResponse:
     return build_ping_response(settings)
@@ -241,79 +281,678 @@ async def preflight(_: AuthDep, settings: SettingsDep) -> list[PreflightItem]:
     return await collect_preflight(settings)
 
 
-@router.get(AgentPath.LEONID_PRODUCTS.value, response_model=LeonidProductsResponse)
-async def get_leonid_products(
-    _: AuthDep,
-    settings: SettingsDep,
-) -> LeonidProductsResponse:
-    return LeonidProductsResponse(
-        products=list(settings.leonid_products),
-        configured=settings.leonid_configured,
-    )
+def require_leonid_read_configured(settings: Settings) -> None:
+    if not settings.leonid_configured:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=ErrorMessage.LEONID_NOT_CONFIGURED.value,
+        )
 
 
-@router.get(AgentPath.LEONID_STATUS.value, response_model=LeonidProductStatus)
-async def get_leonid_status(
-    _: AuthDep,
-    settings: SettingsDep,
-    product: str = Query(..., min_length=1),
-) -> LeonidProductStatus:
-    try:
-        payload = await fetch_status(settings, product)
-    except LeonidNotConfiguredError as exc:
+def require_leonid_write_configured(settings: Settings) -> None:
+    if not settings.leonid_write_configured:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=ErrorMessage.LEONID_WRITE_NOT_CONFIGURED.value,
+        )
+
+
+def raise_leonid_http_error(exc: LeonidNotConfiguredError | LeonidUnreachableError) -> None:
+    if isinstance(exc, LeonidNotConfiguredError):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
         ) from exc
-    except LeonidUnreachableError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=str(exc),
-        ) from exc
+    raise HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail=str(exc),
+    ) from exc
 
-    if payload is None:
+
+def format_validation_error(exc: ValidationError) -> str:
+    first_error = exc.errors(include_url=False)[0]
+    location = ".".join(str(part) for part in first_error.get("loc", ()))
+    message = str(first_error.get("msg", "Invalid request body."))
+    if location:
+        return f"Invalid request body: {location}: {message}"
+    return f"Invalid request body: {message}"
+
+
+def parse_request_model(
+    payload: Any,
+    model_type: type[BaseModel],
+    *,
+    partial: bool = False,
+) -> dict[str, Any]:
+    if not isinstance(payload, dict):
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Leonid has no data for this product.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid request body: expected a JSON object.",
         )
-
-    return LeonidProductStatus(product=product.strip().lower(), **payload)
-
-
-@router.get(AgentPath.LEONID_REPORT.value, response_model=LeonidReportSummary)
-async def get_leonid_report(
-    _: AuthDep,
-    settings: SettingsDep,
-    product: str = Query(..., min_length=1),
-    start_date: str = Query(...),
-    end_date: str = Query(...),
-    environment: str | None = Query(default=None),
-    test_type: str | None = Query(default=None),
-) -> LeonidReportSummary:
-    parsed_start_date = parse_query_date(start_date, "start_date")
-    parsed_end_date = parse_query_date(end_date, "end_date")
 
     try:
-        payload = await fetch_report(
-            settings,
-            product,
-            parsed_start_date,
-            parsed_end_date,
-            environment=environment or None,
-            test_type=test_type or None,
-        )
-    except LeonidNotConfiguredError as exc:
+        model = model_type.model_validate(payload)
+    except ValidationError as exc:
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(exc),
-        ) from exc
-    except LeonidUnreachableError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=str(exc),
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=format_validation_error(exc),
         ) from exc
 
-    return LeonidReportSummary(**payload)
+    return model.model_dump(exclude_unset=partial)
+
+
+@router.get(
+    AgentPath.LEONID_SHARED_RESOURCE_LIMIT_TYPES.value,
+    response_model=list[LeonidSharedResourceLimitTypeResponse],
+)
+async def get_leonid_shared_resource_limit_types(
+    _: AuthDep,
+    settings: SettingsDep,
+) -> list[LeonidSharedResourceLimitTypeResponse]:
+    require_leonid_read_configured(settings)
+    try:
+        payload = await list_shared_resource_limit_types(settings)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return [LeonidSharedResourceLimitTypeResponse(**item) for item in payload]
+
+
+@router.get(
+    f"{AgentPath.LEONID_SHARED_RESOURCE_LIMIT_TYPES.value}/{{limit_type_id}}",
+    response_model=LeonidSharedResourceLimitTypeResponse,
+)
+async def get_leonid_shared_resource_limit_type(
+    limit_type_id: int,
+    _: AuthDep,
+    settings: SettingsDep,
+) -> LeonidSharedResourceLimitTypeResponse:
+    require_leonid_read_configured(settings)
+    try:
+        payload = await get_shared_resource_limit_type(settings, limit_type_id)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return LeonidSharedResourceLimitTypeResponse(**payload)
+
+
+@router.get(
+    AgentPath.LEONID_SHARED_RESOURCE_LIMITS.value,
+    response_model=list[LeonidSharedResourceLimitResponse],
+)
+async def get_leonid_shared_resource_limits(
+    _: AuthDep,
+    settings: SettingsDep,
+) -> list[LeonidSharedResourceLimitResponse]:
+    require_leonid_read_configured(settings)
+    try:
+        payload = await list_shared_resource_limits(settings)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return [LeonidSharedResourceLimitResponse(**item) for item in payload]
+
+
+@router.post(
+    AgentPath.LEONID_SHARED_RESOURCE_LIMITS.value,
+    response_model=LeonidSharedResourceLimitResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def post_leonid_shared_resource_limit(
+    _: AuthDep,
+    settings: SettingsDep,
+    payload: Annotated[Any, Body()],
+) -> LeonidSharedResourceLimitResponse:
+    require_leonid_write_configured(settings)
+    body = parse_request_model(payload, LeonidSharedResourceLimitCreate)
+    try:
+        response_payload = await create_shared_resource_limit(settings, body)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return LeonidSharedResourceLimitResponse(**response_payload)
+
+
+@router.get(
+    f"{AgentPath.LEONID_SHARED_RESOURCE_LIMITS.value}/{{limit_id}}",
+    response_model=LeonidSharedResourceLimitResponse,
+)
+async def get_leonid_shared_resource_limit(
+    limit_id: int,
+    _: AuthDep,
+    settings: SettingsDep,
+) -> LeonidSharedResourceLimitResponse:
+    require_leonid_read_configured(settings)
+    try:
+        payload = await get_shared_resource_limit(settings, limit_id)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return LeonidSharedResourceLimitResponse(**payload)
+
+
+@router.put(
+    f"{AgentPath.LEONID_SHARED_RESOURCE_LIMITS.value}/{{limit_id}}",
+    response_model=LeonidSharedResourceLimitResponse,
+)
+async def put_leonid_shared_resource_limit(
+    limit_id: int,
+    _: AuthDep,
+    settings: SettingsDep,
+    payload: Annotated[Any, Body()],
+) -> LeonidSharedResourceLimitResponse:
+    require_leonid_write_configured(settings)
+    body = parse_request_model(payload, LeonidSharedResourceLimitUpdate)
+    try:
+        response_payload = await update_shared_resource_limit(settings, limit_id, body)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return LeonidSharedResourceLimitResponse(**response_payload)
+
+
+@router.patch(
+    f"{AgentPath.LEONID_SHARED_RESOURCE_LIMITS.value}/{{limit_id}}",
+    response_model=LeonidSharedResourceLimitResponse,
+)
+async def patch_leonid_shared_resource_limit_route(
+    limit_id: int,
+    _: AuthDep,
+    settings: SettingsDep,
+    payload: Annotated[Any, Body()],
+) -> LeonidSharedResourceLimitResponse:
+    require_leonid_write_configured(settings)
+    body = parse_request_model(payload, LeonidSharedResourceLimitPatch, partial=True)
+    try:
+        response_payload = await patch_shared_resource_limit(settings, limit_id, body)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return LeonidSharedResourceLimitResponse(**response_payload)
+
+
+@router.delete(
+    f"{AgentPath.LEONID_SHARED_RESOURCE_LIMITS.value}/{{limit_id}}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_leonid_shared_resource_limit_route(
+    limit_id: int,
+    _: AuthDep,
+    settings: SettingsDep,
+) -> None:
+    require_leonid_write_configured(settings)
+    try:
+        await delete_shared_resource_limit(settings, limit_id)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+
+
+@router.get(
+    AgentPath.LEONID_SHARED_RESOURCES.value,
+    response_model=list[LeonidSharedResourceResponse],
+)
+async def get_leonid_shared_resources(
+    _: AuthDep,
+    settings: SettingsDep,
+) -> list[LeonidSharedResourceResponse]:
+    require_leonid_read_configured(settings)
+    try:
+        payload = await list_shared_resources(settings)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return [LeonidSharedResourceResponse(**item) for item in payload]
+
+
+@router.post(
+    AgentPath.LEONID_SHARED_RESOURCES.value,
+    response_model=LeonidSharedResourceResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def post_leonid_shared_resource(
+    _: AuthDep,
+    settings: SettingsDep,
+    payload: Annotated[Any, Body()],
+) -> LeonidSharedResourceResponse:
+    require_leonid_write_configured(settings)
+    body = parse_request_model(payload, LeonidSharedResourceCreate)
+    try:
+        response_payload = await create_shared_resource(settings, body)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return LeonidSharedResourceResponse(**response_payload)
+
+
+@router.get(
+    f"{AgentPath.LEONID_SHARED_RESOURCES.value}/{{resource_id}}",
+    response_model=LeonidSharedResourceResponse,
+)
+async def get_leonid_shared_resource(
+    resource_id: int,
+    _: AuthDep,
+    settings: SettingsDep,
+) -> LeonidSharedResourceResponse:
+    require_leonid_read_configured(settings)
+    try:
+        payload = await get_shared_resource(settings, resource_id)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return LeonidSharedResourceResponse(**payload)
+
+
+@router.put(
+    f"{AgentPath.LEONID_SHARED_RESOURCES.value}/{{resource_id}}",
+    response_model=LeonidSharedResourceResponse,
+)
+async def put_leonid_shared_resource(
+    resource_id: int,
+    _: AuthDep,
+    settings: SettingsDep,
+    payload: Annotated[Any, Body()],
+) -> LeonidSharedResourceResponse:
+    require_leonid_write_configured(settings)
+    body = parse_request_model(payload, LeonidSharedResourceUpdate)
+    try:
+        response_payload = await update_shared_resource(settings, resource_id, body)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return LeonidSharedResourceResponse(**response_payload)
+
+
+@router.patch(
+    f"{AgentPath.LEONID_SHARED_RESOURCES.value}/{{resource_id}}",
+    response_model=LeonidSharedResourceResponse,
+)
+async def patch_leonid_shared_resource_route(
+    resource_id: int,
+    _: AuthDep,
+    settings: SettingsDep,
+    payload: Annotated[Any, Body()],
+) -> LeonidSharedResourceResponse:
+    require_leonid_write_configured(settings)
+    body = parse_request_model(payload, LeonidSharedResourcePatch, partial=True)
+    try:
+        response_payload = await patch_shared_resource(settings, resource_id, body)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return LeonidSharedResourceResponse(**response_payload)
+
+
+@router.delete(
+    f"{AgentPath.LEONID_SHARED_RESOURCES.value}/{{resource_id}}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_leonid_shared_resource_route(
+    resource_id: int,
+    _: AuthDep,
+    settings: SettingsDep,
+) -> None:
+    require_leonid_write_configured(settings)
+    try:
+        await delete_shared_resource(settings, resource_id)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+
+
+@router.post(
+    f"{AgentPath.LEONID_SHARED_RESOURCES.value}/{{resource_id}}/toggle_enabled",
+    response_model=LeonidSharedResourceResponse,
+)
+async def toggle_leonid_shared_resource_route(
+    resource_id: int,
+    _: AuthDep,
+    settings: SettingsDep,
+) -> LeonidSharedResourceResponse:
+    require_leonid_write_configured(settings)
+    try:
+        payload = await toggle_shared_resource(settings, resource_id)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return LeonidSharedResourceResponse(**payload)
+
+
+@router.get(
+    AgentPath.LEONID_OBJECT_DEFINITIONS.value,
+    response_model=list[LeonidObjectDefinitionResponse],
+)
+async def get_leonid_object_definitions(
+    _: AuthDep,
+    settings: SettingsDep,
+) -> list[LeonidObjectDefinitionResponse]:
+    require_leonid_read_configured(settings)
+    try:
+        payload = await list_object_definitions(settings)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return [LeonidObjectDefinitionResponse(**item) for item in payload]
+
+
+@router.post(
+    AgentPath.LEONID_OBJECT_DEFINITIONS.value,
+    response_model=LeonidObjectDefinitionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def post_leonid_object_definition(
+    _: AuthDep,
+    settings: SettingsDep,
+    payload: Annotated[Any, Body()],
+) -> LeonidObjectDefinitionResponse:
+    require_leonid_write_configured(settings)
+    body = parse_request_model(payload, LeonidObjectDefinitionCreate)
+    try:
+        response_payload = await create_object_definition(settings, body)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return LeonidObjectDefinitionResponse(**response_payload)
+
+
+@router.get(
+    f"{AgentPath.LEONID_OBJECT_DEFINITIONS.value}/{{definition_id}}",
+    response_model=LeonidObjectDefinitionResponse,
+)
+async def get_leonid_object_definition(
+    definition_id: int,
+    _: AuthDep,
+    settings: SettingsDep,
+) -> LeonidObjectDefinitionResponse:
+    require_leonid_read_configured(settings)
+    try:
+        payload = await get_object_definition(settings, definition_id)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return LeonidObjectDefinitionResponse(**payload)
+
+
+@router.put(
+    f"{AgentPath.LEONID_OBJECT_DEFINITIONS.value}/{{definition_id}}",
+    response_model=LeonidObjectDefinitionResponse,
+)
+async def put_leonid_object_definition(
+    definition_id: int,
+    _: AuthDep,
+    settings: SettingsDep,
+    payload: Annotated[Any, Body()],
+) -> LeonidObjectDefinitionResponse:
+    require_leonid_write_configured(settings)
+    body = parse_request_model(payload, LeonidObjectDefinitionUpdate)
+    try:
+        response_payload = await update_object_definition(settings, definition_id, body)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return LeonidObjectDefinitionResponse(**response_payload)
+
+
+@router.patch(
+    f"{AgentPath.LEONID_OBJECT_DEFINITIONS.value}/{{definition_id}}",
+    response_model=LeonidObjectDefinitionResponse,
+)
+async def patch_leonid_object_definition_route(
+    definition_id: int,
+    _: AuthDep,
+    settings: SettingsDep,
+    payload: Annotated[Any, Body()],
+) -> LeonidObjectDefinitionResponse:
+    require_leonid_write_configured(settings)
+    body = parse_request_model(payload, LeonidObjectDefinitionPatch, partial=True)
+    try:
+        response_payload = await patch_object_definition(settings, definition_id, body)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return LeonidObjectDefinitionResponse(**response_payload)
+
+
+@router.delete(
+    f"{AgentPath.LEONID_OBJECT_DEFINITIONS.value}/{{definition_id}}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_leonid_object_definition_route(
+    definition_id: int,
+    _: AuthDep,
+    settings: SettingsDep,
+) -> None:
+    require_leonid_write_configured(settings)
+    try:
+        await delete_object_definition(settings, definition_id)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+
+
+@router.post(
+    f"{AgentPath.LEONID_OBJECT_DEFINITIONS.value}/{{definition_id}}/toggle_enabled",
+    response_model=LeonidObjectDefinitionResponse,
+)
+async def toggle_leonid_object_definition_route(
+    definition_id: int,
+    _: AuthDep,
+    settings: SettingsDep,
+) -> LeonidObjectDefinitionResponse:
+    require_leonid_write_configured(settings)
+    try:
+        payload = await toggle_object_definition(settings, definition_id)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return LeonidObjectDefinitionResponse(**payload)
+
+
+@router.get(
+    AgentPath.LEONID_OBJECT_VALUES.value,
+    response_model=list[LeonidObjectValueResponse],
+)
+async def get_leonid_object_values(
+    _: AuthDep,
+    settings: SettingsDep,
+) -> list[LeonidObjectValueResponse]:
+    require_leonid_read_configured(settings)
+    try:
+        payload = await list_object_values(settings)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return [LeonidObjectValueResponse(**item) for item in payload]
+
+
+@router.post(
+    AgentPath.LEONID_OBJECT_VALUES.value,
+    response_model=LeonidObjectValueResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def post_leonid_object_value(
+    _: AuthDep,
+    settings: SettingsDep,
+    payload: Annotated[Any, Body()],
+) -> LeonidObjectValueResponse:
+    require_leonid_write_configured(settings)
+    body = parse_request_model(payload, LeonidObjectValueCreate)
+    try:
+        response_payload = await create_object_value(settings, body)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return LeonidObjectValueResponse(**response_payload)
+
+
+@router.get(
+    f"{AgentPath.LEONID_OBJECT_VALUES.value}/{{value_id}}",
+    response_model=LeonidObjectValueResponse,
+)
+async def get_leonid_object_value(
+    value_id: int,
+    _: AuthDep,
+    settings: SettingsDep,
+) -> LeonidObjectValueResponse:
+    require_leonid_read_configured(settings)
+    try:
+        payload = await get_object_value(settings, value_id)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return LeonidObjectValueResponse(**payload)
+
+
+@router.put(
+    f"{AgentPath.LEONID_OBJECT_VALUES.value}/{{value_id}}",
+    response_model=LeonidObjectValueResponse,
+)
+async def put_leonid_object_value(
+    value_id: int,
+    _: AuthDep,
+    settings: SettingsDep,
+    payload: Annotated[Any, Body()],
+) -> LeonidObjectValueResponse:
+    require_leonid_write_configured(settings)
+    body = parse_request_model(payload, LeonidObjectValueUpdate)
+    try:
+        response_payload = await update_object_value(settings, value_id, body)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return LeonidObjectValueResponse(**response_payload)
+
+
+@router.patch(
+    f"{AgentPath.LEONID_OBJECT_VALUES.value}/{{value_id}}",
+    response_model=LeonidObjectValueResponse,
+)
+async def patch_leonid_object_value_route(
+    value_id: int,
+    _: AuthDep,
+    settings: SettingsDep,
+    payload: Annotated[Any, Body()],
+) -> LeonidObjectValueResponse:
+    require_leonid_write_configured(settings)
+    body = parse_request_model(payload, LeonidObjectValuePatch, partial=True)
+    try:
+        response_payload = await patch_object_value(settings, value_id, body)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return LeonidObjectValueResponse(**response_payload)
+
+
+@router.delete(
+    f"{AgentPath.LEONID_OBJECT_VALUES.value}/{{value_id}}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_leonid_object_value_route(
+    value_id: int,
+    _: AuthDep,
+    settings: SettingsDep,
+) -> None:
+    require_leonid_write_configured(settings)
+    try:
+        await delete_object_value(settings, value_id)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+
+
+@router.post(
+    f"{AgentPath.LEONID_OBJECT_VALUES.value}/{{value_id}}/toggle_enabled",
+    response_model=LeonidObjectValueResponse,
+)
+async def toggle_leonid_object_value_route(
+    value_id: int,
+    _: AuthDep,
+    settings: SettingsDep,
+) -> LeonidObjectValueResponse:
+    require_leonid_write_configured(settings)
+    try:
+        payload = await toggle_object_value(settings, value_id)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return LeonidObjectValueResponse(**payload)
+
+
+@router.get(
+    AgentPath.LEONID_PIPELINE_PARAMS.value,
+    response_model=list[LeonidPipelineParamResponse],
+)
+async def get_leonid_pipeline_params(
+    _: AuthDep,
+    settings: SettingsDep,
+) -> list[LeonidPipelineParamResponse]:
+    require_leonid_read_configured(settings)
+    try:
+        payload = await list_pipeline_params(settings)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return [LeonidPipelineParamResponse(**item) for item in payload]
+
+
+@router.post(
+    AgentPath.LEONID_PIPELINE_PARAMS.value,
+    response_model=LeonidPipelineParamResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def post_leonid_pipeline_param(
+    _: AuthDep,
+    settings: SettingsDep,
+    payload: Annotated[Any, Body()],
+) -> LeonidPipelineParamResponse:
+    require_leonid_write_configured(settings)
+    body = parse_request_model(payload, LeonidPipelineParamCreate)
+    try:
+        response_payload = await create_pipeline_param(settings, body)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return LeonidPipelineParamResponse(**response_payload)
+
+
+@router.get(
+    f"{AgentPath.LEONID_PIPELINE_PARAMS.value}/{{pipeline_param_id}}",
+    response_model=LeonidPipelineParamResponse,
+)
+async def get_leonid_pipeline_param(
+    pipeline_param_id: int,
+    _: AuthDep,
+    settings: SettingsDep,
+) -> LeonidPipelineParamResponse:
+    require_leonid_read_configured(settings)
+    try:
+        payload = await get_pipeline_param(settings, pipeline_param_id)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return LeonidPipelineParamResponse(**payload)
+
+
+@router.put(
+    f"{AgentPath.LEONID_PIPELINE_PARAMS.value}/{{pipeline_param_id}}",
+    response_model=LeonidPipelineParamResponse,
+)
+async def put_leonid_pipeline_param(
+    pipeline_param_id: int,
+    _: AuthDep,
+    settings: SettingsDep,
+    payload: Annotated[Any, Body()],
+) -> LeonidPipelineParamResponse:
+    require_leonid_write_configured(settings)
+    body = parse_request_model(payload, LeonidPipelineParamUpdate)
+    try:
+        response_payload = await update_pipeline_param(settings, pipeline_param_id, body)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return LeonidPipelineParamResponse(**response_payload)
+
+
+@router.patch(
+    f"{AgentPath.LEONID_PIPELINE_PARAMS.value}/{{pipeline_param_id}}",
+    response_model=LeonidPipelineParamResponse,
+)
+async def patch_leonid_pipeline_param_route(
+    pipeline_param_id: int,
+    _: AuthDep,
+    settings: SettingsDep,
+    payload: Annotated[Any, Body()],
+) -> LeonidPipelineParamResponse:
+    require_leonid_write_configured(settings)
+    body = parse_request_model(payload, LeonidPipelineParamPatch, partial=True)
+    try:
+        response_payload = await patch_pipeline_param(settings, pipeline_param_id, body)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
+    return LeonidPipelineParamResponse(**response_payload)
+
+
+@router.delete(
+    f"{AgentPath.LEONID_PIPELINE_PARAMS.value}/{{pipeline_param_id}}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_leonid_pipeline_param_route(
+    pipeline_param_id: int,
+    _: AuthDep,
+    settings: SettingsDep,
+) -> None:
+    require_leonid_write_configured(settings)
+    try:
+        await delete_pipeline_param(settings, pipeline_param_id)
+    except (LeonidNotConfiguredError, LeonidUnreachableError) as exc:
+        raise_leonid_http_error(exc)
 
 
 @router.post(
