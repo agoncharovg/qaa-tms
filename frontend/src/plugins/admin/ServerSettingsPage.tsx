@@ -6,7 +6,6 @@ import {
   Group,
   Loader,
   PasswordInput,
-  SimpleGrid,
   Stack,
   Text,
   TextInput,
@@ -46,7 +45,6 @@ const NoticeStatus = {
 const EMPTY_VALUE = "" as const;
 const ALERT_ICON_SIZE_PX = 18 as const;
 const CARD_TITLE_ORDER = 3 as const;
-const FORM_COLUMNS = { base: 1, md: 2 } as const;
 const PAGE_TITLE_ORDER = 2 as const;
 
 const SECRET_INPUT_AUTOCOMPLETE = "new-password" as const;
@@ -232,26 +230,24 @@ export function ServerSettingsPage() {
 
         {form ? (
           <Stack gap="md">
-            <SimpleGrid cols={FORM_COLUMNS}>
-              <TextInput
-                label={ServerSettingsPageCopy.BASE_URL_LABEL}
-                onChange={(event) => setField("baseUrl", event.currentTarget.value)}
-                value={form.baseUrl}
-              />
-              <PasswordInput
-                autoComplete={SECRET_INPUT_AUTOCOMPLETE}
-                description={
-                  form.superuserTokenSet ? ServerSettingsPageCopy.SECRET_SET : ServerSettingsPageCopy.NOT_SET
-                }
-                label={ServerSettingsPageCopy.SUPERUSER_TOKEN_LABEL}
-                name={SECRET_INPUT_NAME.SUPERUSER_TOKEN}
-                onChange={(event) => {
-                  setField("superuserToken", event.currentTarget.value);
-                  setField("superuserTokenDirty", true);
-                }}
-                value={form.superuserToken}
-              />
-            </SimpleGrid>
+            <TextInput
+              label={ServerSettingsPageCopy.BASE_URL_LABEL}
+              onChange={(event) => setField("baseUrl", event.currentTarget.value)}
+              value={form.baseUrl}
+            />
+            <PasswordInput
+              autoComplete={SECRET_INPUT_AUTOCOMPLETE}
+              description={
+                form.superuserTokenSet ? ServerSettingsPageCopy.SECRET_SET : ServerSettingsPageCopy.NOT_SET
+              }
+              label={ServerSettingsPageCopy.SUPERUSER_TOKEN_LABEL}
+              name={SECRET_INPUT_NAME.SUPERUSER_TOKEN}
+              onChange={(event) => {
+                setField("superuserToken", event.currentTarget.value);
+                setField("superuserTokenDirty", true);
+              }}
+              value={form.superuserToken}
+            />
             <Group justify="space-between">
               <Button
                 onClick={() => {

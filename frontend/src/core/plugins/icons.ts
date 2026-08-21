@@ -7,12 +7,12 @@ import {
   IconRocket,
   IconServer,
   IconSettings,
+  IconShieldCheck,
   IconSparkles,
   IconUserCircle,
 } from "@tabler/icons-react";
 
 import { IconName } from "@/constants";
-import { LeonidIcon } from "@/plugins/leonid/leonid-icon";
 
 type LocalIconProps = ComponentPropsWithoutRef<"svg"> & {
   color?: string;
@@ -52,7 +52,7 @@ export const FALLBACK_PLUGIN_ICON = IconPuzzle;
 export const ICON_REGISTRY: Record<IconName, TablerIcon> = {
   [IconName.CLUSTER]: IconServer,
   [IconName.JENKINS]: JenkinsIcon,
-  [IconName.LEONID]: LeonidIcon as unknown as TablerIcon,
+  [IconName.LEONID]: IconShieldCheck,
   [IconName.ROCKET]: IconRocket,
   [IconName.SPARKLES]: IconSparkles,
   [IconName.SETTINGS]: IconSettings,
