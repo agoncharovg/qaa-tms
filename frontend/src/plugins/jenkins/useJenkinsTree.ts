@@ -36,6 +36,7 @@ export function useJenkinsTree({
   const signature = scopeQuery.data?.signature ?? null;
 
   const cachedTree = useCachedJenkinsResource<JenkinsNode>({
+    canFetchLive: Boolean(signature && token && agentPort !== null),
     enabled: Boolean(enabled && token && signature),
     fetchLive: async () => {
       if (!signature || !token || agentPort === null) {
@@ -81,3 +82,4 @@ export function useJenkinsTree({
     signature,
   };
 }
+

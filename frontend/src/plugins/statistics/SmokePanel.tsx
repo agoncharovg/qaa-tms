@@ -11,9 +11,11 @@ import {
   Text,
 } from "@mantine/core";
 import { IconAlertCircle, IconExternalLink, IconRefresh } from "@tabler/icons-react";
+import { useQuery } from "@tanstack/react-query";
 
+import { discoverAgent } from "@/api/agentClient";
 import { usePalette } from "@/app/theme/usePalette";
-import { DEFAULT_SMOKE_FOLDER_PATH, SMOKE_REFRESH_OPTIONS_MS } from "@/constants";
+import { DEFAULT_SMOKE_FOLDER_PATH, QueryKey, SMOKE_REFRESH_OPTIONS_MS } from "@/constants";
 import { countPipelineStatuses, countGrayStatuses } from "@/plugins/jenkins/treeUtils";
 import { useAuthStore } from "@/store/authStore";
 import { SmokeTimelineRow, SmokeTimelineRowValue } from "@/plugins/statistics/SmokeTimelineRow";
@@ -30,6 +32,7 @@ import {
 import { useSmokeFolder } from "@/plugins/statistics/useSmokeFolder";
 
 const SmokePanelCopy = {
+  COMPANION_REQUIRED: "Cache is warming up. Start the companion app to populate SMOKE.",
   ERROR_BODY: "The shared Jenkins cache could not read the SMOKE folder. Retry shortly.",
   ERROR_TITLE: "Could not load the SMOKE folder",
   EMPTY: "No pipelines found in this folder.",
@@ -38,6 +41,7 @@ const SmokePanelCopy = {
   REFRESH: "Refresh now",
   REFRESH_LABEL: "Auto-refresh",
   TITLE: "E2E preprod tests SMOKE",
+  WARMING: "Warming shared SMOKE cache…",
 } as const;
 
 const SmokePanelValue = {
@@ -74,9 +78,17 @@ export function SmokePanel({
   const palette = usePalette();
   const token = useAuthStore((state) => state.token);
   const [refreshMs, setRefreshMs] = useState<number>(readStoredSmokeRefreshMs);
+  const companionQuery = useQuery({
+    enabled: true,
+    queryFn: ({ signal }) => discoverAgent(signal),
+    queryKey: [QueryKey.AGENT_DISCOVERY, token],
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+  const agentPort = companionQuery.data?.port ?? null;
 
-  const { roots, error, isLoading, isRefreshing, refetch } = useSmokeFolder({
-    agentPort: null,
+  const { roots, error, isLoading, isRefreshing, isStale, refetch } = useSmokeFolder({
+    agentPort,
     enabled: true,
     folderPath,
     refreshMs,
@@ -107,6 +119,16 @@ export function SmokePanel({
       ),
     [roots]
   );
+  const isColdCache = pipelines.length === 0 && isStale;
+  const isWarmupPending =
+    !error &&
+    !isLoading &&
+    isColdCache &&
+    (companionQuery.isLoading || agentPort !== null || isRefreshing);
+  const emptyMessage =
+    isColdCache && agentPort === null && !companionQuery.isLoading
+      ? SmokePanelCopy.COMPANION_REQUIRED
+      : SmokePanelCopy.EMPTY;
 
   function openInBrowser(url: string): void {
     if (url) {
@@ -205,15 +227,17 @@ export function SmokePanel({
         </Alert>
       ) : null}
 
-      {isLoading ? (
+      {isLoading || isWarmupPending ? (
         <Group gap="sm" py="xl">
           <Loader size="sm" />
-          <Text c={palette.faint}>{SmokePanelCopy.LOADING}</Text>
+          <Text c={palette.faint}>
+            {isLoading ? SmokePanelCopy.LOADING : SmokePanelCopy.WARMING}
+          </Text>
         </Group>
       ) : null}
 
-      {!isLoading && !error && pipelines.length === 0 ? (
-        <Text c={palette.faint}>{SmokePanelCopy.EMPTY}</Text>
+      {!isLoading && !isWarmupPending && !error && pipelines.length === 0 ? (
+        <Text c={palette.faint}>{emptyMessage}</Text>
       ) : null}
 
       {rows.length > 0 ? (
@@ -252,3 +276,4 @@ export function SmokePanel({
     </Stack>
   );
 }
+

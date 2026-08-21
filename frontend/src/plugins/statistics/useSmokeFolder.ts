@@ -17,6 +17,7 @@ interface UseSmokeFolderResult {
   error: unknown;
   isLoading: boolean;
   isRefreshing: boolean;
+  isStale: boolean;
   refetch: () => Promise<void>;
   roots: JenkinsNode[];
 }
@@ -34,6 +35,7 @@ export function useSmokeFolder({
   const ttlSeconds = Math.round(refreshMs / 1000);
 
   const cachedFolder = useCachedJenkinsResource<JenkinsNode>({
+    canFetchLive: Boolean(signature && token && agentPort !== null),
     enabled: Boolean(enabled && token && signature),
     fetchLive: async () => {
       if (!signature || !token || agentPort === null) {
@@ -77,7 +79,9 @@ export function useSmokeFolder({
     error: scopeQuery.error ?? cachedFolder.error,
     isLoading: scopeQuery.isLoading || cachedFolder.isLoading,
     isRefreshing: cachedFolder.isRefreshing,
+    isStale: cachedFolder.stale,
     refetch: cachedFolder.refetch,
     roots: cachedFolder.data,
   };
 }
+

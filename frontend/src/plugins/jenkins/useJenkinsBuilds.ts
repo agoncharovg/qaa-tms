@@ -29,6 +29,7 @@ export function useJenkinsBuilds({
   token,
 }: UseJenkinsBuildsOptions): UseJenkinsBuildsResult {
   const cachedBuilds = useCachedJenkinsResource<JenkinsBuild>({
+    canFetchLive: Boolean(enabled && token && signature && agentPort !== null),
     enabled: Boolean(enabled && token && signature),
     fetchLive: async () => {
       if (!signature || !token || agentPort === null) {
@@ -71,3 +72,4 @@ export function useJenkinsBuilds({
     refetch: cachedBuilds.refetch,
   };
 }
+

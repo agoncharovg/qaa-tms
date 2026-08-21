@@ -9,6 +9,7 @@ interface CachedResourceRead<TItem> {
 }
 
 interface UseCachedJenkinsResourceOptions<TItem> {
+  canFetchLive: boolean;
   enabled: boolean;
   fetchLive: () => Promise<TItem[] | null>;
   queryKey: unknown[];
@@ -25,6 +26,7 @@ interface UseCachedJenkinsResourceResult<TItem> {
   isLoading: boolean;
   isRefreshing: boolean;
   refetch: () => Promise<void>;
+  stale: boolean;
 }
 
 /**
@@ -34,6 +36,7 @@ interface UseCachedJenkinsResourceResult<TItem> {
  * as a personal fast-path when it is already available.
  */
 export function useCachedJenkinsResource<TItem>({
+  canFetchLive,
   enabled,
   fetchLive,
   queryKey,
@@ -44,6 +47,7 @@ export function useCachedJenkinsResource<TItem>({
 }: UseCachedJenkinsResourceOptions<TItem>): UseCachedJenkinsResourceResult<TItem> {
   const queryClient = useQueryClient();
   const attemptedLeaseRef = useRef<string | null>(null);
+  const lastAttemptKeyRef = useRef<string | null>(null);
 
   const cacheQuery = useQuery({
     enabled,
@@ -59,11 +63,18 @@ export function useCachedJenkinsResource<TItem>({
     mutationFn: async (refreshLease: string | null) => {
       const data = await fetchLive();
       if (data === null) {
-        return;
+        return false;
       }
       await writeCache(data, refreshLease);
+      return true;
     },
-    onSuccess: async () => {
+    onSuccess: async (didWrite, lease) => {
+      if (!didWrite) {
+        return;
+      }
+      if (lease) {
+        attemptedLeaseRef.current = lease;
+      }
       await queryClient.invalidateQueries({ queryKey });
     },
   });
@@ -74,15 +85,21 @@ export function useCachedJenkinsResource<TItem>({
   useEffect(() => {
     if (!stale || !refreshLease) {
       attemptedLeaseRef.current = null;
+      lastAttemptKeyRef.current = null;
       return;
     }
     if (attemptedLeaseRef.current === refreshLease) {
       return;
     }
 
-    attemptedLeaseRef.current = refreshLease;
+    const attemptKey = `${refreshLease}:${canFetchLive ? "ready" : "blocked"}`;
+    if (lastAttemptKeyRef.current === attemptKey) {
+      return;
+    }
+
+    lastAttemptKeyRef.current = attemptKey;
     refreshMutation.mutate(refreshLease);
-  }, [refreshLease, refreshMutation, stale]);
+  }, [canFetchLive, refreshLease, refreshMutation, stale]);
 
   // Stable identity so callers can depend on it in effects without re-running
   // every render. Forces a fresh agent fetch, bypassing the stale cache.
@@ -98,5 +115,7 @@ export function useCachedJenkinsResource<TItem>({
     isLoading: cacheQuery.isLoading,
     isRefreshing: cacheQuery.isFetching || refreshMutation.isPending,
     refetch,
+    stale,
   };
 }
+
