@@ -57,7 +57,9 @@ async def _send_json(
     require_configured(settings)
     url = f"{settings.leonid_url}{path}"
     headers = {HeaderName.ACCEPT.value: HeaderValue.APPLICATION_JSON.value}
-    if token and method != "GET":
+    # Every management endpoint is token-gated (HasLeonidToken), reads included,
+    # so attach the token whenever we have one — not only for mutations.
+    if token:
         headers[HeaderName.X_LEONID_TOKEN.value] = token
 
     try:
@@ -112,7 +114,13 @@ async def _list_collection(
     *,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> list[dict[str, Any]]:
-    payload = await _send_json(settings, "GET", collection_path, transport=transport)
+    payload = await _send_json(
+        settings,
+        "GET",
+        collection_path,
+        token=settings.leonid_token,
+        transport=transport,
+    )
     return payload if isinstance(payload, list) else []
 
 
@@ -127,6 +135,7 @@ async def _retrieve_item(
         settings,
         "GET",
         _detail_path(collection_path, item_id),
+        token=settings.leonid_token,
         transport=transport,
     )
     return payload if isinstance(payload, dict) else {}

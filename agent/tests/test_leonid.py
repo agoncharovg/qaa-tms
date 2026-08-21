@@ -80,7 +80,8 @@ async def test_list_shared_resource_limit_types_reads_expected_endpoint() -> Non
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "GET"
         assert str(request.url) == f"{LEONID_BASE_URL}/api/shared_resource_limit_types/"
-        assert request.headers.get("X-Leonid-Token") is None
+        # Reads are token-gated too (HasLeonidToken), so GET must carry the token.
+        assert request.headers.get("X-Leonid-Token") == "shared-secret"
         return httpx.Response(status_code=200, json=[{"id": 1, "name": "day"}])
 
     payload = await list_shared_resource_limit_types(
