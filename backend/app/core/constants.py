@@ -130,11 +130,16 @@ class AuthScheme(StrEnum):
 class HttpHeader(StrEnum):
     ACCEPT = "Accept"
     AUTHORIZATION = "Authorization"
+    CACHE_CONTROL = "Cache-Control"
     CONTENT_TYPE = "Content-Type"
     IDEMPOTENCY_KEY = "Idempotency-Key"
     LAST_EVENT_ID = "Last-Event-ID"
     WWW_AUTHENTICATE = "WWW-Authenticate"
     X_QAA_GENERATOR_TOKEN = "X-QAA-Generator-Token"
+
+
+class CacheControl(StrEnum):
+    NO_STORE = "no-store"
 
 
 class HttpMethod(StrEnum):

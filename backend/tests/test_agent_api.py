@@ -78,8 +78,10 @@ def test_agent_manifest_returns_bundle_metadata(tmp_path: Path) -> None:
         "sha256": hashlib.sha256(tarball_bytes).hexdigest(),
         "os": None,
     }
+    assert manifest_response.headers["cache-control"] == "no-store"
     assert download_response.status_code == 200
     assert download_response.headers["content-type"] == "application/gzip"
+    assert download_response.headers["cache-control"] == "no-store"
     assert download_response.content == tarball_bytes
 
 
