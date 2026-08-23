@@ -12,7 +12,13 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, sta
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ValidationError
 
-from app.api.deps import AuthContext, get_job_manager, get_settings, require_auth
+from app.api.deps import (
+    AuthContext,
+    get_job_manager,
+    get_settings,
+    require_auth,
+    require_permission,
+)
 from app.core import env_file
 from app.core.config import JenkinsRootGroup, Settings
 from app.core.config import get_settings as load_settings
@@ -28,6 +34,7 @@ from app.core.constants import (
     HeaderValue,
     KubeconfigAction,
     OperationType,
+    PermissionKey,
     Product,
     StagingEnvKey,
 )
@@ -187,6 +194,33 @@ router = APIRouter()
 AuthDep = Annotated[AuthContext, Depends(require_auth)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 JobManagerDep = Annotated[JobManager, Depends(get_job_manager)]
+JenkinsReadAuth = Annotated[AuthContext, Depends(require_permission(PermissionKey.JENKINS_READ))]
+JenkinsFreezeAuth = Annotated[
+    AuthContext, Depends(require_permission(PermissionKey.JENKINS_FREEZE))
+]
+JenkinsResumeAuth = Annotated[
+    AuthContext, Depends(require_permission(PermissionKey.JENKINS_RESUME))
+]
+KuberReadAuth = Annotated[AuthContext, Depends(require_permission(PermissionKey.KUBER_READ))]
+KuberUseContextAuth = Annotated[
+    AuthContext, Depends(require_permission(PermissionKey.KUBER_USE_CONTEXT))
+]
+KuberDeletePodAuth = Annotated[
+    AuthContext, Depends(require_permission(PermissionKey.KUBER_DELETE_POD))
+]
+StagingsReadAuth = Annotated[AuthContext, Depends(require_permission(PermissionKey.STAGINGS_READ))]
+StagingsDeployAuth = Annotated[
+    AuthContext, Depends(require_permission(PermissionKey.STAGINGS_DEPLOY))
+]
+StagingsDestroyAuth = Annotated[
+    AuthContext, Depends(require_permission(PermissionKey.STAGINGS_DESTROY))
+]
+StagingsSyncAuth = Annotated[AuthContext, Depends(require_permission(PermissionKey.STAGINGS_SYNC))]
+StagingsE2eRunAuth = Annotated[
+    AuthContext, Depends(require_permission(PermissionKey.STAGINGS_E2E_RUN))
+]
+LeonidReadAuth = Annotated[AuthContext, Depends(require_permission(PermissionKey.LEONID_READ))]
+LeonidWriteAuth = Annotated[AuthContext, Depends(require_permission(PermissionKey.LEONID_WRITE))]
 logger = logging.getLogger(__name__)
 
 AGENT_SETTINGS_ENV_KEY_BY_FIELD = {
@@ -346,7 +380,7 @@ def parse_request_model(
     response_model=list[LeonidSharedResourceLimitTypeResponse],
 )
 async def get_leonid_shared_resource_limit_types(
-    _: AuthDep,
+    _: LeonidReadAuth,
     settings: SettingsDep,
 ) -> list[LeonidSharedResourceLimitTypeResponse]:
     require_leonid_read_configured(settings)
@@ -363,7 +397,7 @@ async def get_leonid_shared_resource_limit_types(
 )
 async def get_leonid_shared_resource_limit_type(
     limit_type_id: int,
-    _: AuthDep,
+    _: LeonidReadAuth,
     settings: SettingsDep,
 ) -> LeonidSharedResourceLimitTypeResponse:
     require_leonid_read_configured(settings)
@@ -379,7 +413,7 @@ async def get_leonid_shared_resource_limit_type(
     response_model=list[LeonidSharedResourceLimitResponse],
 )
 async def get_leonid_shared_resource_limits(
-    _: AuthDep,
+    _: LeonidReadAuth,
     settings: SettingsDep,
 ) -> list[LeonidSharedResourceLimitResponse]:
     require_leonid_read_configured(settings)
@@ -396,7 +430,7 @@ async def get_leonid_shared_resource_limits(
     status_code=status.HTTP_201_CREATED,
 )
 async def post_leonid_shared_resource_limit(
-    _: AuthDep,
+    _: LeonidWriteAuth,
     settings: SettingsDep,
     payload: Annotated[Any, Body()],
 ) -> LeonidSharedResourceLimitResponse:
@@ -415,7 +449,7 @@ async def post_leonid_shared_resource_limit(
 )
 async def get_leonid_shared_resource_limit(
     limit_id: int,
-    _: AuthDep,
+    _: LeonidReadAuth,
     settings: SettingsDep,
 ) -> LeonidSharedResourceLimitResponse:
     require_leonid_read_configured(settings)
@@ -432,7 +466,7 @@ async def get_leonid_shared_resource_limit(
 )
 async def put_leonid_shared_resource_limit(
     limit_id: int,
-    _: AuthDep,
+    _: LeonidWriteAuth,
     settings: SettingsDep,
     payload: Annotated[Any, Body()],
 ) -> LeonidSharedResourceLimitResponse:
@@ -451,7 +485,7 @@ async def put_leonid_shared_resource_limit(
 )
 async def patch_leonid_shared_resource_limit_route(
     limit_id: int,
-    _: AuthDep,
+    _: LeonidWriteAuth,
     settings: SettingsDep,
     payload: Annotated[Any, Body()],
 ) -> LeonidSharedResourceLimitResponse:
@@ -470,7 +504,7 @@ async def patch_leonid_shared_resource_limit_route(
 )
 async def delete_leonid_shared_resource_limit_route(
     limit_id: int,
-    _: AuthDep,
+    _: LeonidWriteAuth,
     settings: SettingsDep,
 ) -> None:
     require_leonid_write_configured(settings)
@@ -485,7 +519,7 @@ async def delete_leonid_shared_resource_limit_route(
     response_model=list[LeonidSharedResourceResponse],
 )
 async def get_leonid_shared_resources(
-    _: AuthDep,
+    _: LeonidReadAuth,
     settings: SettingsDep,
 ) -> list[LeonidSharedResourceResponse]:
     require_leonid_read_configured(settings)
@@ -502,7 +536,7 @@ async def get_leonid_shared_resources(
     status_code=status.HTTP_201_CREATED,
 )
 async def post_leonid_shared_resource(
-    _: AuthDep,
+    _: LeonidWriteAuth,
     settings: SettingsDep,
     payload: Annotated[Any, Body()],
 ) -> LeonidSharedResourceResponse:
@@ -521,7 +555,7 @@ async def post_leonid_shared_resource(
 )
 async def get_leonid_shared_resource(
     resource_id: int,
-    _: AuthDep,
+    _: LeonidReadAuth,
     settings: SettingsDep,
 ) -> LeonidSharedResourceResponse:
     require_leonid_read_configured(settings)
@@ -538,7 +572,7 @@ async def get_leonid_shared_resource(
 )
 async def put_leonid_shared_resource(
     resource_id: int,
-    _: AuthDep,
+    _: LeonidWriteAuth,
     settings: SettingsDep,
     payload: Annotated[Any, Body()],
 ) -> LeonidSharedResourceResponse:
@@ -557,7 +591,7 @@ async def put_leonid_shared_resource(
 )
 async def patch_leonid_shared_resource_route(
     resource_id: int,
-    _: AuthDep,
+    _: LeonidWriteAuth,
     settings: SettingsDep,
     payload: Annotated[Any, Body()],
 ) -> LeonidSharedResourceResponse:
@@ -576,7 +610,7 @@ async def patch_leonid_shared_resource_route(
 )
 async def delete_leonid_shared_resource_route(
     resource_id: int,
-    _: AuthDep,
+    _: LeonidWriteAuth,
     settings: SettingsDep,
 ) -> None:
     require_leonid_write_configured(settings)
@@ -592,7 +626,7 @@ async def delete_leonid_shared_resource_route(
 )
 async def toggle_leonid_shared_resource_route(
     resource_id: int,
-    _: AuthDep,
+    _: LeonidWriteAuth,
     settings: SettingsDep,
 ) -> LeonidSharedResourceResponse:
     require_leonid_write_configured(settings)
@@ -608,7 +642,7 @@ async def toggle_leonid_shared_resource_route(
     response_model=list[LeonidObjectDefinitionResponse],
 )
 async def get_leonid_object_definitions(
-    _: AuthDep,
+    _: LeonidReadAuth,
     settings: SettingsDep,
 ) -> list[LeonidObjectDefinitionResponse]:
     require_leonid_read_configured(settings)
@@ -625,7 +659,7 @@ async def get_leonid_object_definitions(
     status_code=status.HTTP_201_CREATED,
 )
 async def post_leonid_object_definition(
-    _: AuthDep,
+    _: LeonidWriteAuth,
     settings: SettingsDep,
     payload: Annotated[Any, Body()],
 ) -> LeonidObjectDefinitionResponse:
@@ -644,7 +678,7 @@ async def post_leonid_object_definition(
 )
 async def get_leonid_object_definition(
     definition_id: int,
-    _: AuthDep,
+    _: LeonidReadAuth,
     settings: SettingsDep,
 ) -> LeonidObjectDefinitionResponse:
     require_leonid_read_configured(settings)
@@ -661,7 +695,7 @@ async def get_leonid_object_definition(
 )
 async def put_leonid_object_definition(
     definition_id: int,
-    _: AuthDep,
+    _: LeonidWriteAuth,
     settings: SettingsDep,
     payload: Annotated[Any, Body()],
 ) -> LeonidObjectDefinitionResponse:
@@ -680,7 +714,7 @@ async def put_leonid_object_definition(
 )
 async def patch_leonid_object_definition_route(
     definition_id: int,
-    _: AuthDep,
+    _: LeonidWriteAuth,
     settings: SettingsDep,
     payload: Annotated[Any, Body()],
 ) -> LeonidObjectDefinitionResponse:
@@ -699,7 +733,7 @@ async def patch_leonid_object_definition_route(
 )
 async def delete_leonid_object_definition_route(
     definition_id: int,
-    _: AuthDep,
+    _: LeonidWriteAuth,
     settings: SettingsDep,
 ) -> None:
     require_leonid_write_configured(settings)
@@ -715,7 +749,7 @@ async def delete_leonid_object_definition_route(
 )
 async def toggle_leonid_object_definition_route(
     definition_id: int,
-    _: AuthDep,
+    _: LeonidWriteAuth,
     settings: SettingsDep,
 ) -> LeonidObjectDefinitionResponse:
     require_leonid_write_configured(settings)
@@ -731,7 +765,7 @@ async def toggle_leonid_object_definition_route(
     response_model=list[LeonidObjectValueResponse],
 )
 async def get_leonid_object_values(
-    _: AuthDep,
+    _: LeonidReadAuth,
     settings: SettingsDep,
 ) -> list[LeonidObjectValueResponse]:
     require_leonid_read_configured(settings)
@@ -748,7 +782,7 @@ async def get_leonid_object_values(
     status_code=status.HTTP_201_CREATED,
 )
 async def post_leonid_object_value(
-    _: AuthDep,
+    _: LeonidWriteAuth,
     settings: SettingsDep,
     payload: Annotated[Any, Body()],
 ) -> LeonidObjectValueResponse:
@@ -767,7 +801,7 @@ async def post_leonid_object_value(
 )
 async def get_leonid_object_value(
     value_id: int,
-    _: AuthDep,
+    _: LeonidReadAuth,
     settings: SettingsDep,
 ) -> LeonidObjectValueResponse:
     require_leonid_read_configured(settings)
@@ -784,7 +818,7 @@ async def get_leonid_object_value(
 )
 async def put_leonid_object_value(
     value_id: int,
-    _: AuthDep,
+    _: LeonidWriteAuth,
     settings: SettingsDep,
     payload: Annotated[Any, Body()],
 ) -> LeonidObjectValueResponse:
@@ -803,7 +837,7 @@ async def put_leonid_object_value(
 )
 async def patch_leonid_object_value_route(
     value_id: int,
-    _: AuthDep,
+    _: LeonidWriteAuth,
     settings: SettingsDep,
     payload: Annotated[Any, Body()],
 ) -> LeonidObjectValueResponse:
@@ -822,7 +856,7 @@ async def patch_leonid_object_value_route(
 )
 async def delete_leonid_object_value_route(
     value_id: int,
-    _: AuthDep,
+    _: LeonidWriteAuth,
     settings: SettingsDep,
 ) -> None:
     require_leonid_write_configured(settings)
@@ -838,7 +872,7 @@ async def delete_leonid_object_value_route(
 )
 async def toggle_leonid_object_value_route(
     value_id: int,
-    _: AuthDep,
+    _: LeonidWriteAuth,
     settings: SettingsDep,
 ) -> LeonidObjectValueResponse:
     require_leonid_write_configured(settings)
@@ -854,7 +888,7 @@ async def toggle_leonid_object_value_route(
     response_model=list[LeonidPipelineParamResponse],
 )
 async def get_leonid_pipeline_params(
-    _: AuthDep,
+    _: LeonidReadAuth,
     settings: SettingsDep,
 ) -> list[LeonidPipelineParamResponse]:
     require_leonid_read_configured(settings)
@@ -871,7 +905,7 @@ async def get_leonid_pipeline_params(
     status_code=status.HTTP_201_CREATED,
 )
 async def post_leonid_pipeline_param(
-    _: AuthDep,
+    _: LeonidWriteAuth,
     settings: SettingsDep,
     payload: Annotated[Any, Body()],
 ) -> LeonidPipelineParamResponse:
@@ -890,7 +924,7 @@ async def post_leonid_pipeline_param(
 )
 async def get_leonid_pipeline_param(
     pipeline_param_id: int,
-    _: AuthDep,
+    _: LeonidReadAuth,
     settings: SettingsDep,
 ) -> LeonidPipelineParamResponse:
     require_leonid_read_configured(settings)
@@ -907,7 +941,7 @@ async def get_leonid_pipeline_param(
 )
 async def put_leonid_pipeline_param(
     pipeline_param_id: int,
-    _: AuthDep,
+    _: LeonidWriteAuth,
     settings: SettingsDep,
     payload: Annotated[Any, Body()],
 ) -> LeonidPipelineParamResponse:
@@ -926,7 +960,7 @@ async def put_leonid_pipeline_param(
 )
 async def patch_leonid_pipeline_param_route(
     pipeline_param_id: int,
-    _: AuthDep,
+    _: LeonidWriteAuth,
     settings: SettingsDep,
     payload: Annotated[Any, Body()],
 ) -> LeonidPipelineParamResponse:
@@ -945,7 +979,7 @@ async def patch_leonid_pipeline_param_route(
 )
 async def delete_leonid_pipeline_param_route(
     pipeline_param_id: int,
-    _: AuthDep,
+    _: LeonidWriteAuth,
     settings: SettingsDep,
 ) -> None:
     require_leonid_write_configured(settings)
@@ -973,7 +1007,7 @@ async def update_agent(_: AuthDep) -> AgentUpdateAccepted:
 
 @router.get(AgentPath.JENKINS_TREE.value, response_model=JenkinsTreeResponse)
 async def get_jenkins_tree(
-    _: AuthDep,
+    _: JenkinsReadAuth,
     settings: SettingsDep,
 ) -> JenkinsTreeResponse:
     try:
@@ -993,7 +1027,7 @@ async def get_jenkins_tree(
 
 @router.get(AgentPath.JENKINS_SCOPE.value, response_model=JenkinsScopeResponse)
 async def get_jenkins_scope(
-    _: AuthDep,
+    _: JenkinsReadAuth,
     settings: SettingsDep,
 ) -> JenkinsScopeResponse:
     return JenkinsScopeResponse(
@@ -1007,7 +1041,7 @@ async def get_jenkins_scope(
 
 @router.get(AgentPath.JENKINS_BUILDS.value, response_model=JenkinsBuildsResponse)
 async def get_jenkins_builds(
-    _: AuthDep,
+    _: JenkinsReadAuth,
     settings: SettingsDep,
     path: str = Query(...),
 ) -> JenkinsBuildsResponse:
@@ -1033,7 +1067,7 @@ async def get_jenkins_builds(
 
 @router.get(AgentPath.JENKINS_FOLDER.value, response_model=JenkinsFolderResponse)
 async def get_jenkins_folder(
-    _: AuthDep,
+    _: JenkinsReadAuth,
     settings: SettingsDep,
     path: str = Query(...),
 ) -> JenkinsFolderResponse:
@@ -1060,7 +1094,7 @@ async def get_jenkins_folder(
 @router.post(AgentPath.JENKINS_FREEZE.value, response_model=JenkinsFreezeResponse)
 async def post_jenkins_freeze(
     request_body: JenkinsFreezeRequest,
-    _: AuthDep,
+    _: JenkinsFreezeAuth,
     settings: SettingsDep,
 ) -> JenkinsFreezeResponse:
     try:
@@ -1090,7 +1124,7 @@ async def post_jenkins_freeze(
 @router.post(AgentPath.JENKINS_RESUME.value, response_model=JenkinsResumeResponse)
 async def post_jenkins_resume(
     request_body: JenkinsResumeRequest,
-    _: AuthDep,
+    _: JenkinsResumeAuth,
     settings: SettingsDep,
 ) -> JenkinsResumeResponse:
     try:
@@ -1121,7 +1155,7 @@ async def post_jenkins_resume(
 async def post_jenkins_resume_run(
     request_body: JenkinsResumeRunRequest,
     request: Request,
-    auth: AuthDep,
+    auth: JenkinsResumeAuth,
     settings: SettingsDep,
 ) -> JenkinsResumeRunAccepted:
     try:
@@ -1163,7 +1197,7 @@ async def post_jenkins_resume_run(
 
 
 @router.get(AgentPath.KUBECONFIG_STATUS.value, response_model=KubeconfigStatus)
-async def get_kubeconfig_status(_: AuthDep, settings: SettingsDep) -> KubeconfigStatus:
+async def get_kubeconfig_status(_: StagingsReadAuth, settings: SettingsDep) -> KubeconfigStatus:
     return read_status(settings)
 
 
@@ -1171,7 +1205,7 @@ async def get_kubeconfig_status(_: AuthDep, settings: SettingsDep) -> Kubeconfig
 async def post_kubeconfig_refresh(
     request_body: KubeconfigRefreshRequest,
     request: Request,
-    auth: AuthDep,
+    auth: StagingsSyncAuth,
     settings: SettingsDep,
 ) -> KubeconfigStatus:
     try:
@@ -1226,7 +1260,7 @@ async def post_kubeconfig_refresh(
 @router.post(AgentPath.KUBECONFIG_ACTIVATE.value, response_model=KubeconfigStatus)
 async def post_kubeconfig_activate(
     request: Request,
-    auth: AuthDep,
+    auth: StagingsSyncAuth,
     settings: SettingsDep,
 ) -> KubeconfigStatus:
     try:
@@ -1257,7 +1291,7 @@ async def post_kubeconfig_activate(
 )
 async def deploy(
     request_body: DeployRequest,
-    auth: AuthDep,
+    auth: StagingsDeployAuth,
     job_manager: JobManagerDep,
 ) -> JobCreateResponse:
     try:
@@ -1276,7 +1310,7 @@ async def deploy(
 )
 async def destroy(
     request_body: DestroyRequest,
-    auth: AuthDep,
+    auth: StagingsDestroyAuth,
     job_manager: JobManagerDep,
 ) -> JobCreateResponse:
     try:
@@ -1295,7 +1329,7 @@ async def destroy(
 )
 async def adopt(
     request_body: AdoptRequest,
-    auth: AuthDep,
+    auth: StagingsDeployAuth,
     job_manager: JobManagerDep,
 ) -> JobCreateResponse:
     try:
@@ -1314,7 +1348,7 @@ async def adopt(
 )
 async def sync(
     request_body: SyncRequest,
-    auth: AuthDep,
+    auth: StagingsSyncAuth,
     job_manager: JobManagerDep,
 ) -> JobCreateResponse:
     try:
@@ -1328,7 +1362,7 @@ async def sync(
 
 @router.get(AgentPath.E2E_SUITES.value, response_model=E2eSuitesResponse)
 async def get_e2e_suites(
-    _: AuthDep,
+    _: StagingsReadAuth,
     settings: SettingsDep,
     product: Annotated[Product, Query()],
 ) -> E2eSuitesResponse:
@@ -1359,7 +1393,7 @@ async def get_e2e_suites(
 )
 async def e2e_run(
     request_body: E2eRunRequest,
-    auth: AuthDep,
+    auth: StagingsE2eRunAuth,
     job_manager: JobManagerDep,
 ) -> JobCreateResponse:
     try:
@@ -1388,7 +1422,7 @@ async def read_job(
 
 @router.get(AgentPath.NAMESPACES.value, response_model=NamespaceListResponse)
 async def get_namespaces(
-    _: AuthDep,
+    _: StagingsReadAuth,
     settings: SettingsDep,
 ) -> NamespaceListResponse:
     try:
@@ -1420,7 +1454,7 @@ async def get_namespaces(
 )
 async def get_namespace_status(
     namespace: str,
-    _: AuthDep,
+    _: StagingsReadAuth,
     settings: SettingsDep,
 ) -> NamespaceStatusResponse:
     try:
@@ -1443,7 +1477,7 @@ async def get_namespace_status(
 )
 async def get_namespace_creds(
     namespace: str,
-    _: AuthDep,
+    _: StagingsReadAuth,
     settings: SettingsDep,
 ) -> NamespaceCredsResponse:
     try:
@@ -1466,7 +1500,7 @@ async def get_namespace_creds(
 )
 async def get_namespace_deploy_recipe(
     namespace: str,
-    _: AuthDep,
+    _: StagingsReadAuth,
     settings: SettingsDep,
 ) -> NamespaceDeployRecipeResponse:
     try:
@@ -1501,7 +1535,7 @@ async def get_namespace_deploy_recipe(
 
 @router.get(AgentPath.KUBE_CONTEXTS.value, response_model=KubeContextsResponse)
 async def get_kube_contexts(
-    _: AuthDep,
+    _: KuberReadAuth,
     settings: SettingsDep,
 ) -> KubeContextsResponse:
     try:
@@ -1532,7 +1566,7 @@ async def get_kube_contexts(
 async def post_kube_use_context(
     request_body: KubeUseContextRequest,
     request: Request,
-    auth: AuthDep,
+    auth: KuberUseContextAuth,
     settings: SettingsDep,
 ) -> KubeCommandResult:
     try:
@@ -1561,7 +1595,7 @@ async def post_kube_use_context(
 
 @router.get(AgentPath.KUBE_NAMESPACES.value, response_model=KubeNamespacesResponse)
 async def get_kube_namespaces(
-    _: AuthDep,
+    _: KuberReadAuth,
     settings: SettingsDep,
     context: str | None = Query(default=None),
 ) -> KubeNamespacesResponse:
@@ -1586,7 +1620,7 @@ async def get_kube_namespaces(
 
 @router.get(AgentPath.KUBE_PODS.value, response_model=KubePodsResponse)
 async def get_kube_pods(
-    _: AuthDep,
+    _: KuberReadAuth,
     settings: SettingsDep,
     namespace: str = Query(...),
     context: str | None = Query(default=None),
@@ -1627,7 +1661,7 @@ async def get_kube_pods(
 )
 async def get_kube_pod_describe(
     pod: str,
-    _: AuthDep,
+    _: KuberReadAuth,
     settings: SettingsDep,
     namespace: str = Query(...),
     context: str | None = Query(default=None),
@@ -1656,7 +1690,7 @@ async def get_kube_pod_describe(
 async def get_kube_pod_logs(
     pod: str,
     request: Request,
-    _: AuthDep,
+    _: KuberReadAuth,
     settings: SettingsDep,
     namespace: str = Query(...),
     context: str | None = Query(default=None),
@@ -1698,7 +1732,7 @@ async def post_kube_pod_delete(
     pod: str,
     request_body: KubeDeletePodRequest,
     request: Request,
-    auth: AuthDep,
+    auth: KuberDeletePodAuth,
     settings: SettingsDep,
 ) -> KubeCommandResult:
     try:
@@ -1727,7 +1761,7 @@ async def post_kube_pod_delete(
 
 @router.get(AgentPath.KUBE_TOP.value, response_model=KubeTopResponse)
 async def get_kube_top(
-    _: AuthDep,
+    _: KuberReadAuth,
     settings: SettingsDep,
     namespace: str = Query(...),
     context: str | None = Query(default=None),
@@ -1768,7 +1802,7 @@ async def stream_job(
 async def get_namespace_logs(
     namespace: str,
     request: Request,
-    _: AuthDep,
+    _: StagingsReadAuth,
     settings: SettingsDep,
     deploy: str = Query(...),
 ) -> StreamingResponse:
