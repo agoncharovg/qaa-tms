@@ -7,15 +7,17 @@ from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 
-from app.api.deps import CurrentUser, get_jenkins_cache, get_settings
+from app.api.deps import get_jenkins_cache, get_settings, require_permission
 from app.core.config import Settings
 from app.core.constants import (
     JENKINS_FOLDER_CACHE_MAX_TTL_SECONDS,
     JENKINS_FOLDER_CACHE_MIN_TTL_SECONDS,
     ApiTag,
+    PermissionKey,
     QueryParam,
     RoutePath,
 )
+from app.models.user import User
 from app.schemas.jenkins import (
     JenkinsBuildsCachePut,
     JenkinsBuildsCacheRead,
@@ -37,6 +39,7 @@ from app.services.jenkins_client import (
 
 router = APIRouter(prefix=RoutePath.JENKINS.value, tags=[ApiTag.JENKINS.value])
 JenkinsCacheDep = Annotated[JenkinsCache, Depends(get_jenkins_cache)]
+JenkinsReadUser = Annotated[User, Depends(require_permission(PermissionKey.JENKINS_READ))]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 logger = logging.getLogger(__name__)
@@ -44,7 +47,7 @@ logger = logging.getLogger(__name__)
 
 @router.get(RoutePath.SCOPE.value, response_model=JenkinsScopeRead)
 async def get_jenkins_scope(
-    _: CurrentUser,
+    _: JenkinsReadUser,
     settings: SettingsDep,
 ) -> JenkinsScopeRead:
     return JenkinsScopeRead(
@@ -58,7 +61,7 @@ async def get_jenkins_scope(
 
 @router.get(RoutePath.TREE.value, response_model=JenkinsTreeCacheRead)
 async def get_jenkins_tree_cache(
-    _: CurrentUser,
+    _: JenkinsReadUser,
     background_tasks: BackgroundTasks,
     cache: JenkinsCacheDep,
     settings: SettingsDep,
@@ -78,7 +81,7 @@ async def get_jenkins_tree_cache(
 @router.put(RoutePath.TREE.value, response_model=JenkinsTreeCacheRead)
 async def put_jenkins_tree_cache(
     payload: JenkinsTreeCachePut,
-    _: CurrentUser,
+    _: JenkinsReadUser,
     cache: JenkinsCacheDep,
 ) -> JenkinsTreeCacheRead:
     roots, fetched_at = await cache.write_tree(
@@ -95,7 +98,7 @@ async def put_jenkins_tree_cache(
 
 @router.get(RoutePath.BUILDS.value, response_model=JenkinsBuildsCacheRead)
 async def get_jenkins_builds_cache(
-    _: CurrentUser,
+    _: JenkinsReadUser,
     background_tasks: BackgroundTasks,
     cache: JenkinsCacheDep,
     settings: SettingsDep,
@@ -117,7 +120,7 @@ async def get_jenkins_builds_cache(
 @router.put(RoutePath.BUILDS.value, response_model=JenkinsBuildsCacheRead)
 async def put_jenkins_builds_cache(
     payload: JenkinsBuildsCachePut,
-    _: CurrentUser,
+    _: JenkinsReadUser,
     cache: JenkinsCacheDep,
 ) -> JenkinsBuildsCacheRead:
     builds, fetched_at = await cache.write_builds(
@@ -145,7 +148,7 @@ def _clamp_folder_ttl(ttl_seconds: int) -> int:
 
 @router.get(RoutePath.FOLDER.value, response_model=JenkinsFolderCacheRead)
 async def get_jenkins_folder_cache(
-    _: CurrentUser,
+    _: JenkinsReadUser,
     background_tasks: BackgroundTasks,
     cache: JenkinsCacheDep,
     settings: SettingsDep,
@@ -170,7 +173,7 @@ async def get_jenkins_folder_cache(
 @router.put(RoutePath.FOLDER.value, response_model=JenkinsFolderCacheRead)
 async def put_jenkins_folder_cache(
     payload: JenkinsFolderCachePut,
-    _: CurrentUser,
+    _: JenkinsReadUser,
     cache: JenkinsCacheDep,
 ) -> JenkinsFolderCacheRead:
     roots, fetched_at = await cache.write_folder(

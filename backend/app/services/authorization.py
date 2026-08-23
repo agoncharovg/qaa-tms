@@ -240,6 +240,26 @@ async def seed_security_catalog(session: AsyncSession) -> None:
     await session.commit()
 
 
+async def assign_engineer_to_dev_test_user(session: AsyncSession) -> None:
+    from app.core.constants import DevUsername
+    from app.models.user import User
+
+    test_user = await session.scalar(
+        select(User).where(User.username == DevUsername.TEST.value)
+    )
+    if test_user is None or test_user.role_id is not None:
+        return
+
+    engineer = await session.scalar(
+        select(SecurityRole).where(SecurityRole.key == SecurityRoleKey.ENGINEER.value)
+    )
+    if engineer is None:
+        return
+
+    test_user.role_id = engineer.id
+    await session.commit()
+
+
 async def assign_superadmin_to_admins(session: AsyncSession) -> None:
     from app.models.user import User
 

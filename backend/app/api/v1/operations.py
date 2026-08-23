@@ -20,6 +20,7 @@ from app.core.constants import (
     ErrorMessage,
     OperationStatus,
     OperationType,
+    PermissionKey,
     QueryParam,
     RoutePath,
 )
@@ -33,6 +34,7 @@ from app.schemas.operation import (
     OperationSummary,
     OperationUpsertRequest,
 )
+from app.services.authorization import has_permission
 
 router = APIRouter(prefix=RoutePath.OPERATIONS.value, tags=[ApiTag.OPERATIONS.value])
 
@@ -56,7 +58,9 @@ async def get_visible_operation(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=ErrorMessage.OPERATION_NOT_FOUND.value,
         )
-    if not current_user.is_admin and operation.user_id != current_user.id:
+    if operation.user_id == current_user.id:
+        return operation
+    if not await has_permission(current_user, PermissionKey.OPERATIONS_READ_ALL, db):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=ErrorMessage.OPERATION_NOT_FOUND.value,
@@ -138,7 +142,8 @@ async def list_operations(
     offset: Annotated[int, Query(ge=DEFAULT_OFFSET)] = DEFAULT_OFFSET,
 ) -> OperationListResponse:
     filters: list[ColumnElement[bool]] = []
-    if current_user.is_admin:
+    can_read_all = await has_permission(current_user, PermissionKey.OPERATIONS_READ_ALL, db)
+    if can_read_all:
         if user_id is not None:
             filters.append(Operation.user_id == user_id)
     else:

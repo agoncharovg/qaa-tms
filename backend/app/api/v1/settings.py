@@ -10,15 +10,16 @@ require a backend restart, because the HTTP client is prepared at startup.
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Annotated, cast
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 
-from app.api.deps import AdminUser
+from app.api.deps import require_permission
 from app.core import env_file
 from app.core.config import Settings
 from app.core.config import get_settings as load_settings
-from app.core.constants import ApiTag, EnvKey, RoutePath
+from app.core.constants import ApiTag, EnvKey, PermissionKey, RoutePath
+from app.models.user import User
 from app.schemas.settings import (
     ServerSettingsRead,
     ServerSettingsUpdateRequest,
@@ -26,6 +27,13 @@ from app.schemas.settings import (
 )
 
 router = APIRouter(tags=[ApiTag.SYSTEM.value])
+
+ServerSettingsReadUser = Annotated[
+    User, Depends(require_permission(PermissionKey.SERVER_SETTINGS_READ))
+]
+ServerSettingsManageUser = Annotated[
+    User, Depends(require_permission(PermissionKey.SERVER_SETTINGS_MANAGE))
+]
 
 SERVER_SETTINGS_ENV_KEY_BY_FIELD = {
     "qaa_generator_base_url": EnvKey.QAA_GENERATOR_BASE_URL,
@@ -59,14 +67,14 @@ def merge_runtime_settings(current_settings: Settings, refreshed_settings: Setti
 
 
 @router.get(RoutePath.SETTINGS.value, response_model=ServerSettingsRead)
-async def get_server_settings(_: AdminUser, request: Request) -> ServerSettingsRead:
+async def get_server_settings(_: ServerSettingsReadUser, request: Request) -> ServerSettingsRead:
     return to_server_settings_read(get_runtime_settings(request))
 
 
 @router.put(RoutePath.SETTINGS.value, response_model=ServerSettingsRead)
 async def update_server_settings(
     payload: ServerSettingsUpdateRequest,
-    _: AdminUser,
+    _: ServerSettingsManageUser,
     request: Request,
 ) -> ServerSettingsRead:
     updates = build_env_updates(payload)

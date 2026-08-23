@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import cast
+from typing import Annotated, cast
 
 import httpx
-from fastapi import APIRouter, Query, Request, Response, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.responses import JSONResponse
 
-from app.api.deps import AdminUser
+from app.api.deps import require_permission
 from app.core.config import Settings
-from app.core.constants import ApiTag, HttpMethod, MediaType, RoutePath
+from app.core.constants import ApiTag, HttpMethod, MediaType, PermissionKey, RoutePath
+from app.models.user import User
 from app.schemas.qaa_generator import (
     QaaServiceTokenCreateRequest,
     QaaUserCreateRequest,
@@ -30,6 +31,7 @@ from app.services.qaa_generator import (
 )
 
 router = APIRouter(tags=[ApiTag.QAA_GENERATOR.value])
+QaaAdminUser = Annotated[User, Depends(require_permission(PermissionKey.QAA_ADMIN))]
 
 
 class QaaAdminListQueryParam(StrEnum):
@@ -87,7 +89,7 @@ def build_admin_headers(settings: Settings) -> dict[str, str]:
 @router.get(RoutePath.QAA_ADMIN_USERS.value)
 async def list_qaa_users(
     request: Request,
-    _: AdminUser,
+    _: QaaAdminUser,
     email: str | None = None,
     kind: str | None = Query(default=None),
     slack_user_id: str | None = None,
@@ -116,7 +118,7 @@ async def list_qaa_users(
 async def create_qaa_user(
     payload: QaaUserCreateRequest,
     request: Request,
-    _: AdminUser,
+    _: QaaAdminUser,
 ) -> Response:
     client = get_qaa_client(request)
     result = await request_json(
@@ -134,7 +136,7 @@ async def create_qaa_user(
 async def get_qaa_user(
     user_id: str,
     request: Request,
-    _: AdminUser,
+    _: QaaAdminUser,
 ) -> Response:
     client = get_qaa_client(request)
     result = await request_json(
@@ -152,7 +154,7 @@ async def update_qaa_user(
     user_id: str,
     payload: QaaUserUpdateRequest,
     request: Request,
-    _: AdminUser,
+    _: QaaAdminUser,
 ) -> Response:
     client = get_qaa_client(request)
     result = await request_json(
@@ -173,7 +175,7 @@ async def update_qaa_user(
 async def delete_qaa_user(
     user_id: str,
     request: Request,
-    _: AdminUser,
+    _: QaaAdminUser,
 ) -> Response:
     client = get_qaa_client(request)
     result = await request_json(
@@ -192,7 +194,7 @@ async def delete_qaa_user(
 async def regenerate_qaa_user_token(
     user_id: str,
     request: Request,
-    _: AdminUser,
+    _: QaaAdminUser,
 ) -> Response:
     client = get_qaa_client(request)
     result = await request_json(
@@ -209,7 +211,7 @@ async def regenerate_qaa_user_token(
 async def create_qaa_service_token(
     payload: QaaServiceTokenCreateRequest,
     request: Request,
-    _: AdminUser,
+    _: QaaAdminUser,
 ) -> Response:
     client = get_qaa_client(request)
     result = await request_json(
@@ -229,7 +231,7 @@ async def create_qaa_service_token(
 async def regenerate_qaa_service_token(
     token_id: str,
     request: Request,
-    _: AdminUser,
+    _: QaaAdminUser,
 ) -> Response:
     client = get_qaa_client(request)
     result = await request_json(
@@ -251,7 +253,7 @@ async def regenerate_qaa_service_token(
 async def revoke_qaa_service_token(
     token_id: str,
     request: Request,
-    _: AdminUser,
+    _: QaaAdminUser,
 ) -> Response:
     client = get_qaa_client(request)
     result = await request_json(

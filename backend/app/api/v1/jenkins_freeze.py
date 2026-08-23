@@ -12,12 +12,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import CurrentUser, get_db
+from app.api.deps import get_db, require_permission
 from app.core.constants import (
     JENKINS_RESUME_RUN_STALE_SECONDS,
     ApiTag,
     JenkinsFreezeStatus,
     JenkinsResumeRunStatus,
+    PermissionKey,
     QueryParam,
     RoutePath,
 )
@@ -25,6 +26,7 @@ from app.core.jenkins_paths import normalize_jenkins_path
 from app.core.time import utcnow
 from app.models.jenkins_freeze import JenkinsFreeze
 from app.models.jenkins_resume_run import JenkinsResumeRun
+from app.models.user import User
 from app.schemas.jenkins_freeze import (
     JenkinsFreezeCreate,
     JenkinsFreezeRead,
@@ -36,6 +38,9 @@ router = APIRouter(
     prefix=RoutePath.JENKINS.value,
     tags=[ApiTag.JENKINS.value],
 )
+
+JenkinsReadUser = Annotated[User, Depends(require_permission(PermissionKey.JENKINS_READ))]
+JenkinsFreezeUser = Annotated[User, Depends(require_permission(PermissionKey.JENKINS_FREEZE))]
 
 
 class FreezeErrorMessage(StrEnum):
@@ -116,7 +121,7 @@ async def get_freeze_or_404(db: AsyncSession, freeze_id: UUID) -> JenkinsFreeze:
 
 @router.get(RoutePath.FREEZES.value, response_model=list[JenkinsFreezeRead])
 async def list_jenkins_freezes(
-    _: CurrentUser,
+    _: JenkinsReadUser,
     db: Annotated[AsyncSession, Depends(get_db)],
     signature: Annotated[str, Query(...)],
     status_: Annotated[
@@ -141,7 +146,7 @@ async def list_jenkins_freezes(
 @router.post(RoutePath.FREEZES.value, response_model=JenkinsFreezeRead)
 async def create_jenkins_freeze(
     payload: JenkinsFreezeCreate,
-    current_user: CurrentUser,
+    current_user: JenkinsFreezeUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> JenkinsFreezeRead:
     if await has_running_resume_lock(db, payload.signature):
@@ -170,7 +175,7 @@ async def create_jenkins_freeze(
 async def put_jenkins_freeze_snapshot(
     freeze_id: UUID,
     payload: JenkinsFreezeSnapshotPut,
-    current_user: CurrentUser,
+    current_user: JenkinsFreezeUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> JenkinsFreezeRead:
     freeze = await get_freeze_or_404(db, freeze_id)
@@ -234,7 +239,7 @@ async def put_jenkins_freeze_snapshot(
 @router.delete(RoutePath.FREEZE_BY_ID.value, status_code=status.HTTP_204_NO_CONTENT)
 async def delete_jenkins_freeze(
     freeze_id: UUID,
-    _: CurrentUser,
+    _: JenkinsFreezeUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Response:
     freeze = await get_freeze_or_404(db, freeze_id)
@@ -251,7 +256,7 @@ async def delete_jenkins_freeze(
 @router.post(RoutePath.FREEZE_RESOLVE.value, response_model=JenkinsFreezeRead)
 async def resolve_jenkins_freeze(
     freeze_id: UUID,
-    current_user: CurrentUser,
+    current_user: JenkinsFreezeUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> JenkinsFreezeRead:
     freeze = await get_freeze_or_404(db, freeze_id)
