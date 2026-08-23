@@ -1,17 +1,34 @@
+import { useState } from "react";
 import {
   Alert,
+  Button,
+  Checkbox,
+  Group,
   Loader,
+  Modal,
+  PasswordInput,
   ScrollArea,
   Select,
   Stack,
   Text,
+  TextInput,
   Title,
 } from "@mantine/core";
-import { IconAlertCircle } from "@tabler/icons-react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  IconAlertCircle,
+  IconEdit,
+  IconPlus,
+  IconTrash,
+} from "@tabler/icons-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { backendClient } from "@/api/backendClient";
-import type { User, UserPermissionsResponse } from "@/api/types";
+import type {
+  User,
+  UserCreateRequest,
+  UserPermissionsResponse,
+  UserUpdateRequest,
+} from "@/api/types";
 import { QueryKey } from "@/constants";
 import { useAuthStore } from "@/store/authStore";
 
@@ -47,6 +64,51 @@ const ALL_KEYS: string[] = PERMISSION_DOMAINS.flatMap((d) => [...d.keys]);
 function shortLabel(key: string): string {
   const parts = key.split(".");
   return parts[parts.length - 1] ?? key;
+}
+
+type RoleOption = { id: number; key: string | null; display_name: string };
+type GroupOption = { id: number; key: string | null; display_name: string };
+
+type CreateFormState = {
+  username: string;
+  password: string;
+  displayName: string;
+  isAdmin: boolean;
+  autoLogin: boolean;
+  roleId: string;
+  groupId: string;
+};
+
+type EditFormState = {
+  displayName: string;
+  isAdmin: boolean;
+  autoLogin: boolean;
+  resetPassword: boolean;
+  password: string;
+  roleId: string;
+  groupId: string;
+};
+
+const CREATE_INITIAL: CreateFormState = {
+  username: "",
+  password: "",
+  displayName: "",
+  isAdmin: false,
+  autoLogin: false,
+  roleId: "",
+  groupId: "",
+};
+
+function buildEditState(user: User): EditFormState {
+  return {
+    displayName: user.display_name,
+    isAdmin: user.is_admin,
+    autoLogin: user.auto_login,
+    resetPassword: false,
+    password: "",
+    roleId: user.role_id != null ? String(user.role_id) : "",
+    groupId: user.group_id != null ? String(user.group_id) : "",
+  };
 }
 
 function PermissionCell({
@@ -118,75 +180,56 @@ function PermissionCell({
 
 function UserRow({
   user,
-  roles,
-  groups,
   token,
+  onEdit,
+  onDelete,
+  isSelf,
+  isProtected,
 }: {
   user: User;
-  roles: Array<{ id: number; key: string | null; display_name: string }>;
-  groups: Array<{ id: number; key: string | null; display_name: string }>;
   token: string;
+  onEdit: (user: User) => void;
+  onDelete: (user: User) => void;
+  isSelf: boolean;
+  isProtected: boolean;
 }) {
-  const queryClient = useQueryClient();
-
   const permsQuery = useQuery<UserPermissionsResponse>({
     queryKey: [QueryKey.USER_PERMISSIONS, user.id],
     queryFn: ({ signal }) => backendClient.getUserPermissions(token, user.id, signal),
     staleTime: 60_000,
   });
 
-  const roleMutation = useMutation({
-    mutationFn: (roleId: number | null) => backendClient.updateUserRole(token, user.id, roleId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: [QueryKey.USERS] });
-      void queryClient.invalidateQueries({ queryKey: [QueryKey.USER_PERMISSIONS, user.id] });
-    },
-  });
-
-  const groupMutation = useMutation({
-    mutationFn: (groupId: number | null) => backendClient.updateUserGroup(token, user.id, groupId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: [QueryKey.USERS] });
-      void queryClient.invalidateQueries({ queryKey: [QueryKey.USER_PERMISSIONS, user.id] });
-    },
-  });
-
   const inherited = permsQuery.data?.inherited ?? [];
   const extra = permsQuery.data?.extra ?? [];
 
-  const roleOptions = [
-    { value: "", label: "— none —" },
-    ...roles.map((r) => ({ value: String(r.id), label: r.display_name })),
-  ];
-
-  const groupOptions = [
-    { value: "", label: "— none —" },
-    ...groups.map((g) => ({ value: String(g.id), label: g.display_name })),
-  ];
-
   return (
     <tr>
-      <td style={{ whiteSpace: "nowrap", padding: "4px 8px" }}>{user.username}</td>
-      <td style={{ whiteSpace: "nowrap", padding: "4px 8px" }}>{user.display_name}</td>
-      <td style={{ padding: "4px 4px" }}>
-        <Select
-          data={groupOptions}
-          value={user.group_id != null ? String(user.group_id) : ""}
-          onChange={(val) => groupMutation.mutate(val ? Number(val) : null)}
-          size="xs"
-          style={{ minWidth: 120 }}
-          disabled={groupMutation.isPending}
-        />
+      <td style={{ whiteSpace: "nowrap", padding: "6px 10px", fontWeight: 500 }}>
+        {user.username}
       </td>
-      <td style={{ padding: "4px 4px" }}>
-        <Select
-          data={roleOptions}
-          value={user.role_id != null ? String(user.role_id) : ""}
-          onChange={(val) => roleMutation.mutate(val ? Number(val) : null)}
-          size="xs"
-          style={{ minWidth: 120 }}
-          disabled={roleMutation.isPending}
-        />
+      <td style={{ whiteSpace: "nowrap", padding: "6px 10px" }}>{user.display_name}</td>
+      <td style={{ whiteSpace: "nowrap", padding: "6px 6px" }}>
+        <Group gap={4} wrap="nowrap">
+          <Button
+            size="xs"
+            variant="light"
+            leftSection={<IconEdit size={13} />}
+            onClick={() => onEdit(user)}
+          >
+            Edit
+          </Button>
+          <Button
+            size="xs"
+            variant="light"
+            color="red"
+            leftSection={<IconTrash size={13} />}
+            disabled={isProtected}
+            onClick={() => onDelete(user)}
+            title={isSelf ? "Cannot delete your own account" : isProtected ? "Cannot delete admin" : undefined}
+          >
+            Delete
+          </Button>
+        </Group>
       </td>
       {permsQuery.isLoading ? (
         <td colSpan={ALL_KEYS.length} style={{ textAlign: "center" }}>
@@ -194,7 +237,7 @@ function UserRow({
         </td>
       ) : (
         ALL_KEYS.map((key) => (
-          <td key={key} style={{ textAlign: "center", padding: "2px 4px" }}>
+          <td key={key} style={{ textAlign: "center", padding: "2px 6px" }}>
             <PermissionCell
               permKey={key}
               inherited={inherited}
@@ -210,7 +253,17 @@ function UserRow({
 }
 
 export function UsersMatrix() {
+  const queryClient = useQueryClient();
   const token = useAuthStore((state) => state.token);
+  const currentUser = useAuthStore((state) => state.currentUser);
+  const setCurrentUser = useAuthStore((state) => state.setCurrentUser);
+
+  const [createOpened, setCreateOpened] = useState(false);
+  const [createForm, setCreateForm] = useState<CreateFormState>(CREATE_INITIAL);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editForm, setEditForm] = useState<EditFormState | null>(null);
+  const [deletingUser, setDeletingUser] = useState<User | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
 
   const usersQuery = useQuery({
     queryKey: [QueryKey.USERS, token],
@@ -230,89 +283,292 @@ export function UsersMatrix() {
     enabled: Boolean(token),
   });
 
-  if (usersQuery.isLoading || rolesQuery.isLoading || groupsQuery.isLoading) {
-    return <Loader />;
+  const createMutation = useMutation({
+    mutationFn: async (payload: UserCreateRequest) => {
+      if (!token) throw new Error("Authentication is required.");
+      return backendClient.createUser(token, payload);
+    },
+    onSuccess: async (newUser) => {
+      if (createForm.roleId || createForm.groupId) {
+        await backendClient.updateUserRole(token ?? "", newUser.id, createForm.roleId ? Number(createForm.roleId) : null);
+        await backendClient.updateUserGroup(token ?? "", newUser.id, createForm.groupId ? Number(createForm.groupId) : null);
+      }
+      setCreateOpened(false);
+      setCreateForm(CREATE_INITIAL);
+      await queryClient.invalidateQueries({ queryKey: [QueryKey.USERS] });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({
+      userId,
+      payload,
+      roleId,
+      groupId,
+    }: {
+      userId: number;
+      payload: UserUpdateRequest;
+      roleId: number | null;
+      groupId: number | null;
+    }) => {
+      if (!token) throw new Error("Authentication is required.");
+      const updated = await backendClient.updateUser(token, userId, payload);
+      await backendClient.updateUserRole(token, userId, roleId);
+      await backendClient.updateUserGroup(token, userId, groupId);
+      return updated;
+    },
+    onSuccess: async (updatedUser) => {
+      if (currentUser?.id === updatedUser.id) setCurrentUser(updatedUser);
+      setEditingUser(null);
+      setEditForm(null);
+      await queryClient.invalidateQueries({ queryKey: [QueryKey.USERS] });
+      await queryClient.invalidateQueries({ queryKey: [QueryKey.USER_PERMISSIONS, updatedUser.id] });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (userId: number) => {
+      if (!token) throw new Error("Authentication is required.");
+      await backendClient.deleteUser(token, userId);
+    },
+    onSuccess: async () => {
+      setDeletingUser(null);
+      setDeleteConfirmation("");
+      await queryClient.invalidateQueries({ queryKey: [QueryKey.USERS] });
+    },
+  });
+
+  function openCreate() {
+    createMutation.reset();
+    setCreateForm(CREATE_INITIAL);
+    setCreateOpened(true);
   }
 
-  if (usersQuery.error) {
-    return (
-      <Alert icon={<IconAlertCircle size={16} />} color="red">
-        Failed to load users
-      </Alert>
-    );
+  function openEdit(user: User) {
+    updateMutation.reset();
+    setEditingUser(user);
+    setEditForm(buildEditState(user));
   }
 
+  function openDelete(user: User) {
+    deleteMutation.reset();
+    setDeletingUser(user);
+    setDeleteConfirmation("");
+  }
+
+  function submitCreate() {
+    createMutation.mutate({
+      username: createForm.username,
+      display_name: createForm.displayName,
+      password: createForm.password,
+      is_admin: createForm.isAdmin,
+      auto_login: createForm.autoLogin,
+    });
+  }
+
+  function submitEdit() {
+    if (!editingUser || !editForm) return;
+    const payload: UserUpdateRequest = {
+      display_name: editForm.displayName,
+      is_admin: editForm.isAdmin,
+      auto_login: editForm.autoLogin,
+    };
+    if (editForm.resetPassword) payload.password = editForm.password;
+    updateMutation.mutate({
+      userId: editingUser.id,
+      payload,
+      roleId: editForm.roleId ? Number(editForm.roleId) : null,
+      groupId: editForm.groupId ? Number(editForm.groupId) : null,
+    });
+  }
+
+  const roles: RoleOption[] = rolesQuery.data?.items ?? [];
+  const groups: GroupOption[] = groupsQuery.data?.items ?? [];
   const users = usersQuery.data?.items ?? [];
-  const roles = rolesQuery.data?.items ?? [];
-  const groups = groupsQuery.data?.items ?? [];
+
+  const roleSelectData = [
+    { value: "", label: "— none —" },
+    ...roles.map((r) => ({ value: String(r.id), label: r.display_name })),
+  ];
+  const groupSelectData = [
+    { value: "", label: "— none —" },
+    ...groups.map((g) => ({ value: String(g.id), label: g.display_name })),
+  ];
 
   const headerStyle: React.CSSProperties = {
     writingMode: "vertical-lr",
     transform: "rotate(180deg)",
     whiteSpace: "nowrap",
-    fontSize: 11,
+    fontSize: 13,
     padding: "4px 2px",
-    height: 100,
+    height: 110,
     verticalAlign: "bottom",
   };
 
+  const deleteConfirmMatches = deleteConfirmation.trim() === deletingUser?.username;
+
   return (
-    <Stack gap="sm">
-      <Title order={4}>User Permissions Matrix</Title>
-      <ScrollArea>
-        <table style={{ borderCollapse: "collapse", fontSize: 13 }}>
-          <thead>
-            <tr>
-              <th rowSpan={2} style={{ padding: "4px 8px", textAlign: "left" }}>
-                Username
-              </th>
-              <th rowSpan={2} style={{ padding: "4px 8px", textAlign: "left" }}>
-                Display Name
-              </th>
-              <th rowSpan={2} style={{ padding: "4px 8px", textAlign: "left" }}>
-                Group
-              </th>
-              <th rowSpan={2} style={{ padding: "4px 8px", textAlign: "left" }}>
-                Role
-              </th>
-              {PERMISSION_DOMAINS.map((domain) => (
-                <th
-                  key={domain.label}
-                  colSpan={domain.keys.length}
-                  style={{
-                    textAlign: "center",
-                    borderBottom: "1px solid #ccc",
-                    padding: "2px 4px",
-                    fontSize: 11,
-                    fontWeight: 600,
-                  }}
-                >
-                  {domain.label}
-                </th>
-              ))}
-            </tr>
-            <tr>
-              {ALL_KEYS.map((key) => (
-                <th key={key} style={headerStyle} title={key}>
-                  {shortLabel(key)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((user) => (
-              <UserRow
-                key={user.id}
-                user={user}
-                roles={roles}
-                groups={groups}
-                token={token ?? ""}
-              />
-            ))}
-          </tbody>
-        </table>
-      </ScrollArea>
-      {users.length === 0 && <Text c="dimmed">No users found.</Text>}
+    <Stack gap="md">
+      <Group justify="space-between" align="center">
+        <Title order={4}>User Permissions Matrix</Title>
+        <Button size="sm" leftSection={<IconPlus size={15} />} onClick={openCreate}>
+          Create user
+        </Button>
+      </Group>
+
+      {usersQuery.isLoading ? (
+        <Stack align="center" py="xl">
+          <Loader />
+          <Text c="dimmed">Loading users…</Text>
+        </Stack>
+      ) : usersQuery.isError ? (
+        <Alert color="red" icon={<IconAlertCircle size={16} />}>
+          Failed to load users.
+        </Alert>
+      ) : (
+        <ScrollArea>
+          <table style={{ borderCollapse: "collapse", fontSize: 14 }}>
+            <thead>
+              <tr>
+                <th rowSpan={2} style={{ padding: "6px 10px", textAlign: "left" }}>Username</th>
+                <th rowSpan={2} style={{ padding: "6px 10px", textAlign: "left" }}>Display name</th>
+                <th rowSpan={2} style={{ padding: "6px 10px", textAlign: "left" }}>Actions</th>
+                {PERMISSION_DOMAINS.map((domain) => (
+                  <th
+                    key={domain.label}
+                    colSpan={domain.keys.length}
+                    style={{
+                      textAlign: "center",
+                      borderBottom: "1px solid #ccc",
+                      padding: "2px 4px",
+                      fontSize: 12,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {domain.label}
+                  </th>
+                ))}
+              </tr>
+              <tr>
+                {ALL_KEYS.map((key) => (
+                  <th key={key} style={headerStyle} title={key}>
+                    {shortLabel(key)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((user) => {
+                const isSelf = user.id === currentUser?.id;
+                const isProtected = isSelf || user.username === "admin";
+                return (
+                  <UserRow
+                    key={user.id}
+                    user={user}
+                    token={token ?? ""}
+                    onEdit={openEdit}
+                    onDelete={openDelete}
+                    isSelf={isSelf}
+                    isProtected={isProtected}
+                  />
+                );
+              })}
+            </tbody>
+          </table>
+          {users.length === 0 && <Text c="dimmed" p="sm">No users found.</Text>}
+        </ScrollArea>
+      )}
+
+      {/* Create modal */}
+      <Modal opened={createOpened} onClose={() => setCreateOpened(false)} title="Create user" centered transitionProps={{ duration: 0 }}>
+        <Stack>
+          {createMutation.isError && (
+            <Alert color="red" icon={<IconAlertCircle size={16} />} title="Create failed">
+              {createMutation.error instanceof Error ? createMutation.error.message : "Unable to create the user."}
+            </Alert>
+          )}
+          <TextInput label="Username" autoComplete="off" value={createForm.username}
+            onChange={(e) => setCreateForm((s) => ({ ...s, username: e.currentTarget.value }))} />
+          <TextInput label="Display name" value={createForm.displayName}
+            onChange={(e) => setCreateForm((s) => ({ ...s, displayName: e.currentTarget.value }))} />
+          <PasswordInput label="Password" autoComplete="new-password"
+            description="Leave blank for an empty-password account."
+            value={createForm.password}
+            onChange={(e) => setCreateForm((s) => ({ ...s, password: e.currentTarget.value }))} />
+          <Select label="Role" data={roleSelectData} value={createForm.roleId}
+            onChange={(v) => setCreateForm((s) => ({ ...s, roleId: v ?? "" }))} />
+          <Select label="Group" data={groupSelectData} value={createForm.groupId}
+            onChange={(v) => setCreateForm((s) => ({ ...s, groupId: v ?? "" }))} />
+          <Checkbox label="Admin access" checked={createForm.isAdmin}
+            onChange={(e) => setCreateForm((s) => ({ ...s, isAdmin: e.currentTarget.checked }))} />
+          <Checkbox label="Auto-login" checked={createForm.autoLogin}
+            onChange={(e) => setCreateForm((s) => ({ ...s, autoLogin: e.currentTarget.checked }))} />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setCreateOpened(false)}>Cancel</Button>
+            <Button loading={createMutation.isPending} onClick={submitCreate}>Create user</Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* Edit modal */}
+      <Modal opened={Boolean(editingUser && editForm)} onClose={() => { setEditingUser(null); setEditForm(null); }} title="Edit user" centered transitionProps={{ duration: 0 }}>
+        <Stack>
+          {updateMutation.isError && (
+            <Alert color="red" icon={<IconAlertCircle size={16} />} title="Update failed">
+              {updateMutation.error instanceof Error ? updateMutation.error.message : "Unable to update the user."}
+            </Alert>
+          )}
+          <TextInput label="Username" readOnly value={editingUser?.username ?? ""} />
+          <TextInput label="Display name" value={editForm?.displayName ?? ""}
+            onChange={(e) => setEditForm((s) => s ? { ...s, displayName: e.currentTarget.value } : s)} />
+          <Select label="Role" data={roleSelectData} value={editForm?.roleId ?? ""}
+            onChange={(v) => setEditForm((s) => s ? { ...s, roleId: v ?? "" } : s)} />
+          <Select label="Group" data={groupSelectData} value={editForm?.groupId ?? ""}
+            onChange={(v) => setEditForm((s) => s ? { ...s, groupId: v ?? "" } : s)} />
+          <Checkbox label="Admin access"
+            checked={editForm?.isAdmin ?? false}
+            disabled={editingUser?.id === currentUser?.id}
+            onChange={(e) => setEditForm((s) => s ? { ...s, isAdmin: e.currentTarget.checked } : s)} />
+          <Checkbox label="Auto-login"
+            checked={editForm?.autoLogin ?? false}
+            onChange={(e) => setEditForm((s) => s ? { ...s, autoLogin: e.currentTarget.checked } : s)} />
+          <Checkbox label="Reset password"
+            checked={editForm?.resetPassword ?? false}
+            onChange={(e) => setEditForm((s) => s ? { ...s, resetPassword: e.currentTarget.checked, password: e.currentTarget.checked ? s.password : "" } : s)} />
+          <PasswordInput label="New password" autoComplete="new-password"
+            disabled={!editForm?.resetPassword}
+            description="Enable reset above, then enter the new password."
+            value={editForm?.password ?? ""}
+            onChange={(e) => setEditForm((s) => s ? { ...s, password: e.currentTarget.value } : s)} />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => { setEditingUser(null); setEditForm(null); }}>Cancel</Button>
+            <Button loading={updateMutation.isPending} onClick={submitEdit}>Save changes</Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* Delete modal */}
+      <Modal opened={Boolean(deletingUser)} onClose={() => setDeletingUser(null)} title="Delete user" centered transitionProps={{ duration: 0 }}>
+        <Stack>
+          {deleteMutation.isError && (
+            <Alert color="red" icon={<IconAlertCircle size={16} />} title="Delete failed">
+              {deleteMutation.error instanceof Error ? deleteMutation.error.message : "Unable to delete the user."}
+            </Alert>
+          )}
+          <Text>
+            Type <strong>{deletingUser?.username ?? ""}</strong> to confirm deletion.
+          </Text>
+          <TextInput label="Confirmation" value={deleteConfirmation}
+            onChange={(e) => setDeleteConfirmation(e.currentTarget.value)} />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setDeletingUser(null)}>Cancel</Button>
+            <Button color="red" disabled={!deleteConfirmMatches} loading={deleteMutation.isPending}
+              onClick={() => { if (deletingUser) deleteMutation.mutate(deletingUser.id); }}>
+              Delete user
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Stack>
   );
 }
