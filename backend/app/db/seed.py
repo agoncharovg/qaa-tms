@@ -1,4 +1,4 @@
-"""Development seed data."""
+"""Development and system seed data."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from app.core.config import Settings
 from app.core.constants import DevDisplayName, DevPassword, DevUsername
 from app.core.security import hash_password
 from app.models.user import User
+from app.services.authorization import assign_superadmin_to_admins, seed_security_catalog
 
 
 async def seed_dev_users(session: AsyncSession, settings: Settings | None = None) -> None:
@@ -39,3 +40,9 @@ async def seed_dev_users(session: AsyncSession, settings: Settings | None = None
         )
 
     await session.commit()
+
+
+async def seed_system_data(session: AsyncSession, settings: Settings | None = None) -> None:
+    await seed_dev_users(session, settings)
+    await seed_security_catalog(session)
+    await assign_superadmin_to_admins(session)
