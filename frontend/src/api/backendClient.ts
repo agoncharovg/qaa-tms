@@ -914,6 +914,19 @@ export const backendClient = {
     );
   },
 
+  createSecurityRole(token: string, displayName: string, description: string, signal?: AbortSignal): Promise<SecurityRole> {
+    return request<SecurityRole>(
+      BackendPath.SECURITY_ROLES,
+      { body: JSON.stringify({ display_name: displayName, description }), method: HttpMethod.POST },
+      token,
+      signal
+    );
+  },
+
+  deleteSecurityRole(token: string, roleId: number, signal?: AbortSignal): Promise<void> {
+    return request<void>(`${BackendPath.SECURITY_ROLES}/${roleId}`, { method: HttpMethod.DELETE }, token, signal);
+  },
+
   listSecurityGroups(token: string, signal?: AbortSignal): Promise<SecurityGroupListResponse> {
     return request<SecurityGroupListResponse>(BackendPath.SECURITY_GROUPS, { method: HttpMethod.GET }, token, signal);
   },
@@ -925,6 +938,19 @@ export const backendClient = {
       token,
       signal
     );
+  },
+
+  createSecurityGroup(token: string, displayName: string, description: string, signal?: AbortSignal): Promise<SecurityGroup> {
+    return request<SecurityGroup>(
+      BackendPath.SECURITY_GROUPS,
+      { body: JSON.stringify({ display_name: displayName, description }), method: HttpMethod.POST },
+      token,
+      signal
+    );
+  },
+
+  deleteSecurityGroup(token: string, groupId: number, signal?: AbortSignal): Promise<void> {
+    return request<void>(`${BackendPath.SECURITY_GROUPS}/${groupId}`, { method: HttpMethod.DELETE }, token, signal);
   },
 
   updateGroupMembers(token: string, groupId: number, userIds: number[], signal?: AbortSignal): Promise<SecurityGroup> {

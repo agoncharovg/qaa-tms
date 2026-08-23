@@ -207,7 +207,13 @@ function UserRow({
       <td style={{ whiteSpace: "nowrap", padding: "6px 10px", fontWeight: 500 }}>
         {user.username}
       </td>
-      <td style={{ whiteSpace: "nowrap", padding: "6px 10px" }}>{user.display_name}</td>
+      <td style={{ whiteSpace: "nowrap", padding: "6px 10px" }}>
+        <div style={{ fontSize: 13, lineHeight: 1.4 }}>
+          <span style={{ fontWeight: 500 }}>{user.role?.display_name ?? <span style={{ color: "#999" }}>—</span>}</span>
+          <br />
+          <span style={{ color: "#666" }}>{user.group?.display_name ?? <span style={{ color: "#bbb" }}>—</span>}</span>
+        </div>
+      </td>
       <td style={{ whiteSpace: "nowrap", padding: "6px 6px" }}>
         <Group gap={4} wrap="nowrap">
           <Button
@@ -399,9 +405,9 @@ export function UsersMatrix() {
     writingMode: "vertical-lr",
     transform: "rotate(180deg)",
     whiteSpace: "nowrap",
-    fontSize: 13,
+    fontSize: 14,
     padding: "4px 2px",
-    height: 110,
+    height: 120,
     verticalAlign: "bottom",
   };
 
@@ -427,11 +433,11 @@ export function UsersMatrix() {
         </Alert>
       ) : (
         <ScrollArea>
-          <table style={{ borderCollapse: "collapse", fontSize: 14 }}>
+          <table style={{ borderCollapse: "collapse", fontSize: 16 }}>
             <thead>
               <tr>
                 <th rowSpan={2} style={{ padding: "6px 10px", textAlign: "left" }}>Username</th>
-                <th rowSpan={2} style={{ padding: "6px 10px", textAlign: "left" }}>Display name</th>
+                <th rowSpan={2} style={{ padding: "6px 10px", textAlign: "left" }}>Role / Group</th>
                 <th rowSpan={2} style={{ padding: "6px 10px", textAlign: "left" }}>Actions</th>
                 {PERMISSION_DOMAINS.map((domain) => (
                   <th

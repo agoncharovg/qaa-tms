@@ -64,7 +64,11 @@ USER_GROUP_NOT_FOUND = "Security group not found."
 
 
 async def get_user_or_404(db: AsyncSession, user_id: int) -> User:
-    user = await db.get(User, user_id)
+    user = await db.scalar(
+        select(User)
+        .options(selectinload(User.role), selectinload(User.group))
+        .where(User.id == user_id)
+    )
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -169,8 +173,8 @@ async def update_me(
         current_user.password_hash = hash_password(payload.password)
 
     await db.commit()
-    await db.refresh(current_user)
-    return to_user_read(current_user)
+    refreshed = await get_user_or_404(db, current_user.id)
+    return to_user_read(refreshed)
 
 
 @router.get(RoutePath.ME_PLUGINS.value, response_model=MePluginsResponse)
@@ -196,7 +200,9 @@ async def list_users(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> UserListResponse:
     total = await db.scalar(select(func.count()).select_from(User))
-    users = await db.scalars(select(User).order_by(User.id))
+    users = await db.scalars(
+        select(User).options(selectinload(User.role), selectinload(User.group)).order_by(User.id)
+    )
     return UserListResponse(
         items=[to_user_read(user) for user in users],
         total=total or 0,

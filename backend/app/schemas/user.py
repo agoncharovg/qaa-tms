@@ -38,6 +38,8 @@ class UserRead(BaseModel):
     enabled_plugins: list[str]
     role_id: int | None = None
     group_id: int | None = None
+    role: RoleSummary | None = None
+    group: GroupSummary | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -105,6 +107,20 @@ class UserPermissionAddRequest(BaseModel):
 
 
 def to_user_read(user: User) -> UserRead:
+    role_summary = None
+    if user.role is not None:
+        role_summary = RoleSummary(
+            id=user.role.id,
+            key=user.role.key,
+            display_name=user.role.display_name,
+        )
+    group_summary = None
+    if user.group is not None:
+        group_summary = GroupSummary(
+            id=user.group.id,
+            key=user.group.key,
+            display_name=user.group.display_name,
+        )
     return UserRead(
         id=user.id,
         username=user.username,
@@ -114,6 +130,8 @@ def to_user_read(user: User) -> UserRead:
         enabled_plugins=resolve_enabled_plugins(user.enabled_plugins),
         role_id=user.role_id,
         group_id=user.group_id,
+        role=role_summary,
+        group=group_summary,
         created_at=user.created_at,
         updated_at=user.updated_at,
     )

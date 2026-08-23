@@ -33,6 +33,8 @@ export interface User {
   qaa_generator_token_set?: boolean;
   role_id?: number | null;
   group_id?: number | null;
+  role?: { id: number; key: string | null; display_name: string } | null;
+  group?: { id: number; key: string | null; display_name: string } | null;
   created_at: string;
   updated_at: string;
 }

@@ -8,6 +8,7 @@ from typing import Annotated, cast
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_db
 from app.core.config import Settings
@@ -120,7 +121,11 @@ async def login(
     settings = cast(Settings, request.app.state.settings)
     remote_addr = request.client.host if request.client is not None else None
     user_agent = request.headers.get("user-agent")
-    user = await db.scalar(select(User).where(User.username == payload.username))
+    user = await db.scalar(
+        select(User)
+        .options(selectinload(User.role), selectinload(User.group))
+        .where(User.username == payload.username)
+    )
 
     if is_login_rate_limited(request, settings, payload.username, remote_addr):
         db.add(

@@ -10,7 +10,11 @@ from app.models.jenkins_freeze import JenkinsFreeze
 from app.models.jenkins_resume_run import JenkinsResumeRun
 from app.models.operation import Operation
 from app.models.security_event import SecurityEvent
-from app.models.security_group import SecurityGroup, SecurityGroupMembership, SecurityGroupPermission
+from app.models.security_group import (
+    SecurityGroup,
+    SecurityGroupMembership,
+    SecurityGroupPermission,
+)
 from app.models.security_permission import SecurityPermission
 from app.models.security_role import SecurityRole, SecurityRolePermission
 from app.models.user import User
