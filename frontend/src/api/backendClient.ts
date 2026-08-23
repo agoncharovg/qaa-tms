@@ -73,6 +73,14 @@ import type {
   UserCreateRequest,
   UserListResponse,
   UserUpdateRequest,
+  SecurityRole,
+  SecurityRoleListResponse,
+  SecurityGroup,
+  SecurityGroupListResponse,
+  SecurityPermissionListResponse,
+  UserPermissionsResponse,
+  SecurityAuditListResponse,
+  AuthzCheckResponse,
 } from "@/api/types";
 import { resolveApiBaseUrl } from "@/core/runtimeConfig";
 import { parseSseStream } from "@/api/sse";
@@ -885,6 +893,88 @@ export const backendClient = {
         method: HttpMethod.POST,
       },
       undefined,
+      signal
+    );
+  },
+
+  listSecurityPermissions(token: string, signal?: AbortSignal): Promise<SecurityPermissionListResponse> {
+    return request<SecurityPermissionListResponse>(BackendPath.SECURITY_PERMISSIONS, { method: HttpMethod.GET }, token, signal);
+  },
+
+  listSecurityRoles(token: string, signal?: AbortSignal): Promise<SecurityRoleListResponse> {
+    return request<SecurityRoleListResponse>(BackendPath.SECURITY_ROLES, { method: HttpMethod.GET }, token, signal);
+  },
+
+  updateSecurityRole(token: string, roleId: number, permissionKeys: string[], signal?: AbortSignal): Promise<SecurityRole> {
+    return request<SecurityRole>(
+      `${BackendPath.SECURITY_ROLES}/${roleId}`,
+      { body: JSON.stringify({ permission_keys: permissionKeys }), method: HttpMethod.PATCH },
+      token,
+      signal
+    );
+  },
+
+  listSecurityGroups(token: string, signal?: AbortSignal): Promise<SecurityGroupListResponse> {
+    return request<SecurityGroupListResponse>(BackendPath.SECURITY_GROUPS, { method: HttpMethod.GET }, token, signal);
+  },
+
+  updateGroupPermissions(token: string, groupId: number, permissionKeys: string[], signal?: AbortSignal): Promise<SecurityGroup> {
+    return request<SecurityGroup>(
+      `${BackendPath.SECURITY_GROUPS}/${groupId}/permissions`,
+      { body: JSON.stringify({ permission_keys: permissionKeys }), method: HttpMethod.PUT },
+      token,
+      signal
+    );
+  },
+
+  updateGroupMembers(token: string, groupId: number, userIds: number[], signal?: AbortSignal): Promise<SecurityGroup> {
+    return request<SecurityGroup>(
+      `${BackendPath.SECURITY_GROUPS}/${groupId}/members`,
+      { body: JSON.stringify({ user_ids: userIds }), method: HttpMethod.PUT },
+      token,
+      signal
+    );
+  },
+
+  getUserPermissions(token: string, userId: number, signal?: AbortSignal): Promise<UserPermissionsResponse> {
+    return request<UserPermissionsResponse>(`${BackendPath.USERS}/${userId}/permissions`, { method: HttpMethod.GET }, token, signal);
+  },
+
+  addUserPermission(token: string, userId: number, permissionKey: string, signal?: AbortSignal): Promise<unknown> {
+    return request<unknown>(
+      `${BackendPath.USERS}/${userId}/permissions`,
+      { body: JSON.stringify({ permission_key: permissionKey }), method: HttpMethod.POST },
+      token,
+      signal
+    );
+  },
+
+  removeUserPermission(token: string, userId: number, permissionKey: string, signal?: AbortSignal): Promise<void> {
+    return request<void>(`${BackendPath.USERS}/${userId}/permissions/${encodeURIComponent(permissionKey)}`, { method: HttpMethod.DELETE }, token, signal);
+  },
+
+  updateUserRole(token: string, userId: number, roleId: number | null, signal?: AbortSignal): Promise<User> {
+    return request<User>(buildBackendUserPath(userId), { body: JSON.stringify({ role_id: roleId }), method: HttpMethod.PATCH }, token, signal);
+  },
+
+  updateUserGroup(token: string, userId: number, groupId: number | null, signal?: AbortSignal): Promise<User> {
+    return request<User>(buildBackendUserPath(userId), { body: JSON.stringify({ group_id: groupId }), method: HttpMethod.PATCH }, token, signal);
+  },
+
+  listSecurityAudit(token: string, limit: number, offset: number, signal?: AbortSignal): Promise<SecurityAuditListResponse> {
+    return request<SecurityAuditListResponse>(
+      `${BackendPath.SECURITY_AUDIT}?limit=${limit}&offset=${offset}`,
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
+  checkAuthz(token: string, permissions: string[], signal?: AbortSignal): Promise<AuthzCheckResponse> {
+    return request<AuthzCheckResponse>(
+      BackendPath.AUTHZ_CHECK,
+      { body: JSON.stringify({ checks: permissions.map((p) => ({ permission: p })) }), method: HttpMethod.POST },
+      token,
       signal
     );
   },

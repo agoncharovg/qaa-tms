@@ -10,6 +10,7 @@ import {
 import { definePlugin } from "@/core/plugins/definePlugin";
 import { PluginKind } from "@/core/plugins/types";
 
+import { SecurityPage } from "@/plugins/admin/SecurityPage";
 import { ServerSettingsPage } from "@/plugins/admin/ServerSettingsPage";
 import { UsersPage } from "@/plugins/admin/UsersPage";
 
@@ -40,6 +41,13 @@ const adminPlugin = definePlugin({
       title: TabTitle[TabId.ADMIN_INTEGRATIONS],
       viewKey: ViewKey.ADMIN_INTEGRATIONS,
       element: <ServerSettingsPage />,
+    },
+    {
+      adminOnly: true,
+      id: TabId.ADMIN_SECURITY,
+      title: TabTitle[TabId.ADMIN_SECURITY],
+      viewKey: ViewKey.ADMIN_SECURITY,
+      element: <SecurityPage />,
     },
   ],
 });
