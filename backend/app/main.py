@@ -46,8 +46,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.qaa_generator_runtime = runtime
         app.state.jenkins_cache = JenkinsCache()
         app.state.session_maker = session_maker
+        app.state.login_attempts = {}
         async with session_maker() as session:
-            await seed_dev_users(session)
+            await seed_dev_users(session, resolved_settings)
         yield
         await qaa_generator_client.aclose()
         await engine.dispose()

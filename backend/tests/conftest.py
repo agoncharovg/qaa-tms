@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
+from app.core.constants import AppEnvironment
 from app.db.base import Base
 from app.db.session import create_engine_and_session_maker
 from app.main import create_app
@@ -17,6 +18,7 @@ from app.main import create_app
 def client(tmp_path: Path) -> Generator[TestClient, None, None]:
     database_path = tmp_path / "test.db"
     settings = Settings(
+        app_env=AppEnvironment.DEVELOPMENT,
         database_url=f"sqlite+aiosqlite:///{database_path}",
         jwt_secret="test-secret",
         jwt_expire_minutes=720,

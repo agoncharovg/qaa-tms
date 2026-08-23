@@ -75,6 +75,17 @@ class RoutePath(StrEnum):
     DOWNLOAD = "/download"
     AUTH = "/auth"
     LOGIN = "/login"
+    SECURITY = "/security"
+    PERMISSIONS = "/permissions"
+    ROLES = "/roles"
+    ROLE_BY_ID = "/roles/{role_id}"
+    GROUPS = "/groups"
+    GROUP_BY_ID = "/groups/{group_id}"
+    GROUP_MEMBERS = "/groups/{group_id}/members"
+    GROUP_PERMISSIONS = "/groups/{group_id}/permissions"
+    AUDIT = "/audit"
+    AUTHZ = "/authz"
+    CHECK = "/check"
     JENKINS = "/jenkins"
     FREEZES = "/freezes"
     FREEZE_BY_ID = "/freezes/{freeze_id}"
@@ -93,6 +104,8 @@ class RoutePath(StrEnum):
     SETTINGS = "/settings"
     USERS = "/users"
     USER_BY_ID = "/users/{user_id}"
+    USER_PERMISSIONS = "/users/{user_id}/permissions"
+    USER_PERMISSION_BY_KEY = "/users/{user_id}/permissions/{permission_key}"
     OPERATIONS = "/operations"
     REPLAY = "/replay"
     QAA_RUNS = "/qaa/runs"
@@ -113,6 +126,7 @@ class RoutePath(StrEnum):
 
 class ApiTag(StrEnum):
     AUTH = "auth"
+    SECURITY = "security"
     JENKINS = "jenkins"
     USERS = "users"
     OPERATIONS = "operations"
@@ -148,6 +162,7 @@ class HttpMethod(StrEnum):
     GET = "GET"
     PATCH = "PATCH"
     POST = "POST"
+    PUT = "PUT"
 
 
 class MediaType(StrEnum):
@@ -164,12 +179,88 @@ class JwtClaim(StrEnum):
     SUBJECT = "sub"
     EXPIRES_AT = "exp"
     TOKEN_TYPE = "token_type"
+    SESSION_VERSION = "sv"
+
+
+class AppEnvironment(StrEnum):
+    DEVELOPMENT = "development"
+    PRODUCTION = "production"
+
+
+class AuthLoginEventReason(StrEnum):
+    SUCCESS = "success"
+    INVALID_CREDENTIALS = "invalid_credentials"
+    RATE_LIMITED = "rate_limited"
+    EMPTY_PASSWORD_DISABLED = "empty_password_disabled"
+
+
+class SecuritySubjectKind(StrEnum):
+    USER = "user"
+    GROUP = "group"
+
+
+class SecurityScopeKind(StrEnum):
+    GLOBAL = "global"
+    PLUGIN = "plugin"
+    JENKINS_PATH = "jenkins_path"
+    NAMESPACE = "namespace"
+    SETTINGS_SURFACE = "settings_surface"
+
+
+class SecurityRoleKey(StrEnum):
+    SUPERADMIN = "superadmin"
+    ADMINISTRATOR = "administrator"
+    ENGINEER = "engineer"
+    VIEWER = "viewer"
+
+
+class PermissionKey(StrEnum):
+    SECURITY_READ = "security.read"
+    SECURITY_ROLES_READ = "security.roles.read"
+    SECURITY_ROLES_MANAGE = "security.roles.manage"
+    SECURITY_GROUPS_READ = "security.groups.read"
+    SECURITY_GROUPS_MANAGE = "security.groups.manage"
+    SECURITY_AUDIT_READ = "security.audit.read"
+    USERS_READ = "users.read"
+    USERS_MANAGE = "users.manage"
+    PROFILE_SELF_READ = "profile.self.read"
+    PROFILE_SELF_MANAGE = "profile.self.manage"
+    SERVER_SETTINGS_READ = "server_settings.read"
+    SERVER_SETTINGS_MANAGE = "server_settings.manage"
+    OPERATIONS_READ_OWN = "operations.read_own"
+    OPERATIONS_READ_ALL = "operations.read_all"
+    JENKINS_READ = "jenkins.read"
+    JENKINS_FREEZE = "jenkins.freeze"
+    JENKINS_RESUME = "jenkins.resume"
+    STATISTICS_READ = "statistics.read"
+    STAGINGS_READ = "stagings.read"
+    STAGINGS_DEPLOY = "stagings.deploy"
+    STAGINGS_DESTROY = "stagings.destroy"
+    STAGINGS_SYNC = "stagings.sync"
+    STAGINGS_E2E_RUN = "stagings.e2e_run"
+    KUBER_READ = "kuber.read"
+    KUBER_USE_CONTEXT = "kuber.use_context"
+    KUBER_DELETE_POD = "kuber.delete_pod"
+    QAA_READ = "qaa.read"
+    QAA_RUN = "qaa.run"
+    QAA_ADMIN = "qaa.admin"
+    LEONID_READ = "leonid.read"
+    LEONID_WRITE = "leonid.write"
+
+
+class SettingsSurface(StrEnum):
+    SERVER = "server"
+    AGENT = "agent"
+    APPLICATION = "application"
 
 
 class EnvKey(StrEnum):
+    APP_ENV = "APP_ENV"
     DATABASE_URL = "DATABASE_URL"
     JWT_SECRET = "JWT_SECRET"
     JWT_EXPIRE_MINUTES = "JWT_EXPIRE_MINUTES"
+    AUTH_LOGIN_MAX_ATTEMPTS = "AUTH_LOGIN_MAX_ATTEMPTS"
+    AUTH_LOGIN_WINDOW_SECONDS = "AUTH_LOGIN_WINDOW_SECONDS"
     CORS_ORIGINS = "CORS_ORIGINS"
     STATIC_DIR = "STATIC_DIR"
     AGENT_DIST_DIR = "AGENT_DIST_DIR"
@@ -203,6 +294,7 @@ class DatabaseDialect(StrEnum):
 
 class PasswordHashScheme(StrEnum):
     SHA256 = "sha256$"
+    SCRYPT = "scrypt$"
 
 
 class JenkinsNodeKind(StrEnum):
@@ -250,9 +342,13 @@ class ErrorMessage(StrEnum):
     CANNOT_DELETE_OWN_ACCOUNT = "You cannot delete your own account."
     CANNOT_REMOVE_OWN_ADMIN_ACCESS = "You cannot remove your own admin access."
     DATABASE_NOT_READY = "Database is not ready."
+    EMPTY_PASSWORDS_REQUIRE_DEVELOPMENT = "Empty passwords are allowed only in development."
     INVALID_USERNAME_OR_PASSWORD = "Invalid username or password."
+    LOGIN_RATE_LIMIT_EXCEEDED = "Too many login attempts. Try again later."
     LAST_REMAINING_ADMIN_CANNOT_BE_REMOVED = "The last remaining admin cannot be removed."
     NOT_AUTHENTICATED = "Not authenticated."
+    PERMISSION_DENIED = "You do not have permission to perform this action."
+    SESSION_NO_LONGER_VALID = "Session is no longer valid."
     USERNAME_ALREADY_EXISTS = "Username already exists."
     USER_HAS_RECORDED_OPERATIONS = (
         "This user has recorded operations; audit history must be preserved."
@@ -304,9 +400,12 @@ OPERATIONS_MIN_LIMIT = 1
 OPERATIONS_MAX_LIMIT = 100
 OPERATIONS_DEFAULT_LIMIT = 20
 DEFAULT_OFFSET = 0
+DEFAULT_APP_ENV = AppEnvironment.PRODUCTION
 DEFAULT_DATABASE_URL = "postgresql+asyncpg://qaa_tms:qaa_tms@localhost:5432/qaa_tms"
 DEFAULT_JWT_SECRET = "dev-secret-change-me"
 DEFAULT_JWT_EXPIRE_MINUTES = 720
+DEFAULT_AUTH_LOGIN_MAX_ATTEMPTS = 5
+DEFAULT_AUTH_LOGIN_WINDOW_SECONDS = 60
 DEFAULT_STATIC_DIR = "/app/static"
 DEFAULT_AGENT_DIST_DIR = "/app/agent-dist"
 DEFAULT_JENKINS_COMMON_URL = "https://jenkins.p.gc.onl"
@@ -340,6 +439,11 @@ JENKINS_FOLDER_CACHE_MIN_TTL_SECONDS = 30
 JENKINS_FOLDER_CACHE_MAX_TTL_SECONDS = 600
 JENKINS_FOLDER_HISTORY_RETENTION_SECONDS = 3600
 JENKINS_FOLDER_HISTORY_RETENTION_MS = JENKINS_FOLDER_HISTORY_RETENTION_SECONDS * 1000
+PASSWORD_SCRYPT_SALT_BYTES = 16
+PASSWORD_SCRYPT_N = 16384
+PASSWORD_SCRYPT_R = 8
+PASSWORD_SCRYPT_P = 1
+PASSWORD_SCRYPT_DKLEN = 64
 # Must exceed the worst-case single-pipeline resume (enable + last-build params +
 # build ≈ 3× the 15s Jenkins request timeout, plus the inter-item pause), otherwise a
 # slow-but-live campaign is falsely judged abandoned and could be relaunched.

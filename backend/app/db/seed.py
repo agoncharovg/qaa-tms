@@ -5,12 +5,13 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import Settings
 from app.core.constants import DevDisplayName, DevPassword, DevUsername
 from app.core.security import hash_password
 from app.models.user import User
 
 
-async def seed_dev_users(session: AsyncSession) -> None:
+async def seed_dev_users(session: AsyncSession, settings: Settings | None = None) -> None:
     usernames = [DevUsername.TEST.value, DevUsername.ADMIN.value]
     existing_users = await session.scalars(select(User).where(User.username.in_(usernames)))
     existing_by_username = {user.username: user for user in existing_users}

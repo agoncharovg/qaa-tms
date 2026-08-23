@@ -17,6 +17,7 @@ from app.core.time import utcnow
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.auth_login_event import AuthLoginEvent
     from app.models.jenkins_freeze import JenkinsFreeze
     from app.models.jenkins_resume_run import JenkinsResumeRun
     from app.models.operation import Operation
@@ -31,6 +32,7 @@ class User(Base):
     display_name: Mapped[str] = mapped_column(String(DEFAULT_STRING_LENGTH))
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     auto_login: Mapped[bool] = mapped_column(Boolean, default=False)
+    session_version: Mapped[int] = mapped_column(Integer, default=1)
     enabled_plugins: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -39,6 +41,10 @@ class User(Base):
         onupdate=utcnow,
     )
 
+    auth_login_events: Mapped[list[AuthLoginEvent]] = relationship(
+        back_populates="user",
+        passive_deletes=True,
+    )
     operations: Mapped[list[Operation]] = relationship(back_populates="user")
     jenkins_freezes_created: Mapped[list[JenkinsFreeze]] = relationship(
         foreign_keys="JenkinsFreeze.created_by_id",

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 from app.core.config import get_settings
 from app.db.base import Base
+from app.models.auth_login_event import AuthLoginEvent
 from app.models.operation import Operation
 from app.models.user import User
 
@@ -20,7 +21,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
-_ = (Operation, User)
+_ = (AuthLoginEvent, Operation, User)
 
 
 def get_database_url() -> str:

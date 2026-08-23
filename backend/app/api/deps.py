@@ -58,7 +58,8 @@ async def get_current_user(
         ) from exc
 
     username = payload.get(JwtClaim.SUBJECT.value)
-    if not isinstance(username, str):
+    session_version = payload.get(JwtClaim.SESSION_VERSION.value)
+    if not isinstance(username, str) or not isinstance(session_version, int):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ErrorMessage.INVALID_AUTHENTICATION_CREDENTIALS.value,
@@ -70,6 +71,12 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ErrorMessage.USER_NOT_FOUND.value,
+            headers={HttpHeader.WWW_AUTHENTICATE.value: AuthScheme.BEARER.value},
+        )
+    if user.session_version != session_version:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=ErrorMessage.SESSION_NO_LONGER_VALID.value,
             headers={HttpHeader.WWW_AUTHENTICATE.value: AuthScheme.BEARER.value},
         )
     return user
