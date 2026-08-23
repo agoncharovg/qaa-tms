@@ -7,7 +7,7 @@ from enum import StrEnum
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -21,9 +21,10 @@ from app.models.security_event import SecurityEvent
 from app.models.security_group import (
     SecurityGroup,
     SecurityGroupMembership,
+    SecurityGroupPermission,
 )
 from app.models.security_permission import SecurityPermission
-from app.models.security_role import SecurityRole
+from app.models.security_role import SecurityRole, SecurityRolePermission
 from app.models.user import User
 from app.schemas.security import (
     SecurityAuditListResponse,
@@ -273,10 +274,11 @@ async def create_security_role(
         system=False,
         mutable=True,
     )
-    role.permissions = permission_rows
     db.add(role)
     await db.flush()
     role_id = role.id
+    for perm in permission_rows:
+        db.add(SecurityRolePermission(role_id=role_id, permission_id=perm.id))
     write_security_event(
         db,
         actor_user_id=current_user.id,
@@ -320,7 +322,10 @@ async def update_security_role(
     if "description" in payload.model_fields_set:
         role.description = payload.description
     if "permission_keys" in payload.model_fields_set and payload.permission_keys is not None:
-        role.permissions = await list_permissions_by_keys(db, payload.permission_keys)
+        perm_rows = await list_permissions_by_keys(db, payload.permission_keys)
+        await db.execute(delete(SecurityRolePermission).where(SecurityRolePermission.role_id == role.id))
+        for perm in perm_rows:
+            db.add(SecurityRolePermission(role_id=role.id, permission_id=perm.id))
 
     write_security_event(
         db,
@@ -538,7 +543,9 @@ async def replace_security_group_permissions(
     permission_rows = await list_permissions_by_keys(db, payload.permission_keys)
 
     before_keys = sorted(p.key for p in group.permissions)
-    group.permissions = permission_rows
+    await db.execute(delete(SecurityGroupPermission).where(SecurityGroupPermission.group_id == group.id))
+    for perm in permission_rows:
+        db.add(SecurityGroupPermission(group_id=group.id, permission_id=perm.id))
     write_security_event(
         db,
         actor_user_id=current_user.id,
