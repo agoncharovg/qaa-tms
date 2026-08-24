@@ -32,34 +32,33 @@ import type {
 import { QueryKey } from "@/constants";
 import { useAuthStore } from "@/store/authStore";
 
-const PERMISSION_DOMAINS = [
+type SubGroup = { label: string | null; keys: string[] };
+type PermDomain = { label: string; keys: string[]; subgroups?: SubGroup[] };
+
+const PERMISSION_DOMAINS: PermDomain[] = [
   {
     label: "Security",
-    keys: [
-      "security.read",
-      "security.roles.manage",
-      "security.groups.manage",
-      "security.audit.read",
+    keys: ["security.read", "security.roles.manage", "security.groups.manage"],
+    subgroups: [
+      { label: null, keys: ["security.read"] },
+      { label: "manage", keys: ["security.roles.manage", "security.groups.manage"] },
     ],
   },
   { label: "Users", keys: ["users.read", "users.manage"] },
   { label: "Jenkins", keys: ["jenkins.read", "jenkins.freeze", "jenkins.resume"] },
   {
     label: "Stagings",
-    keys: [
-      "stagings.read",
-      "stagings.deploy",
-      "stagings.destroy",
-      "stagings.sync",
-      "stagings.e2e_run",
-    ],
+    keys: ["stagings.read", "stagings.deploy", "stagings.destroy", "stagings.sync", "stagings.e2e_run"],
   },
   { label: "Kuber", keys: ["kuber.read", "kuber.use_context", "kuber.delete_pod"] },
   { label: "QAA", keys: ["qaa.read", "qaa.run", "qaa.admin"] },
   { label: "Other", keys: ["statistics.read", "leonid.read", "leonid.write"] },
-] as const;
+];
 
-const ALL_KEYS: string[] = PERMISSION_DOMAINS.flatMap((d) => [...d.keys]);
+const ALL_KEYS: string[] = PERMISSION_DOMAINS.flatMap((d) => d.keys);
+const DOMAIN_FIRST_KEYS = new Set(PERMISSION_DOMAINS.map((d) => d.keys[0]));
+const HAS_SUBGROUPS = PERMISSION_DOMAINS.some((d) => Boolean(d.subgroups));
+const HEADER_ROWS = HAS_SUBGROUPS ? 3 : 2;
 
 function shortLabel(key: string): string {
   const parts = key.split(".");
@@ -243,7 +242,14 @@ function UserRow({
         </td>
       ) : (
         ALL_KEYS.map((key) => (
-          <td key={key} style={{ textAlign: "center", padding: "2px 6px" }}>
+          <td
+            key={key}
+            style={{
+              textAlign: "center",
+              padding: "2px 6px",
+              borderLeft: DOMAIN_FIRST_KEYS.has(key) ? "2px solid #e0e0e0" : undefined,
+            }}
+          >
             <PermissionCell
               permKey={key}
               inherited={inherited}
@@ -435,18 +441,21 @@ export function UsersMatrix() {
         <ScrollArea>
           <table style={{ borderCollapse: "collapse", fontSize: 16 }}>
             <thead>
+              {/* Row 1: domain labels */}
               <tr>
-                <th rowSpan={2} style={{ padding: "6px 10px", textAlign: "left" }}>Username</th>
-                <th rowSpan={2} style={{ padding: "6px 10px", textAlign: "left" }}>Role / Group</th>
-                <th rowSpan={2} style={{ padding: "6px 10px", textAlign: "left" }}>Actions</th>
+                <th rowSpan={HEADER_ROWS} style={{ padding: "6px 10px", textAlign: "left" }}>Username</th>
+                <th rowSpan={HEADER_ROWS} style={{ padding: "6px 10px", textAlign: "left" }}>Role / Group</th>
+                <th rowSpan={HEADER_ROWS} style={{ padding: "6px 10px", textAlign: "left" }}>Actions</th>
                 {PERMISSION_DOMAINS.map((domain) => (
                   <th
                     key={domain.label}
                     colSpan={domain.keys.length}
+                    rowSpan={domain.subgroups ? 1 : 2}
                     style={{
                       textAlign: "center",
                       borderBottom: "1px solid #ccc",
-                      padding: "2px 4px",
+                      borderLeft: "2px solid #d0d0d0",
+                      padding: "2px 6px",
                       fontSize: 12,
                       fontWeight: 600,
                     }}
@@ -455,9 +464,43 @@ export function UsersMatrix() {
                   </th>
                 ))}
               </tr>
+              {/* Row 2: subgroup labels (only rendered when any domain has subgroups) */}
+              {HAS_SUBGROUPS && (
+                <tr>
+                  {PERMISSION_DOMAINS.flatMap((domain, di) =>
+                    domain.subgroups
+                      ? domain.subgroups.map((sg, sgi) => (
+                          <th
+                            key={`sg-${di}-${sgi}`}
+                            colSpan={sg.keys.length}
+                            style={{
+                              textAlign: "center",
+                              borderBottom: "1px solid #ccc",
+                              borderLeft: sgi === 0 ? "2px solid #d0d0d0" : undefined,
+                              fontSize: 11,
+                              fontWeight: 500,
+                              padding: "1px 4px",
+                              color: "#555",
+                            }}
+                          >
+                            {sg.label ?? ""}
+                          </th>
+                        ))
+                      : []
+                  )}
+                </tr>
+              )}
+              {/* Bottom row: individual key vertical labels */}
               <tr>
                 {ALL_KEYS.map((key) => (
-                  <th key={key} style={headerStyle} title={key}>
+                  <th
+                    key={key}
+                    style={{
+                      ...headerStyle,
+                      borderLeft: DOMAIN_FIRST_KEYS.has(key) ? "2px solid #d0d0d0" : undefined,
+                    }}
+                    title={key}
+                  >
                     {shortLabel(key)}
                   </th>
                 ))}
