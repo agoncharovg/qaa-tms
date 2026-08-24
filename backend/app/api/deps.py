@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Annotated, cast
 
 import jwt
@@ -12,9 +12,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
-from app.core.constants import AuthScheme, ErrorMessage, HttpHeader, JwtClaim, TokenType
+from app.core.constants import (
+    AuthScheme,
+    ErrorMessage,
+    HttpHeader,
+    JwtClaim,
+    PermissionKey,
+    TokenType,
+)
 from app.core.security import decode_access_token
 from app.models.user import User
+from app.services.authorization import has_permission
 from app.services.jenkins_cache import JenkinsCache
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -58,7 +66,8 @@ async def get_current_user(
         ) from exc
 
     username = payload.get(JwtClaim.SUBJECT.value)
-    if not isinstance(username, str):
+    session_version = payload.get(JwtClaim.SESSION_VERSION.value)
+    if not isinstance(username, str) or not isinstance(session_version, int):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ErrorMessage.INVALID_AUTHENTICATION_CREDENTIALS.value,
@@ -70,6 +79,12 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ErrorMessage.USER_NOT_FOUND.value,
+            headers={HttpHeader.WWW_AUTHENTICATE.value: AuthScheme.BEARER.value},
+        )
+    if user.session_version != session_version:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=ErrorMessage.SESSION_NO_LONGER_VALID.value,
             headers={HttpHeader.WWW_AUTHENTICATE.value: AuthScheme.BEARER.value},
         )
     return user
@@ -88,3 +103,18 @@ async def get_current_admin(current_user: CurrentUser) -> User:
 
 
 AdminUser = Annotated[User, Depends(get_current_admin)]
+
+
+def require_permission(permission: PermissionKey) -> Callable[..., Awaitable[User]]:
+    async def dependency(
+        current_user: CurrentUser,
+        db: Annotated[AsyncSession, Depends(get_db)],
+    ) -> User:
+        if not await has_permission(current_user, permission, db):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=ErrorMessage.PERMISSION_DENIED.value,
+            )
+        return current_user
+
+    return dependency

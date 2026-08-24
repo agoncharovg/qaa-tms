@@ -23,7 +23,7 @@ from app.core.constants import (
     HealthStatus,
     RoutePath,
 )
-from app.db.seed import seed_dev_users
+from app.db.seed import seed_system_data
 from app.db.session import create_engine_and_session_maker
 from app.services.jenkins_cache import JenkinsCache
 from app.services.qaa_generator_transport import resolve_qaa_generator_runtime
@@ -46,8 +46,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.qaa_generator_runtime = runtime
         app.state.jenkins_cache = JenkinsCache()
         app.state.session_maker = session_maker
+        app.state.login_attempts = {}
         async with session_maker() as session:
-            await seed_dev_users(session)
+            await seed_system_data(session, resolved_settings)
         yield
         await qaa_generator_client.aclose()
         await engine.dispose()

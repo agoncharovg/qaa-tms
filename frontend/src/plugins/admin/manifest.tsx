@@ -10,8 +10,8 @@ import {
 import { definePlugin } from "@/core/plugins/definePlugin";
 import { PluginKind } from "@/core/plugins/types";
 
+import { SecurityPage } from "@/plugins/admin/SecurityPage";
 import { ServerSettingsPage } from "@/plugins/admin/ServerSettingsPage";
-import { UsersPage } from "@/plugins/admin/UsersPage";
 
 const ADMIN_PLUGIN_ROUTE = "/admin" as const;
 const ADMIN_PLUGIN_ORDER = 30 as const;
@@ -29,10 +29,10 @@ const adminPlugin = definePlugin({
   tabs: [
     {
       adminOnly: true,
-      id: TabId.ADMIN_USERS,
-      title: TabTitle[TabId.ADMIN_USERS],
-      viewKey: ViewKey.ADMIN_USERS,
-      element: <UsersPage />,
+      id: TabId.ADMIN_SECURITY,
+      title: TabTitle[TabId.ADMIN_SECURITY],
+      viewKey: ViewKey.ADMIN_SECURITY,
+      element: <SecurityPage />,
     },
     {
       adminOnly: true,

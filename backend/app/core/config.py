@@ -13,6 +13,9 @@ from sqlalchemy.engine import make_url
 from app.core import env_file
 from app.core.constants import (
     DEFAULT_AGENT_DIST_DIR,
+    DEFAULT_APP_ENV,
+    DEFAULT_AUTH_LOGIN_MAX_ATTEMPTS,
+    DEFAULT_AUTH_LOGIN_WINDOW_SECONDS,
     DEFAULT_DATABASE_URL,
     DEFAULT_JENKINS_COMMON_URL,
     DEFAULT_JENKINS_HISTORY_LIMIT,
@@ -27,6 +30,7 @@ from app.core.constants import (
     DEFAULT_STATIC_DIR,
     GROUP_LABEL_SEPARATOR,
     GROUP_LIST_SEPARATOR,
+    AppEnvironment,
     EnvKey,
 )
 
@@ -71,6 +75,10 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    app_env: AppEnvironment = Field(
+        default=DEFAULT_APP_ENV,
+        alias=EnvKey.APP_ENV.value,
+    )
     database_url: str = Field(
         default=DEFAULT_DATABASE_URL,
         alias=EnvKey.DATABASE_URL.value,
@@ -79,6 +87,14 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = Field(
         default=DEFAULT_JWT_EXPIRE_MINUTES,
         alias=EnvKey.JWT_EXPIRE_MINUTES.value,
+    )
+    auth_login_max_attempts: int = Field(
+        default=DEFAULT_AUTH_LOGIN_MAX_ATTEMPTS,
+        alias=EnvKey.AUTH_LOGIN_MAX_ATTEMPTS.value,
+    )
+    auth_login_window_seconds: int = Field(
+        default=DEFAULT_AUTH_LOGIN_WINDOW_SECONDS,
+        alias=EnvKey.AUTH_LOGIN_WINDOW_SECONDS.value,
     )
     cors_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=list,
@@ -203,6 +219,10 @@ class Settings(BaseSettings):
                 return [str(item).strip() for item in parsed if str(item).strip()]
             return [item.strip() for item in stripped.split(",") if item.strip()]
         raise ValueError("CORS_ORIGINS must be a list or string.")
+
+    @property
+    def is_development(self) -> bool:
+        return self.app_env is AppEnvironment.DEVELOPMENT
 
     @property
     def jenkins_common_configured(self) -> bool:

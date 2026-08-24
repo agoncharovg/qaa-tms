@@ -100,6 +100,11 @@ export const BackendPath = {
   REVOKE: "/revoke",
   HEALTH: "/health",
   READY: "/ready",
+  SECURITY_PERMISSIONS: "/api/v1/security/permissions",
+  SECURITY_ROLES: "/api/v1/security/roles",
+  SECURITY_GROUPS: "/api/v1/security/groups",
+  SECURITY_AUDIT: "/api/v1/security/audit",
+  AUTHZ_CHECK: "/api/v1/authz/check",
 } as const;
 
 export type BackendPath = (typeof BackendPath)[keyof typeof BackendPath];
@@ -695,6 +700,7 @@ export const ViewKey = {
   QAA_ADMIN: "qaa-admin",
   ADMIN_USERS: "admin-users",
   ADMIN_INTEGRATIONS: "admin-integrations",
+  ADMIN_SECURITY: "admin-security",
   PROFILE: "profile",
 } as const;
 
@@ -721,6 +727,7 @@ export const TabId = {
   QAA_ADMIN: "tab-qaa-admin",
   ADMIN_USERS: "tab-admin-users",
   ADMIN_INTEGRATIONS: "tab-admin-integrations",
+  ADMIN_SECURITY: "tab-admin-security",
   PROFILE: "tab-profile",
 } as const;
 
@@ -747,6 +754,7 @@ export const TabTitle: Record<TabId, string> = {
   [TabId.QAA_ADMIN]: "Admin",
   [TabId.ADMIN_USERS]: "Users",
   [TabId.ADMIN_INTEGRATIONS]: "QAA generator",
+  [TabId.ADMIN_SECURITY]: "Security",
   [TabId.PROFILE]: "Profile",
 };
 
@@ -811,6 +819,11 @@ export const QueryKey = {
   QAA_RUN_DETAIL: "qaa-run-detail",
   QAA_RUN_ARTIFACTS: "qaa-run-artifacts",
   QAA_USERS: "qaa-users",
+  SECURITY_ROLES: "security-roles",
+  SECURITY_GROUPS: "security-groups",
+  SECURITY_PERMISSIONS: "security-permissions",
+  SECURITY_AUDIT: "security-audit",
+  USER_PERMISSIONS: "user-permissions",
 } as const;
 
 export type QueryKey = (typeof QueryKey)[keyof typeof QueryKey];

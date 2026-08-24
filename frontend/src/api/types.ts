@@ -31,8 +31,18 @@ export interface User {
   auto_login: boolean;
   enabled_plugins: PluginId[];
   qaa_generator_token_set?: boolean;
+  role_id?: number | null;
+  group_id?: number | null;
+  role?: { id: number; key: string | null; display_name: string } | null;
+  group?: { id: number; key: string | null; display_name: string } | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface MeRead extends User {
+  role: { id: number; key: string | null; display_name: string } | null;
+  group: { id: number; key: string | null; display_name: string } | null;
+  effective_permissions: string[];
 }
 
 export interface MePluginsUpdateRequest {
@@ -845,4 +855,84 @@ export interface WorkspaceTabDefinition {
   html?: string;
   closeable: boolean;
   adminOnly?: boolean;
+}
+export interface SecurityPermission {
+  id: number;
+  key: string;
+  display_name: string;
+  description: string | null;
+  system: boolean;
+}
+
+export interface SecurityPermissionListResponse {
+  items: SecurityPermission[];
+  total: number;
+}
+
+export interface SecurityRole {
+  id: number;
+  key: string | null;
+  display_name: string;
+  description: string | null;
+  system: boolean;
+  mutable: boolean;
+  permissions: string[];
+}
+
+export interface SecurityRoleListResponse {
+  items: SecurityRole[];
+  total: number;
+}
+
+export interface SecurityGroupMember {
+  id: number;
+  username: string;
+  display_name: string;
+}
+
+export interface SecurityGroup {
+  id: number;
+  key: string | null;
+  display_name: string;
+  description: string | null;
+  system: boolean;
+  members: SecurityGroupMember[];
+  member_count: number;
+  permissions: string[];
+  role_ids: number[];
+}
+
+export interface SecurityGroupListResponse {
+  items: SecurityGroup[];
+  total: number;
+}
+
+export interface UserPermissionsResponse {
+  inherited: string[];
+  extra: string[];
+  effective: string[];
+}
+
+export interface SecurityEventRead {
+  id: number;
+  event_type: string;
+  target_type: string;
+  target_id: string | null;
+  payload: Record<string, unknown>;
+  created_at: string;
+  actor_user: { id: number; username: string; display_name: string } | null;
+}
+
+export interface SecurityAuditListResponse {
+  items: SecurityEventRead[];
+  total: number;
+}
+
+export interface AuthzCheckResult {
+  permission: string;
+  allowed: boolean;
+}
+
+export interface AuthzCheckResponse {
+  results: AuthzCheckResult[];
 }

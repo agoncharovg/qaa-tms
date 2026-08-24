@@ -1,16 +1,22 @@
-"""Development seed data."""
+"""Development and system seed data."""
 
 from __future__ import annotations
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import Settings
 from app.core.constants import DevDisplayName, DevPassword, DevUsername
 from app.core.security import hash_password
 from app.models.user import User
+from app.services.authorization import (
+    assign_engineer_to_dev_test_user,
+    assign_superadmin_to_admins,
+    seed_security_catalog,
+)
 
 
-async def seed_dev_users(session: AsyncSession) -> None:
+async def seed_dev_users(session: AsyncSession, settings: Settings | None = None) -> None:
     usernames = [DevUsername.TEST.value, DevUsername.ADMIN.value]
     existing_users = await session.scalars(select(User).where(User.username.in_(usernames)))
     existing_by_username = {user.username: user for user in existing_users}
@@ -38,3 +44,10 @@ async def seed_dev_users(session: AsyncSession) -> None:
         )
 
     await session.commit()
+
+
+async def seed_system_data(session: AsyncSession, settings: Settings | None = None) -> None:
+    await seed_dev_users(session, settings)
+    await seed_security_catalog(session)
+    await assign_superadmin_to_admins(session)
+    await assign_engineer_to_dev_test_user(session)

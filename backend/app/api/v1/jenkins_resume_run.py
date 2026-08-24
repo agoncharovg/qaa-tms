@@ -13,13 +13,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import CurrentUser, get_db
+from app.api.deps import get_db, require_permission
 from app.core.constants import (
     JENKINS_RESUME_RUN_STALE_SECONDS,
     ApiTag,
     JenkinsFreezeStatus,
     JenkinsResumeItemState,
     JenkinsResumeRunStatus,
+    PermissionKey,
     QueryParam,
     RoutePath,
 )
@@ -27,6 +28,7 @@ from app.core.jenkins_paths import normalize_jenkins_path
 from app.core.time import utcnow
 from app.models.jenkins_freeze import JenkinsFreeze
 from app.models.jenkins_resume_run import JenkinsResumeRun
+from app.models.user import User
 from app.schemas.jenkins_freeze import JenkinsFreezeSnapshotItem
 from app.schemas.jenkins_resume_run import (
     JenkinsResumeItem,
@@ -39,6 +41,9 @@ router = APIRouter(
     prefix=RoutePath.JENKINS.value,
     tags=[ApiTag.JENKINS.value],
 )
+
+JenkinsReadUser = Annotated[User, Depends(require_permission(PermissionKey.JENKINS_READ))]
+JenkinsResumeUser = Annotated[User, Depends(require_permission(PermissionKey.JENKINS_RESUME))]
 
 
 class ResumeRunErrorMessage(StrEnum):
@@ -162,7 +167,7 @@ def first_pending_item(items: list[JenkinsResumeItem]) -> JenkinsResumeItem | No
 @router.post(RoutePath.RESUME_RUNS.value, response_model=JenkinsResumeRunRead)
 async def create_jenkins_resume_run(
     payload: JenkinsResumeRunCreate,
-    current_user: CurrentUser,
+    current_user: JenkinsResumeUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> JenkinsResumeRunRead:
     freeze = await get_freeze_or_404(db, payload.freeze_id)
@@ -252,7 +257,7 @@ async def create_jenkins_resume_run(
 
 @router.get(RoutePath.RESUME_RUNS.value, response_model=list[JenkinsResumeRunRead])
 async def list_jenkins_resume_runs(
-    _: CurrentUser,
+    _: JenkinsReadUser,
     db: Annotated[AsyncSession, Depends(get_db)],
     signature: Annotated[str, Query(...)],
     status_: Annotated[JenkinsResumeRunStatus | None, Query(alias=QueryParam.STATUS.value)] = (
@@ -278,7 +283,7 @@ async def list_jenkins_resume_runs(
 @router.get(RoutePath.RESUME_RUN_BY_ID.value, response_model=JenkinsResumeRunRead)
 async def get_jenkins_resume_run(
     run_id: UUID,
-    _: CurrentUser,
+    _: JenkinsReadUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> JenkinsResumeRunRead:
     run = await get_run_or_404(db, run_id)
@@ -289,7 +294,7 @@ async def get_jenkins_resume_run(
 async def put_jenkins_resume_progress(
     run_id: UUID,
     payload: JenkinsResumeProgressPut,
-    _: CurrentUser,
+    _: JenkinsResumeUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> JenkinsResumeRunRead:
     run = await get_run_or_404(db, run_id)
@@ -341,7 +346,7 @@ async def put_jenkins_resume_progress(
 @router.post(RoutePath.RESUME_RUN_CANCEL.value, response_model=JenkinsResumeRunRead)
 async def cancel_jenkins_resume_run(
     run_id: UUID,
-    current_user: CurrentUser,
+    current_user: JenkinsResumeUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> JenkinsResumeRunRead:
     run = await get_run_or_404(db, run_id)

@@ -11,8 +11,14 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 from app.core.config import get_settings
 from app.db.base import Base
+from app.models.auth_login_event import AuthLoginEvent
 from app.models.operation import Operation
+from app.models.security_event import SecurityEvent
+from app.models.security_group import SecurityGroup, SecurityGroupMembership, SecurityGroupPermission
+from app.models.security_permission import SecurityPermission
+from app.models.security_role import SecurityRole, SecurityRolePermission
 from app.models.user import User
+from app.models.user_extra_permission import UserExtraPermission
 
 config = context.config
 
@@ -20,7 +26,19 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
-_ = (Operation, User)
+_ = (
+    AuthLoginEvent,
+    Operation,
+    SecurityEvent,
+    SecurityGroup,
+    SecurityGroupMembership,
+    SecurityGroupPermission,
+    SecurityPermission,
+    SecurityRole,
+    SecurityRolePermission,
+    User,
+    UserExtraPermission,
+)
 
 
 def get_database_url() -> str:
