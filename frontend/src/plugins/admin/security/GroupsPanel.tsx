@@ -2,13 +2,14 @@ import { useState } from "react";
 import {
   Alert,
   Badge,
-  Box,
   Button,
   Checkbox,
+  Divider,
   Group,
   Loader,
   Modal,
   MultiSelect,
+  ScrollArea,
   Stack,
   Table,
   Text,
@@ -16,13 +17,7 @@ import {
   Textarea,
   Title,
 } from "@mantine/core";
-import {
-  IconAlertCircle,
-  IconChevronDown,
-  IconChevronRight,
-  IconPlus,
-  IconTrash,
-} from "@tabler/icons-react";
+import { IconAlertCircle, IconEdit, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { backendClient } from "@/api/backendClient";
@@ -65,131 +60,29 @@ const ALL_PERMISSIONS = [
   "leonid.write",
 ] as const;
 
-function GroupRow({
-  group,
-  token,
-  allUsers,
-  onDelete,
-}: {
+type UserOption = { id: number; username: string; display_name: string };
+
+type EditState = {
   group: SecurityGroup;
-  token: string;
-  allUsers: Array<{ id: number; username: string; display_name: string }>;
-  onDelete: (group: SecurityGroup) => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const queryClient = useQueryClient();
+  displayName: string;
+  description: string;
+  permissions: Set<string>;
+  memberIds: string[];
+};
 
-  const permMutation = useMutation({
-    mutationFn: (permissionKeys: string[]) =>
-      backendClient.updateGroupPermissions(token, group.id, permissionKeys),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: [QueryKey.SECURITY_GROUPS] });
-    },
-  });
-
-  const memberMutation = useMutation({
-    mutationFn: (userIds: number[]) =>
-      backendClient.updateGroupMembers(token, group.id, userIds),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: [QueryKey.SECURITY_GROUPS] });
-    },
-  });
-
-  function togglePermission(key: string) {
-    const current = new Set(group.permissions);
-    if (current.has(key)) {
-      current.delete(key);
-    } else {
-      current.add(key);
-    }
-    permMutation.mutate([...current]);
-  }
-
-  const memberIds = group.members.map((m) => String(m.id));
-  const userOptions = allUsers.map((u) => ({
-    value: String(u.id),
-    label: `${u.display_name} (${u.username})`,
-  }));
-
-  return (
-    <>
-      <Table.Tr>
-        <Table.Td style={{ cursor: "pointer" }} onClick={() => setExpanded((v) => !v)}>
-          <Group gap={4}>
-            {expanded ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}
-            <Text fw={500}>{group.display_name}</Text>
-          </Group>
-        </Table.Td>
-        <Table.Td>
-          <Text size="xs" c="dimmed">{group.key ?? "—"}</Text>
-        </Table.Td>
-        <Table.Td>
-          {group.system && <Badge size="xs" color="blue">system</Badge>}
-        </Table.Td>
-        <Table.Td>{group.member_count}</Table.Td>
-        <Table.Td>{group.permissions.length}</Table.Td>
-        <Table.Td>
-          <Button
-            size="xs"
-            variant="light"
-            color="red"
-            leftSection={<IconTrash size={12} />}
-            disabled={group.system}
-            title={group.system ? "System groups cannot be deleted" : undefined}
-            onClick={() => onDelete(group)}
-          >
-            Delete
-          </Button>
-        </Table.Td>
-      </Table.Tr>
-      {expanded && (
-        <Table.Tr>
-          <Table.Td colSpan={6}>
-            <Box p="sm">
-              <Stack gap="md">
-                <Box>
-                  <Text fw={600} size="sm" mb={4}>Members</Text>
-                  <MultiSelect
-                    data={userOptions}
-                    value={memberIds}
-                    onChange={(vals) => memberMutation.mutate(vals.map(Number))}
-                    disabled={memberMutation.isPending}
-                    placeholder="Add members…"
-                    searchable
-                    size="sm"
-                  />
-                </Box>
-                <Box>
-                  <Text fw={600} size="sm" mb={4}>Permissions</Text>
-                  <Stack gap={4}>
-                    {ALL_PERMISSIONS.map((key) => (
-                      <Checkbox
-                        key={key}
-                        label={key}
-                        checked={group.permissions.includes(key)}
-                        disabled={permMutation.isPending}
-                        onChange={() => togglePermission(key)}
-                        size="sm"
-                      />
-                    ))}
-                  </Stack>
-                </Box>
-              </Stack>
-            </Box>
-          </Table.Td>
-        </Table.Tr>
-      )}
-    </>
-  );
-}
+type CreateState = {
+  displayName: string;
+  description: string;
+  permissions: Set<string>;
+  memberIds: string[];
+};
 
 export function GroupsPanel() {
   const queryClient = useQueryClient();
   const token = useAuthStore((state) => state.token);
 
-  const [createOpened, setCreateOpened] = useState(false);
-  const [displayName, setDisplayName] = useState("");
-  const [description, setDescription] = useState("");
+  const [createState, setCreateState] = useState<CreateState | null>(null);
+  const [editState, setEditState] = useState<EditState | null>(null);
   const [deletingGroup, setDeletingGroup] = useState<SecurityGroup | null>(null);
 
   const groupsQuery = useQuery({
@@ -205,11 +98,38 @@ export function GroupsPanel() {
   });
 
   const createMutation = useMutation({
-    mutationFn: () => backendClient.createSecurityGroup(token ?? "", displayName, description),
+    mutationFn: async () => {
+      if (!createState) throw new Error("No create state");
+      const group = await backendClient.createSecurityGroup(
+        token ?? "",
+        createState.displayName,
+        createState.description,
+      );
+      await Promise.all([
+        backendClient.updateGroupPermissions(token ?? "", group.id, [...createState.permissions]),
+        backendClient.updateGroupMembers(token ?? "", group.id, createState.memberIds.map(Number)),
+      ]);
+    },
     onSuccess: async () => {
-      setCreateOpened(false);
-      setDisplayName("");
-      setDescription("");
+      setCreateState(null);
+      await queryClient.invalidateQueries({ queryKey: [QueryKey.SECURITY_GROUPS] });
+    },
+  });
+
+  const editMutation = useMutation({
+    mutationFn: async () => {
+      if (!editState) throw new Error("No edit state");
+      await Promise.all([
+        backendClient.patchSecurityGroup(token ?? "", editState.group.id, {
+          display_name: editState.displayName,
+          description: editState.description,
+        }),
+        backendClient.updateGroupPermissions(token ?? "", editState.group.id, [...editState.permissions]),
+        backendClient.updateGroupMembers(token ?? "", editState.group.id, editState.memberIds.map(Number)),
+      ]);
+    },
+    onSuccess: async () => {
+      setEditState(null);
       await queryClient.invalidateQueries({ queryKey: [QueryKey.SECURITY_GROUPS] });
     },
   });
@@ -222,8 +142,23 @@ export function GroupsPanel() {
     },
   });
 
-  if (groupsQuery.isLoading || usersQuery.isLoading) return <Loader />;
+  function openCreate() {
+    createMutation.reset();
+    setCreateState({ displayName: "", description: "", permissions: new Set(), memberIds: [] });
+  }
 
+  function openEdit(group: SecurityGroup) {
+    editMutation.reset();
+    setEditState({
+      group,
+      displayName: group.display_name,
+      description: group.description ?? "",
+      permissions: new Set(group.permissions),
+      memberIds: group.members.map((m) => String(m.id)),
+    });
+  }
+
+  if (groupsQuery.isLoading || usersQuery.isLoading) return <Loader />;
   if (groupsQuery.error) {
     return (
       <Alert icon={<IconAlertCircle size={16} />} color="red">
@@ -233,13 +168,17 @@ export function GroupsPanel() {
   }
 
   const groups = groupsQuery.data?.items ?? [];
-  const allUsers = usersQuery.data?.items ?? [];
+  const allUsers: UserOption[] = usersQuery.data?.items ?? [];
+  const userOptions = allUsers.map((u) => ({
+    value: String(u.id),
+    label: `${u.display_name} (${u.username})`,
+  }));
 
   return (
     <Stack gap="md">
       <Group justify="space-between" align="center">
         <Title order={4}>Groups</Title>
-        <Button size="sm" leftSection={<IconPlus size={15} />} onClick={() => { createMutation.reset(); setCreateOpened(true); }}>
+        <Button size="sm" leftSection={<IconPlus size={15} />} onClick={openCreate}>
           Create group
         </Button>
       </Group>
@@ -257,39 +196,208 @@ export function GroupsPanel() {
         </Table.Thead>
         <Table.Tbody>
           {groups.map((group) => (
-            <GroupRow key={group.id} group={group} token={token ?? ""} allUsers={allUsers} onDelete={setDeletingGroup} />
+            <Table.Tr key={group.id}>
+              <Table.Td>
+                <Text fw={500}>{group.display_name}</Text>
+              </Table.Td>
+              <Table.Td>
+                <Text size="xs" c="dimmed">{group.key ?? "—"}</Text>
+              </Table.Td>
+              <Table.Td>
+                {group.system && <Badge size="xs" color="blue">system</Badge>}
+              </Table.Td>
+              <Table.Td>{group.member_count}</Table.Td>
+              <Table.Td>{group.permissions.length}</Table.Td>
+              <Table.Td>
+                <Group gap={6} justify="flex-end">
+                  <Button
+                    size="xs"
+                    variant="light"
+                    leftSection={<IconEdit size={12} />}
+                    onClick={() => openEdit(group)}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="light"
+                    color="red"
+                    leftSection={<IconTrash size={12} />}
+                    disabled={group.system}
+                    title={group.system ? "System groups cannot be deleted" : undefined}
+                    onClick={() => setDeletingGroup(group)}
+                  >
+                    Delete
+                  </Button>
+                </Group>
+              </Table.Td>
+            </Table.Tr>
           ))}
         </Table.Tbody>
       </Table>
       {groups.length === 0 && <Text c="dimmed">No groups found.</Text>}
 
-      <Modal opened={createOpened} onClose={() => setCreateOpened(false)} title="Create group" centered transitionProps={{ duration: 0 }}>
-        <Stack>
-          {createMutation.isError && (
-            <Alert color="red" icon={<IconAlertCircle size={16} />} title="Create failed">
-              {createMutation.error instanceof Error ? createMutation.error.message : "Unable to create group."}
-            </Alert>
-          )}
-          <TextInput label="Display name" value={displayName} onChange={(e) => setDisplayName(e.currentTarget.value)} />
-          <Textarea label="Description" value={description} onChange={(e) => setDescription(e.currentTarget.value)} minRows={2} />
-          <Group justify="flex-end">
-            <Button variant="default" onClick={() => setCreateOpened(false)}>Cancel</Button>
-            <Button loading={createMutation.isPending} onClick={() => createMutation.mutate()}>Create group</Button>
-          </Group>
-        </Stack>
+      {/* Create modal */}
+      <Modal
+        opened={Boolean(createState)}
+        onClose={() => setCreateState(null)}
+        title="Create group"
+        centered
+        size="md"
+        transitionProps={{ duration: 0 }}
+      >
+        {createState && (
+          <Stack>
+            {createMutation.isError && (
+              <Alert color="red" icon={<IconAlertCircle size={16} />} title="Create failed">
+                {createMutation.error instanceof Error ? createMutation.error.message : "Unable to create group."}
+              </Alert>
+            )}
+            <TextInput
+              label="Display name"
+              value={createState.displayName}
+              onChange={(e) => setCreateState((s) => s && { ...s, displayName: e.currentTarget.value })}
+            />
+            <Textarea
+              label="Description"
+              value={createState.description}
+              onChange={(e) => setCreateState((s) => s && { ...s, description: e.currentTarget.value })}
+              minRows={2}
+            />
+            <Divider label="Members" labelPosition="left" />
+            <MultiSelect
+              data={userOptions}
+              value={createState.memberIds}
+              onChange={(vals) => setCreateState((s) => s && { ...s, memberIds: vals })}
+              placeholder="Add members…"
+              searchable
+              size="sm"
+            />
+            <Divider label="Permissions" labelPosition="left" />
+            <ScrollArea h={220}>
+              <Stack gap={4}>
+                {ALL_PERMISSIONS.map((key) => (
+                  <Checkbox
+                    key={key}
+                    label={key}
+                    checked={createState.permissions.has(key)}
+                    onChange={() =>
+                      setCreateState((s) => {
+                        if (!s) return s;
+                        const next = new Set(s.permissions);
+                        if (next.has(key)) { next.delete(key); } else { next.add(key); }
+                        return { ...s, permissions: next };
+                      })
+                    }
+                    size="sm"
+                  />
+                ))}
+              </Stack>
+            </ScrollArea>
+            <Group justify="flex-end">
+              <Button variant="default" onClick={() => setCreateState(null)}>Cancel</Button>
+              <Button loading={createMutation.isPending} onClick={() => createMutation.mutate()}>
+                Create group
+              </Button>
+            </Group>
+          </Stack>
+        )}
       </Modal>
 
-      <Modal opened={Boolean(deletingGroup)} onClose={() => setDeletingGroup(null)} title="Delete group" centered transitionProps={{ duration: 0 }}>
+      {/* Edit modal */}
+      <Modal
+        opened={Boolean(editState)}
+        onClose={() => setEditState(null)}
+        title={`Edit group: ${editState?.group.display_name ?? ""}`}
+        centered
+        size="md"
+        transitionProps={{ duration: 0 }}
+      >
+        {editState && (
+          <Stack>
+            {editMutation.isError && (
+              <Alert color="red" icon={<IconAlertCircle size={16} />} title="Save failed">
+                {editMutation.error instanceof Error ? editMutation.error.message : "Unable to save group."}
+              </Alert>
+            )}
+            <TextInput
+              label="Display name"
+              value={editState.displayName}
+              disabled={editState.group.system}
+              onChange={(e) => setEditState((s) => s && { ...s, displayName: e.currentTarget.value })}
+            />
+            <Textarea
+              label="Description"
+              value={editState.description}
+              disabled={editState.group.system}
+              onChange={(e) => setEditState((s) => s && { ...s, description: e.currentTarget.value })}
+              minRows={2}
+            />
+            <Divider label="Members" labelPosition="left" />
+            <MultiSelect
+              data={userOptions}
+              value={editState.memberIds}
+              onChange={(vals) => setEditState((s) => s && { ...s, memberIds: vals })}
+              placeholder="Add members…"
+              searchable
+              size="sm"
+            />
+            <Divider label="Permissions" labelPosition="left" />
+            <ScrollArea h={220}>
+              <Stack gap={4}>
+                {ALL_PERMISSIONS.map((key) => (
+                  <Checkbox
+                    key={key}
+                    label={key}
+                    checked={editState.permissions.has(key)}
+                    disabled={editState.group.system}
+                    onChange={() =>
+                      setEditState((s) => {
+                        if (!s) return s;
+                        const next = new Set(s.permissions);
+                        if (next.has(key)) { next.delete(key); } else { next.add(key); }
+                        return { ...s, permissions: next };
+                      })
+                    }
+                    size="sm"
+                  />
+                ))}
+              </Stack>
+            </ScrollArea>
+            <Group justify="flex-end">
+              <Button variant="default" onClick={() => setEditState(null)}>Cancel</Button>
+              <Button loading={editMutation.isPending} onClick={() => editMutation.mutate()}>
+                Save
+              </Button>
+            </Group>
+          </Stack>
+        )}
+      </Modal>
+
+      {/* Delete confirmation modal */}
+      <Modal
+        opened={Boolean(deletingGroup)}
+        onClose={() => setDeletingGroup(null)}
+        title="Delete group"
+        centered
+        transitionProps={{ duration: 0 }}
+      >
         <Stack>
           {deleteMutation.isError && (
             <Alert color="red" icon={<IconAlertCircle size={16} />} title="Delete failed">
               {deleteMutation.error instanceof Error ? deleteMutation.error.message : "Unable to delete group."}
             </Alert>
           )}
-          <Text>Delete group <strong>{deletingGroup?.display_name}</strong>? Users in this group will lose its permissions.</Text>
+          <Text>
+            Delete group <strong>{deletingGroup?.display_name}</strong>? Users in this group will lose its permissions.
+          </Text>
           <Group justify="flex-end">
             <Button variant="default" onClick={() => setDeletingGroup(null)}>Cancel</Button>
-            <Button color="red" loading={deleteMutation.isPending} onClick={() => { if (deletingGroup) deleteMutation.mutate(deletingGroup.id); }}>
+            <Button
+              color="red"
+              loading={deleteMutation.isPending}
+              onClick={() => { if (deletingGroup) deleteMutation.mutate(deletingGroup.id); }}
+            >
               Delete group
             </Button>
           </Group>

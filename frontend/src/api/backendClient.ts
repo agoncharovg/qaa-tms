@@ -914,10 +914,37 @@ export const backendClient = {
     );
   },
 
-  createSecurityRole(token: string, displayName: string, description: string, signal?: AbortSignal): Promise<SecurityRole> {
+  updateSecurityRoleFull(
+    token: string,
+    roleId: number,
+    body: { display_name?: string; description?: string; permission_keys?: string[] },
+    signal?: AbortSignal,
+  ): Promise<SecurityRole> {
+    return request<SecurityRole>(
+      `${BackendPath.SECURITY_ROLES}/${roleId}`,
+      { body: JSON.stringify(body), method: HttpMethod.PATCH },
+      token,
+      signal
+    );
+  },
+
+  createSecurityRole(
+    token: string,
+    displayName: string,
+    description: string,
+    permissionKeys?: string[],
+    signal?: AbortSignal,
+  ): Promise<SecurityRole> {
     return request<SecurityRole>(
       BackendPath.SECURITY_ROLES,
-      { body: JSON.stringify({ display_name: displayName, description }), method: HttpMethod.POST },
+      {
+        body: JSON.stringify({
+          display_name: displayName,
+          description,
+          ...(permissionKeys ? { permission_keys: permissionKeys } : {}),
+        }),
+        method: HttpMethod.POST,
+      },
       token,
       signal
     );
@@ -944,6 +971,20 @@ export const backendClient = {
     return request<SecurityGroup>(
       BackendPath.SECURITY_GROUPS,
       { body: JSON.stringify({ display_name: displayName, description }), method: HttpMethod.POST },
+      token,
+      signal
+    );
+  },
+
+  patchSecurityGroup(
+    token: string,
+    groupId: number,
+    body: { display_name?: string; description?: string },
+    signal?: AbortSignal,
+  ): Promise<SecurityGroup> {
+    return request<SecurityGroup>(
+      `${BackendPath.SECURITY_GROUPS}/${groupId}`,
+      { body: JSON.stringify(body), method: HttpMethod.PATCH },
       token,
       signal
     );
