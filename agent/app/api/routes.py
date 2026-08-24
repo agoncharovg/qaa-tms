@@ -188,7 +188,7 @@ from app.services.namespaces import (
 )
 from app.services.preflight import collect_preflight
 from app.services.staging import StagingNotInstalledError, build_ping_response
-from app.services.update import spawn_update_helper
+from app.services.update import UpdateUnsupportedError, spawn_update_helper
 
 router = APIRouter()
 AuthDep = Annotated[AuthContext, Depends(require_auth)]
@@ -997,6 +997,11 @@ async def delete_leonid_pipeline_param_route(
 async def update_agent(_: AuthDep) -> AgentUpdateAccepted:
     try:
         spawn_update_helper()
+    except UpdateUnsupportedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
     except FileNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

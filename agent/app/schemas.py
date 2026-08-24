@@ -35,6 +35,7 @@ class AgentPingResponse(BaseModel):
     version: str
     stagings_installed: bool = Field(alias="stagingsInstalled")
     stagings_sha: str | None = Field(alias="stagingsSha")
+    self_update_supported: bool = Field(alias="selfUpdateSupported")
     os: str
 
 

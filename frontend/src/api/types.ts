@@ -105,6 +105,7 @@ export interface AgentPingResponse {
   version: string;
   stagingsInstalled: boolean;
   stagingsSha: string | null;
+  selfUpdateSupported?: boolean;
   os: string;
 }
 

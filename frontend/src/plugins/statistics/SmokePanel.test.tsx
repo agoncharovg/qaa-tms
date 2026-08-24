@@ -210,6 +210,67 @@ describe("SmokePanel", () => {
     expect(screen.queryByText("No pipelines found in this folder.")).not.toBeInTheDocument();
   });
 
+
+  it("refreshes after the companion becomes available later", async () => {
+    const user = userEvent.setup();
+    const warmedRoots = [pipelineNode("Balancer Smoke", [build(1)], "passed")];
+    let cacheState = buildFolderCache([], { refreshLease: "lease-1", stale: true });
+
+    agentClientMock.discoverAgent
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        agent: {
+          app: "qaa-tms-agent",
+          os: "linux",
+          stagingsInstalled: true,
+          stagingsSha: "sha-123",
+          version: "0.2.0",
+        },
+        port: 47600,
+      })
+      .mockResolvedValue({
+        agent: {
+          app: "qaa-tms-agent",
+          os: "linux",
+          stagingsInstalled: true,
+          stagingsSha: "sha-123",
+          version: "0.2.0",
+        },
+        port: 47600,
+      });
+    backendClientMock.getJenkinsFolderCache.mockImplementation(() => Promise.resolve(cacheState));
+    agentClientMock.getJenkinsFolder.mockResolvedValue({ roots: warmedRoots });
+    backendClientMock.putJenkinsFolderCache.mockImplementation(() => {
+      cacheState = buildFolderCache(warmedRoots);
+      return Promise.resolve(undefined);
+    });
+
+    renderWithProviders(<SmokePanel />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Cache is warming up. Start the companion app to populate SMOKE.")
+      ).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Refresh now" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Balancer Smoke")).toBeInTheDocument();
+    });
+    expect(agentClientMock.getJenkinsFolder).toHaveBeenCalledWith(
+      47600,
+      "test-token",
+      "job/.QAA/job/E2E/job/PREPROD/job/SMOKE"
+    );
+    expect(backendClientMock.putJenkinsFolderCache).toHaveBeenCalledWith("test-token", {
+      path: "job/.QAA/job/E2E/job/PREPROD/job/SMOKE",
+      refreshLease: null,
+      roots: warmedRoots,
+      signature: SIGNATURE,
+    });
+  });
+
   it("persists the selected refresh period across remounts via localStorage", async () => {
     const user = userEvent.setup();
     backendClientMock.getJenkinsFolderCache.mockResolvedValue(buildFolderCache([]));

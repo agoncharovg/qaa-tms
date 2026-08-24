@@ -86,6 +86,7 @@ describe("CompanionGate", () => {
         os: "linux",
         stagingsInstalled: true,
         stagingsSha: "abc123",
+        selfUpdateSupported: true,
         version: "0.1.0",
       },
       port: 47600,
@@ -113,6 +114,7 @@ describe("CompanionGate", () => {
         os: "linux",
         stagingsInstalled: true,
         stagingsSha: "abc123",
+        selfUpdateSupported: true,
         version: "0.1.0",
       },
       port: 47600,
@@ -124,6 +126,35 @@ describe("CompanionGate", () => {
 
     expect(await screen.findByText("Update available")).toBeInTheDocument();
     expect(screen.getByText("usable content")).toBeInTheDocument();
+  });
+
+  it("suppresses the update-available banner for source-run agents", async () => {
+    backendClientMock.getAgentManifest.mockResolvedValue({
+      downloadUrl: "/api/v1/agent/download",
+      minSupported: "0.1.0",
+      os: null,
+      sha256: "abc",
+      version: "0.2.0",
+    });
+    agentClientMock.discoverAgent.mockResolvedValue({
+      agent: {
+        app: "qaa-tms-agent",
+        os: "linux",
+        stagingsInstalled: true,
+        stagingsSha: "abc123",
+        selfUpdateSupported: false,
+        version: "0.1.0",
+      },
+      port: 47600,
+    });
+
+    renderWithProviders(
+      <CompanionGate loadingMessage="Checking the local companion.">usable content</CompanionGate>
+    );
+
+    expect(await screen.findByText("usable content")).toBeInTheDocument();
+    expect(screen.queryByText("Update available")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
   });
 
   it("runs the update action and reaches the ok state after the version changes", async () => {
@@ -143,6 +174,7 @@ describe("CompanionGate", () => {
           os: "linux",
           stagingsInstalled: true,
           stagingsSha: "abc123",
+          selfUpdateSupported: true,
           version: "0.1.0",
         },
         port: 47600,
@@ -153,6 +185,7 @@ describe("CompanionGate", () => {
           os: "linux",
           stagingsInstalled: true,
           stagingsSha: "abc123",
+          selfUpdateSupported: true,
           version: "0.2.0",
         },
         port: 47600,

@@ -26,6 +26,7 @@ from app.core.constants import (
     StagingFlag,
 )
 from app.schemas import AgentPingResponse, DeployRequest, SyncFlags
+from app.services.update import is_service_managed_runtime
 
 
 @dataclass(slots=True)
@@ -78,6 +79,7 @@ def build_ping_response(settings: Settings) -> AgentPingResponse:
         version=get_agent_version(),
         stagings_installed=installation.installed,
         stagings_sha=installation.git_sha,
+        self_update_supported=is_service_managed_runtime(),
         os=platform.system().lower(),
     )
 

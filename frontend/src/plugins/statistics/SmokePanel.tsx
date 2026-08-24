@@ -136,6 +136,11 @@ export function SmokePanel({
     }
   }
 
+  async function handleRefresh(): Promise<void> {
+    await companionQuery.refetch();
+    await refetch();
+  }
+
   const folderUrl = useMemo(() => {
     const sample = pipelines.find((pipeline) => pipeline.url);
     if (!sample) {
@@ -201,7 +206,7 @@ export function SmokePanel({
 
           <Button
             leftSection={<IconRefresh size={16} />}
-            onClick={() => void refetch()}
+            onClick={() => void handleRefresh()}
             size="xs"
             variant="light"
           >

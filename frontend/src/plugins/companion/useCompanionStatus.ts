@@ -147,6 +147,7 @@ export function useCompanionStatus({ enabled = true }: { enabled?: boolean } = {
   }
 
   const currentVersion = discoveryQuery.data.agent.version;
+  const selfUpdateSupported = discoveryQuery.data.agent.selfUpdateSupported ?? true;
   const manifest = manifestQuery.data;
   if (compareVersions(currentVersion, manifest.minSupported) < 0) {
     return {
@@ -165,7 +166,7 @@ export function useCompanionStatus({ enabled = true }: { enabled?: boolean } = {
     };
   }
 
-  if (compareVersions(currentVersion, manifest.version) < 0) {
+  if (selfUpdateSupported && compareVersions(currentVersion, manifest.version) < 0) {
     return {
       agent: discoveryQuery.data.agent,
       error: null,

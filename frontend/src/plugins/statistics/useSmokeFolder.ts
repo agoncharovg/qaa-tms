@@ -1,4 +1,4 @@
-import { agentClient } from "@/api/agentClient";
+import { agentClient, discoverAgent } from "@/api/agentClient";
 import { backendClient } from "@/api/backendClient";
 import type { JenkinsNode } from "@/api/types";
 import { QueryKey } from "@/constants";
@@ -38,10 +38,14 @@ export function useSmokeFolder({
     canFetchLive: Boolean(signature && token && agentPort !== null),
     enabled: Boolean(enabled && token && signature),
     fetchLive: async () => {
-      if (!signature || !token || agentPort === null) {
+      if (!signature || !token) {
         return null;
       }
-      const response = await agentClient.getJenkinsFolder(agentPort, token, folderPath);
+      const livePort = agentPort ?? (await discoverAgent())?.port ?? null;
+      if (livePort === null) {
+        return null;
+      }
+      const response = await agentClient.getJenkinsFolder(livePort, token, folderPath);
       return response.roots;
     },
     queryKey: [QueryKey.JENKINS_FOLDER_CACHE, token, signature, folderPath],

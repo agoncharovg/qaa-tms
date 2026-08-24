@@ -371,6 +371,10 @@ class JobEventType(StrEnum):
 class ErrorMessage(StrEnum):
     JOB_NOT_FOUND = "Job not found."
     UPDATE_HELPER_NOT_AVAILABLE = "The update helper is not available in this installation."
+    UPDATE_UNSUPPORTED_IN_SOURCE_RUN = (
+        "Self-update is only available for install.sh-managed agent services. "
+        "The current agent was started directly from a source checkout."
+    )
     STAGING_BINARY_NOT_INSTALLED = "The staging binary is not installed."
     UNAUTHORIZED = "Unauthorized."
     PERMISSION_DENIED = "You do not have permission to perform this action."
