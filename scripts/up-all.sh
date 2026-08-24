@@ -9,6 +9,8 @@ AGENT_DIR="$ROOT_DIR/agent"
 TMP_BASE="${TMPDIR:-/tmp}/qaa-tms"
 DB_SERVICE_NAME="db"
 BACKEND_SQLITE_PATH="$BACKEND_DIR/.qaa-tms-dev.db"
+LOCAL_DEV_AGENT_PORT=""
+LOCAL_DEV_AGENT_PORT_RANGE=""
 
 BACKEND_PID_FILE="$TMP_BASE-backend.pid"
 BACKEND_LOG_FILE="$TMP_BASE-backend.log"
@@ -67,6 +69,14 @@ load_root_env() {
   if [[ -z "${QAA_GENERATOR_SUPERUSER_TOKEN:-}" && -n "${QAA_GEN_SUPERUSER_TOKEN:-}" ]]; then
     export QAA_GENERATOR_SUPERUSER_TOKEN="$QAA_GEN_SUPERUSER_TOKEN"
   fi
+}
+
+configure_local_agent_ports() {
+  local local_dev_agent_port_range_end
+
+  LOCAL_DEV_AGENT_PORT="${QAA_TMS_LOCAL_AGENT_PORT:-47700}"
+  local_dev_agent_port_range_end="${QAA_TMS_LOCAL_AGENT_PORT_RANGE_END:-$((LOCAL_DEV_AGENT_PORT + 5))}"
+  LOCAL_DEV_AGENT_PORT_RANGE="${QAA_TMS_LOCAL_AGENT_PORT_RANGE:-${LOCAL_DEV_AGENT_PORT}-${local_dev_agent_port_range_end}}"
 }
 
 ensure_env_file() {
@@ -289,14 +299,15 @@ start_frontend() {
   echo "Starting frontend locally..."
   (
     cd "$FRONTEND_DIR"
-    nohup npm run dev -- --host 0.0.0.0 --port 3000 >"$FRONTEND_LOG_FILE" 2>&1 &
+    nohup env VITE_AGENT_PORTS="$LOCAL_DEV_AGENT_PORT_RANGE" npm run dev -- --host 0.0.0.0 --port 3000 \
+      >"$FRONTEND_LOG_FILE" 2>&1 &
     echo $! >"$FRONTEND_PID_FILE"
   )
 }
 
 start_agent() {
-  if http_is_ready "http://127.0.0.1:47600/ping"; then
-    echo "Agent already responds on http://127.0.0.1:47600/ping"
+  if http_is_ready "http://127.0.0.1:${LOCAL_DEV_AGENT_PORT}/ping"; then
+    echo "Agent already responds on http://127.0.0.1:${LOCAL_DEV_AGENT_PORT}/ping"
     return
   fi
 
@@ -310,7 +321,8 @@ start_agent() {
   echo "Starting agent locally..."
   (
     cd "$AGENT_DIR"
-    nohup .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 47600 >"$AGENT_LOG_FILE" 2>&1 &
+    nohup env AGENT_PORT="$LOCAL_DEV_AGENT_PORT" .venv/bin/uvicorn app.main:app --host 127.0.0.1 \
+      --port "$LOCAL_DEV_AGENT_PORT" >"$AGENT_LOG_FILE" 2>&1 &
     echo $! >"$AGENT_PID_FILE"
   )
 }
@@ -340,7 +352,8 @@ print_summary() {
   echo "QAA-TMS is up:"
   echo "  frontend: http://localhost:3000"
   echo "  backend:  http://localhost:8000"
-  echo "  agent:    http://127.0.0.1:47600"
+  echo "  agent:    http://127.0.0.1:${LOCAL_DEV_AGENT_PORT}"
+  echo "  agent-discovery-range: $LOCAL_DEV_AGENT_PORT_RANGE"
   echo "  backend-runtime: $BACKEND_RUNTIME_MODE"
   echo "  backend-mode: $BACKEND_RUNTIME_DESCRIPTION"
   if [[ "$BACKEND_RUNTIME_MODE" == "sqlite" ]]; then
@@ -371,6 +384,7 @@ main() {
   require_command curl
   require_command npm
   load_root_env
+  configure_local_agent_ports
   ensure_env_file "$BACKEND_DIR/.env" "$BACKEND_DIR/.env.example"
   ensure_env_file "$AGENT_DIR/.env" "$AGENT_DIR/.env.example"
   ensure_python_service "$BACKEND_DIR" "$BACKEND_DIR/.venv" "backend"
@@ -385,7 +399,7 @@ main() {
   start_agent
   wait_for_http "backend" "http://127.0.0.1:8000/ready"
   wait_for_http "frontend" "http://127.0.0.1:3000"
-  wait_for_http "agent" "http://127.0.0.1:47600/ping"
+  wait_for_http "agent" "http://127.0.0.1:${LOCAL_DEV_AGENT_PORT}/ping"
   print_summary
 }
 

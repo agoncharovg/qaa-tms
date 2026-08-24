@@ -22,6 +22,7 @@ target/
 .env
 .env.*
 !.env.example
+!frontend/.env.development
 
 # Editor / OS
 .idea/
@@ -33,3 +34,6 @@ target/
 *.log
 *.db
 .qaa-tms-dev.db
+/.tmp/
+/agent/uv.lock
+/backend/uv.lock

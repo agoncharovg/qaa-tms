@@ -15,6 +15,10 @@ npm run dev -- --host 0.0.0.0 --port 3000
 The SPA serves on `http://localhost:3000` and expects the backend on
 `http://localhost:8000` by default.
 
+Local source-checkout development intentionally probes the companion on
+`47700-47705` so it does not collide with an installed/deployed companion still
+using `47600-47605`.
+
 ## Plugin model
 
 Two plugin classes exist in this slice:
@@ -87,6 +91,11 @@ reload after saving. `Settings -> Local companion` talks directly to the agent o
 `127.0.0.1`. `Settings -> Server` is visible to admins only and updates the backend-side
 qaa-generator operational config; changing the base URL there still requires a backend
 restart because the outbound client is created at startup.
+
+For local source-checkout development, `npm run dev` defaults to `47700-47705` via
+`[frontend/.env.development](/home/andreigoncharov/Projects/qaa-tms/frontend/.env.development)`, and
+`[scripts/up-all.sh](/home/andreigoncharov/Projects/qaa-tms/scripts/up-all.sh)` starts its local agent on
+`127.0.0.1:47700`.
 
 ## Administration workflow
 
@@ -175,4 +184,4 @@ That starts Postgres, the FastAPI backend, and the Vite frontend together for lo
 ## Environment variables
 
 - `VITE_API_BASE_URL`: build-time default base URL for the FastAPI backend. Runtime override available at `Profile -> Settings -> Application`. Default: `http://localhost:8000`
-- `VITE_AGENT_PORTS`: build-time default local companion-app probe range. Runtime override available at `Profile -> Settings -> Application`. Default: `47600-47605`
+- `VITE_AGENT_PORTS`: build-time default local companion-app probe range. Runtime override available at `Profile -> Settings -> Application`. Default deployed/installed range: `47600-47605`. Local source-checkout dev default: `47700-47705`.
