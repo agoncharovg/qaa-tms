@@ -22,6 +22,7 @@ from app.models.security_group import (
     SecurityGroup,
     SecurityGroupMembership,
     SecurityGroupPermission,
+    SecurityGroupRole,
 )
 from app.models.security_permission import SecurityPermission
 from app.models.security_role import SecurityRole, SecurityRolePermission
@@ -33,6 +34,7 @@ from app.schemas.security import (
     SecurityGroupMembersUpdateRequest,
     SecurityGroupPermissionsUpdateRequest,
     SecurityGroupRead,
+    SecurityGroupRolesUpdateRequest,
     SecurityGroupUpdateRequest,
     SecurityPermissionListResponse,
     SecurityRoleCreateRequest,
@@ -164,6 +166,7 @@ async def get_group_or_404(db: AsyncSession, group_id: int) -> SecurityGroup:
         .options(
             selectinload(SecurityGroup.memberships).selectinload(SecurityGroupMembership.user),
             selectinload(SecurityGroup.permissions),
+            selectinload(SecurityGroup.group_roles),
         )
         .where(SecurityGroup.id == group_id)
     )
@@ -384,6 +387,7 @@ async def list_security_groups(
             .options(
                 selectinload(SecurityGroup.memberships).selectinload(SecurityGroupMembership.user),
                 selectinload(SecurityGroup.permissions),
+                selectinload(SecurityGroup.group_roles),
             )
             .order_by(SecurityGroup.display_name, SecurityGroup.id)
         )
@@ -556,6 +560,39 @@ async def replace_security_group_permissions(
             "before_permission_keys": before_keys,
             "after_permission_keys": sorted(p.key for p in permission_rows),
         },
+    )
+    await db.commit()
+
+    updated_group = await get_group_or_404(db, group.id)
+    return to_security_group_read(updated_group)
+
+
+@router.put(RoutePath.GROUP_ROLES.value, response_model=SecurityGroupRead)
+async def replace_security_group_roles(
+    group_id: int,
+    payload: SecurityGroupRolesUpdateRequest,
+    current_user: SecurityGroupsManageUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> SecurityGroupRead:
+    group = await get_group_or_404(db, group_id)
+    before_role_ids = sorted(gr.role_id for gr in group.group_roles)
+    role_ids = list(dict.fromkeys(payload.role_ids))
+
+    if role_ids:
+        existing = list(await db.scalars(select(SecurityRole).where(SecurityRole.id.in_(role_ids))))
+        if len(existing) != len(role_ids):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="One or more role IDs not found.")
+
+    await db.execute(delete(SecurityGroupRole).where(SecurityGroupRole.group_id == group.id))
+    for role_id in role_ids:
+        db.add(SecurityGroupRole(group_id=group.id, role_id=role_id))
+    write_security_event(
+        db,
+        actor_user_id=current_user.id,
+        event_type=SecurityEventType.GROUP_UPDATED,
+        target_type=SecurityTargetType.GROUP,
+        target_id=str(group.id),
+        payload={"before_role_ids": before_role_ids, "after_role_ids": sorted(role_ids)},
     )
     await db.commit()
 

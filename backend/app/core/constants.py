@@ -83,6 +83,7 @@ class RoutePath(StrEnum):
     GROUP_BY_ID = "/groups/{group_id}"
     GROUP_MEMBERS = "/groups/{group_id}/members"
     GROUP_PERMISSIONS = "/groups/{group_id}/permissions"
+    GROUP_ROLES = "/groups/{group_id}/roles"
     AUDIT = "/audit"
     AUTHZ = "/authz"
     CHECK = "/check"

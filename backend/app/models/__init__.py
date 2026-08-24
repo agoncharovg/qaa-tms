@@ -14,6 +14,7 @@ from app.models.security_group import (
     SecurityGroup,
     SecurityGroupMembership,
     SecurityGroupPermission,
+    SecurityGroupRole,
 )
 from app.models.security_permission import SecurityPermission
 from app.models.security_role import SecurityRole, SecurityRolePermission
@@ -29,6 +30,7 @@ __all__ = [
     "SecurityGroup",
     "SecurityGroupMembership",
     "SecurityGroupPermission",
+    "SecurityGroupRole",
     "SecurityPermission",
     "SecurityRole",
     "SecurityRolePermission",

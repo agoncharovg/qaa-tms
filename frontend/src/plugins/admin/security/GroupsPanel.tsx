@@ -21,7 +21,7 @@ import { IconAlertCircle, IconEdit, IconPlus, IconTrash } from "@tabler/icons-re
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { backendClient } from "@/api/backendClient";
-import type { SecurityGroup } from "@/api/types";
+import type { SecurityGroup, SecurityRole } from "@/api/types";
 import { QueryKey } from "@/constants";
 import { useAuthStore } from "@/store/authStore";
 
@@ -68,6 +68,7 @@ type EditState = {
   description: string;
   permissions: Set<string>;
   memberIds: string[];
+  roleIds: string[];
 };
 
 type CreateState = {
@@ -75,6 +76,7 @@ type CreateState = {
   description: string;
   permissions: Set<string>;
   memberIds: string[];
+  roleIds: string[];
 };
 
 export function GroupsPanel() {
@@ -97,6 +99,12 @@ export function GroupsPanel() {
     enabled: Boolean(token),
   });
 
+  const rolesQuery = useQuery({
+    queryKey: [QueryKey.SECURITY_ROLES, token],
+    queryFn: ({ signal }) => backendClient.listSecurityRoles(token ?? "", signal),
+    enabled: Boolean(token),
+  });
+
   const createMutation = useMutation({
     mutationFn: async () => {
       if (!createState) throw new Error("No create state");
@@ -108,6 +116,7 @@ export function GroupsPanel() {
       await Promise.all([
         backendClient.updateGroupPermissions(token ?? "", group.id, [...createState.permissions]),
         backendClient.updateGroupMembers(token ?? "", group.id, createState.memberIds.map(Number)),
+        backendClient.updateGroupRoles(token ?? "", group.id, createState.roleIds.map(Number)),
       ]);
     },
     onSuccess: async () => {
@@ -126,6 +135,7 @@ export function GroupsPanel() {
         }),
         backendClient.updateGroupPermissions(token ?? "", editState.group.id, [...editState.permissions]),
         backendClient.updateGroupMembers(token ?? "", editState.group.id, editState.memberIds.map(Number)),
+        backendClient.updateGroupRoles(token ?? "", editState.group.id, editState.roleIds.map(Number)),
       ]);
     },
     onSuccess: async () => {
@@ -142,23 +152,39 @@ export function GroupsPanel() {
     },
   });
 
+  const allRoles: SecurityRole[] = rolesQuery.data?.items ?? [];
+
+  function getRolePermissions(roleIds: string[]): Set<string> {
+    const perms = new Set<string>();
+    for (const idStr of roleIds) {
+      const role = allRoles.find((r) => r.id === Number(idStr));
+      if (role) role.permissions.forEach((p) => perms.add(p));
+    }
+    return perms;
+  }
+
   function openCreate() {
     createMutation.reset();
-    setCreateState({ displayName: "", description: "", permissions: new Set(), memberIds: [] });
+    setCreateState({ displayName: "", description: "", permissions: new Set(), memberIds: [], roleIds: [] });
   }
 
   function openEdit(group: SecurityGroup) {
     editMutation.reset();
+    const roleIds = group.role_ids.map(String);
+    const ownPerms = new Set(group.permissions);
+    const rolePerms = getRolePermissions(roleIds);
+    rolePerms.forEach((p) => ownPerms.add(p));
     setEditState({
       group,
       displayName: group.display_name,
       description: group.description ?? "",
-      permissions: new Set(group.permissions),
+      permissions: ownPerms,
       memberIds: group.members.map((m) => String(m.id)),
+      roleIds,
     });
   }
 
-  if (groupsQuery.isLoading || usersQuery.isLoading) return <Loader />;
+  if (groupsQuery.isLoading || usersQuery.isLoading || rolesQuery.isLoading) return <Loader />;
   if (groupsQuery.error) {
     return (
       <Alert icon={<IconAlertCircle size={16} />} color="red">
@@ -172,6 +198,10 @@ export function GroupsPanel() {
   const userOptions = allUsers.map((u) => ({
     value: String(u.id),
     label: `${u.display_name} (${u.username})`,
+  }));
+  const roleOptions = allRoles.map((r) => ({
+    value: String(r.id),
+    label: r.display_name,
   }));
 
   return (
@@ -273,6 +303,23 @@ export function GroupsPanel() {
               searchable
               size="sm"
             />
+            <Divider label="Roles" labelPosition="left" />
+            <MultiSelect
+              data={roleOptions}
+              value={createState.roleIds}
+              onChange={(vals) =>
+                setCreateState((s) => {
+                  if (!s) return s;
+                  const rolePerms = getRolePermissions(vals);
+                  const next = new Set(s.permissions);
+                  rolePerms.forEach((p) => next.add(p));
+                  return { ...s, roleIds: vals, permissions: next };
+                })
+              }
+              placeholder="Assign roles…"
+              searchable
+              size="sm"
+            />
             <Divider label="Permissions" labelPosition="left" />
             <ScrollArea h={220}>
               <Stack gap={4}>
@@ -339,6 +386,24 @@ export function GroupsPanel() {
               value={editState.memberIds}
               onChange={(vals) => setEditState((s) => s && { ...s, memberIds: vals })}
               placeholder="Add members…"
+              searchable
+              size="sm"
+            />
+            <Divider label="Roles" labelPosition="left" />
+            <MultiSelect
+              data={roleOptions}
+              value={editState.roleIds}
+              disabled={editState.group.system}
+              onChange={(vals) =>
+                setEditState((s) => {
+                  if (!s) return s;
+                  const rolePerms = getRolePermissions(vals);
+                  const next = new Set(s.permissions);
+                  rolePerms.forEach((p) => next.add(p));
+                  return { ...s, roleIds: vals, permissions: next };
+                })
+              }
+              placeholder="Assign roles…"
               searchable
               size="sm"
             />

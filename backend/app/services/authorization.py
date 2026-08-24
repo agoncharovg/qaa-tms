@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.constants import PermissionKey, SecurityRoleKey
-from app.models.security_group import SecurityGroupPermission
+from app.models.security_group import SecurityGroupPermission, SecurityGroupRole
 from app.models.security_permission import SecurityPermission
 from app.models.security_role import SecurityRole, SecurityRolePermission
 from app.models.user_extra_permission import UserExtraPermission
@@ -148,6 +148,18 @@ async def resolve_permissions(user: object, db: AsyncSession) -> frozenset[Permi
             .where(SecurityGroupPermission.group_id == user.group_id)
         )
         for key in group_perm_rows:
+            try:
+                perms.add(PermissionKey(key))
+            except ValueError:
+                pass
+
+        group_role_perm_rows = await db.scalars(
+            select(SecurityPermission.key)
+            .join(SecurityRolePermission, SecurityRolePermission.permission_id == SecurityPermission.id)
+            .join(SecurityGroupRole, SecurityGroupRole.role_id == SecurityRolePermission.role_id)
+            .where(SecurityGroupRole.group_id == user.group_id)
+        )
+        for key in group_role_perm_rows:
             try:
                 perms.add(PermissionKey(key))
             except ValueError:

@@ -102,6 +102,7 @@ class SecurityGroupRead(SecurityGroupSummary):
     members: list[SecurityUserSummary]
     member_count: int
     permissions: list[PermissionKey]
+    role_ids: list[int]
     created_at: datetime
     updated_at: datetime
 
@@ -151,6 +152,12 @@ class SecurityGroupPermissionsUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     permission_keys: list[PermissionKey]
+
+
+class SecurityGroupRolesUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role_ids: list[int]
 
 
 class SecurityEventRead(BaseModel):
@@ -237,6 +244,7 @@ def to_security_group_read(group: SecurityGroup) -> SecurityGroupRead:
         members=members,
         member_count=len(members),
         permissions=permissions,
+        role_ids=sorted(gr.role_id for gr in group.group_roles),
         created_at=group.created_at,
         updated_at=group.updated_at,
     )

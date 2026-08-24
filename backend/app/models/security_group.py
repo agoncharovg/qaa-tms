@@ -14,6 +14,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.security_permission import SecurityPermission
+    from app.models.security_role import SecurityRole
     from app.models.user import User
 
 
@@ -50,6 +51,17 @@ class SecurityGroupMembership(Base):
 
     group: Mapped[SecurityGroup] = relationship(back_populates="memberships")
     user: Mapped[User] = relationship(back_populates="security_group_memberships")
+
+
+class SecurityGroupRole(Base):
+    __tablename__ = "security_group_roles"
+    __mapper_args__ = {"confirm_deleted_rows": False}
+
+    group_id: Mapped[int] = mapped_column(ForeignKey("security_groups.id"), primary_key=True)
+    role_id: Mapped[int] = mapped_column(ForeignKey("security_roles.id"), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    group: Mapped[SecurityGroup] = relationship(back_populates="group_roles")
 
 
 class SecurityGroup(Base):
@@ -90,5 +102,13 @@ class SecurityGroup(Base):
         secondary="security_group_permissions",
         back_populates="groups",
         overlaps="group,group_permissions,permission",
+        viewonly=True,
+    )
+    group_roles: Mapped[list[SecurityGroupRole]] = relationship(
+        back_populates="group",
+        cascade="all, delete-orphan",
+    )
+    roles: Mapped[list[SecurityRole]] = relationship(
+        secondary="security_group_roles",
         viewonly=True,
     )

@@ -1003,6 +1003,15 @@ export const backendClient = {
     );
   },
 
+  updateGroupRoles(token: string, groupId: number, roleIds: number[], signal?: AbortSignal): Promise<SecurityGroup> {
+    return request<SecurityGroup>(
+      `${BackendPath.SECURITY_GROUPS}/${groupId}/roles`,
+      { body: JSON.stringify({ role_ids: roleIds }), method: HttpMethod.PUT },
+      token,
+      signal
+    );
+  },
+
   getUserPermissions(token: string, userId: number, signal?: AbortSignal): Promise<UserPermissionsResponse> {
     return request<UserPermissionsResponse>(`${BackendPath.USERS}/${userId}/permissions`, { method: HttpMethod.GET }, token, signal);
   },

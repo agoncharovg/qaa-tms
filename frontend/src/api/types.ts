@@ -899,6 +899,7 @@ export interface SecurityGroup {
   members: SecurityGroupMember[];
   member_count: number;
   permissions: string[];
+  role_ids: number[];
 }
 
 export interface SecurityGroupListResponse {
