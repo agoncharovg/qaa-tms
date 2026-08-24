@@ -4,6 +4,7 @@ export const PluginId = {
   QAA_GENERATOR: "qaa-generator",
   JENKINS: "jenkins",
   LEONID: "leonid",
+  NOTIFICATOR: "notificator",
   STATISTICS: "statistics",
   ADMIN: "admin",
   PROFILE: "profile",
@@ -29,6 +30,7 @@ export const IconName = {
   CLUSTER: "cluster",
   JENKINS: "jenkins",
   LEONID: "leonid",
+  NOTIFICATOR: "notificator",
   ROCKET: "rocket",
   SPARKLES: "sparkles",
   SETTINGS: "settings",
@@ -235,6 +237,7 @@ export const AgentPath = {
   SETTINGS: "/settings",
   PREFLIGHT: "/preflight",
   UPDATE: "/update",
+  NOTIFICATOR_CONFIGS: "/notificator/notification_configs",
   LEONID_SHARED_RESOURCE_LIMIT_TYPES: "/leonid/shared_resource_limit_types",
   LEONID_SHARED_RESOURCE_LIMITS: "/leonid/shared_resource_limits",
   LEONID_SHARED_RESOURCES: "/leonid/shared_resources",
@@ -401,6 +404,17 @@ export function buildAgentLeonidPipelineParamsPath(pipelineParamId?: number): st
   }
 
   return AgentPath.LEONID_PIPELINE_PARAMS;
+}
+
+export function buildAgentNotificatorConfigsPath(productTeam?: string): string {
+  if (!productTeam) {
+    return AgentPath.NOTIFICATOR_CONFIGS;
+  }
+
+  const params = new URLSearchParams({
+    product_team: productTeam,
+  });
+  return `${AgentPath.NOTIFICATOR_CONFIGS}?${params.toString()}`;
 }
 
 export function buildAgentKubeNamespacesPath(context?: string | null): string {
@@ -686,6 +700,7 @@ export const ViewKey = {
   LEONID_SHARED_RESOURCES: "leonid-shared-resources",
   LEONID_OBJECTS: "leonid-objects",
   LEONID_PIPELINE_CONFIGS: "leonid-pipeline-configs",
+  NOTIFICATOR_NOTIFICATIONS: "notificator-notifications",
   STATISTICS_SMOKE: "statistics-smoke",
   STAGINGS_DEPLOY: "stagings-deploy",
   STAGINGS_HISTORY: "stagings-history",
@@ -713,6 +728,7 @@ export const TabId = {
   LEONID_SHARED_RESOURCES: "tab-leonid-shared-resources",
   LEONID_OBJECTS: "tab-leonid-objects",
   LEONID_PIPELINE_CONFIGS: "tab-leonid-pipeline-configs",
+  NOTIFICATOR_NOTIFICATIONS: "tab-notificator-notifications",
   STATISTICS_SMOKE: "tab-statistics-smoke",
   STAGINGS_DEPLOY: "tab-stagings-deploy",
   STAGINGS_HISTORY: "tab-stagings-history",
@@ -740,6 +756,7 @@ export const TabTitle: Record<TabId, string> = {
   [TabId.LEONID_SHARED_RESOURCES]: "Shared resources",
   [TabId.LEONID_OBJECTS]: "Objects",
   [TabId.LEONID_PIPELINE_CONFIGS]: "Pipeline configs",
+  [TabId.NOTIFICATOR_NOTIFICATIONS]: "Notifications",
   [TabId.STATISTICS_SMOKE]: "Smoke",
   [TabId.STAGINGS_DEPLOY]: "Deploy",
   [TabId.STAGINGS_HISTORY]: "History",
@@ -794,6 +811,7 @@ export const QueryKey = {
   LEONID_SHARED_RESOURCES: "leonid-shared-resources",
   LEONID_OBJECT_DEFINITIONS: "leonid-object-definitions",
   LEONID_OBJECT_VALUES: "leonid-object-values",
+  NOTIFICATOR_NOTIFICATION_CONFIGS: "notificator-notification-configs",
   LEONID_PIPELINE_PARAMS: "leonid-pipeline-params",
   JENKINS_SCOPE: "jenkins-scope",
   JENKINS_TREE: "jenkins-tree",

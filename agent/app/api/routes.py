@@ -100,6 +100,7 @@ from app.schemas import (
     NamespaceDeployRecipeResponse,
     NamespaceListResponse,
     NamespaceStatusResponse,
+    NotificatorNotificationConfigResponse,
     PreflightItem,
     SyncRequest,
     to_agent_settings_read,
@@ -186,6 +187,11 @@ from app.services.namespaces import (
     read_namespace_status,
     stream_namespace_logs,
 )
+from app.services.notificator import (
+    NotificatorNotConfiguredError,
+    NotificatorUnreachableError,
+    list_notification_configs,
+)
 from app.services.preflight import collect_preflight
 from app.services.staging import StagingNotInstalledError, build_ping_response
 from app.services.update import UpdateUnsupportedError, spawn_update_helper
@@ -218,6 +224,9 @@ StagingsDestroyAuth = Annotated[
 StagingsSyncAuth = Annotated[AuthContext, Depends(require_permission(PermissionKey.STAGINGS_SYNC))]
 StagingsE2eRunAuth = Annotated[
     AuthContext, Depends(require_permission(PermissionKey.STAGINGS_E2E_RUN))
+]
+NotificatorReadAuth = Annotated[
+    AuthContext, Depends(require_permission(PermissionKey.NOTIFICATOR_READ))
 ]
 LeonidReadAuth = Annotated[AuthContext, Depends(require_permission(PermissionKey.LEONID_READ))]
 LeonidWriteAuth = Annotated[AuthContext, Depends(require_permission(PermissionKey.LEONID_WRITE))]
@@ -315,6 +324,28 @@ async def preflight(_: AuthDep, settings: SettingsDep) -> list[PreflightItem]:
     return await collect_preflight(settings)
 
 
+def require_notificator_read_configured(settings: Settings) -> None:
+    if not settings.notificator_configured:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=ErrorMessage.NOTIFICATOR_NOT_CONFIGURED.value,
+        )
+
+
+def raise_notificator_http_error(
+    exc: NotificatorNotConfiguredError | NotificatorUnreachableError,
+) -> None:
+    if isinstance(exc, NotificatorNotConfiguredError):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    raise HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail=str(exc),
+    ) from exc
+
+
 def require_leonid_read_configured(settings: Settings) -> None:
     if not settings.leonid_configured:
         raise HTTPException(
@@ -373,6 +404,23 @@ def parse_request_model(
         ) from exc
 
     return model.model_dump(exclude_unset=partial)
+
+
+@router.get(
+    AgentPath.NOTIFICATOR_CONFIGS.value,
+    response_model=list[NotificatorNotificationConfigResponse],
+)
+async def get_notificator_configs(
+    _: NotificatorReadAuth,
+    settings: SettingsDep,
+    product_team: str | None = Query(default=None),
+) -> list[NotificatorNotificationConfigResponse]:
+    require_notificator_read_configured(settings)
+    try:
+        payload = await list_notification_configs(settings, product_team=product_team)
+    except (NotificatorNotConfiguredError, NotificatorUnreachableError) as exc:
+        raise_notificator_http_error(exc)
+    return [NotificatorNotificationConfigResponse(**item) for item in payload]
 
 
 @router.get(

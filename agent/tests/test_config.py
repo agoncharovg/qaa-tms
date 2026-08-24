@@ -87,6 +87,21 @@ def test_leonid_url_can_be_disabled_with_an_empty_env_value(
     assert settings.leonid_configured is False
 
 
+def test_notificator_configured_requires_both_url_and_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(EnvKey.NOTIFICATOR_URL.value, "https://notificator.example")
+    monkeypatch.delenv(EnvKey.NOTIFICATOR_TOKEN.value, raising=False)
+
+    without_token = Settings(_env_file=None)
+    assert without_token.notificator_configured is False
+
+    monkeypatch.setenv(EnvKey.NOTIFICATOR_TOKEN.value, "shared-secret")
+
+    with_token = Settings(_env_file=None)
+    assert with_token.notificator_configured is True
+
+
 def test_leonid_write_configured_requires_both_url_and_token(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

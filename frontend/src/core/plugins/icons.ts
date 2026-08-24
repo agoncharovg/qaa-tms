@@ -2,6 +2,7 @@ import { createElement, forwardRef } from "react";
 import type { ComponentPropsWithoutRef } from "react";
 import type { TablerIcon } from "@tabler/icons-react";
 import {
+  IconBell,
   IconChartBar,
   IconPuzzle,
   IconRocket,
@@ -53,6 +54,7 @@ export const ICON_REGISTRY: Record<IconName, TablerIcon> = {
   [IconName.CLUSTER]: IconServer,
   [IconName.JENKINS]: JenkinsIcon,
   [IconName.LEONID]: IconShieldCheck,
+  [IconName.NOTIFICATOR]: IconBell,
   [IconName.ROCKET]: IconRocket,
   [IconName.SPARKLES]: IconSparkles,
   [IconName.SETTINGS]: IconSettings,

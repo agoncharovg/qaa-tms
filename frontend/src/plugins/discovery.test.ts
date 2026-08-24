@@ -16,6 +16,10 @@ vi.mock("@/plugins/kuber/KuberSection", () => ({
   KuberSection: () => null,
 }));
 
+vi.mock("@/plugins/notificator/NotificatorSection", () => ({
+  NotificatorSection: () => null,
+}));
+
 vi.mock("@/plugins/profile/ProfilePage", () => ({
   ProfilePage: () => null,
 }));
@@ -71,6 +75,7 @@ describe("plugin discovery", () => {
       PluginId.QAA_GENERATOR,
       PluginId.JENKINS,
       PluginId.LEONID,
+      PluginId.NOTIFICATOR,
       PluginId.STATISTICS,
       PluginId.ADMIN,
       PluginId.PROFILE,
@@ -88,9 +93,11 @@ describe("plugin discovery", () => {
     expect(PLUGINS[4]?.kind).toBe(PluginKind.OPTIONAL);
     expect(PLUGINS[4]?.requiresAgent).toBe(true);
     expect(PLUGINS[5]?.kind).toBe(PluginKind.OPTIONAL);
-    expect(PLUGINS[5]?.requiresAgent).toBe(false);
-    expect(PLUGINS[6]?.kind).toBe(PluginKind.SYSTEM);
+    expect(PLUGINS[5]?.requiresAgent).toBe(true);
+    expect(PLUGINS[6]?.kind).toBe(PluginKind.OPTIONAL);
+    expect(PLUGINS[6]?.requiresAgent).toBe(false);
     expect(PLUGINS[7]?.kind).toBe(PluginKind.SYSTEM);
+    expect(PLUGINS[8]?.kind).toBe(PluginKind.SYSTEM);
   });
 
   it("rejects duplicate plugin ids", () => {

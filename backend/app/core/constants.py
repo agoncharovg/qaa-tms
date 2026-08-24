@@ -10,6 +10,7 @@ class PluginId(StrEnum):
     JENKINS = "jenkins"
     STATISTICS = "statistics"
     LEONID = "leonid"
+    NOTIFICATOR = "notificator"
     ADMIN = "admin"
     PROFILE = "profile"
 
@@ -245,6 +246,7 @@ class PermissionKey(StrEnum):
     QAA_READ = "qaa.read"
     QAA_RUN = "qaa.run"
     QAA_ADMIN = "qaa.admin"
+    NOTIFICATOR_READ = "notificator.read"
     LEONID_READ = "leonid.read"
     LEONID_WRITE = "leonid.write"
 
@@ -384,6 +386,7 @@ OPTIONAL_PLUGIN_IDS = (
     PluginId.JENKINS,
     PluginId.STATISTICS,
     PluginId.LEONID,
+    PluginId.NOTIFICATOR,
 )
 SYSTEM_PLUGIN_IDS = (PluginId.ADMIN, PluginId.PROFILE)
 OPTIONAL_PLUGIN_ID_VALUES = tuple(plugin_id.value for plugin_id in OPTIONAL_PLUGIN_IDS)

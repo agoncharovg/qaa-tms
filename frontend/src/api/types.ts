@@ -186,6 +186,30 @@ export interface AgentSettingsUpdate {
   kubectl_request_timeout?: string;
 }
 
+export interface NotificatorChannel {
+  id: number;
+  channel_id: string;
+  description: string | null;
+}
+
+export interface NotificatorUser {
+  id: number;
+  sam_account_name: string;
+  user_principal_name: string;
+}
+
+export interface NotificatorNotificationConfig {
+  id: number;
+  product_team_id: number;
+  product_team: string;
+  notification_type: string;
+  notification_type_label: string;
+  enabled: boolean;
+  channels: NotificatorChannel[];
+  users: NotificatorUser[];
+}
+
+
 export interface LeonidSharedResourceLimitType {
   id: number;
   name: string;

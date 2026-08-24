@@ -100,6 +100,7 @@ export function createBootstrapTabsByPlugin(): TabsByPlugin {
     [PluginId.STAGINGS]: createEmptyPluginState(),
     [PluginId.STATISTICS]: createEmptyPluginState(),
     [PluginId.LEONID]: createEmptyPluginState(),
+    [PluginId.NOTIFICATOR]: createEmptyPluginState(),
   };
 }
 

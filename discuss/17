@@ -1,0 +1,242 @@
+Обсуждение №17 — Плагин "Notificator" (по мотивам ~/Projects/aut-notificator),
+                    по аналогии с плагином Leonid
+
+  СТАТУС: анализ + план. Создано 2026-08-24.
+  ЦЕЛЬ ЗАПРОСА: сделать в qaa-tms плагин, который показывает данные из
+  Django-админки aut-notificator. Ключевая фича: подменю "Notifications"
+  (contact_manager) — это плоский список из МНОГИХ строк вида
+  (PRODUCT TEAM, NOTIFICATION TYPE, enabled), где на одну команду (напр. qaa-team)
+  приходятся десятки строк. В плагине НЕ показывать плоский список: схлопывать
+  по product_team в ОДНУ запись, а полный список нотификаций команды показывать
+  в раскрывающемся окне/панели (как inline в админке ProductTeam).
+
+====================================================================
+0. ЧТО ТАКОЕ ПЛАГИН LEONID (шаблон, которому подражаем)
+====================================================================
+
+  Архитектура Leonid — трёхслойная, и данные идут НЕ через backend qaa-tms,
+  а через локальный companion-АГЕНТ (потому что ресурс за SSO/недоступен из
+  браузера). Слои:
+
+  1) ВНЕШНИЙ СЕРВИС (Leonid, отдельный Django/DRF): отдаёт REST /api/... —
+     полноценный CRUD (list/retrieve/create/put/patch/delete + toggle_enabled)
+     для shared_resource_limit_types, shared_resource_limits, shared_resources,
+     object_definitions, object_values, pipeline_params. Всё под токеном
+     (заголовок X-Leonid-Token, HasLeonidToken — даже чтения).
+
+  2) АГЕНТ (qaa-tms/agent) — прокси:
+     - agent/app/services/leonid.py: httpx-клиент к Leonid; функции
+       list_/get_/create_/update_/patch_/delete_/toggle_ на каждый ресурс;
+       ошибки LeonidNotConfiguredError / LeonidUnreachableError.
+     - agent/app/api/routes.py: FastAPI-роуты /leonid/... (GET/POST/PUT/PATCH/
+       DELETE/toggle), защита require_permission(LEONID_READ / LEONID_WRITE),
+       валидация тел через parse_request_model(...), маппинг ошибок в 503/502/400.
+     - agent/app/schemas.py: Leonid*Response / *Create / *Update / *Patch (pydantic).
+     - agent/app/core/constants.py: AgentPath.LEONID_* (пути), EnvKey.LEONID_URL/
+       TOKEN/REQUEST_TIMEOUT, HeaderName.X_LEONID_TOKEN, PermissionKey.LEONID_READ/
+       WRITE, ErrorMessage.LEONID_*, DEFAULT_LEONID_URL/TIMEOUT.
+     - agent/app/core/config.py: поля leonid_url/leonid_token/leonid_request_timeout
+       + свойства leonid_configured / leonid_write_configured.
+
+  3) ФРОНТ (qaa-tms/frontend) — плагин с автодискавери по manifest.tsx:
+     - src/plugins/leonid/manifest.tsx: definePlugin({ id: PluginId.LEONID,
+       requiresAgent: true, tabs: [...] }) — 3 вкладки.
+     - src/plugins/leonid/LeonidSection.tsx: оборачивает панели в <CompanionGate>
+       (проверка, что локальный агент запущен), прокидывает agentPort.
+     - src/plugins/leonid/{SharedResourcesPanel,ObjectsPanel,PipelineConfigsPanel}.tsx
+       — таблицы + формы; ходят в агент через agentClient.
+     - src/api/agentClient.ts: list/create/update/delete/toggle-Leonid* (readAgentJson/
+       writeAgentJson на порт агента).
+     - src/api/types.ts: типы Leonid*.
+     - src/constants.ts: PluginId.LEONID, IconName.LEONID, AgentPath.LEONID_*,
+       buildAgentLeonid*Path(...), ViewKey/TabId/TabTitle.LEONID_*.
+     - src/core/plugins/icons.ts: иконка.
+
+  4) РЕГИСТРАЦИЯ/ПРАВА:
+     - backend/app/core/constants.py: PluginId.LEONID; в OPTIONAL_PLUGIN_IDS;
+       PermissionKey.LEONID_READ/WRITE.
+     - backend/app/services/authorization.py: LEONID_READ/WRITE раздаются ролям
+       (admin — все; остальные роли по нужде).
+     - Фронт-дискавери сам подхватывает manifest.tsx (import.meta.glob).
+
+  Настройка адреса/токена Leonid — см. discuss/16 (env AGENT_LEONID_URL/TOKEN,
+  Profile→Settings, qaa-deploy). Тот же паттерн касается и Notificator.
+
+====================================================================
+1. ЧТО ОТДАЁТ aut-notificator СЕЙЧАС (и это ГЛАВНАЯ ПРОБЛЕМА)
+====================================================================
+
+  Модель данных (contact_manager/models.py):
+   - ProductTeamModel (name unique, email, pagerduty_ep, product FK, manager FK,
+     members M2M) — «команда».
+   - NotificationsConfigurationTypeModel (verbose_name "Notification",
+     plural "Notifications") — ИМЕННО ЭТО подменю "Notifications" из скриншота:
+       * product_team FK -> ProductTeamModel (related_name="notification_configs")
+       * notification_type CharField с choices ALLOWED_NOTIFICATION_TYPES
+         (label = человекочитаемая строка "Notify about ...")
+       * enabled Bool
+       * channels M2M -> SlackChannelModel
+       * users M2M -> UserModel (в inline подписано "Users DM")
+     Одна команда => МНОГО записей (по одной на notification_type). Отсюда
+     «много строк PRODUCT TEAM = qaa-team».
+   - Прочее: SlackChannelModel, ProductModel, SubProductModel, UserModel,
+     QAAMemberModel, FailureMentionRuleModel, а в app notifications:
+     EventModel, FailReasonModel, RecurrentFailsNotificationModel,
+     HistoryElementModel, MuteStatusModel.
+
+  В админке ProductTeamAdmin УЖЕ показывает нотификации команды инлайном
+  (NotificationsConfigurationTypeModelInline) — то есть «команда -> её список
+  нотификаций» уже есть как UX в админке. Плагин должен повторить эту идею.
+
+  !!! REST API для этих моделей НЕТ. (src/urls.py + views)
+   - DRF-роутер регистрирует в основном ACTION-эндпоинты ОТПРАВКИ уведомлений
+     (Notification, JellyUpdates, PuppetUpdates, TestReport, SuccessfulTestRun,
+     UnsuccessfulPipelineRun, PerformanceTestNotification, NewJiraTicket,
+     NotificationEvent, HealthCheck) — они принимают результаты тестов и шлют в
+     Slack, это НЕ CRUD конфигов.
+   - Есть только два «читающих» ViewSet: /users (UserViewSet) и /teams
+     (ProductTeamViewSet). Но их сериализаторы (ProductTeamSerializer)
+     отдают лишь пару производных slack-каналов (team_slack_channel,
+     slack_alerts_channels для icm), а НЕ полный список notification_configs.
+   - Аутентификация DRF: SimpleJWT + IsAuthenticated (src/settings.py);
+     логин /login/ (TokenObtainPairView), плюс SAML для админки.
+
+  ВЫВОД: в отличие от Leonid (готовый CRUD /api/...), у aut-notificator НЕТ
+  ручек для чтения/редактирования именно тех данных, что нужны плагину.
+  Значит, «по аналогии с Leonid» первым делом надо ДОБАВИТЬ REST API в
+  aut-notificator. Без этого агенту/фронту нечего проксировать.
+
+====================================================================
+2. ПЛАН (три слоя, как у Leonid)
+====================================================================
+
+  СЛОЙ A. aut-notificator: новый REST API (внешний репозиторий, отдельный PR)
+  ---------------------------------------------------------------------------
+   Минимально для фичи «команды + их нотификации»:
+    A1. Сериализатор+ViewSet для NotificationsConfigurationTypeModel:
+        GET /api/notification_configs/           (list; фильтр ?product_team=)
+        GET /api/notification_configs/{id}/      (retrieve)
+        + при желании POST/PUT/PATCH/DELETE (если нужно редактирование из плагина;
+          для MVP можно только чтение).
+        Поля: id, product_team (id + name), notification_type (code + label!),
+        enabled, channels (id+channel_id+description), users (id+sam/upn).
+        ВАЖНО: отдавать и label нотификации (из ALLOWED_NOTIFICATION_TYPES),
+        т.к. на скриншоте показывается человекочитаемая строка.
+    A2. Эндпоинт «команды со счётчиком/списком нотификаций» — 2 варианта:
+        (a) расширить /teams новым сериализатором с nested notification_configs
+            (или отдельный /api/teams_notifications/), ЛИБО
+        (b) фронт сам группирует плоский /notification_configs по product_team.
+        Рекомендация: сделать A1 (плоский список) — группировку по команде
+        делает агент/фронт (см. слой C). Это меньше правок во внешнем репо и
+        повторяет то, как Leonid отдаёт плоские коллекции.
+    A3. Справочники, если понадобится редактирование/фильтры:
+        GET /api/slack_channels/, /api/products/, /api/sub_products/,
+        /api/notification_types/ (choices), /api/failure_mention_rules/,
+        /api/events/, /api/fail_reasons/, /api/recurrent_fail_notifications/.
+        Для MVP не обязательно — начать с notification_configs + teams.
+    A4. Аутентификация: как у Leonid — общий сервисный токен. Либо
+        (a) кастомная permission по заголовку (X-Notificator-Token) — ближе к
+            Leonid и проще для агента, либо
+        (b) сервисный JWT (уже есть SimpleJWT) — но агенту сложнее (логин/refresh).
+        Рекомендация: (a) shared-token, зеркалит X-Leonid-Token.
+
+  СЛОЙ B. qaa-tms/agent: прокси (как services/leonid.py)
+  ------------------------------------------------------
+    B1. agent/app/services/notificator.py — httpx-клиент:
+        require_configured(), _send_json(...) с заголовком токена,
+        list_notification_configs(), get_notification_config(id),
+        list_teams(), (+ create/update/delete если делаем запись),
+        ошибки NotificatorNotConfiguredError / NotificatorUnreachableError.
+    B2. agent/app/api/routes.py — роуты /notificator/...:
+        GET /notificator/notification_configs  (require_permission NOTIFICATOR_READ)
+        GET /notificator/teams
+        (+ POST/PUT/PATCH/DELETE под NOTIFICATOR_WRITE — по желанию).
+        Маппинг ошибок 503/502/400 как у Leonid.
+    B3. agent/app/schemas.py — NotificatorNotificationConfigResponse,
+        NotificatorTeamResponse (+ *Create/*Update/*Patch при записи).
+    B4. agent/app/core/constants.py:
+        AgentPath.NOTIFICATOR_* ; EnvKey.NOTIFICATOR_URL/TOKEN/REQUEST_TIMEOUT ;
+        HeaderName.X_NOTIFICATOR_TOKEN ; PermissionKey.NOTIFICATOR_READ/WRITE ;
+        ErrorMessage.NOTIFICATOR_* ; DEFAULT_NOTIFICATOR_URL/TIMEOUT.
+    B5. agent/app/core/config.py: notificator_url/token/request_timeout +
+        свойства notificator_configured / notificator_write_configured.
+    B6. agent/.env.example: AGENT_NOTIFICATOR_URL / AGENT_NOTIFICATOR_TOKEN
+        (учесть урок discuss/16 — не хардкодить препрод, завести в
+        Profile→Settings и qaa-deploy).
+
+  СЛОЙ C. qaa-tms/frontend: плагин notificator
+  --------------------------------------------
+    C1. src/plugins/notificator/manifest.tsx: definePlugin({
+          id: PluginId.NOTIFICATOR, icon: IconName.NOTIFICATOR,
+          kind: OPTIONAL, requiresAgent: true, route: "/notificator",
+          tabs: [ Notifications (по командам), (опц.) Teams / другие ] }).
+    C2. src/plugins/notificator/NotificatorSection.tsx: <CompanionGate> + панели.
+    C3. src/plugins/notificator/NotificationsPanel.tsx — ГЛАВНОЕ ТРЕБОВАНИЕ:
+        - грузит плоский список notification_configs через agentClient;
+        - ГРУППИРУЕТ по product_team -> одна строка на команду
+          (колонки: команда, счётчик нотификаций, сколько enabled, каналы/…);
+        - клик по строке -> модалка/раскрывающаяся панель со ВСЕМ списком
+          нотификаций команды (notification_type label, enabled, channels,
+          users) — как inline в админке ProductTeam.
+        - группировку делаем на фронте (или тонкий helper в agentClient).
+    C4. src/api/agentClient.ts: listNotificatorNotificationConfigs(...),
+        listNotificatorTeams(...) (+ мутаторы при записи).
+    C5. src/api/types.ts: NotificatorNotificationConfig, NotificatorTeam, ...
+    C6. src/constants.ts: PluginId.NOTIFICATOR, IconName.NOTIFICATOR,
+        AgentPath.NOTIFICATOR_*, buildAgentNotificator*Path(...),
+        ViewKey/TabId/TabTitle.NOTIFICATOR_*.
+    C7. src/core/plugins/icons.ts: иконка.
+
+  СЛОЙ D. Регистрация/права (backend qaa-tms)
+  -------------------------------------------
+    D1. backend/app/core/constants.py: PluginId.NOTIFICATOR; добавить в
+        OPTIONAL_PLUGIN_IDS; PermissionKey.NOTIFICATOR_READ (+ _WRITE если запись).
+    D2. backend/app/services/authorization.py: раздать NOTIFICATOR_READ/WRITE
+        ролям (admin — всё; прочие по нужде).
+    D3. Фронт подхватит manifest.tsx автоматически (discovery по glob).
+
+====================================================================
+3. ГРУППИРОВКА «по команде» — как именно (суть запроса)
+====================================================================
+
+  Вход: список notification_configs = [{ id, product_team:{id,name},
+    notification_type:{code,label}, enabled, channels[], users[] }, ...].
+  Свернуть в Map<team_id, { team, items: config[] }>. В таблице показывать
+  по одной строке на команду:
+    - name команды,
+    - total (кол-во нотификаций),
+    - enabled/total,
+    - (опц.) уникальные каналы.
+  По клику — окно со списком items команды. Это ровно то, что просил
+  пользователь: «объединять в одну запись, а полный список показывать в
+  открывающемся окне».
+
+====================================================================
+4. ПОРЯДОК РЕАЛИЗАЦИИ (рекомендация)
+====================================================================
+
+  MVP (только чтение):
+   1) aut-notificator: A1 (GET /api/notification_configs с label + product_team)
+      + A4 shared-token. (Внешний PR — согласовать с владельцами репо.)
+   2) agent: B1–B6 для чтения notification_configs.
+   3) frontend: C1–C7, панель с группировкой по команде + модалка.
+   4) backend qaa-tms: D1–D3 (плагин + право NOTIFICATOR_READ).
+  Фаза 2 (запись/справочники): POST/PUT/PATCH/DELETE, toggle enabled,
+      каналы/пользователи/products, редактирование как в админке.
+
+====================================================================
+5. ОТКРЫТЫЕ ВОПРОСЫ (нужно решение)
+====================================================================
+
+  Q1. Только просмотр или ещё и редактирование конфигов из плагина?
+      (MVP предлагаю read-only.)
+  Q2. Готовы ли править внешний репозиторий aut-notificator (добавить REST API)?
+      Если нет — альтернатив нет: агент не может читать данные без API
+      (скрейпить админку — плохо). Это блокер №1.
+  Q3. Какие ещё подменю нужны в плагине кроме "Notifications"
+      (Teams, Users, Slack Channels, Recurrent fail notifications, Events...)?
+      Или на MVP хватит вкладки "Notifications" (по командам)?
+  Q4. Аутентификация к aut-notificator: shared-token (как Leonid) или сервисный
+      JWT? (Предлагаю shared-token.)
+  Q5. Адрес/токен per-env — оформить сразу правильно (Profile→Settings +
+      qaa-deploy), учитывая долг discuss/16 по Leonid.

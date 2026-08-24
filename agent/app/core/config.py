@@ -28,6 +28,8 @@ from app.core.constants import (
     DEFAULT_KUBECTL_REQUEST_TIMEOUT,
     DEFAULT_LEONID_REQUEST_TIMEOUT,
     DEFAULT_LEONID_URL,
+    DEFAULT_NOTIFICATOR_REQUEST_TIMEOUT,
+    DEFAULT_NOTIFICATOR_URL,
     DEFAULT_STAGING_KUBECONFIG,
     DEFAULT_STAGING_KUBECONFIG_MAX_AGE_HOURS,
     DEFAULT_STAGING_KUBECONFIG_URL,
@@ -71,6 +73,15 @@ class Settings(BaseSettings):
         alias=EnvKey.CORS_ORIGINS.value,
     )
     backend_url: str = Field(default=DEFAULT_BACKEND_URL, alias=EnvKey.BACKEND_URL.value)
+    notificator_url: str = Field(
+        default=DEFAULT_NOTIFICATOR_URL,
+        alias=EnvKey.NOTIFICATOR_URL.value,
+    )
+    notificator_token: str = Field(default="", alias=EnvKey.NOTIFICATOR_TOKEN.value)
+    notificator_request_timeout: float = Field(
+        default=DEFAULT_NOTIFICATOR_REQUEST_TIMEOUT,
+        alias=EnvKey.NOTIFICATOR_REQUEST_TIMEOUT.value,
+    )
     leonid_url: str = Field(default=DEFAULT_LEONID_URL, alias=EnvKey.LEONID_URL.value)
     leonid_token: str = Field(default="", alias=EnvKey.LEONID_TOKEN.value)
     leonid_request_timeout: float = Field(
@@ -155,7 +166,7 @@ class Settings(BaseSettings):
     def normalize_base_url(cls, value: str) -> str:
         return value.rstrip("/")
 
-    @field_validator("leonid_url", mode="before")
+    @field_validator("notificator_url", "leonid_url", mode="before")
     @classmethod
     def normalize_optional_base_url(cls, value: Any) -> str:
         if value is None:
@@ -243,6 +254,10 @@ class Settings(BaseSettings):
     @property
     def leonid_write_configured(self) -> bool:
         return bool(self.leonid_url and self.leonid_token)
+
+    @property
+    def notificator_configured(self) -> bool:
+        return bool(self.notificator_url and self.notificator_token)
 
     @property
     def jenkins_configured(self) -> bool:

@@ -110,6 +110,41 @@ class AgentSettingsUpdate(BaseModel):
     kubectl_request_timeout: str | None = None
 
 
+class NotificatorChannel(BaseModel):
+    """Nested Notificator Slack channel."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: int
+    channel_id: str
+    description: str | None = None
+
+
+class NotificatorUser(BaseModel):
+    """Nested Notificator user recipient."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: int
+    sam_account_name: str
+    user_principal_name: str
+
+
+class NotificatorNotificationConfigResponse(BaseModel):
+    """Read-only Notificator notification config."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: int
+    product_team_id: int
+    product_team: str
+    notification_type: str
+    notification_type_label: str
+    enabled: bool
+    channels: list[NotificatorChannel] = Field(default_factory=list)
+    users: list[NotificatorUser] = Field(default_factory=list)
+
+
 class LeonidSharedResourceLimitTypeResponse(BaseModel):
     """Read-only shared resource limit type."""
 

@@ -64,6 +64,18 @@ class BackendRecorder:
                     return httpx.Response(status_code=200, json=payload)
                 return httpx.Response(status_code=401, json={"detail": "Unauthorized"})
 
+            if request.url.path == BackendPath.AUTHZ_CHECK.value:
+                if auth != "Bearer valid-token":
+                    return httpx.Response(status_code=401, json={"detail": "Unauthorized"})
+                payload = json.loads(request.content.decode("utf-8"))
+                checks = payload.get("checks") if isinstance(payload, dict) else []
+                results = [
+                    {"permission": check.get("permission"), "allowed": True}
+                    for check in checks
+                    if isinstance(check, dict)
+                ]
+                return httpx.Response(status_code=200, json={"results": results})
+
             return httpx.Response(status_code=404, json={"detail": "Not found"})
 
         return httpx.MockTransport(handler)

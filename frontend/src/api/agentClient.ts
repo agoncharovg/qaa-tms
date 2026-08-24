@@ -8,6 +8,7 @@ import {
   buildAgentJenkinsFolderPath,
   buildAgentLeonidObjectDefinitionTogglePath,
   buildAgentLeonidObjectDefinitionsPath,
+  buildAgentNotificatorConfigsPath,
   buildAgentLeonidObjectValueTogglePath,
   buildAgentLeonidObjectValuesPath,
   buildAgentLeonidPipelineParamsPath,
@@ -55,6 +56,7 @@ import type {
   JenkinsFreezeResponse,
   LeonidObjectDefinition,
   LeonidObjectDefinitionInput,
+  NotificatorNotificationConfig,
   LeonidObjectValue,
   LeonidObjectValueInput,
   LeonidPipelineParam,
@@ -324,6 +326,21 @@ export function getJenkinsFolder(
   return readAgentJson<JenkinsFolderResponse>(
     port,
     buildAgentJenkinsFolderPath(path),
+    { method: HttpMethod.GET },
+    token,
+    signal
+  );
+}
+
+export function listNotificatorNotificationConfigs(
+  port: number,
+  token: string,
+  productTeam?: string,
+  signal?: AbortSignal
+): Promise<NotificatorNotificationConfig[]> {
+  return readAgentJson<NotificatorNotificationConfig[]>(
+    port,
+    buildAgentNotificatorConfigsPath(productTeam),
     { method: HttpMethod.GET },
     token,
     signal
@@ -922,6 +939,7 @@ export const agentClient = {
   getJenkinsFolder,
   getJenkinsScope,
   getJenkinsTree,
+  listNotificatorNotificationConfigs,
   listLeonidSharedResourceLimitTypes,
   listLeonidSharedResourceLimits,
   createLeonidSharedResourceLimit,
