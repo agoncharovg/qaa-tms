@@ -32,18 +32,8 @@ import type {
 import { QueryKey } from "@/constants";
 import { useAuthStore } from "@/store/authStore";
 
-type SubGroup = { label: string | null; keys: string[] };
-type PermDomain = { label: string; keys: string[]; subgroups?: SubGroup[] };
-
-const PERMISSION_DOMAINS: PermDomain[] = [
-  {
-    label: "Security",
-    keys: ["security.read", "security.roles.manage", "security.groups.manage"],
-    subgroups: [
-      { label: null, keys: ["security.read"] },
-      { label: "manage", keys: ["security.roles.manage", "security.groups.manage"] },
-    ],
-  },
+const PERMISSION_DOMAINS = [
+  { label: "Security", keys: ["security.read", "security.roles.manage", "security.groups.manage"] },
   { label: "Users", keys: ["users.read", "users.manage"] },
   { label: "Jenkins", keys: ["jenkins.read", "jenkins.freeze", "jenkins.resume"] },
   {
@@ -57,12 +47,20 @@ const PERMISSION_DOMAINS: PermDomain[] = [
 
 const ALL_KEYS: string[] = PERMISSION_DOMAINS.flatMap((d) => d.keys);
 const DOMAIN_FIRST_KEYS = new Set(PERMISSION_DOMAINS.map((d) => d.keys[0]));
-const HAS_SUBGROUPS = PERMISSION_DOMAINS.some((d) => Boolean(d.subgroups));
-const HEADER_ROWS = HAS_SUBGROUPS ? 3 : 2;
 
+// Show "penultimate.last" when last segment is not unique across all keys
+const _lastCounts = new Map<string, number>();
+for (const k of ALL_KEYS) {
+  const last = k.split(".").at(-1)!;
+  _lastCounts.set(last, (_lastCounts.get(last) ?? 0) + 1);
+}
 function shortLabel(key: string): string {
   const parts = key.split(".");
-  return parts[parts.length - 1] ?? key;
+  const last = parts.at(-1) ?? key;
+  if ((_lastCounts.get(last) ?? 0) > 1 && parts.length >= 2) {
+    return `${parts.at(-2)}.${last}`;
+  }
+  return last;
 }
 
 type RoleOption = { id: number; key: string | null; display_name: string };
@@ -441,16 +439,14 @@ export function UsersMatrix() {
         <ScrollArea>
           <table style={{ borderCollapse: "collapse", fontSize: 16 }}>
             <thead>
-              {/* Row 1: domain labels */}
               <tr>
-                <th rowSpan={HEADER_ROWS} style={{ padding: "6px 10px", textAlign: "left" }}>Username</th>
-                <th rowSpan={HEADER_ROWS} style={{ padding: "6px 10px", textAlign: "left" }}>Role / Group</th>
-                <th rowSpan={HEADER_ROWS} style={{ padding: "6px 10px", textAlign: "left" }}>Actions</th>
+                <th rowSpan={2} style={{ padding: "6px 10px", textAlign: "left" }}>Username</th>
+                <th rowSpan={2} style={{ padding: "6px 10px", textAlign: "left" }}>Role / Group</th>
+                <th rowSpan={2} style={{ padding: "6px 10px", textAlign: "left" }}>Actions</th>
                 {PERMISSION_DOMAINS.map((domain) => (
                   <th
                     key={domain.label}
                     colSpan={domain.keys.length}
-                    rowSpan={domain.subgroups ? 1 : 2}
                     style={{
                       textAlign: "center",
                       borderBottom: "1px solid #ccc",
@@ -464,33 +460,6 @@ export function UsersMatrix() {
                   </th>
                 ))}
               </tr>
-              {/* Row 2: subgroup labels (only rendered when any domain has subgroups) */}
-              {HAS_SUBGROUPS && (
-                <tr>
-                  {PERMISSION_DOMAINS.flatMap((domain, di) =>
-                    domain.subgroups
-                      ? domain.subgroups.map((sg, sgi) => (
-                          <th
-                            key={`sg-${di}-${sgi}`}
-                            colSpan={sg.keys.length}
-                            style={{
-                              textAlign: "center",
-                              borderBottom: "1px solid #ccc",
-                              borderLeft: sgi === 0 ? "2px solid #d0d0d0" : undefined,
-                              fontSize: 11,
-                              fontWeight: 500,
-                              padding: "1px 4px",
-                              color: "#555",
-                            }}
-                          >
-                            {sg.label ?? ""}
-                          </th>
-                        ))
-                      : []
-                  )}
-                </tr>
-              )}
-              {/* Bottom row: individual key vertical labels */}
               <tr>
                 {ALL_KEYS.map((key) => (
                   <th
