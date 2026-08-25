@@ -27,9 +27,7 @@ const ServerSettingsPageCopy = {
     "Edit the backend-held QAA generator ingress URL and superuser token. Base URL changes still require a backend restart.",
   LOAD_ERROR: "Server settings failed to load",
   LOADING: "Loading server settings.",
-  NOT_SET: "Not set",
   SAVE: "Save server settings",
-  SECRET_SET: "•••• set",
   SUCCESS: "Settings saved.",
   SUPERUSER_TOKEN_LABEL: "Superuser token",
   TITLE: "QAA generator",
@@ -237,10 +235,8 @@ export function ServerSettingsPage() {
             />
             <PasswordInput
               autoComplete={SECRET_INPUT_AUTOCOMPLETE}
-              description={
-                form.superuserTokenSet ? ServerSettingsPageCopy.SECRET_SET : ServerSettingsPageCopy.NOT_SET
-              }
               label={ServerSettingsPageCopy.SUPERUSER_TOKEN_LABEL}
+              placeholder={form.superuserTokenSet ? "••••••••" : undefined}
               name={SECRET_INPUT_NAME.SUPERUSER_TOKEN}
               onChange={(event) => {
                 setField("superuserToken", event.currentTarget.value);

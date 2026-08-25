@@ -59,7 +59,6 @@ const SettingsPanelCopy = {
   NOTIFICATOR_TITLE: "Notificator",
   NOTIFICATOR_TOKEN_LABEL: "Service token",
   NOTIFICATOR_URL_LABEL: "Service URL",
-  NOT_SET: "Not set",
   QAA_GENERATOR_DESCRIPTION:
     "Your personal qaa-generator token is written to the local companion `.env` on this machine.",
   QAA_GENERATOR_SAVE: "Save qaa-generator token",
@@ -67,10 +66,7 @@ const SettingsPanelCopy = {
   QAA_GENERATOR_TOKEN_LABEL: "Personal token",
   SECTION_DESCRIPTION:
     "Edit only the personal credentials required by the plugins enabled for your account.",
-  SECRET_SET: "•••• set",
   TITLE: "Settings",
-  TOKEN_STATUS_NOT_SET: "not set",
-  TOKEN_STATUS_SET: "set",
   UPDATE_FAILED: "Save failed",
   UPDATE_REQUIRED: "Authentication is required.",
   UPDATE_SUCCESS: "Settings saved.",
@@ -535,8 +531,8 @@ function SettingsPanelAgentSettings({
                 />
                 <PasswordInput
                   autoComplete={SECRET_INPUT_AUTOCOMPLETE}
-                  description={agentForm.jenkinsTokenSet ? SettingsPanelCopy.SECRET_SET : SettingsPanelCopy.NOT_SET}
                   label={SettingsPanelCopy.JENKINS_TOKEN_LABEL}
+                  placeholder={agentForm.jenkinsTokenSet ? "••••••••" : undefined}
                   name={SECRET_INPUT_NAME.JENKINS_TOKEN}
                   onChange={(event) => {
                     setAgentField("jenkinsToken", event.currentTarget.value);
@@ -581,10 +577,8 @@ function SettingsPanelAgentSettings({
                 />
                 <PasswordInput
                   autoComplete={SECRET_INPUT_AUTOCOMPLETE}
-                  description={
-                    agentForm.notificatorTokenSet ? SettingsPanelCopy.SECRET_SET : SettingsPanelCopy.NOT_SET
-                  }
                   label={SettingsPanelCopy.NOTIFICATOR_TOKEN_LABEL}
+                  placeholder={agentForm.notificatorTokenSet ? "••••••••" : undefined}
                   name={SECRET_INPUT_NAME.NOTIFICATOR_TOKEN}
                   onChange={(event) => {
                     setAgentField("notificatorToken", event.currentTarget.value);
@@ -629,8 +623,8 @@ function SettingsPanelAgentSettings({
                 />
                 <PasswordInput
                   autoComplete={SECRET_INPUT_AUTOCOMPLETE}
-                  description={agentForm.leonidTokenSet ? SettingsPanelCopy.SECRET_SET : SettingsPanelCopy.NOT_SET}
                   label={SettingsPanelCopy.LEONID_TOKEN_LABEL}
+                  placeholder={agentForm.leonidTokenSet ? "••••••••" : undefined}
                   name={SECRET_INPUT_NAME.LEONID_TOKEN}
                   onChange={(event) => {
                     setAgentField("leonidToken", event.currentTarget.value);
@@ -722,12 +716,8 @@ function SettingsPanelAgentSettings({
           <Stack gap="md">
             <PasswordInput
               autoComplete={SECRET_INPUT_AUTOCOMPLETE}
-              description={
-                qaaGeneratorForm.tokenSet
-                  ? SettingsPanelCopy.TOKEN_STATUS_SET
-                  : SettingsPanelCopy.TOKEN_STATUS_NOT_SET
-              }
               label={SettingsPanelCopy.QAA_GENERATOR_TOKEN_LABEL}
+              placeholder={qaaGeneratorForm.tokenSet ? "••••••••" : undefined}
               name={SECRET_INPUT_NAME.QAA_GENERATOR_TOKEN}
               onChange={(event) => setQaaGeneratorField("token", event.currentTarget.value)}
               value={qaaGeneratorForm.token}
