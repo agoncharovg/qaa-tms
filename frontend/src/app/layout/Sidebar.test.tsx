@@ -147,6 +147,33 @@ describe("Sidebar", () => {
     expect(mainMenuButtons).toEqual(["Administration", "Jenkins", "Kuber", "QAA generator", "Stagings"]);
   });
 
+  it("sorts the Stagings submenu alphabetically by title", () => {
+    useAuthStore.setState({
+      currentUser: {
+        auto_login: false,
+        created_at: "2026-08-09T00:00:00Z",
+        display_name: "Test User",
+        enabled_plugins: [PluginId.STAGINGS],
+        qaa_generator_token_set: false,
+        id: 2,
+        is_admin: false,
+        updated_at: "2026-08-09T00:00:00Z",
+        username: "test",
+      },
+      token: "token-456",
+    });
+
+    renderSidebar(PluginId.STAGINGS);
+
+    const submenuLabels = ["Deploy", "E2E", "History", "Namespaces", "Preflight", "Sync"];
+    const stagingSubmenuButtons = screen
+      .getAllByRole("button")
+      .map((button) => button.getAttribute("aria-label") ?? "")
+      .filter((label) => submenuLabels.includes(label));
+
+    expect(stagingSubmenuButtons).toEqual(submenuLabels);
+  });
+
   it("opens the admin security tab directly from the sidebar tree", async () => {
     const user = userEvent.setup();
 

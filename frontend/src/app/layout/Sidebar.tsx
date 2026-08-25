@@ -66,6 +66,14 @@ function sortPluginsByLabel<T extends { id: string; label: string }>(plugins: re
   );
 }
 
+function sortTabsByTitle<T extends { id: string; title: string }>(tabs: readonly T[]): T[] {
+  return [...tabs].sort(
+    (left, right) =>
+      left.title.localeCompare(right.title, undefined, { sensitivity: "base" }) ||
+      left.id.localeCompare(right.id)
+  );
+}
+
 function buildItemButtonStyle(active: boolean, collapsed: boolean, palette: Palette): CSSProperties {
   return {
     alignItems: "center",
@@ -203,7 +211,7 @@ export function Sidebar({ activePluginId }: SidebarProps) {
           {plugins.map((plugin) => {
             const Icon = resolveIcon(plugin.icon);
             const isActivePlugin = activePluginId === plugin.id;
-            const pluginTabs = visibleTabs(plugin, currentUser);
+            const pluginTabs = sortTabsByTitle(visibleTabs(plugin, currentUser));
             const pluginState = tabsByPlugin[plugin.id];
             const item = (
               <UnstyledButton
