@@ -14,7 +14,11 @@ from app.db.base import Base
 from app.models.auth_login_event import AuthLoginEvent
 from app.models.operation import Operation
 from app.models.security_event import SecurityEvent
-from app.models.security_group import SecurityGroup, SecurityGroupMembership, SecurityGroupPermission
+from app.models.security_group import (
+    SecurityGroup,
+    SecurityGroupMembership,
+    SecurityGroupPermission,
+)
 from app.models.security_permission import SecurityPermission
 from app.models.security_role import SecurityRole, SecurityRolePermission
 from app.models.user import User

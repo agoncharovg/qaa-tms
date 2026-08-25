@@ -13,7 +13,11 @@ from app.db.base import Base
 from app.db.session import create_engine_and_session_maker
 from app.main import create_app
 from app.models.security_event import SecurityEvent  # noqa: F401
-from app.models.security_group import SecurityGroup, SecurityGroupMembership, SecurityGroupPermission  # noqa: F401
+from app.models.security_group import (  # noqa: F401
+    SecurityGroup,
+    SecurityGroupMembership,
+    SecurityGroupPermission,
+)
 from app.models.security_permission import SecurityPermission  # noqa: F401
 from app.models.security_role import SecurityRole, SecurityRolePermission  # noqa: F401
 from app.models.user_extra_permission import UserExtraPermission  # noqa: F401

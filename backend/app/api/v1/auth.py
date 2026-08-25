@@ -44,9 +44,7 @@ def prune_login_attempts(
     window_seconds: int,
 ) -> list[float]:
     attempts = [
-        attempt
-        for attempt in attempts_by_key.get(key, [])
-        if now - attempt < window_seconds
+        attempt for attempt in attempts_by_key.get(key, []) if now - attempt < window_seconds
     ]
     if attempts:
         attempts_by_key[key] = attempts

@@ -8,6 +8,7 @@ Create Date: 2026-08-23
 from __future__ import annotations
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "20260823_0011"
@@ -80,9 +81,7 @@ def upgrade() -> None:
 
     op.create_table(
         "security_group_permissions",
-        sa.Column(
-            "group_id", sa.Integer(), sa.ForeignKey("security_groups.id"), primary_key=True
-        ),
+        sa.Column("group_id", sa.Integer(), sa.ForeignKey("security_groups.id"), primary_key=True),
         sa.Column(
             "permission_id",
             sa.Integer(),

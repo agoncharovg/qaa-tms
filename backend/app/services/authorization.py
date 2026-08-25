@@ -159,7 +159,10 @@ async def resolve_permissions(user: object, db: AsyncSession) -> frozenset[Permi
 
         group_role_perm_rows = await db.scalars(
             select(SecurityPermission.key)
-            .join(SecurityRolePermission, SecurityRolePermission.permission_id == SecurityPermission.id)
+            .join(
+                SecurityRolePermission,
+                SecurityRolePermission.permission_id == SecurityPermission.id,
+            )
             .join(SecurityGroupRole, SecurityGroupRole.role_id == SecurityRolePermission.role_id)
             .where(SecurityGroupRole.group_id == user.group_id)
         )
@@ -260,9 +263,7 @@ async def assign_engineer_to_dev_test_user(session: AsyncSession) -> None:
     from app.core.constants import DevUsername
     from app.models.user import User
 
-    test_user = await session.scalar(
-        select(User).where(User.username == DevUsername.TEST.value)
-    )
+    test_user = await session.scalar(select(User).where(User.username == DevUsername.TEST.value))
     if test_user is None or test_user.role_id is not None:
         return
 
@@ -285,9 +286,7 @@ async def assign_superadmin_to_admins(session: AsyncSession) -> None:
     if superadmin is None:
         return
     users = list(
-        await session.scalars(
-            select(User).where(User.is_admin.is_(True), User.role_id.is_(None))
-        )
+        await session.scalars(select(User).where(User.is_admin.is_(True), User.role_id.is_(None)))
     )
     for user in users:
         user.role_id = superadmin.id

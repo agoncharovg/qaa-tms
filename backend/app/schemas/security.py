@@ -259,8 +259,6 @@ def to_security_event_read(event: SecurityEvent) -> SecurityEventRead:
         payload=event.payload,
         created_at=event.created_at,
         actor_user=(
-            to_security_user_summary(event.actor_user)
-            if event.actor_user is not None
-            else None
+            to_security_user_summary(event.actor_user) if event.actor_user is not None else None
         ),
     )

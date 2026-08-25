@@ -28,10 +28,7 @@ def build_settings() -> Settings:
 
 def test_jenkins_scope_signature_matches_agent_shape() -> None:
     settings = build_settings()
-    expected_payload = (
-        "['BE:job/.QAA/job/E2E', 'FE:job/.QAA/job/UI_E2E']|"
-        "['PREPROD', 'PROD']|5|8"
-    )
+    expected_payload = "['BE:job/.QAA/job/E2E', 'FE:job/.QAA/job/UI_E2E']|['PREPROD', 'PROD']|5|8"
     expected_signature = hashlib.sha256(expected_payload.encode("utf-8")).hexdigest()[:16]
 
     assert jenkins_scope_signature(settings) == expected_signature

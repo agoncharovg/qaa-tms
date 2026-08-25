@@ -326,7 +326,9 @@ async def update_security_role(
         role.description = payload.description
     if "permission_keys" in payload.model_fields_set and payload.permission_keys is not None:
         perm_rows = await list_permissions_by_keys(db, payload.permission_keys)
-        await db.execute(delete(SecurityRolePermission).where(SecurityRolePermission.role_id == role.id))
+        await db.execute(
+            delete(SecurityRolePermission).where(SecurityRolePermission.role_id == role.id)
+        )
         for perm in perm_rows:
             db.add(SecurityRolePermission(role_id=role.id, permission_id=perm.id))
 
@@ -547,7 +549,9 @@ async def replace_security_group_permissions(
     permission_rows = await list_permissions_by_keys(db, payload.permission_keys)
 
     before_keys = sorted(p.key for p in group.permissions)
-    await db.execute(delete(SecurityGroupPermission).where(SecurityGroupPermission.group_id == group.id))
+    await db.execute(
+        delete(SecurityGroupPermission).where(SecurityGroupPermission.group_id == group.id)
+    )
     for perm in permission_rows:
         db.add(SecurityGroupPermission(group_id=group.id, permission_id=perm.id))
     write_security_event(
@@ -581,7 +585,10 @@ async def replace_security_group_roles(
     if role_ids:
         existing = list(await db.scalars(select(SecurityRole).where(SecurityRole.id.in_(role_ids))))
         if len(existing) != len(role_ids):
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="One or more role IDs not found.")
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="One or more role IDs not found.",
+            )
 
     await db.execute(delete(SecurityGroupRole).where(SecurityGroupRole.group_id == group.id))
     for role_id in role_ids:

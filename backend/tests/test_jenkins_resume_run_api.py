@@ -205,7 +205,9 @@ def test_create_resume_run_persists_restart_flag_false(client: TestClient) -> No
     assert read_resume_run(client, run["id"]).restart_pipelines is False
 
 
-def test_partial_resume_run_only_plans_selected_subtree_and_keeps_freeze_active(client: TestClient) -> None:
+def test_partial_resume_run_only_plans_selected_subtree_and_keeps_freeze_active(
+    client: TestClient,
+) -> None:
     token, _ = login(client, "test", "")
     freeze = create_freeze(client, token)
     child_folder_path = f"{FOLDER_PATH}/job/IAM%20Client%20portal"
