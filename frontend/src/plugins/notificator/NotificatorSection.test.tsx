@@ -3,12 +3,56 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 
+const companionState = vi.hoisted(() => ({
+  version: "0.2.0",
+}));
+
 vi.mock("@/plugins/companion/CompanionGate", () => ({
   CompanionGate: ({
     children,
   }: {
-    children: ({ agentPort }: { agentPort: number }) => ReactNode;
-  }) => <>{children({ agentPort: 47600 })}</>,
+    children: ({
+      agent,
+      agentPort,
+      manifest,
+    }: {
+      agent: {
+        app: string;
+        os: string;
+        stagingsInstalled: boolean;
+        stagingsSha: string | null;
+        version: string;
+      };
+      agentPort: number;
+      manifest: {
+        downloadUrl: string;
+        minSupported: string;
+        os: string | null;
+        sha256: string;
+        version: string;
+      };
+    }) => ReactNode;
+  }) => (
+    <>
+      {children({
+        agent: {
+          app: "QAA-TMS Agent",
+          os: "linux",
+          stagingsInstalled: false,
+          stagingsSha: null,
+          version: companionState.version,
+        },
+        agentPort: 47600,
+        manifest: {
+          downloadUrl: "/api/v1/agent/download",
+          minSupported: "0.1.0",
+          os: null,
+          sha256: "test-sha",
+          version: "0.2.0",
+        },
+      })}
+    </>
+  ),
 }));
 
 vi.mock("@/plugins/notificator/CrudPanels", () => ({
@@ -52,6 +96,7 @@ const TOKEN = "test-token";
 describe("NotificatorSection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    companionState.version = "0.2.0";
     resetAuthStoreState();
     useAuthStore.setState({ token: TOKEN });
   });
@@ -96,6 +141,22 @@ describe("NotificatorSection", () => {
 
     expect(screen.getByText("Recurrent fail notifications panel 47600")).toBeInTheDocument();
     expect(screen.queryByText("Events panel 47600")).not.toBeInTheDocument();
+  });
+
+
+  it("blocks Notificator when the companion version is below the required plugin minimum", () => {
+    companionState.version = "0.1.0";
+
+    renderWithProviders(<NotificatorSection mode={ViewKey.NOTIFICATOR_NOTIFICATIONS} />);
+
+    expect(screen.getByText("Companion update required")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The installed companion does not expose the full Notificator API used by this page. Update the companion before opening these tabs."
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText("Installed: 0.1.0. Required: 0.2.0.")).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Events" })).not.toBeInTheDocument();
   });
 });
 

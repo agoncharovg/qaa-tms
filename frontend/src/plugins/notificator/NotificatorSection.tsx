@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Stack, Tabs } from "@mantine/core";
+import { Alert, Stack, Tabs, Text } from "@mantine/core";
 
 import { ViewKey, type ViewKey as ViewKeyType } from "@/constants";
 import { CompanionGate } from "@/plugins/companion/CompanionGate";
@@ -20,6 +20,7 @@ import {
   UsersPanel,
 } from "@/plugins/notificator/ReadOnlyPanels";
 import { useAuthStore } from "@/store/authStore";
+import { compareVersions } from "@/utils/compareVersions";
 
 interface NotificatorInnerTab {
   label: string;
@@ -38,7 +39,11 @@ interface NotificatorSectionProps {
 const NOTIFICATOR_SECTION_COPY = {
   AGENT_ERROR: "Notificator companion discovery failed",
   AGENT_LOADING: "Checking the local companion app before loading Notificator.",
+  COMPANION_UPDATE_BODY:
+    "The installed companion does not expose the full Notificator API used by this page. Update the companion before opening these tabs.",
+  COMPANION_UPDATE_TITLE: "Companion update required",
 } as const;
+const NOTIFICATOR_MIN_AGENT_VERSION = "0.2.0" as const;
 
 function NotificatorAgentSection({
   mode,
@@ -160,7 +165,20 @@ export function NotificatorSection({ mode }: NotificatorSectionProps) {
       errorTitle={NOTIFICATOR_SECTION_COPY.AGENT_ERROR}
       loadingMessage={NOTIFICATOR_SECTION_COPY.AGENT_LOADING}
     >
-      {({ agentPort }) => <NotificatorAgentSection mode={mode} port={agentPort} />}
+      {({ agent, agentPort }) =>
+        compareVersions(agent.version, NOTIFICATOR_MIN_AGENT_VERSION) < 0 ? (
+          <Alert color="red" title={NOTIFICATOR_SECTION_COPY.COMPANION_UPDATE_TITLE}>
+            <Stack gap="xs">
+              <Text>{NOTIFICATOR_SECTION_COPY.COMPANION_UPDATE_BODY}</Text>
+              <Text c="dimmed" size="sm">
+                Installed: {agent.version}. Required: {NOTIFICATOR_MIN_AGENT_VERSION}.
+              </Text>
+            </Stack>
+          </Alert>
+        ) : (
+          <NotificatorAgentSection mode={mode} port={agentPort} />
+        )
+      }
     </CompanionGate>
   );
 }
