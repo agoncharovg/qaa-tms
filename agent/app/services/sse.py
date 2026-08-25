@@ -87,4 +87,3 @@ async def stream_process_log_frames(
     finally:
         if aborted:
             await terminate_process(process)
-

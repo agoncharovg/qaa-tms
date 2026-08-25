@@ -66,6 +66,10 @@ class AgentSettingsRead(BaseModel):
     jenkins_url: str
     jenkins_username: str
     jenkins_token_set: bool
+    notificator_url: str
+    notificator_token_set: bool
+    leonid_url: str
+    leonid_token_set: bool
     jenkins_root_groups: list[JenkinsRootGroup]
     qaa_generator_token_set: bool
     jenkins_root_folders: list[str]
@@ -92,6 +96,10 @@ class AgentSettingsUpdate(BaseModel):
     jenkins_url: str | None = None
     jenkins_username: str | None = None
     jenkins_token: str | None = None
+    notificator_url: str | None = None
+    notificator_token: str | None = None
+    leonid_url: str | None = None
+    leonid_token: str | None = None
     jenkins_root_groups: list[JenkinsRootGroup] | None = None
     qaa_generator_token: str | None = None
     jenkins_root_folders: list[str] | None = None
@@ -347,6 +355,10 @@ def to_agent_settings_read(settings: Settings) -> AgentSettingsRead:
         jenkins_url=settings.jenkins_url,
         jenkins_username=settings.jenkins_username,
         jenkins_token_set=bool(settings.jenkins_token),
+        notificator_url=settings.notificator_url,
+        notificator_token_set=bool(settings.notificator_token),
+        leonid_url=settings.leonid_url,
+        leonid_token_set=bool(settings.leonid_token),
         jenkins_root_groups=list(settings.jenkins_root_groups),
         qaa_generator_token_set=bool(settings.qaa_generator_token),
         jenkins_root_folders=list(settings.jenkins_root_folders),

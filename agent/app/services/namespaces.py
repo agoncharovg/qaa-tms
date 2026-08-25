@@ -22,7 +22,6 @@ from app.services.staging import (
 
 
 class NamespaceCommand(StrEnum):
-
     """Supported staging namespace subcommands."""
 
     LIST = "list"
@@ -179,7 +178,6 @@ def stream_namespace_logs(
     repo_root = installation.repo_root
 
     return stream_process_log_frames(argv, repo_root, is_disconnected=is_disconnected)
-
 
 
 def parse_namespace_list(raw_output: str) -> ParsedNamespaceList:
