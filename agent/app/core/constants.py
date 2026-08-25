@@ -10,7 +10,20 @@ class AgentPath(StrEnum):
     SETTINGS = "/settings"
     PREFLIGHT = "/preflight"
     UPDATE = "/update"
+    NOTIFICATOR_CHOICES = "/notificator/choices"
     NOTIFICATOR_CONFIGS = "/notificator/notification_configs"
+    NOTIFICATOR_TEAMS = "/notificator/teams"
+    NOTIFICATOR_PRODUCTS = "/notificator/products"
+    NOTIFICATOR_SUB_PRODUCTS = "/notificator/sub_products"
+    NOTIFICATOR_SLACK_CHANNELS = "/notificator/slack_channels"
+    NOTIFICATOR_USERS = "/notificator/users"
+    NOTIFICATOR_QAA_MEMBERS = "/notificator/qaa_members"
+    NOTIFICATOR_FAILURE_MENTION_RULES = "/notificator/failure_mention_rules"
+    NOTIFICATOR_EVENTS = "/notificator/events"
+    NOTIFICATOR_RECURRENT_FAILS = "/notificator/recurrent_fails"
+    NOTIFICATOR_FAIL_REASONS = "/notificator/fail_reasons"
+    NOTIFICATOR_MUTE_STATUSES = "/notificator/mute_statuses"
+    NOTIFICATOR_HISTORY = "/notificator/history"
     LEONID_SHARED_RESOURCE_LIMIT_TYPES = "/leonid/shared_resource_limit_types"
     LEONID_SHARED_RESOURCE_LIMITS = "/leonid/shared_resource_limits"
     LEONID_SHARED_RESOURCES = "/leonid/shared_resources"
@@ -223,6 +236,7 @@ class PermissionKey(StrEnum):
     QAA_RUN = "qaa.run"
     QAA_ADMIN = "qaa.admin"
     NOTIFICATOR_READ = "notificator.read"
+    NOTIFICATOR_WRITE = "notificator.write"
     LEONID_READ = "leonid.read"
     LEONID_WRITE = "leonid.write"
 
@@ -435,7 +449,7 @@ class AgentUpdateStatus(StrEnum):
 
 
 AGENT_APP_NAME = "qaa-tms-agent"
-DEFAULT_AGENT_VERSION = "0.1.0"
+DEFAULT_AGENT_VERSION = "0.2.0"
 DEFAULT_AGENT_HOST = "127.0.0.1"
 DEFAULT_AGENT_PORT = 47600
 DEFAULT_NOTIFICATOR_URL = "https://notificator-prod.i.gc.onl"

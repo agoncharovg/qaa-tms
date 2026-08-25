@@ -247,6 +247,7 @@ class PermissionKey(StrEnum):
     QAA_RUN = "qaa.run"
     QAA_ADMIN = "qaa.admin"
     NOTIFICATOR_READ = "notificator.read"
+    NOTIFICATOR_WRITE = "notificator.write"
     LEONID_READ = "leonid.read"
     LEONID_WRITE = "leonid.write"
 

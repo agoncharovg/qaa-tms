@@ -1,0 +1,158 @@
+Обсуждение №18 — Notificator: полный функционал (весь экран админки) + привязка
+                    плагинов к Administration/Security
+
+  СТАТУС: анализ + решение. Создано 2026-08-25.
+  Продолжение discuss/17 (MVP-план) и briefs/27 (реализованный read-only MVP),
+  briefs/29 (токены в Profile→Settings). Бриф на реализацию: briefs/30.
+
+====================================================================
+0. С ЧЕГО НАЧАЛОСЬ
+====================================================================
+
+  Жалобы пользователя после выката плагина Notificator (коммиты 04f…/52a…):
+   1) На странице плагина видно только нередактируемую таблицу «по командам»;
+      остальных данных со скриншота (Teams, Slack channels, Products,
+      Sub products, Users, QAA members, Failure mention rules, Events,
+      Fail reasons, Recurrent fails, Mute statuses, History) — нет, и
+      редактирования нет.
+   2) Каждый плагин должен появляться в Administration/Security. Notificator
+      там отсутствует, а Leonid «не видно» (он спрятан).
+
+====================================================================
+1. ЧТО РЕАЛЬНО СДЕЛАНО И ПОЧЕМУ «ОСТАЛЬНОГО НЕТ»
+====================================================================
+
+  Реализован ровно MVP по briefs/27: одна read-only вкладка «Notifications»,
+  сгруппированная по команде (frontend/src/plugins/notificator/
+  NotificationsPanel.tsx). Каждая строка = команда, клик → модалка со списком
+  нотификаций команды. Read-only — это осознанный scope (briefs/27 §Scope,
+  discuss/17 Q1).
+
+  ГЛАВНОЕ (проверено по коду ~/Projects/aut-notificator, коммит f768cb8):
+   - Добавлен ТОЛЬКО ОДИН эндпоинт: GET /notification_configs/ —
+     ReadOnlyModelViewSet, токен X-Notificator-Token, без пагинации,
+     фильтр ?product_team=<id|name>. Отдаёт: id, product_team_id, product_team,
+     notification_type, notification_type_label, enabled, channels[], users[].
+     Это ровно инлайн «команда → её нотификации» из ProductTeamAdmin.
+   - /teams и /users в aut-notificator есть как полноценный CRUD (ModelViewSet),
+     НО за SimpleJWT + IsAuthenticated (SSO). Токен X-Notificator-Token включён
+     (authentication_classes=[]) ТОЛЬКО у notification_configs. Агент держит
+     лишь shared-токен → к /teams и /users он не ходит.
+   - Для всего остального (Slack channels, Products, Sub products, QAA members,
+     Failure mention rules, Events, Recurrent fails, Fail reasons, Mute statuses,
+     History) эндпоинтов НЕТ вообще. И записи (POST/PUT/PATCH/DELETE),
+     доступной агенту, НЕТ нигде.
+
+  ВЫВОД: это не баг проводки. «Остального» просто нет API, который агент может
+  вызвать. Добавленный API достаточен для той вкладки, что была в scope, и
+  недостаточен для всего экрана. Чтобы закрыть экран — нужны новые ручки под
+  shared-токеном в aut-notificator, затем прокси в agent, затем вкладки во фронте.
+
+====================================================================
+2. АРХИТЕКТУРА: 2 РЕПОЗИТОРИЯ, 3 СЛОЯ ПРАВОК
+====================================================================
+
+  Репозиторий 1 — aut-notificator (внешний Django): сам REST API.
+  Репозиторий 2 — qaa-tms (моно-репо), правки в трёх местах:
+    - agent/    — httpx-прокси к aut-notificator (образец: services/leonid.py);
+    - frontend/ — плагин/вкладки (образец: src/plugins/leonid/);
+    - backend/  — права (PermissionKey, раздача ролям, Administration/Security).
+
+====================================================================
+3. РАЗДЕЛЫ ЭКРАНА (13 сущностей, 2 Django-приложения)
+====================================================================
+
+  contact_manager:
+   1. Notifications          NotificationsConfigurationTypeModel  ✅ read есть
+   2. Product teams          ProductTeamModel
+   3. Products               ProductModel
+   4. Sub products           SubProductModel
+   5. Slack channels         SlackChannelModel
+   6. Users                  UserModel (extends django User)
+   7. QAA members            QAAUserProxy (proxy UserModel) + QAAMemberModel
+   8. Failure mention rules  FailureMentionRuleModel
+  notifications:
+   9. Events                 EventModel
+  10. Recurrent fails        RecurrentFailsNotificationModel (+ инлайн MuteStatus)
+  11. Fail reasons           FailReasonModel
+  12. Mute statuses          MuteStatusModel
+  13. History elements       HistoryElementModel  (аудит mute — read-only)
+
+  Поля/связи и per-entity контракт — см. briefs/30 §Layer A.
+
+====================================================================
+4. РЕШЕНИЯ (приняты до кода)
+====================================================================
+
+  D1. Аутентификация: все новые ручки — под HasNotificatorToken
+      (authentication_classes=[]). Существующие /teams и /users (за SSO) НЕ
+      переиспользуем — делаем параллельные ViewSet'ы с префиксом notificator/*.
+  D2. Паттерн: на сущность — ModelViewSet (read → ReadOnlyModelViewSet),
+      pagination_class=None; регистрация в src/urls.py под notificator/<name>/.
+  D3. Справочники (choices) для форм: notificator/choices/ →
+      {notification_types, match_targets, environments} из ALLOWED_NOTIFICATION_TYPES,
+      MatchTarget, Environment.
+  D4. M2M/FK: запись — списками id (PrimaryKeyRelatedField); чтение — вложенный
+      объект (id+имя), как уже в NotificationConfigSerializer.
+  D5. Слой agent/frontend — строго по образцу Leonid (там уже есть write-паттерн).
+
+====================================================================
+5. РИСК-БЛОКЕР (Фаза 0) — ТОКЕН
+====================================================================
+
+  Сейчас NOTIFICATOR_API_TOKEN — заглушка (default "changeme-notificator-token").
+  Открывать под ней ЗАПИСЬ во все справочники = полный CRUD в обход SSO по одному
+  общему секрету. РЕШЕНО (Q2): токен ОДИН на read+write (без раздельных
+  read-/write-токенов). До write-фазы обязательно:
+   - убрать дефолт-заглушку (пусто → 503/явная ошибка «не сконфигурено»);
+   - хранить токен в Vault (см. project_k8s_deploy).
+  Это блокер именно для записи; read можно катить раньше.
+
+====================================================================
+6. ПОРЯДОК РЕАЛИЗАЦИИ (фазы)
+====================================================================
+
+  Фаза 0 (блокер): решить вопрос токена (см. §5).
+  Фаза 1 (read-all): Layer A — R по всем 13 сущностям (+choices) → agent read →
+      фронт-вкладки только просмотр. Уже даёт «весь экран» без правки.
+  Фаза 2 (write): W там, где нужно редактировать; PermissionKey.NOTIFICATOR_WRITE;
+      формы во фронте.
+  Фаза 3 (Security): каталог прав в Administration/Security (см. §7).
+
+====================================================================
+7. ADMINISTRATION/SECURITY — ОТДЕЛЬНЫЙ БАГ (подтверждён)
+====================================================================
+
+  Backend УЖЕ корректен: seed_security_catalog засевает право на КАЖДЫЙ
+  PermissionKey (authorization.py:38-40), т.е. notificator.read, leonid.read,
+  leonid.write уже в БД и отдаются существующим GET /security/permissions
+  (security.py:230; клиент есть — backendClient.listSecurityPermissions,
+  backendClient.ts:901).
+
+  Баг — во фронте: списки прав ЗАХАРДКОЖЕНЫ в двух местах и разошлись:
+   - RolesPanel.tsx ALL_PERMISSIONS (стр. 28-61): есть leonid.*, НЕТ
+     notificator.read.
+   - UsersMatrix.tsx PERMISSION_DOMAINS (стр. 35-46): leonid.* спрятан в группе
+     «Other», notificator.read отсутствует.
+  Итог: notificator.read нельзя выдать из UI; Leonid «не виден».
+
+  РЕШЕНО (Q3): вариант (a) — КАТАЛОГ-ДРАЙВ. Рендерить RolesPanel и UsersMatrix из
+  GET /security/permissions, группируя по плагину/домену (группа из префикса
+  ключа). Любой новый плагин появляется в Security автоматически — как и просил
+  пользователь («каждый плагин добавлять в Administration/Security»). Вариант (b)
+  (минимальная заплатка) — отклонён. Реализация — в briefs/30 §Layer S.
+
+====================================================================
+8. ОТКРЫТЫЕ ВОПРОСЫ
+====================================================================
+
+  Q1. РЕШЕНО (2026-08-25): CRUD только для 4 разделов — Notifications (1),
+      Products (3), Sub products (4), Slack channels (5). Остальные 9 — только
+      чтение. Фаза 2 (write) + NOTIFICATOR_WRITE + формы во фронте — только для
+      этих четырёх.
+  Q2. РЕШЕНО (2026-08-25): один токен на read+write. (см. §5)
+  Q3. РЕШЕНО (2026-08-25): вариант (a) каталог-драйв. (см. §7)
+  Q4. СНЯТ: QAA members теперь read-only (см. Q1), отдаём как отдельную сущность
+      QAAMemberModel (product↔user); правки не требуется.
+
+  Все открытые вопросы закрыты — briefs/30 готов к передаче в реализацию.

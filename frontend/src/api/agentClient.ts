@@ -8,7 +8,20 @@ import {
   buildAgentJenkinsFolderPath,
   buildAgentLeonidObjectDefinitionTogglePath,
   buildAgentLeonidObjectDefinitionsPath,
+  buildAgentNotificatorChoicesPath,
   buildAgentNotificatorConfigsPath,
+  buildAgentNotificatorEventsPath,
+  buildAgentNotificatorFailReasonsPath,
+  buildAgentNotificatorFailureMentionRulesPath,
+  buildAgentNotificatorHistoryPath,
+  buildAgentNotificatorMuteStatusesPath,
+  buildAgentNotificatorProductsPath,
+  buildAgentNotificatorQaaMembersPath,
+  buildAgentNotificatorRecurrentFailsPath,
+  buildAgentNotificatorSlackChannelsPath,
+  buildAgentNotificatorSubProductsPath,
+  buildAgentNotificatorTeamsPath,
+  buildAgentNotificatorUsersPath,
   buildAgentLeonidObjectValueTogglePath,
   buildAgentLeonidObjectValuesPath,
   buildAgentLeonidPipelineParamsPath,
@@ -56,7 +69,24 @@ import type {
   JenkinsFreezeResponse,
   LeonidObjectDefinition,
   LeonidObjectDefinitionInput,
+  NotificatorChoices,
+  NotificatorEvent,
+  NotificatorFailReason,
+  NotificatorFailureMentionRule,
+  NotificatorHistoryItem,
+  NotificatorMuteStatus,
   NotificatorNotificationConfig,
+  NotificatorNotificationConfigInput,
+  NotificatorProduct,
+  NotificatorProductInput,
+  NotificatorProductTeam,
+  NotificatorQaaMember,
+  NotificatorRecurrentFail,
+  NotificatorSlackChannel,
+  NotificatorSlackChannelInput,
+  NotificatorSubProduct,
+  NotificatorSubProductInput,
+  NotificatorFullUser,
   LeonidObjectValue,
   LeonidObjectValueInput,
   LeonidPipelineParam,
@@ -332,17 +362,404 @@ export function getJenkinsFolder(
   );
 }
 
+function listNotificatorCollection<T>(
+  port: number,
+  token: string,
+  path: string,
+  signal?: AbortSignal
+): Promise<T[]> {
+  return readAgentJson<T[]>(port, path, { method: HttpMethod.GET }, token, signal);
+}
+
+function createNotificatorItem<T>(
+  port: number,
+  token: string,
+  path: string,
+  payload: unknown,
+  signal?: AbortSignal
+): Promise<T> {
+  return writeAgentJson<T>(port, path, HttpMethod.POST, token, payload, signal);
+}
+
+function updateNotificatorItem<T>(
+  port: number,
+  token: string,
+  path: string,
+  payload: unknown,
+  signal?: AbortSignal
+): Promise<T> {
+  return writeAgentJson<T>(port, path, HttpMethod.PUT, token, payload, signal);
+}
+
+function deleteNotificatorItem(
+  port: number,
+  token: string,
+  path: string,
+  signal?: AbortSignal
+): Promise<void> {
+  return writeAgentJson<void>(port, path, HttpMethod.DELETE, token, undefined, signal);
+}
+
+export function getNotificatorChoices(
+  port: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<NotificatorChoices> {
+  return readAgentJson<NotificatorChoices>(
+    port,
+    buildAgentNotificatorChoicesPath(),
+    { method: HttpMethod.GET },
+    token,
+    signal
+  );
+}
+
 export function listNotificatorNotificationConfigs(
   port: number,
   token: string,
   productTeam?: string,
   signal?: AbortSignal
 ): Promise<NotificatorNotificationConfig[]> {
-  return readAgentJson<NotificatorNotificationConfig[]>(
+  return listNotificatorCollection<NotificatorNotificationConfig>(
     port,
-    buildAgentNotificatorConfigsPath(productTeam),
-    { method: HttpMethod.GET },
     token,
+    buildAgentNotificatorConfigsPath({ productTeam }),
+    signal
+  );
+}
+
+export function createNotificatorNotificationConfig(
+  port: number,
+  token: string,
+  payload: NotificatorNotificationConfigInput,
+  signal?: AbortSignal
+): Promise<NotificatorNotificationConfig> {
+  return createNotificatorItem<NotificatorNotificationConfig>(
+    port,
+    token,
+    buildAgentNotificatorConfigsPath(),
+    payload,
+    signal
+  );
+}
+
+export function updateNotificatorNotificationConfig(
+  port: number,
+  token: string,
+  configId: number,
+  payload: NotificatorNotificationConfigInput,
+  signal?: AbortSignal
+): Promise<NotificatorNotificationConfig> {
+  return updateNotificatorItem<NotificatorNotificationConfig>(
+    port,
+    token,
+    buildAgentNotificatorConfigsPath({ configId }),
+    payload,
+    signal
+  );
+}
+
+export function deleteNotificatorNotificationConfig(
+  port: number,
+  token: string,
+  configId: number,
+  signal?: AbortSignal
+): Promise<void> {
+  return deleteNotificatorItem(
+    port,
+    token,
+    buildAgentNotificatorConfigsPath({ configId }),
+    signal
+  );
+}
+
+export function listNotificatorTeams(
+  port: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<NotificatorProductTeam[]> {
+  return listNotificatorCollection<NotificatorProductTeam>(
+    port,
+    token,
+    buildAgentNotificatorTeamsPath(),
+    signal
+  );
+}
+
+export function listNotificatorProducts(
+  port: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<NotificatorProduct[]> {
+  return listNotificatorCollection<NotificatorProduct>(
+    port,
+    token,
+    buildAgentNotificatorProductsPath(),
+    signal
+  );
+}
+
+export function createNotificatorProduct(
+  port: number,
+  token: string,
+  payload: NotificatorProductInput,
+  signal?: AbortSignal
+): Promise<NotificatorProduct> {
+  return createNotificatorItem<NotificatorProduct>(
+    port,
+    token,
+    buildAgentNotificatorProductsPath(),
+    payload,
+    signal
+  );
+}
+
+export function updateNotificatorProduct(
+  port: number,
+  token: string,
+  productId: number,
+  payload: NotificatorProductInput,
+  signal?: AbortSignal
+): Promise<NotificatorProduct> {
+  return updateNotificatorItem<NotificatorProduct>(
+    port,
+    token,
+    buildAgentNotificatorProductsPath(productId),
+    payload,
+    signal
+  );
+}
+
+export function deleteNotificatorProduct(
+  port: number,
+  token: string,
+  productId: number,
+  signal?: AbortSignal
+): Promise<void> {
+  return deleteNotificatorItem(
+    port,
+    token,
+    buildAgentNotificatorProductsPath(productId),
+    signal
+  );
+}
+
+export function listNotificatorSubProducts(
+  port: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<NotificatorSubProduct[]> {
+  return listNotificatorCollection<NotificatorSubProduct>(
+    port,
+    token,
+    buildAgentNotificatorSubProductsPath(),
+    signal
+  );
+}
+
+export function createNotificatorSubProduct(
+  port: number,
+  token: string,
+  payload: NotificatorSubProductInput,
+  signal?: AbortSignal
+): Promise<NotificatorSubProduct> {
+  return createNotificatorItem<NotificatorSubProduct>(
+    port,
+    token,
+    buildAgentNotificatorSubProductsPath(),
+    payload,
+    signal
+  );
+}
+
+export function updateNotificatorSubProduct(
+  port: number,
+  token: string,
+  subProductId: number,
+  payload: NotificatorSubProductInput,
+  signal?: AbortSignal
+): Promise<NotificatorSubProduct> {
+  return updateNotificatorItem<NotificatorSubProduct>(
+    port,
+    token,
+    buildAgentNotificatorSubProductsPath(subProductId),
+    payload,
+    signal
+  );
+}
+
+export function deleteNotificatorSubProduct(
+  port: number,
+  token: string,
+  subProductId: number,
+  signal?: AbortSignal
+): Promise<void> {
+  return deleteNotificatorItem(
+    port,
+    token,
+    buildAgentNotificatorSubProductsPath(subProductId),
+    signal
+  );
+}
+
+export function listNotificatorSlackChannels(
+  port: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<NotificatorSlackChannel[]> {
+  return listNotificatorCollection<NotificatorSlackChannel>(
+    port,
+    token,
+    buildAgentNotificatorSlackChannelsPath(),
+    signal
+  );
+}
+
+export function createNotificatorSlackChannel(
+  port: number,
+  token: string,
+  payload: NotificatorSlackChannelInput,
+  signal?: AbortSignal
+): Promise<NotificatorSlackChannel> {
+  return createNotificatorItem<NotificatorSlackChannel>(
+    port,
+    token,
+    buildAgentNotificatorSlackChannelsPath(),
+    payload,
+    signal
+  );
+}
+
+export function updateNotificatorSlackChannel(
+  port: number,
+  token: string,
+  channelId: number,
+  payload: NotificatorSlackChannelInput,
+  signal?: AbortSignal
+): Promise<NotificatorSlackChannel> {
+  return updateNotificatorItem<NotificatorSlackChannel>(
+    port,
+    token,
+    buildAgentNotificatorSlackChannelsPath(channelId),
+    payload,
+    signal
+  );
+}
+
+export function deleteNotificatorSlackChannel(
+  port: number,
+  token: string,
+  channelId: number,
+  signal?: AbortSignal
+): Promise<void> {
+  return deleteNotificatorItem(
+    port,
+    token,
+    buildAgentNotificatorSlackChannelsPath(channelId),
+    signal
+  );
+}
+
+export function listNotificatorUsers(
+  port: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<NotificatorFullUser[]> {
+  return listNotificatorCollection<NotificatorFullUser>(
+    port,
+    token,
+    buildAgentNotificatorUsersPath(),
+    signal
+  );
+}
+
+export function listNotificatorQaaMembers(
+  port: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<NotificatorQaaMember[]> {
+  return listNotificatorCollection<NotificatorQaaMember>(
+    port,
+    token,
+    buildAgentNotificatorQaaMembersPath(),
+    signal
+  );
+}
+
+export function listNotificatorFailureMentionRules(
+  port: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<NotificatorFailureMentionRule[]> {
+  return listNotificatorCollection<NotificatorFailureMentionRule>(
+    port,
+    token,
+    buildAgentNotificatorFailureMentionRulesPath(),
+    signal
+  );
+}
+
+export function listNotificatorEvents(
+  port: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<NotificatorEvent[]> {
+  return listNotificatorCollection<NotificatorEvent>(
+    port,
+    token,
+    buildAgentNotificatorEventsPath(),
+    signal
+  );
+}
+
+export function listNotificatorRecurrentFails(
+  port: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<NotificatorRecurrentFail[]> {
+  return listNotificatorCollection<NotificatorRecurrentFail>(
+    port,
+    token,
+    buildAgentNotificatorRecurrentFailsPath(),
+    signal
+  );
+}
+
+export function listNotificatorFailReasons(
+  port: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<NotificatorFailReason[]> {
+  return listNotificatorCollection<NotificatorFailReason>(
+    port,
+    token,
+    buildAgentNotificatorFailReasonsPath(),
+    signal
+  );
+}
+
+export function listNotificatorMuteStatuses(
+  port: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<NotificatorMuteStatus[]> {
+  return listNotificatorCollection<NotificatorMuteStatus>(
+    port,
+    token,
+    buildAgentNotificatorMuteStatusesPath(),
+    signal
+  );
+}
+
+export function listNotificatorHistory(
+  port: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<NotificatorHistoryItem[]> {
+  return listNotificatorCollection<NotificatorHistoryItem>(
+    port,
+    token,
+    buildAgentNotificatorHistoryPath(),
     signal
   );
 }
@@ -939,7 +1356,32 @@ export const agentClient = {
   getJenkinsFolder,
   getJenkinsScope,
   getJenkinsTree,
+  getNotificatorChoices,
   listNotificatorNotificationConfigs,
+  createNotificatorNotificationConfig,
+  updateNotificatorNotificationConfig,
+  deleteNotificatorNotificationConfig,
+  listNotificatorTeams,
+  listNotificatorProducts,
+  createNotificatorProduct,
+  updateNotificatorProduct,
+  deleteNotificatorProduct,
+  listNotificatorSubProducts,
+  createNotificatorSubProduct,
+  updateNotificatorSubProduct,
+  deleteNotificatorSubProduct,
+  listNotificatorSlackChannels,
+  createNotificatorSlackChannel,
+  updateNotificatorSlackChannel,
+  deleteNotificatorSlackChannel,
+  listNotificatorUsers,
+  listNotificatorQaaMembers,
+  listNotificatorFailureMentionRules,
+  listNotificatorEvents,
+  listNotificatorRecurrentFails,
+  listNotificatorFailReasons,
+  listNotificatorMuteStatuses,
+  listNotificatorHistory,
   listLeonidSharedResourceLimitTypes,
   listLeonidSharedResourceLimits,
   createLeonidSharedResourceLimit,

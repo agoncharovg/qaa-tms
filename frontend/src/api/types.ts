@@ -200,10 +200,31 @@ export interface NotificatorChannel {
   description: string | null;
 }
 
+export interface NotificatorChoice {
+  code: string;
+  label: string;
+}
+
+export interface NotificatorChoices {
+  notification_types: NotificatorChoice[];
+}
+
+export interface NotificatorNamedEntity {
+  id: number;
+  name: string;
+}
+
+export interface NotificatorRecurrentFailRef {
+  id: number;
+  description: string | null;
+}
+
 export interface NotificatorUser {
   id: number;
-  sam_account_name: string;
-  user_principal_name: string;
+  sam_account_name?: string | null;
+  user_principal_name?: string | null;
+  username?: string | null;
+  display_name?: string | null;
 }
 
 export interface NotificatorNotificationConfig {
@@ -215,6 +236,142 @@ export interface NotificatorNotificationConfig {
   enabled: boolean;
   channels: NotificatorChannel[];
   users: NotificatorUser[];
+}
+
+export interface NotificatorNotificationConfigInput {
+  product_team: number;
+  notification_type: string;
+  enabled: boolean;
+  channels: number[];
+  users: number[];
+}
+
+export interface NotificatorProductTeam {
+  id: number;
+  name: string;
+  email: string;
+  pagerduty_ep: string | null;
+  product: NotificatorNamedEntity | null;
+  manager: NotificatorUser | null;
+  members: NotificatorUser[];
+  notification_configs_count: number;
+  sub_products_count: number;
+}
+
+export interface NotificatorProduct {
+  id: number;
+  name: string;
+  description: string | null;
+  teams_count: number;
+  sub_products_count: number;
+  qaa_members_count: number;
+}
+
+export interface NotificatorProductInput {
+  name: string;
+  description: string | null;
+}
+
+export interface NotificatorSubProduct {
+  id: number;
+  name: string;
+  product: NotificatorNamedEntity | null;
+  team: NotificatorNamedEntity | null;
+}
+
+export interface NotificatorSubProductInput {
+  name: string;
+  product: number | null;
+  team: number | null;
+}
+
+export interface NotificatorSlackChannel {
+  id: number;
+  channel_id: string;
+  description: string | null;
+}
+
+export interface NotificatorSlackChannelInput {
+  channel_id: string;
+  description: string | null;
+}
+
+export interface NotificatorFullUser {
+  id: number;
+  username: string;
+  user_principal_name: string | null;
+  sam_account_name: string | null;
+  slack_id: string | null;
+  department: string | null;
+  company: string | null;
+  title: string | null;
+  notifications_enabled: boolean;
+  teams: NotificatorNamedEntity[];
+  events_subscriptions: NotificatorNamedEntity[];
+  manager: NotificatorUser | null;
+}
+
+export interface NotificatorQaaMember {
+  id: number;
+  product: NotificatorNamedEntity;
+  user: NotificatorUser;
+}
+
+export interface NotificatorFailureMentionRule {
+  id: number;
+  pattern: string;
+  match_target: string;
+  environment: string;
+  message_template: string;
+  enabled: boolean;
+  users: NotificatorUser[];
+}
+
+export interface NotificatorEvent {
+  id: number;
+  name: string;
+  description: string;
+  enabled: boolean;
+}
+
+export interface NotificatorMuteStatusSummary {
+  id: number;
+  created_at: string | null;
+  expires_at: string | null;
+}
+
+export interface NotificatorRecurrentFail {
+  id: number;
+  description: string;
+  time_threshold: number;
+  number_of_fails: number;
+  environment: string;
+  is_enabled: boolean;
+  channels: NotificatorChannel[];
+  slack_mention: NotificatorUser[];
+  fail_reasons: NotificatorNamedEntity | null;
+  product: NotificatorNamedEntity | null;
+  mute_statuses: NotificatorMuteStatusSummary[];
+}
+
+export interface NotificatorFailReason {
+  id: number;
+  name: string;
+}
+
+export interface NotificatorMuteStatus {
+  id: number;
+  created_at: string | null;
+  expires_at: string | null;
+  configuration: NotificatorRecurrentFailRef | null;
+}
+
+export interface NotificatorHistoryItem {
+  id?: number | null;
+  author: string;
+  when_muted: string | null;
+  muted_until: string | null;
+  config_id: string;
 }
 
 

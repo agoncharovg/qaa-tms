@@ -37,3 +37,6 @@ target/
 /.tmp/
 /agent/uv.lock
 /backend/uv.lock
+
+# Local installed companion (contains machine-local secrets)
+.companion-install/

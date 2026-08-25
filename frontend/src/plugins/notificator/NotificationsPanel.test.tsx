@@ -3,7 +3,12 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const agentClientMock = vi.hoisted(() => ({
+  createNotificatorNotificationConfig: vi.fn(),
+  getNotificatorChoices: vi.fn(),
   listNotificatorNotificationConfigs: vi.fn(),
+  listNotificatorSlackChannels: vi.fn(),
+  listNotificatorTeams: vi.fn(),
+  listNotificatorUsers: vi.fn(),
 }));
 
 vi.mock("@/api/agentClient", () => ({ agentClient: agentClientMock }));
@@ -20,6 +25,48 @@ describe("NotificationsPanel", () => {
     vi.clearAllMocks();
     resetAuthStoreState();
     useAuthStore.setState({ token: TOKEN });
+    agentClientMock.createNotificatorNotificationConfig.mockResolvedValue({});
+    agentClientMock.getNotificatorChoices.mockResolvedValue({
+      notification_types: [
+        {
+          code: "NEW_JIRA_TICKET",
+          label: "Notify about new JIRA ticket creation",
+        },
+        {
+          code: "FAILED_PIPELINE",
+          label: "Notify about failed pipelines",
+        },
+        {
+          code: "FAILED_TEST",
+          label: "Notify about failed tests",
+        },
+      ],
+    });
+    agentClientMock.listNotificatorTeams.mockResolvedValue([
+      { id: 10, name: "qaa-team" },
+      { id: 5, name: "platform" },
+    ]);
+    agentClientMock.listNotificatorSlackChannels.mockResolvedValue([
+      { id: 1, channel_id: "C1", description: "alerts" },
+      { id: 2, channel_id: "C2", description: "ops" },
+    ]);
+    agentClientMock.listNotificatorUsers.mockResolvedValue([
+      {
+        id: 1,
+        username: "jdoe",
+        display_name: "John Doe",
+        sam_account_name: "jdoe",
+        user_principal_name: "jdoe@gcore.com",
+        slack_id: null,
+        department: null,
+        company: null,
+        title: null,
+        notifications_enabled: true,
+        teams: [],
+        events_subscriptions: [],
+        manager: null,
+      },
+    ]);
     agentClientMock.listNotificatorNotificationConfigs.mockResolvedValue([
       {
         id: 1,

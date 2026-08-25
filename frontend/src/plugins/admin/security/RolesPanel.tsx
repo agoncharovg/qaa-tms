@@ -23,42 +23,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { backendClient } from "@/api/backendClient";
 import type { SecurityRole } from "@/api/types";
 import { QueryKey } from "@/constants";
+import {
+  buildPermissionDomains,
+  type PermissionDomain,
+} from "@/plugins/admin/security/permissionCatalog";
 import { useAuthStore } from "@/store/authStore";
-
-const ALL_PERMISSIONS = [
-  "security.read",
-  "security.roles.read",
-  "security.roles.manage",
-  "security.groups.read",
-  "security.groups.manage",
-  "security.audit.read",
-  "users.read",
-  "users.manage",
-  "profile.self.read",
-  "profile.self.manage",
-  "server_settings.read",
-  "server_settings.manage",
-  "operations.read_own",
-  "operations.read_all",
-  "jenkins.read",
-  "jenkins.freeze",
-  "jenkins.resume",
-  "statistics.read",
-  "stagings.read",
-  "stagings.deploy",
-  "stagings.destroy",
-  "stagings.sync",
-  "stagings.e2e_run",
-  "stagings.credentials.read",
-  "kuber.read",
-  "kuber.use_context",
-  "kuber.delete_pod",
-  "qaa.read",
-  "qaa.run",
-  "qaa.admin",
-  "leonid.read",
-  "leonid.write",
-] as const;
 
 type EditState = {
   role: SecurityRole;
@@ -66,6 +35,44 @@ type EditState = {
   description: string;
   permissions: Set<string>;
 };
+
+function formatError(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function PermissionChecklist({
+  domains,
+  selected,
+  disabled = false,
+  onToggle,
+}: {
+  domains: PermissionDomain[];
+  selected: Set<string>;
+  disabled?: boolean;
+  onToggle: (key: string) => void;
+}) {
+  return (
+    <Stack gap="md">
+      {domains.map((domain) => (
+        <Box key={domain.key}>
+          <Divider label={domain.label} labelPosition="left" mb="xs" />
+          <Stack gap={4}>
+            {domain.permissions.map((permission) => (
+              <Checkbox
+                key={permission.key}
+                label={permission.key}
+                checked={selected.has(permission.key)}
+                disabled={disabled}
+                onChange={() => onToggle(permission.key)}
+                size="sm"
+              />
+            ))}
+          </Stack>
+        </Box>
+      ))}
+    </Stack>
+  );
+}
 
 export function RolesPanel() {
   const queryClient = useQueryClient();
@@ -82,6 +89,12 @@ export function RolesPanel() {
   const rolesQuery = useQuery({
     queryKey: [QueryKey.SECURITY_ROLES, token],
     queryFn: ({ signal }) => backendClient.listSecurityRoles(token ?? "", signal),
+    enabled: Boolean(token),
+  });
+
+  const permissionsQuery = useQuery({
+    queryKey: [QueryKey.SECURITY_PERMISSIONS, token],
+    queryFn: ({ signal }) => backendClient.listSecurityPermissions(token ?? "", signal),
     enabled: Boolean(token),
   });
 
@@ -133,7 +146,11 @@ export function RolesPanel() {
   function toggleCreatePerm(key: string) {
     setCreatePerms((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) { next.delete(key); } else { next.add(key); }
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
       return next;
     });
   }
@@ -142,21 +159,29 @@ export function RolesPanel() {
     setEditState((prev) => {
       if (!prev) return prev;
       const next = new Set(prev.permissions);
-      if (next.has(key)) { next.delete(key); } else { next.add(key); }
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
       return { ...prev, permissions: next };
     });
   }
 
-  if (rolesQuery.isLoading) return <Loader />;
-  if (rolesQuery.error) {
+  if (rolesQuery.isLoading || permissionsQuery.isLoading) {
+    return <Loader />;
+  }
+
+  if (rolesQuery.error || permissionsQuery.error) {
     return (
       <Alert icon={<IconAlertCircle size={16} />} color="red">
-        Failed to load roles.
+        {formatError(rolesQuery.error ?? permissionsQuery.error, "Failed to load roles or permissions.")}
       </Alert>
     );
   }
 
   const roles = rolesQuery.data?.items ?? [];
+  const permissionDomains = buildPermissionDomains(permissionsQuery.data?.items ?? []);
 
   return (
     <Stack gap="md">
@@ -236,7 +261,6 @@ export function RolesPanel() {
       </Table>
       {roles.length === 0 && <Text c="dimmed">No roles found.</Text>}
 
-      {/* Create modal */}
       <Modal
         opened={createOpened}
         onClose={() => setCreateOpened(false)}
@@ -248,7 +272,7 @@ export function RolesPanel() {
         <Stack>
           {createMutation.isError && (
             <Alert color="red" icon={<IconAlertCircle size={16} />} title="Create failed">
-              {createMutation.error instanceof Error ? createMutation.error.message : "Unable to create role."}
+              {formatError(createMutation.error, "Unable to create role.")}
             </Alert>
           )}
           <TextInput
@@ -262,19 +286,12 @@ export function RolesPanel() {
             onChange={(e) => setCreateDesc(e.currentTarget.value)}
             minRows={2}
           />
-          <Divider label="Permissions" labelPosition="left" />
-          <ScrollArea h={260}>
-            <Stack gap={4}>
-              {ALL_PERMISSIONS.map((key) => (
-                <Checkbox
-                  key={key}
-                  label={key}
-                  checked={createPerms.has(key)}
-                  onChange={() => toggleCreatePerm(key)}
-                  size="sm"
-                />
-              ))}
-            </Stack>
+          <ScrollArea h={360}>
+            <PermissionChecklist
+              domains={permissionDomains}
+              selected={createPerms}
+              onToggle={toggleCreatePerm}
+            />
           </ScrollArea>
           <Group justify="flex-end">
             <Button variant="default" onClick={() => setCreateOpened(false)}>Cancel</Button>
@@ -285,7 +302,6 @@ export function RolesPanel() {
         </Stack>
       </Modal>
 
-      {/* Edit modal */}
       <Modal
         opened={Boolean(editState)}
         onClose={() => setEditState(null)}
@@ -298,41 +314,38 @@ export function RolesPanel() {
           <Stack>
             {editMutation.isError && (
               <Alert color="red" icon={<IconAlertCircle size={16} />} title="Save failed">
-                {editMutation.error instanceof Error ? editMutation.error.message : "Unable to save role."}
+                {formatError(editMutation.error, "Unable to save role.")}
               </Alert>
             )}
             <TextInput
               label="Display name"
               value={editState.displayName}
               disabled={!editState.role.mutable}
-              onChange={(e) => setEditState((s) => s && { ...s, displayName: e.currentTarget.value })}
+              onChange={(e) =>
+                setEditState((state) => state && { ...state, displayName: e.currentTarget.value })
+              }
             />
             <Textarea
               label="Description"
               value={editState.description}
               disabled={!editState.role.mutable}
-              onChange={(e) => setEditState((s) => s && { ...s, description: e.currentTarget.value })}
+              onChange={(e) =>
+                setEditState((state) => state && { ...state, description: e.currentTarget.value })
+              }
               minRows={2}
             />
-            <Divider label="Permissions" labelPosition="left" />
             {!editState.role.mutable && (
               <Box>
-                <Text size="xs" c="dimmed">This role is immutable — permissions cannot be changed.</Text>
+                <Text size="xs" c="dimmed">This role is immutable, so permissions cannot be changed.</Text>
               </Box>
             )}
-            <ScrollArea h={260}>
-              <Stack gap={4}>
-                {ALL_PERMISSIONS.map((key) => (
-                  <Checkbox
-                    key={key}
-                    label={key}
-                    checked={editState.permissions.has(key)}
-                    disabled={!editState.role.mutable}
-                    onChange={() => toggleEditPerm(key)}
-                    size="sm"
-                  />
-                ))}
-              </Stack>
+            <ScrollArea h={360}>
+              <PermissionChecklist
+                domains={permissionDomains}
+                selected={editState.permissions}
+                disabled={!editState.role.mutable}
+                onToggle={toggleEditPerm}
+              />
             </ScrollArea>
             <Group justify="flex-end">
               <Button variant="default" onClick={() => setEditState(null)}>Cancel</Button>
@@ -344,7 +357,6 @@ export function RolesPanel() {
         )}
       </Modal>
 
-      {/* Delete confirmation modal */}
       <Modal
         opened={Boolean(deletingRole)}
         onClose={() => setDeletingRole(null)}
@@ -355,7 +367,7 @@ export function RolesPanel() {
         <Stack>
           {deleteMutation.isError && (
             <Alert color="red" icon={<IconAlertCircle size={16} />} title="Delete failed">
-              {deleteMutation.error instanceof Error ? deleteMutation.error.message : "Unable to delete role."}
+              {formatError(deleteMutation.error, "Unable to delete role.")}
             </Alert>
           )}
           <Text>
@@ -366,7 +378,11 @@ export function RolesPanel() {
             <Button
               color="red"
               loading={deleteMutation.isPending}
-              onClick={() => { if (deletingRole) deleteMutation.mutate(deletingRole.id); }}
+              onClick={() => {
+                if (deletingRole) {
+                  deleteMutation.mutate(deletingRole.id);
+                }
+              }}
             >
               Delete role
             </Button>

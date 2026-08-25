@@ -75,6 +75,10 @@ ROLE_SEEDS: tuple[RoleSeed, ...] = (
             PermissionKey.QAA_READ,
             PermissionKey.QAA_RUN,
             PermissionKey.QAA_ADMIN,
+            PermissionKey.NOTIFICATOR_READ,
+            PermissionKey.NOTIFICATOR_WRITE,
+            PermissionKey.LEONID_READ,
+            PermissionKey.LEONID_WRITE,
         ),
     ),
     RoleSeed(

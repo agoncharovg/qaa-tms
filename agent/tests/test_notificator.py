@@ -5,10 +5,14 @@ from typing import Any
 import httpx
 import pytest
 
-from app.api import routes as api_routes
+import app.api.notificator as notificator_api
 from app.core.config import Settings
 from app.core.constants import ErrorMessage
-from app.services.notificator import NotificatorUnreachableError, list_notification_configs
+from app.services.notificator import (
+    NotificatorUnreachableError,
+    create_notification_config,
+    list_notification_configs,
+)
 
 NOTIFICATOR_BASE_URL = "https://notificator-prod.i.gc.onl"
 
@@ -43,8 +47,20 @@ def notification_config_payload(team_id: int = 3, team_name: str = "qaa-team") -
                 "id": 4,
                 "sam_account_name": "jdoe",
                 "user_principal_name": "jdoe@gcore.com",
+                "username": None,
+                "display_name": None,
             }
         ],
+    }
+
+
+def notification_config_create_payload() -> dict[str, Any]:
+    return {
+        "product_team": 3,
+        "notification_type": "NEW_JIRA_TICKET",
+        "enabled": True,
+        "channels": [1],
+        "users": [4],
     }
 
 
@@ -52,7 +68,7 @@ def notification_config_payload(team_id: int = 3, team_name: str = "qaa-team") -
 async def test_list_notification_configs_reads_expected_endpoint() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "GET"
-        assert str(request.url) == f"{NOTIFICATOR_BASE_URL}/notification_configs/"
+        assert str(request.url) == f"{NOTIFICATOR_BASE_URL}/notificator/notification_configs/"
         assert request.headers.get("X-Notificator-Token") == "shared-secret"
         return httpx.Response(status_code=200, json=[notification_config_payload()])
 
@@ -75,6 +91,24 @@ async def test_list_notification_configs_forwards_product_team_query() -> None:
         product_team="qaa team",
         transport=httpx.MockTransport(handler),
     )
+
+
+@pytest.mark.asyncio
+async def test_create_notification_config_posts_expected_payload() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert str(request.url) == f"{NOTIFICATOR_BASE_URL}/notificator/notification_configs/"
+        assert request.headers.get("X-Notificator-Token") == "shared-secret"
+        assert request.content == b'{"product_team":3,"notification_type":"NEW_JIRA_TICKET","enabled":true,"channels":[1],"users":[4]}'
+        return httpx.Response(status_code=201, json=notification_config_payload())
+
+    payload = await create_notification_config(
+        build_settings(),
+        notification_config_create_payload(),
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert payload == notification_config_payload()
 
 
 @pytest.mark.asyncio
@@ -120,7 +154,7 @@ async def test_notificator_configs_route_returns_502_on_upstream_forbidden(
         del settings, product_team
         raise NotificatorUnreachableError(ErrorMessage.NOTIFICATOR_UPSTREAM_REJECTED.value)
 
-    monkeypatch.setattr(api_routes, "list_notification_configs", fake_list)
+    monkeypatch.setattr(notificator_api, "list_notification_configs", fake_list)
 
     response = await client.get("/notificator/notification_configs", headers=auth_headers)
 
@@ -146,7 +180,7 @@ async def test_notificator_configs_route_returns_payload_and_forwards_query(
         seen_product_team.append(product_team)
         return [notification_config_payload(team_name="platform")]
 
-    monkeypatch.setattr(api_routes, "list_notification_configs", fake_list)
+    monkeypatch.setattr(notificator_api, "list_notification_configs", fake_list)
 
     response = await client.get(
         "/notificator/notification_configs",
@@ -157,3 +191,33 @@ async def test_notificator_configs_route_returns_payload_and_forwards_query(
     assert response.status_code == 200
     assert seen_product_team == ["platform"]
     assert response.json() == [notification_config_payload(team_name="platform")]
+
+
+@pytest.mark.asyncio
+async def test_notificator_configs_post_route_forwards_body(
+    client: httpx.AsyncClient,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client._transport.app.state.settings = build_settings()
+    seen_payloads: list[dict[str, Any]] = []
+
+    async def fake_create(
+        settings: Settings,
+        body: dict[str, Any],
+    ) -> dict[str, Any]:
+        del settings
+        seen_payloads.append(body)
+        return notification_config_payload()
+
+    monkeypatch.setattr(notificator_api, "create_notification_config", fake_create)
+
+    response = await client.post(
+        "/notificator/notification_configs",
+        headers=auth_headers,
+        json=notification_config_create_payload(),
+    )
+
+    assert response.status_code == 201
+    assert seen_payloads == [notification_config_create_payload()]
+    assert response.json() == notification_config_payload()

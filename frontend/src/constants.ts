@@ -237,7 +237,20 @@ export const AgentPath = {
   SETTINGS: "/settings",
   PREFLIGHT: "/preflight",
   UPDATE: "/update",
+  NOTIFICATOR_CHOICES: "/notificator/choices",
   NOTIFICATOR_CONFIGS: "/notificator/notification_configs",
+  NOTIFICATOR_TEAMS: "/notificator/teams",
+  NOTIFICATOR_PRODUCTS: "/notificator/products",
+  NOTIFICATOR_SUB_PRODUCTS: "/notificator/sub_products",
+  NOTIFICATOR_SLACK_CHANNELS: "/notificator/slack_channels",
+  NOTIFICATOR_USERS: "/notificator/users",
+  NOTIFICATOR_QAA_MEMBERS: "/notificator/qaa_members",
+  NOTIFICATOR_FAILURE_MENTION_RULES: "/notificator/failure_mention_rules",
+  NOTIFICATOR_EVENTS: "/notificator/events",
+  NOTIFICATOR_RECURRENT_FAILS: "/notificator/recurrent_fails",
+  NOTIFICATOR_FAIL_REASONS: "/notificator/fail_reasons",
+  NOTIFICATOR_MUTE_STATUSES: "/notificator/mute_statuses",
+  NOTIFICATOR_HISTORY: "/notificator/history",
   LEONID_SHARED_RESOURCE_LIMIT_TYPES: "/leonid/shared_resource_limit_types",
   LEONID_SHARED_RESOURCE_LIMITS: "/leonid/shared_resource_limits",
   LEONID_SHARED_RESOURCES: "/leonid/shared_resources",
@@ -406,15 +419,79 @@ export function buildAgentLeonidPipelineParamsPath(pipelineParamId?: number): st
   return AgentPath.LEONID_PIPELINE_PARAMS;
 }
 
-export function buildAgentNotificatorConfigsPath(productTeam?: string): string {
-  if (!productTeam) {
-    return AgentPath.NOTIFICATOR_CONFIGS;
+function buildAgentNotificatorItemPath(basePath: string, itemId?: number): string {
+  if (typeof itemId === "number") {
+    return `${basePath}/${encodeURIComponent(String(itemId))}`;
+  }
+
+  return basePath;
+}
+
+export function buildAgentNotificatorChoicesPath(): string {
+  return AgentPath.NOTIFICATOR_CHOICES;
+}
+
+export function buildAgentNotificatorConfigsPath(options?: {
+  configId?: number;
+  productTeam?: string;
+}): string {
+  const path = buildAgentNotificatorItemPath(AgentPath.NOTIFICATOR_CONFIGS, options?.configId);
+  if (!options?.productTeam || typeof options.configId === "number") {
+    return path;
   }
 
   const params = new URLSearchParams({
-    product_team: productTeam,
+    product_team: options.productTeam,
   });
-  return `${AgentPath.NOTIFICATOR_CONFIGS}?${params.toString()}`;
+  return `${path}?${params.toString()}`;
+}
+
+export function buildAgentNotificatorTeamsPath(teamId?: number): string {
+  return buildAgentNotificatorItemPath(AgentPath.NOTIFICATOR_TEAMS, teamId);
+}
+
+export function buildAgentNotificatorProductsPath(productId?: number): string {
+  return buildAgentNotificatorItemPath(AgentPath.NOTIFICATOR_PRODUCTS, productId);
+}
+
+export function buildAgentNotificatorSubProductsPath(subProductId?: number): string {
+  return buildAgentNotificatorItemPath(AgentPath.NOTIFICATOR_SUB_PRODUCTS, subProductId);
+}
+
+export function buildAgentNotificatorSlackChannelsPath(channelId?: number): string {
+  return buildAgentNotificatorItemPath(AgentPath.NOTIFICATOR_SLACK_CHANNELS, channelId);
+}
+
+export function buildAgentNotificatorUsersPath(userId?: number): string {
+  return buildAgentNotificatorItemPath(AgentPath.NOTIFICATOR_USERS, userId);
+}
+
+export function buildAgentNotificatorQaaMembersPath(memberId?: number): string {
+  return buildAgentNotificatorItemPath(AgentPath.NOTIFICATOR_QAA_MEMBERS, memberId);
+}
+
+export function buildAgentNotificatorFailureMentionRulesPath(ruleId?: number): string {
+  return buildAgentNotificatorItemPath(AgentPath.NOTIFICATOR_FAILURE_MENTION_RULES, ruleId);
+}
+
+export function buildAgentNotificatorEventsPath(eventId?: number): string {
+  return buildAgentNotificatorItemPath(AgentPath.NOTIFICATOR_EVENTS, eventId);
+}
+
+export function buildAgentNotificatorRecurrentFailsPath(recurrentFailId?: number): string {
+  return buildAgentNotificatorItemPath(AgentPath.NOTIFICATOR_RECURRENT_FAILS, recurrentFailId);
+}
+
+export function buildAgentNotificatorFailReasonsPath(failReasonId?: number): string {
+  return buildAgentNotificatorItemPath(AgentPath.NOTIFICATOR_FAIL_REASONS, failReasonId);
+}
+
+export function buildAgentNotificatorMuteStatusesPath(muteStatusId?: number): string {
+  return buildAgentNotificatorItemPath(AgentPath.NOTIFICATOR_MUTE_STATUSES, muteStatusId);
+}
+
+export function buildAgentNotificatorHistoryPath(historyItemId?: number): string {
+  return buildAgentNotificatorItemPath(AgentPath.NOTIFICATOR_HISTORY, historyItemId);
 }
 
 export function buildAgentKubeNamespacesPath(context?: string | null): string {
@@ -701,6 +778,18 @@ export const ViewKey = {
   LEONID_OBJECTS: "leonid-objects",
   LEONID_PIPELINE_CONFIGS: "leonid-pipeline-configs",
   NOTIFICATOR_NOTIFICATIONS: "notificator-notifications",
+  NOTIFICATOR_TEAMS: "notificator-teams",
+  NOTIFICATOR_PRODUCTS: "notificator-products",
+  NOTIFICATOR_SUB_PRODUCTS: "notificator-sub-products",
+  NOTIFICATOR_SLACK_CHANNELS: "notificator-slack-channels",
+  NOTIFICATOR_USERS: "notificator-users",
+  NOTIFICATOR_QAA_MEMBERS: "notificator-qaa-members",
+  NOTIFICATOR_FAILURE_MENTION_RULES: "notificator-failure-mention-rules",
+  NOTIFICATOR_EVENTS: "notificator-events",
+  NOTIFICATOR_RECURRENT_FAILS: "notificator-recurrent-fails",
+  NOTIFICATOR_FAIL_REASONS: "notificator-fail-reasons",
+  NOTIFICATOR_MUTE_STATUSES: "notificator-mute-statuses",
+  NOTIFICATOR_HISTORY: "notificator-history",
   STATISTICS_SMOKE: "statistics-smoke",
   STAGINGS_DEPLOY: "stagings-deploy",
   STAGINGS_HISTORY: "stagings-history",
@@ -729,6 +818,18 @@ export const TabId = {
   LEONID_OBJECTS: "tab-leonid-objects",
   LEONID_PIPELINE_CONFIGS: "tab-leonid-pipeline-configs",
   NOTIFICATOR_NOTIFICATIONS: "tab-notificator-notifications",
+  NOTIFICATOR_TEAMS: "tab-notificator-teams",
+  NOTIFICATOR_PRODUCTS: "tab-notificator-products",
+  NOTIFICATOR_SUB_PRODUCTS: "tab-notificator-sub-products",
+  NOTIFICATOR_SLACK_CHANNELS: "tab-notificator-slack-channels",
+  NOTIFICATOR_USERS: "tab-notificator-users",
+  NOTIFICATOR_QAA_MEMBERS: "tab-notificator-qaa-members",
+  NOTIFICATOR_FAILURE_MENTION_RULES: "tab-notificator-failure-mention-rules",
+  NOTIFICATOR_EVENTS: "tab-notificator-events",
+  NOTIFICATOR_RECURRENT_FAILS: "tab-notificator-recurrent-fails",
+  NOTIFICATOR_FAIL_REASONS: "tab-notificator-fail-reasons",
+  NOTIFICATOR_MUTE_STATUSES: "tab-notificator-mute-statuses",
+  NOTIFICATOR_HISTORY: "tab-notificator-history",
   STATISTICS_SMOKE: "tab-statistics-smoke",
   STAGINGS_DEPLOY: "tab-stagings-deploy",
   STAGINGS_HISTORY: "tab-stagings-history",
@@ -757,6 +858,18 @@ export const TabTitle: Record<TabId, string> = {
   [TabId.LEONID_OBJECTS]: "Objects",
   [TabId.LEONID_PIPELINE_CONFIGS]: "Pipeline configs",
   [TabId.NOTIFICATOR_NOTIFICATIONS]: "Notifications",
+  [TabId.NOTIFICATOR_TEAMS]: "Teams",
+  [TabId.NOTIFICATOR_PRODUCTS]: "Products",
+  [TabId.NOTIFICATOR_SUB_PRODUCTS]: "Sub products",
+  [TabId.NOTIFICATOR_SLACK_CHANNELS]: "Slack channels",
+  [TabId.NOTIFICATOR_USERS]: "Users",
+  [TabId.NOTIFICATOR_QAA_MEMBERS]: "QAA members",
+  [TabId.NOTIFICATOR_FAILURE_MENTION_RULES]: "Failure mention rules",
+  [TabId.NOTIFICATOR_EVENTS]: "Events",
+  [TabId.NOTIFICATOR_RECURRENT_FAILS]: "Recurrent fails",
+  [TabId.NOTIFICATOR_FAIL_REASONS]: "Fail reasons",
+  [TabId.NOTIFICATOR_MUTE_STATUSES]: "Mute statuses",
+  [TabId.NOTIFICATOR_HISTORY]: "History",
   [TabId.STATISTICS_SMOKE]: "Smoke",
   [TabId.STAGINGS_DEPLOY]: "Deploy",
   [TabId.STAGINGS_HISTORY]: "History",
@@ -811,7 +924,20 @@ export const QueryKey = {
   LEONID_SHARED_RESOURCES: "leonid-shared-resources",
   LEONID_OBJECT_DEFINITIONS: "leonid-object-definitions",
   LEONID_OBJECT_VALUES: "leonid-object-values",
+  NOTIFICATOR_CHOICES: "notificator-choices",
   NOTIFICATOR_NOTIFICATION_CONFIGS: "notificator-notification-configs",
+  NOTIFICATOR_TEAMS: "notificator-teams",
+  NOTIFICATOR_PRODUCTS: "notificator-products",
+  NOTIFICATOR_SUB_PRODUCTS: "notificator-sub-products",
+  NOTIFICATOR_SLACK_CHANNELS: "notificator-slack-channels",
+  NOTIFICATOR_USERS: "notificator-users",
+  NOTIFICATOR_QAA_MEMBERS: "notificator-qaa-members",
+  NOTIFICATOR_FAILURE_MENTION_RULES: "notificator-failure-mention-rules",
+  NOTIFICATOR_EVENTS: "notificator-events",
+  NOTIFICATOR_RECURRENT_FAILS: "notificator-recurrent-fails",
+  NOTIFICATOR_FAIL_REASONS: "notificator-fail-reasons",
+  NOTIFICATOR_MUTE_STATUSES: "notificator-mute-statuses",
+  NOTIFICATOR_HISTORY: "notificator-history",
   LEONID_PIPELINE_PARAMS: "leonid-pipeline-params",
   JENKINS_SCOPE: "jenkins-scope",
   JENKINS_TREE: "jenkins-tree",

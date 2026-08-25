@@ -10,7 +10,6 @@ from typing import Annotated, Any, cast
 import httpx
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ValidationError
 
 from app.api.deps import (
     AuthContext,
@@ -19,6 +18,8 @@ from app.api.deps import (
     require_auth,
     require_permission,
 )
+from app.api.notificator import parse_request_model
+from app.api.notificator import router as notificator_router
 from app.core import env_file
 from app.core.config import JenkinsRootGroup, Settings
 from app.core.config import get_settings as load_settings
@@ -100,7 +101,6 @@ from app.schemas import (
     NamespaceDeployRecipeResponse,
     NamespaceListResponse,
     NamespaceStatusResponse,
-    NotificatorNotificationConfigResponse,
     PreflightItem,
     SyncRequest,
     to_agent_settings_read,
@@ -187,16 +187,12 @@ from app.services.namespaces import (
     read_namespace_status,
     stream_namespace_logs,
 )
-from app.services.notificator import (
-    NotificatorNotConfiguredError,
-    NotificatorUnreachableError,
-    list_notification_configs,
-)
 from app.services.preflight import collect_preflight
 from app.services.staging import StagingNotInstalledError, build_ping_response
 from app.services.update import UpdateUnsupportedError, spawn_update_helper
 
 router = APIRouter()
+router.include_router(notificator_router)
 AuthDep = Annotated[AuthContext, Depends(require_auth)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 JobManagerDep = Annotated[JobManager, Depends(get_job_manager)]
@@ -224,9 +220,6 @@ StagingsDestroyAuth = Annotated[
 StagingsSyncAuth = Annotated[AuthContext, Depends(require_permission(PermissionKey.STAGINGS_SYNC))]
 StagingsE2eRunAuth = Annotated[
     AuthContext, Depends(require_permission(PermissionKey.STAGINGS_E2E_RUN))
-]
-NotificatorReadAuth = Annotated[
-    AuthContext, Depends(require_permission(PermissionKey.NOTIFICATOR_READ))
 ]
 LeonidReadAuth = Annotated[AuthContext, Depends(require_permission(PermissionKey.LEONID_READ))]
 LeonidWriteAuth = Annotated[AuthContext, Depends(require_permission(PermissionKey.LEONID_WRITE))]
@@ -328,28 +321,6 @@ async def preflight(_: AuthDep, settings: SettingsDep) -> list[PreflightItem]:
     return await collect_preflight(settings)
 
 
-def require_notificator_read_configured(settings: Settings) -> None:
-    if not settings.notificator_configured:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=ErrorMessage.NOTIFICATOR_NOT_CONFIGURED.value,
-        )
-
-
-def raise_notificator_http_error(
-    exc: NotificatorNotConfiguredError | NotificatorUnreachableError,
-) -> None:
-    if isinstance(exc, NotificatorNotConfiguredError):
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(exc),
-        ) from exc
-    raise HTTPException(
-        status_code=status.HTTP_502_BAD_GATEWAY,
-        detail=str(exc),
-    ) from exc
-
-
 def require_leonid_read_configured(settings: Settings) -> None:
     if not settings.leonid_configured:
         raise HTTPException(
@@ -376,55 +347,6 @@ def raise_leonid_http_error(exc: LeonidNotConfiguredError | LeonidUnreachableErr
         status_code=status.HTTP_502_BAD_GATEWAY,
         detail=str(exc),
     ) from exc
-
-
-def format_validation_error(exc: ValidationError) -> str:
-    first_error = exc.errors(include_url=False)[0]
-    location = ".".join(str(part) for part in first_error.get("loc", ()))
-    message = str(first_error.get("msg", "Invalid request body."))
-    if location:
-        return f"Invalid request body: {location}: {message}"
-    return f"Invalid request body: {message}"
-
-
-def parse_request_model(
-    payload: Any,
-    model_type: type[BaseModel],
-    *,
-    partial: bool = False,
-) -> dict[str, Any]:
-    if not isinstance(payload, dict):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid request body: expected a JSON object.",
-        )
-
-    try:
-        model = model_type.model_validate(payload)
-    except ValidationError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=format_validation_error(exc),
-        ) from exc
-
-    return model.model_dump(exclude_unset=partial)
-
-
-@router.get(
-    AgentPath.NOTIFICATOR_CONFIGS.value,
-    response_model=list[NotificatorNotificationConfigResponse],
-)
-async def get_notificator_configs(
-    _: NotificatorReadAuth,
-    settings: SettingsDep,
-    product_team: str | None = Query(default=None),
-) -> list[NotificatorNotificationConfigResponse]:
-    require_notificator_read_configured(settings)
-    try:
-        payload = await list_notification_configs(settings, product_team=product_team)
-    except (NotificatorNotConfiguredError, NotificatorUnreachableError) as exc:
-        raise_notificator_http_error(exc)
-    return [NotificatorNotificationConfigResponse(**item) for item in payload]
 
 
 @router.get(

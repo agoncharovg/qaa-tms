@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   Alert,
   Badge,
+  Box,
   Button,
   Checkbox,
   Divider,
@@ -23,42 +24,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { backendClient } from "@/api/backendClient";
 import type { SecurityGroup, SecurityRole } from "@/api/types";
 import { QueryKey } from "@/constants";
+import {
+  buildPermissionDomains,
+  type PermissionDomain,
+} from "@/plugins/admin/security/permissionCatalog";
 import { useAuthStore } from "@/store/authStore";
-
-const ALL_PERMISSIONS = [
-  "security.read",
-  "security.roles.read",
-  "security.roles.manage",
-  "security.groups.read",
-  "security.groups.manage",
-  "security.audit.read",
-  "users.read",
-  "users.manage",
-  "profile.self.read",
-  "profile.self.manage",
-  "server_settings.read",
-  "server_settings.manage",
-  "operations.read_own",
-  "operations.read_all",
-  "jenkins.read",
-  "jenkins.freeze",
-  "jenkins.resume",
-  "statistics.read",
-  "stagings.read",
-  "stagings.deploy",
-  "stagings.destroy",
-  "stagings.sync",
-  "stagings.e2e_run",
-  "stagings.credentials.read",
-  "kuber.read",
-  "kuber.use_context",
-  "kuber.delete_pod",
-  "qaa.read",
-  "qaa.run",
-  "qaa.admin",
-  "leonid.read",
-  "leonid.write",
-] as const;
 
 type UserOption = { id: number; username: string; display_name: string };
 
@@ -78,6 +48,50 @@ type CreateState = {
   memberIds: string[];
   roleIds: string[];
 };
+
+function formatError(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function PermissionChecklist({
+  directPermissions,
+  disabled = false,
+  domains,
+  inheritedPermissions,
+  onToggle,
+}: {
+  directPermissions: Set<string>;
+  disabled?: boolean;
+  domains: PermissionDomain[];
+  inheritedPermissions: Set<string>;
+  onToggle: (key: string) => void;
+}) {
+  return (
+    <Stack gap="md">
+      {domains.map((domain) => (
+        <Box key={domain.key}>
+          <Divider label={domain.label} labelPosition="left" mb="xs" />
+          <Stack gap={4}>
+            {domain.permissions.map((permission) => {
+              const isInherited = inheritedPermissions.has(permission.key);
+              return (
+                <Checkbox
+                  key={permission.key}
+                  label={permission.key}
+                  description={isInherited ? "Inherited from selected roles" : undefined}
+                  checked={isInherited || directPermissions.has(permission.key)}
+                  disabled={disabled || isInherited}
+                  onChange={() => onToggle(permission.key)}
+                  size="sm"
+                />
+              );
+            })}
+          </Stack>
+        </Box>
+      ))}
+    </Stack>
+  );
+}
 
 export function GroupsPanel() {
   const queryClient = useQueryClient();
@@ -102,6 +116,12 @@ export function GroupsPanel() {
   const rolesQuery = useQuery({
     queryKey: [QueryKey.SECURITY_ROLES, token],
     queryFn: ({ signal }) => backendClient.listSecurityRoles(token ?? "", signal),
+    enabled: Boolean(token),
+  });
+
+  const permissionsQuery = useQuery({
+    queryKey: [QueryKey.SECURITY_PERMISSIONS, token],
+    queryFn: ({ signal }) => backendClient.listSecurityPermissions(token ?? "", signal),
     enabled: Boolean(token),
   });
 
@@ -155,54 +175,103 @@ export function GroupsPanel() {
   const allRoles: SecurityRole[] = rolesQuery.data?.items ?? [];
 
   function getRolePermissions(roleIds: string[]): Set<string> {
-    const perms = new Set<string>();
+    const permissions = new Set<string>();
     for (const idStr of roleIds) {
-      const role = allRoles.find((r) => r.id === Number(idStr));
-      if (role) role.permissions.forEach((p) => perms.add(p));
+      const role = allRoles.find((item) => item.id === Number(idStr));
+      if (!role) {
+        continue;
+      }
+      role.permissions.forEach((permission) => permissions.add(permission));
     }
-    return perms;
+    return permissions;
   }
 
   function openCreate() {
     createMutation.reset();
-    setCreateState({ displayName: "", description: "", permissions: new Set(), memberIds: [], roleIds: [] });
+    setCreateState({
+      displayName: "",
+      description: "",
+      permissions: new Set(),
+      memberIds: [],
+      roleIds: [],
+    });
   }
 
   function openEdit(group: SecurityGroup) {
     editMutation.reset();
-    const roleIds = group.role_ids.map(String);
-    const ownPerms = new Set(group.permissions);
-    const rolePerms = getRolePermissions(roleIds);
-    rolePerms.forEach((p) => ownPerms.add(p));
     setEditState({
       group,
       displayName: group.display_name,
       description: group.description ?? "",
-      permissions: ownPerms,
-      memberIds: group.members.map((m) => String(m.id)),
-      roleIds,
+      permissions: new Set(group.permissions),
+      memberIds: group.members.map((member) => String(member.id)),
+      roleIds: group.role_ids.map(String),
     });
   }
 
-  if (groupsQuery.isLoading || usersQuery.isLoading || rolesQuery.isLoading) return <Loader />;
-  if (groupsQuery.error) {
+  function toggleCreatePermission(key: string) {
+    setCreateState((state) => {
+      if (!state) {
+        return state;
+      }
+      const next = new Set(state.permissions);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return { ...state, permissions: next };
+    });
+  }
+
+  function toggleEditPermission(key: string) {
+    setEditState((state) => {
+      if (!state) {
+        return state;
+      }
+      const next = new Set(state.permissions);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return { ...state, permissions: next };
+    });
+  }
+
+  if (
+    groupsQuery.isLoading ||
+    usersQuery.isLoading ||
+    rolesQuery.isLoading ||
+    permissionsQuery.isLoading
+  ) {
+    return <Loader />;
+  }
+
+  if (groupsQuery.error || usersQuery.error || rolesQuery.error || permissionsQuery.error) {
     return (
       <Alert icon={<IconAlertCircle size={16} />} color="red">
-        Failed to load groups.
+        {formatError(
+          groupsQuery.error ?? usersQuery.error ?? rolesQuery.error ?? permissionsQuery.error,
+          "Failed to load groups, users, roles, or permissions.",
+        )}
       </Alert>
     );
   }
 
   const groups = groupsQuery.data?.items ?? [];
   const allUsers: UserOption[] = usersQuery.data?.items ?? [];
-  const userOptions = allUsers.map((u) => ({
-    value: String(u.id),
-    label: `${u.display_name} (${u.username})`,
+  const permissionDomains = buildPermissionDomains(permissionsQuery.data?.items ?? []);
+  const userOptions = allUsers.map((user) => ({
+    value: String(user.id),
+    label: `${user.display_name} (${user.username})`,
   }));
-  const roleOptions = allRoles.map((r) => ({
-    value: String(r.id),
-    label: r.display_name,
+  const roleOptions = allRoles.map((role) => ({
+    value: String(role.id),
+    label: role.display_name,
   }));
+  const createInheritedPermissions = createState ? getRolePermissions(createState.roleIds) : new Set<string>();
+  const editInheritedPermissions = editState ? getRolePermissions(editState.roleIds) : new Set<string>();
 
   return (
     <Stack gap="md">
@@ -267,7 +336,6 @@ export function GroupsPanel() {
       </Table>
       {groups.length === 0 && <Text c="dimmed">No groups found.</Text>}
 
-      {/* Create modal */}
       <Modal
         opened={Boolean(createState)}
         onClose={() => setCreateState(null)}
@@ -280,25 +348,31 @@ export function GroupsPanel() {
           <Stack>
             {createMutation.isError && (
               <Alert color="red" icon={<IconAlertCircle size={16} />} title="Create failed">
-                {createMutation.error instanceof Error ? createMutation.error.message : "Unable to create group."}
+                {formatError(createMutation.error, "Unable to create group.")}
               </Alert>
             )}
             <TextInput
               label="Display name"
               value={createState.displayName}
-              onChange={(e) => setCreateState((s) => s && { ...s, displayName: e.currentTarget.value })}
+              onChange={(e) =>
+                setCreateState((state) => state && { ...state, displayName: e.currentTarget.value })
+              }
             />
             <Textarea
               label="Description"
               value={createState.description}
-              onChange={(e) => setCreateState((s) => s && { ...s, description: e.currentTarget.value })}
+              onChange={(e) =>
+                setCreateState((state) => state && { ...state, description: e.currentTarget.value })
+              }
               minRows={2}
             />
             <Divider label="Members" labelPosition="left" />
             <MultiSelect
               data={userOptions}
               value={createState.memberIds}
-              onChange={(vals) => setCreateState((s) => s && { ...s, memberIds: vals })}
+              onChange={(values) =>
+                setCreateState((state) => state && { ...state, memberIds: values })
+              }
               placeholder="Add members…"
               searchable
               size="sm"
@@ -307,39 +381,20 @@ export function GroupsPanel() {
             <MultiSelect
               data={roleOptions}
               value={createState.roleIds}
-              onChange={(vals) =>
-                setCreateState((s) => {
-                  if (!s) return s;
-                  const rolePerms = getRolePermissions(vals);
-                  const next = new Set(s.permissions);
-                  rolePerms.forEach((p) => next.add(p));
-                  return { ...s, roleIds: vals, permissions: next };
-                })
+              onChange={(values) =>
+                setCreateState((state) => state && { ...state, roleIds: values })
               }
               placeholder="Assign roles…"
               searchable
               size="sm"
             />
-            <Divider label="Permissions" labelPosition="left" />
-            <ScrollArea h={220}>
-              <Stack gap={4}>
-                {ALL_PERMISSIONS.map((key) => (
-                  <Checkbox
-                    key={key}
-                    label={key}
-                    checked={createState.permissions.has(key)}
-                    onChange={() =>
-                      setCreateState((s) => {
-                        if (!s) return s;
-                        const next = new Set(s.permissions);
-                        if (next.has(key)) { next.delete(key); } else { next.add(key); }
-                        return { ...s, permissions: next };
-                      })
-                    }
-                    size="sm"
-                  />
-                ))}
-              </Stack>
+            <ScrollArea h={320}>
+              <PermissionChecklist
+                directPermissions={createState.permissions}
+                domains={permissionDomains}
+                inheritedPermissions={createInheritedPermissions}
+                onToggle={toggleCreatePermission}
+              />
             </ScrollArea>
             <Group justify="flex-end">
               <Button variant="default" onClick={() => setCreateState(null)}>Cancel</Button>
@@ -351,7 +406,6 @@ export function GroupsPanel() {
         )}
       </Modal>
 
-      {/* Edit modal */}
       <Modal
         opened={Boolean(editState)}
         onClose={() => setEditState(null)}
@@ -364,27 +418,33 @@ export function GroupsPanel() {
           <Stack>
             {editMutation.isError && (
               <Alert color="red" icon={<IconAlertCircle size={16} />} title="Save failed">
-                {editMutation.error instanceof Error ? editMutation.error.message : "Unable to save group."}
+                {formatError(editMutation.error, "Unable to save group.")}
               </Alert>
             )}
             <TextInput
               label="Display name"
               value={editState.displayName}
               disabled={editState.group.system}
-              onChange={(e) => setEditState((s) => s && { ...s, displayName: e.currentTarget.value })}
+              onChange={(e) =>
+                setEditState((state) => state && { ...state, displayName: e.currentTarget.value })
+              }
             />
             <Textarea
               label="Description"
               value={editState.description}
               disabled={editState.group.system}
-              onChange={(e) => setEditState((s) => s && { ...s, description: e.currentTarget.value })}
+              onChange={(e) =>
+                setEditState((state) => state && { ...state, description: e.currentTarget.value })
+              }
               minRows={2}
             />
             <Divider label="Members" labelPosition="left" />
             <MultiSelect
               data={userOptions}
               value={editState.memberIds}
-              onChange={(vals) => setEditState((s) => s && { ...s, memberIds: vals })}
+              onChange={(values) =>
+                setEditState((state) => state && { ...state, memberIds: values })
+              }
               placeholder="Add members…"
               searchable
               size="sm"
@@ -394,40 +454,21 @@ export function GroupsPanel() {
               data={roleOptions}
               value={editState.roleIds}
               disabled={editState.group.system}
-              onChange={(vals) =>
-                setEditState((s) => {
-                  if (!s) return s;
-                  const rolePerms = getRolePermissions(vals);
-                  const next = new Set(s.permissions);
-                  rolePerms.forEach((p) => next.add(p));
-                  return { ...s, roleIds: vals, permissions: next };
-                })
+              onChange={(values) =>
+                setEditState((state) => state && { ...state, roleIds: values })
               }
               placeholder="Assign roles…"
               searchable
               size="sm"
             />
-            <Divider label="Permissions" labelPosition="left" />
-            <ScrollArea h={220}>
-              <Stack gap={4}>
-                {ALL_PERMISSIONS.map((key) => (
-                  <Checkbox
-                    key={key}
-                    label={key}
-                    checked={editState.permissions.has(key)}
-                    disabled={editState.group.system}
-                    onChange={() =>
-                      setEditState((s) => {
-                        if (!s) return s;
-                        const next = new Set(s.permissions);
-                        if (next.has(key)) { next.delete(key); } else { next.add(key); }
-                        return { ...s, permissions: next };
-                      })
-                    }
-                    size="sm"
-                  />
-                ))}
-              </Stack>
+            <ScrollArea h={320}>
+              <PermissionChecklist
+                directPermissions={editState.permissions}
+                disabled={editState.group.system}
+                domains={permissionDomains}
+                inheritedPermissions={editInheritedPermissions}
+                onToggle={toggleEditPermission}
+              />
             </ScrollArea>
             <Group justify="flex-end">
               <Button variant="default" onClick={() => setEditState(null)}>Cancel</Button>
@@ -439,7 +480,6 @@ export function GroupsPanel() {
         )}
       </Modal>
 
-      {/* Delete confirmation modal */}
       <Modal
         opened={Boolean(deletingGroup)}
         onClose={() => setDeletingGroup(null)}
@@ -450,7 +490,7 @@ export function GroupsPanel() {
         <Stack>
           {deleteMutation.isError && (
             <Alert color="red" icon={<IconAlertCircle size={16} />} title="Delete failed">
-              {deleteMutation.error instanceof Error ? deleteMutation.error.message : "Unable to delete group."}
+              {formatError(deleteMutation.error, "Unable to delete group.")}
             </Alert>
           )}
           <Text>
@@ -461,7 +501,11 @@ export function GroupsPanel() {
             <Button
               color="red"
               loading={deleteMutation.isPending}
-              onClick={() => { if (deletingGroup) deleteMutation.mutate(deletingGroup.id); }}
+              onClick={() => {
+                if (deletingGroup) {
+                  deleteMutation.mutate(deletingGroup.id);
+                }
+              }}
             >
               Delete group
             </Button>
