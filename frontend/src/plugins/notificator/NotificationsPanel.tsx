@@ -18,7 +18,7 @@ import {
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { agentClient } from "@/api/agentClient";
+import { backendClient } from "@/api/backendClient";
 import type {
   NotificatorNotificationConfig,
   NotificatorNotificationConfigInput,
@@ -27,10 +27,6 @@ import { QueryKey } from "@/constants";
 import { formatChannels, formatUser, formatUsers } from "@/plugins/notificator/formatters";
 import { groupNotificationConfigsByTeam } from "@/plugins/notificator/groupByTeam";
 import { useAuthStore } from "@/store/authStore";
-
-interface NotificationsPanelProps {
-  agentPort: number;
-}
 
 interface NotificationFormState {
   productTeam: string;
@@ -62,7 +58,7 @@ function formatError(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-export function NotificationsPanel({ agentPort }: NotificationsPanelProps) {
+export function NotificationsPanel() {
   const token = useAuthStore((state) => state.token) ?? "";
   const queryClient = useQueryClient();
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
@@ -73,31 +69,31 @@ export function NotificationsPanel({ agentPort }: NotificationsPanelProps) {
 
   const configsQuery = useQuery({
     queryFn: ({ signal }) =>
-      agentClient.listNotificatorNotificationConfigs(agentPort, token, undefined, signal),
-    queryKey: [QueryKey.NOTIFICATOR_NOTIFICATION_CONFIGS, agentPort, token],
+      backendClient.listNotificatorNotificationConfigs(token, undefined, signal),
+    queryKey: [QueryKey.NOTIFICATOR_NOTIFICATION_CONFIGS, token],
   });
   const choicesQuery = useQuery({
-    queryFn: ({ signal }) => agentClient.getNotificatorChoices(agentPort, token, signal),
-    queryKey: [QueryKey.NOTIFICATOR_CHOICES, agentPort, token],
+    queryFn: ({ signal }) => backendClient.getNotificatorChoices(token, signal),
+    queryKey: [QueryKey.NOTIFICATOR_CHOICES, token],
   });
   const teamsQuery = useQuery({
-    queryFn: ({ signal }) => agentClient.listNotificatorTeams(agentPort, token, signal),
-    queryKey: [QueryKey.NOTIFICATOR_TEAMS, agentPort, token],
+    queryFn: ({ signal }) => backendClient.listNotificatorTeams(token, signal),
+    queryKey: [QueryKey.NOTIFICATOR_TEAMS, token],
   });
   const channelsQuery = useQuery({
-    queryFn: ({ signal }) => agentClient.listNotificatorSlackChannels(agentPort, token, signal),
-    queryKey: [QueryKey.NOTIFICATOR_SLACK_CHANNELS, agentPort, token],
+    queryFn: ({ signal }) => backendClient.listNotificatorSlackChannels(token, signal),
+    queryKey: [QueryKey.NOTIFICATOR_SLACK_CHANNELS, token],
   });
   const usersQuery = useQuery({
-    queryFn: ({ signal }) => agentClient.listNotificatorUsers(agentPort, token, signal),
-    queryKey: [QueryKey.NOTIFICATOR_USERS, agentPort, token],
+    queryFn: ({ signal }) => backendClient.listNotificatorUsers(token, signal),
+    queryKey: [QueryKey.NOTIFICATOR_USERS, token],
   });
 
   const mutation = useMutation({
     mutationFn: (payload: { id: number | null; body: NotificatorNotificationConfigInput }) =>
       payload.id === null
-        ? agentClient.createNotificatorNotificationConfig(agentPort, token, payload.body)
-        : agentClient.updateNotificatorNotificationConfig(agentPort, token, payload.id, payload.body),
+        ? backendClient.createNotificatorNotificationConfig(token, payload.body)
+        : backendClient.updateNotificatorNotificationConfig(token, payload.id, payload.body),
     onSuccess: async () => {
       setEditingConfig(null);
       setForm(EMPTY_FORM);
@@ -108,7 +104,7 @@ export function NotificationsPanel({ agentPort }: NotificationsPanelProps) {
 
   const deleteMutation = useMutation({
     mutationFn: (configId: number) =>
-      agentClient.deleteNotificatorNotificationConfig(agentPort, token, configId),
+      backendClient.deleteNotificatorNotificationConfig(token, configId),
     onSuccess: async () => {
       setDeleteTarget(null);
       await queryClient.invalidateQueries({ queryKey: [QueryKey.NOTIFICATOR_NOTIFICATION_CONFIGS] });

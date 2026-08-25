@@ -10,26 +10,6 @@ class AgentPath(StrEnum):
     SETTINGS = "/settings"
     PREFLIGHT = "/preflight"
     UPDATE = "/update"
-    NOTIFICATOR_CHOICES = "/notificator/choices"
-    NOTIFICATOR_CONFIGS = "/notificator/notification_configs"
-    NOTIFICATOR_TEAMS = "/notificator/teams"
-    NOTIFICATOR_PRODUCTS = "/notificator/products"
-    NOTIFICATOR_SUB_PRODUCTS = "/notificator/sub_products"
-    NOTIFICATOR_SLACK_CHANNELS = "/notificator/slack_channels"
-    NOTIFICATOR_USERS = "/notificator/users"
-    NOTIFICATOR_QAA_MEMBERS = "/notificator/qaa_members"
-    NOTIFICATOR_FAILURE_MENTION_RULES = "/notificator/failure_mention_rules"
-    NOTIFICATOR_EVENTS = "/notificator/events"
-    NOTIFICATOR_RECURRENT_FAILS = "/notificator/recurrent_fails"
-    NOTIFICATOR_FAIL_REASONS = "/notificator/fail_reasons"
-    NOTIFICATOR_MUTE_STATUSES = "/notificator/mute_statuses"
-    NOTIFICATOR_HISTORY = "/notificator/history"
-    LEONID_SHARED_RESOURCE_LIMIT_TYPES = "/leonid/shared_resource_limit_types"
-    LEONID_SHARED_RESOURCE_LIMITS = "/leonid/shared_resource_limits"
-    LEONID_SHARED_RESOURCES = "/leonid/shared_resources"
-    LEONID_OBJECT_DEFINITIONS = "/leonid/object_definitions"
-    LEONID_OBJECT_VALUES = "/leonid/object_values"
-    LEONID_PIPELINE_PARAMS = "/leonid/pipeline_params"
     JENKINS_SCOPE = "/jenkins/scope"
     JENKINS_TREE = "/jenkins/tree"
     JENKINS_BUILDS = "/jenkins/builds"
@@ -135,12 +115,6 @@ class JenkinsResumeItemState(StrEnum):
 
 
 class EnvKey(StrEnum):
-    NOTIFICATOR_URL = "AGENT_NOTIFICATOR_URL"
-    NOTIFICATOR_TOKEN = "AGENT_NOTIFICATOR_TOKEN"
-    NOTIFICATOR_REQUEST_TIMEOUT = "AGENT_NOTIFICATOR_REQUEST_TIMEOUT"
-    LEONID_URL = "AGENT_LEONID_URL"
-    LEONID_TOKEN = "AGENT_LEONID_TOKEN"
-    LEONID_REQUEST_TIMEOUT = "AGENT_LEONID_REQUEST_TIMEOUT"
     HOST = "AGENT_HOST"
     PORT = "AGENT_PORT"
     CORS_ORIGINS = "AGENT_CORS_ORIGINS"
@@ -188,8 +162,6 @@ class HeaderName(StrEnum):
     ORIGIN = "Origin"
     VARY = "Vary"
     X_QAA_GENERATOR_TOKEN = "X-QAA-Generator-Token"
-    X_NOTIFICATOR_TOKEN = "X-Notificator-Token"
-    X_LEONID_TOKEN = "X-Leonid-Token"
     X_QAA_TMS = "X-QAA-TMS"
 
 
@@ -235,10 +207,6 @@ class PermissionKey(StrEnum):
     QAA_READ = "qaa.read"
     QAA_RUN = "qaa.run"
     QAA_ADMIN = "qaa.admin"
-    NOTIFICATOR_READ = "notificator.read"
-    NOTIFICATOR_WRITE = "notificator.write"
-    LEONID_READ = "leonid.read"
-    LEONID_WRITE = "leonid.write"
 
 
 class BackendPath(StrEnum):
@@ -399,17 +367,6 @@ class ErrorMessage(StrEnum):
     UNAUTHORIZED = "Unauthorized."
     PERMISSION_DENIED = "You do not have permission to perform this action."
     AUTHORIZATION_UNAVAILABLE = "Authorization could not be verified."
-    NOTIFICATOR_NOT_CONFIGURED = (
-        "Notificator is not configured (set AGENT_NOTIFICATOR_URL and AGENT_NOTIFICATOR_TOKEN)."
-    )
-    NOTIFICATOR_UNREACHABLE = "Notificator is unreachable."
-    NOTIFICATOR_UPSTREAM_REJECTED = "Notificator rejected the shared token."
-    LEONID_NOT_CONFIGURED = "Leonid is not configured (set AGENT_LEONID_URL)."
-    LEONID_WRITE_NOT_CONFIGURED = (
-        "Leonid write access is not configured (set AGENT_LEONID_URL and AGENT_LEONID_TOKEN)."
-    )
-    LEONID_UNREACHABLE = "Leonid is unreachable."
-    LEONID_UPSTREAM_REJECTED = "Leonid rejected the shared token."
     JENKINS_NOT_CONFIGURED = "Jenkins is not configured (set AGENT_JENKINS_URL/USERNAME/TOKEN)."
     JENKINS_UNREACHABLE = "Jenkins is unreachable."
     JENKINS_PATH_OUT_OF_SCOPE = "Requested job path is outside the allowed Jenkins scope."
@@ -452,10 +409,6 @@ AGENT_APP_NAME = "qaa-tms-agent"
 DEFAULT_AGENT_VERSION = "0.2.0"
 DEFAULT_AGENT_HOST = "127.0.0.1"
 DEFAULT_AGENT_PORT = 47600
-DEFAULT_NOTIFICATOR_URL = "https://notificator-prod.i.gc.onl"
-DEFAULT_NOTIFICATOR_REQUEST_TIMEOUT = 15.0
-DEFAULT_LEONID_URL = "https://leonid-preprod.i.gc.onl"
-DEFAULT_LEONID_REQUEST_TIMEOUT = 15.0
 DEFAULT_BACKEND_URL = "http://localhost:8000"
 DEFAULT_CORS_ORIGINS = (
     "http://localhost:3000",

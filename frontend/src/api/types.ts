@@ -146,10 +146,6 @@ export interface AgentSettings {
   jenkins_url: string;
   jenkins_username: string;
   jenkins_token_set: boolean;
-  notificator_url: string;
-  notificator_token_set: boolean;
-  leonid_url: string;
-  leonid_token_set: boolean;
   jenkins_root_groups: JenkinsRootGroup[];
   qaa_generator_token_set: boolean;
   jenkins_root_folders: string[];
@@ -172,10 +168,6 @@ export interface AgentSettingsUpdate {
   jenkins_url?: string;
   jenkins_username?: string;
   jenkins_token?: string;
-  notificator_url?: string;
-  notificator_token?: string;
-  leonid_url?: string;
-  leonid_token?: string;
   jenkins_root_groups?: JenkinsRootGroup[];
   qaa_generator_token?: string;
   jenkins_root_folders?: string[];

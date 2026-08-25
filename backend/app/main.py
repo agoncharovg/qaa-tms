@@ -40,9 +40,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             base_url=runtime.base_url,
             timeout=DEFAULT_QAA_GENERATOR_TIMEOUT_SECONDS,
         )
+        leonid_http_client = httpx.AsyncClient(
+            follow_redirects=True,
+            timeout=resolved_settings.leonid_request_timeout,
+        )
+        notificator_http_client = httpx.AsyncClient(
+            follow_redirects=True,
+            timeout=resolved_settings.notificator_request_timeout,
+        )
         app.state.settings = resolved_settings
         app.state.engine = engine
         app.state.qaa_generator_client = qaa_generator_client
+        app.state.leonid_http_client = leonid_http_client
+        app.state.notificator_http_client = notificator_http_client
         app.state.qaa_generator_runtime = runtime
         app.state.jenkins_cache = JenkinsCache()
         app.state.session_maker = session_maker
@@ -51,6 +61,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await seed_system_data(session, resolved_settings)
         yield
         await qaa_generator_client.aclose()
+        await leonid_http_client.aclose()
+        await notificator_http_client.aclose()
         await engine.dispose()
 
     app = FastAPI(title="QAA-TMS Backend", lifespan=lifespan)

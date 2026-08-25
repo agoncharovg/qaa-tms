@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-const agentClientMock = vi.hoisted(() => ({
+const backendClientMock = vi.hoisted(() => ({
   createNotificatorNotificationConfig: vi.fn(),
   getNotificatorChoices: vi.fn(),
   listNotificatorNotificationConfigs: vi.fn(),
@@ -11,13 +11,12 @@ const agentClientMock = vi.hoisted(() => ({
   listNotificatorUsers: vi.fn(),
 }));
 
-vi.mock("@/api/agentClient", () => ({ agentClient: agentClientMock }));
+vi.mock("@/api/backendClient", () => ({ backendClient: backendClientMock }));
 
 import { NotificationsPanel } from "@/plugins/notificator/NotificationsPanel";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
 import { renderWithProviders } from "@/test/render";
 
-const PORT = 47600;
 const TOKEN = "test-token";
 
 describe("NotificationsPanel", () => {
@@ -25,8 +24,8 @@ describe("NotificationsPanel", () => {
     vi.clearAllMocks();
     resetAuthStoreState();
     useAuthStore.setState({ token: TOKEN });
-    agentClientMock.createNotificatorNotificationConfig.mockResolvedValue({});
-    agentClientMock.getNotificatorChoices.mockResolvedValue({
+    backendClientMock.createNotificatorNotificationConfig.mockResolvedValue({});
+    backendClientMock.getNotificatorChoices.mockResolvedValue({
       notification_types: [
         {
           code: "NEW_JIRA_TICKET",
@@ -42,15 +41,15 @@ describe("NotificationsPanel", () => {
         },
       ],
     });
-    agentClientMock.listNotificatorTeams.mockResolvedValue([
+    backendClientMock.listNotificatorTeams.mockResolvedValue([
       { id: 10, name: "qaa-team" },
       { id: 5, name: "platform" },
     ]);
-    agentClientMock.listNotificatorSlackChannels.mockResolvedValue([
+    backendClientMock.listNotificatorSlackChannels.mockResolvedValue([
       { id: 1, channel_id: "C1", description: "alerts" },
       { id: 2, channel_id: "C2", description: "ops" },
     ]);
-    agentClientMock.listNotificatorUsers.mockResolvedValue([
+    backendClientMock.listNotificatorUsers.mockResolvedValue([
       {
         id: 1,
         username: "jdoe",
@@ -67,7 +66,7 @@ describe("NotificationsPanel", () => {
         manager: null,
       },
     ]);
-    agentClientMock.listNotificatorNotificationConfigs.mockResolvedValue([
+    backendClientMock.listNotificatorNotificationConfigs.mockResolvedValue([
       {
         id: 1,
         product_team_id: 10,
@@ -102,15 +101,14 @@ describe("NotificationsPanel", () => {
   });
 
   it("renders grouped team rows", async () => {
-    renderWithProviders(<NotificationsPanel agentPort={PORT} />);
+    renderWithProviders(<NotificationsPanel />);
 
     const teamButton = await screen.findByRole("button", { name: "Open qaa-team notifications" });
     const row = teamButton.closest("tr");
     expect(row).not.toBeNull();
     expect(within(row as HTMLTableRowElement).getByText("1/2")).toBeInTheDocument();
     expect(within(row as HTMLTableRowElement).getAllByText("2")).toHaveLength(2);
-    expect(agentClientMock.listNotificatorNotificationConfigs).toHaveBeenCalledWith(
-      PORT,
+    expect(backendClientMock.listNotificatorNotificationConfigs).toHaveBeenCalledWith(
       TOKEN,
       undefined,
       expect.any(AbortSignal)
@@ -119,7 +117,7 @@ describe("NotificationsPanel", () => {
 
   it("opens the modal with the selected team notifications", async () => {
     const user = userEvent.setup();
-    renderWithProviders(<NotificationsPanel agentPort={PORT} />);
+    renderWithProviders(<NotificationsPanel />);
 
     await user.click(await screen.findByRole("button", { name: "Open qaa-team notifications" }));
 

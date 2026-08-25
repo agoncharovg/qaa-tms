@@ -16,7 +16,7 @@ import {
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { agentClient } from "@/api/agentClient";
+import { backendClient } from "@/api/backendClient";
 import type {
   NotificatorProduct,
   NotificatorProductInput,
@@ -33,10 +33,6 @@ function formatError(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-interface ProductsPanelProps {
-  agentPort: number;
-}
-
 interface ProductFormState {
   name: string;
   description: string;
@@ -47,7 +43,7 @@ const EMPTY_PRODUCT_FORM: ProductFormState = {
   description: "",
 };
 
-export function ProductsPanel({ agentPort }: ProductsPanelProps) {
+export function ProductsPanel() {
   const token = useAuthStore((state) => state.token) ?? "";
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<NotificatorProduct | null>(null);
@@ -56,15 +52,15 @@ export function ProductsPanel({ agentPort }: ProductsPanelProps) {
   const [deleteTarget, setDeleteTarget] = useState<NotificatorProduct | null>(null);
 
   const productsQuery = useQuery({
-    queryFn: ({ signal }) => agentClient.listNotificatorProducts(agentPort, token, signal),
-    queryKey: [QueryKey.NOTIFICATOR_PRODUCTS, agentPort, token],
+    queryFn: ({ signal }) => backendClient.listNotificatorProducts(token, signal),
+    queryKey: [QueryKey.NOTIFICATOR_PRODUCTS, token],
   });
 
   const mutation = useMutation({
     mutationFn: (payload: { id: number | null; body: NotificatorProductInput }) =>
       payload.id === null
-        ? agentClient.createNotificatorProduct(agentPort, token, payload.body)
-        : agentClient.updateNotificatorProduct(agentPort, token, payload.id, payload.body),
+        ? backendClient.createNotificatorProduct(token, payload.body)
+        : backendClient.updateNotificatorProduct(token, payload.id, payload.body),
     onSuccess: async () => {
       setEditing(null);
       setForm(EMPTY_PRODUCT_FORM);
@@ -74,7 +70,7 @@ export function ProductsPanel({ agentPort }: ProductsPanelProps) {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (productId: number) => agentClient.deleteNotificatorProduct(agentPort, token, productId),
+    mutationFn: (productId: number) => backendClient.deleteNotificatorProduct(token, productId),
     onSuccess: async () => {
       setDeleteTarget(null);
       await queryClient.invalidateQueries({ queryKey: [QueryKey.NOTIFICATOR_PRODUCTS] });
@@ -222,10 +218,6 @@ export function ProductsPanel({ agentPort }: ProductsPanelProps) {
   );
 }
 
-interface SubProductsPanelProps {
-  agentPort: number;
-}
-
 interface SubProductFormState {
   name: string;
   product: string;
@@ -238,7 +230,7 @@ const EMPTY_SUB_PRODUCT_FORM: SubProductFormState = {
   team: "",
 };
 
-export function SubProductsPanel({ agentPort }: SubProductsPanelProps) {
+export function SubProductsPanel() {
   const token = useAuthStore((state) => state.token) ?? "";
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<NotificatorSubProduct | null>(null);
@@ -247,23 +239,23 @@ export function SubProductsPanel({ agentPort }: SubProductsPanelProps) {
   const [deleteTarget, setDeleteTarget] = useState<NotificatorSubProduct | null>(null);
 
   const subProductsQuery = useQuery({
-    queryFn: ({ signal }) => agentClient.listNotificatorSubProducts(agentPort, token, signal),
-    queryKey: [QueryKey.NOTIFICATOR_SUB_PRODUCTS, agentPort, token],
+    queryFn: ({ signal }) => backendClient.listNotificatorSubProducts(token, signal),
+    queryKey: [QueryKey.NOTIFICATOR_SUB_PRODUCTS, token],
   });
   const productsQuery = useQuery({
-    queryFn: ({ signal }) => agentClient.listNotificatorProducts(agentPort, token, signal),
-    queryKey: [QueryKey.NOTIFICATOR_PRODUCTS, agentPort, token],
+    queryFn: ({ signal }) => backendClient.listNotificatorProducts(token, signal),
+    queryKey: [QueryKey.NOTIFICATOR_PRODUCTS, token],
   });
   const teamsQuery = useQuery({
-    queryFn: ({ signal }) => agentClient.listNotificatorTeams(agentPort, token, signal),
-    queryKey: [QueryKey.NOTIFICATOR_TEAMS, agentPort, token],
+    queryFn: ({ signal }) => backendClient.listNotificatorTeams(token, signal),
+    queryKey: [QueryKey.NOTIFICATOR_TEAMS, token],
   });
 
   const mutation = useMutation({
     mutationFn: (payload: { id: number | null; body: NotificatorSubProductInput }) =>
       payload.id === null
-        ? agentClient.createNotificatorSubProduct(agentPort, token, payload.body)
-        : agentClient.updateNotificatorSubProduct(agentPort, token, payload.id, payload.body),
+        ? backendClient.createNotificatorSubProduct(token, payload.body)
+        : backendClient.updateNotificatorSubProduct(token, payload.id, payload.body),
     onSuccess: async () => {
       setEditing(null);
       setForm(EMPTY_SUB_PRODUCT_FORM);
@@ -274,7 +266,7 @@ export function SubProductsPanel({ agentPort }: SubProductsPanelProps) {
 
   const deleteMutation = useMutation({
     mutationFn: (subProductId: number) =>
-      agentClient.deleteNotificatorSubProduct(agentPort, token, subProductId),
+      backendClient.deleteNotificatorSubProduct(token, subProductId),
     onSuccess: async () => {
       setDeleteTarget(null);
       await queryClient.invalidateQueries({ queryKey: [QueryKey.NOTIFICATOR_SUB_PRODUCTS] });
@@ -420,10 +412,6 @@ export function SubProductsPanel({ agentPort }: SubProductsPanelProps) {
   );
 }
 
-interface SlackChannelsPanelProps {
-  agentPort: number;
-}
-
 interface SlackChannelFormState {
   channelId: string;
   description: string;
@@ -434,7 +422,7 @@ const EMPTY_SLACK_CHANNEL_FORM: SlackChannelFormState = {
   description: "",
 };
 
-export function SlackChannelsPanel({ agentPort }: SlackChannelsPanelProps) {
+export function SlackChannelsPanel() {
   const token = useAuthStore((state) => state.token) ?? "";
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<NotificatorSlackChannel | null>(null);
@@ -443,15 +431,15 @@ export function SlackChannelsPanel({ agentPort }: SlackChannelsPanelProps) {
   const [deleteTarget, setDeleteTarget] = useState<NotificatorSlackChannel | null>(null);
 
   const channelsQuery = useQuery({
-    queryFn: ({ signal }) => agentClient.listNotificatorSlackChannels(agentPort, token, signal),
-    queryKey: [QueryKey.NOTIFICATOR_SLACK_CHANNELS, agentPort, token],
+    queryFn: ({ signal }) => backendClient.listNotificatorSlackChannels(token, signal),
+    queryKey: [QueryKey.NOTIFICATOR_SLACK_CHANNELS, token],
   });
 
   const mutation = useMutation({
     mutationFn: (payload: { id: number | null; body: NotificatorSlackChannelInput }) =>
       payload.id === null
-        ? agentClient.createNotificatorSlackChannel(agentPort, token, payload.body)
-        : agentClient.updateNotificatorSlackChannel(agentPort, token, payload.id, payload.body),
+        ? backendClient.createNotificatorSlackChannel(token, payload.body)
+        : backendClient.updateNotificatorSlackChannel(token, payload.id, payload.body),
     onSuccess: async () => {
       setEditing(null);
       setForm(EMPTY_SLACK_CHANNEL_FORM);
@@ -462,7 +450,7 @@ export function SlackChannelsPanel({ agentPort }: SlackChannelsPanelProps) {
 
   const deleteMutation = useMutation({
     mutationFn: (channelId: number) =>
-      agentClient.deleteNotificatorSlackChannel(agentPort, token, channelId),
+      backendClient.deleteNotificatorSlackChannel(token, channelId),
     onSuccess: async () => {
       setDeleteTarget(null);
       await queryClient.invalidateQueries({ queryKey: [QueryKey.NOTIFICATOR_SLACK_CHANNELS] });

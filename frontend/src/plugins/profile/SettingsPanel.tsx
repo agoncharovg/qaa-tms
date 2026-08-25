@@ -39,12 +39,6 @@ const SettingsPanelCopy = {
   JENKINS_TOKEN_LABEL: "Personal token",
   JENKINS_URL_LABEL: "URL",
   JENKINS_USERNAME_LABEL: "Username",
-  LEONID_DESCRIPTION:
-    "The shared Leonid service token is written to the local companion `.env` on this machine.",
-  LEONID_SAVE: "Save Leonid settings",
-  LEONID_TITLE: "Leonid",
-  LEONID_TOKEN_LABEL: "Service token",
-  LEONID_URL_LABEL: "Service URL",
   KUBER_DESCRIPTION:
     "Your personal kubeconfig is written to the local companion `.env` on this machine.",
   KUBER_KUBECONFIG_DESCRIPTION:
@@ -53,12 +47,6 @@ const SettingsPanelCopy = {
   KUBER_SAVE: "Save Kuber settings",
   KUBER_TITLE: "Kuber",
   LOADING: "Loading settings.",
-  NOTIFICATOR_DESCRIPTION:
-    "The shared Notificator service token is written to the local companion `.env` on this machine.",
-  NOTIFICATOR_SAVE: "Save Notificator settings",
-  NOTIFICATOR_TITLE: "Notificator",
-  NOTIFICATOR_TOKEN_LABEL: "Service token",
-  NOTIFICATOR_URL_LABEL: "Service URL",
   QAA_GENERATOR_DESCRIPTION:
     "Your personal qaa-generator token is written to the local companion `.env` on this machine.",
   QAA_GENERATOR_SAVE: "Save qaa-generator token",
@@ -92,8 +80,6 @@ const PAGE_TITLE_ORDER = 2 as const;
 const SECRET_INPUT_AUTOCOMPLETE = "new-password" as const;
 const SECRET_INPUT_NAME = {
   JENKINS_TOKEN: "jenkins-personal-token",
-  LEONID_TOKEN: "leonid-service-token",
-  NOTIFICATOR_TOKEN: "notificator-service-token",
   QAA_GENERATOR_TOKEN: "qaa-generator-personal-token",
 } as const;
 
@@ -108,15 +94,7 @@ type AgentFormState = {
   jenkinsTokenSet: boolean;
   jenkinsUrl: string;
   jenkinsUsername: string;
-  leonidToken: string;
-  leonidTokenDirty: boolean;
-  leonidTokenSet: boolean;
-  leonidUrl: string;
   kubeconfig: string;
-  notificatorToken: string;
-  notificatorTokenDirty: boolean;
-  notificatorTokenSet: boolean;
-  notificatorUrl: string;
   stagingKubeconfig: string;
   stagingKubeconfigUrl: string;
 };
@@ -133,15 +111,7 @@ function buildAgentFormState(settings: AgentSettings): AgentFormState {
     jenkinsTokenSet: settings.jenkins_token_set,
     jenkinsUrl: settings.jenkins_url,
     jenkinsUsername: settings.jenkins_username,
-    leonidToken: EMPTY_VALUE,
-    leonidTokenDirty: false,
-    leonidTokenSet: settings.leonid_token_set,
-    leonidUrl: settings.leonid_url,
     kubeconfig: settings.kubeconfig,
-    notificatorToken: EMPTY_VALUE,
-    notificatorTokenDirty: false,
-    notificatorTokenSet: settings.notificator_token_set,
-    notificatorUrl: settings.notificator_url,
     stagingKubeconfig: settings.staging_kubeconfig,
     stagingKubeconfigUrl: settings.staging_kubeconfig_url,
   };
@@ -217,8 +187,6 @@ function SettingsPanelAgentSettings({
   agentPort,
   showJenkins,
   showKuber,
-  showLeonid,
-  showNotificator,
   showQaaGenerator,
   showStagings,
   token,
@@ -226,8 +194,6 @@ function SettingsPanelAgentSettings({
   agentPort: number;
   showJenkins: boolean;
   showKuber: boolean;
-  showLeonid: boolean;
-  showNotificator: boolean;
   showQaaGenerator: boolean;
   showStagings: boolean;
   token: string;
@@ -235,8 +201,6 @@ function SettingsPanelAgentSettings({
   const queryClient = useQueryClient();
   const [agentForm, setAgentForm] = useState<AgentFormState | null>(null);
   const [jenkinsNotice, setJenkinsNotice] = useState<Notice | null>(null);
-  const [notificatorNotice, setNotificatorNotice] = useState<Notice | null>(null);
-  const [leonidNotice, setLeonidNotice] = useState<Notice | null>(null);
   const [stagingsNotice, setStagingsNotice] = useState<Notice | null>(null);
   const [kuberNotice, setKuberNotice] = useState<Notice | null>(null);
   const [qaaGeneratorForm, setQaaGeneratorForm] = useState<QaaGeneratorFormState | null>(null);
@@ -274,45 +238,7 @@ function SettingsPanelAgentSettings({
     },
   });
 
-  const notificatorUpdateMutation = useMutation({
-    mutationFn: async (payload: AgentSettingsUpdate) => {
-      return agentClient.updateSettings(agentPort, token, payload);
-    },
-    onSuccess: async (updatedSettings) => {
-      setAgentForm(buildAgentFormState(updatedSettings));
-      setNotificatorNotice({
-        message: SettingsPanelCopy.UPDATE_SUCCESS,
-        status: NoticeStatus.SUCCESS,
-      });
-      await queryClient.invalidateQueries({ queryKey: [QueryKey.AGENT_SETTINGS] });
-    },
-    onError: (error) => {
-      setNotificatorNotice({
-        message: error instanceof Error ? error.message : SettingsPanelCopy.UPDATE_FAILED,
-        status: NoticeStatus.ERROR,
-      });
-    },
-  });
 
-  const leonidUpdateMutation = useMutation({
-    mutationFn: async (payload: AgentSettingsUpdate) => {
-      return agentClient.updateSettings(agentPort, token, payload);
-    },
-    onSuccess: async (updatedSettings) => {
-      setAgentForm(buildAgentFormState(updatedSettings));
-      setLeonidNotice({
-        message: SettingsPanelCopy.UPDATE_SUCCESS,
-        status: NoticeStatus.SUCCESS,
-      });
-      await queryClient.invalidateQueries({ queryKey: [QueryKey.AGENT_SETTINGS] });
-    },
-    onError: (error) => {
-      setLeonidNotice({
-        message: error instanceof Error ? error.message : SettingsPanelCopy.UPDATE_FAILED,
-        status: NoticeStatus.ERROR,
-      });
-    },
-  });
 
   const stagingsUpdateMutation = useMutation({
     mutationFn: async (payload: AgentSettingsUpdate) => {
@@ -421,35 +347,7 @@ function SettingsPanelAgentSettings({
     jenkinsUpdateMutation.mutate(payload);
   }
 
-  function saveNotificatorSettings(): void {
-    if (!agentForm) {
-      return;
-    }
 
-    setNotificatorNotice(null);
-    const payload: AgentSettingsUpdate = {
-      notificator_url: agentForm.notificatorUrl,
-    };
-    if (agentForm.notificatorTokenDirty) {
-      payload.notificator_token = agentForm.notificatorToken;
-    }
-    notificatorUpdateMutation.mutate(payload);
-  }
-
-  function saveLeonidSettings(): void {
-    if (!agentForm) {
-      return;
-    }
-
-    setLeonidNotice(null);
-    const payload: AgentSettingsUpdate = {
-      leonid_url: agentForm.leonidUrl,
-    };
-    if (agentForm.leonidTokenDirty) {
-      payload.leonid_token = agentForm.leonidToken;
-    }
-    leonidUpdateMutation.mutate(payload);
-  }
 
   function saveStagingsSettings(): void {
     if (!agentForm) {
@@ -561,97 +459,7 @@ function SettingsPanelAgentSettings({
         </CardShell>
       ) : null}
 
-      {showNotificator ? (
-        <CardShell
-          description={SettingsPanelCopy.NOTIFICATOR_DESCRIPTION}
-          title={SettingsPanelCopy.NOTIFICATOR_TITLE}
-        >
-          <NoticeAlert notice={notificatorNotice} successTitle={SettingsPanelCopy.UPDATE_SUCCESS} />
-          {agentForm ? (
-            <Stack gap="md">
-              <SimpleGrid cols={FORM_COLUMNS}>
-                <TextInput
-                  label={SettingsPanelCopy.NOTIFICATOR_URL_LABEL}
-                  onChange={(event) => setAgentField("notificatorUrl", event.currentTarget.value)}
-                  value={agentForm.notificatorUrl}
-                />
-                <PasswordInput
-                  autoComplete={SECRET_INPUT_AUTOCOMPLETE}
-                  label={SettingsPanelCopy.NOTIFICATOR_TOKEN_LABEL}
-                  placeholder={agentForm.notificatorTokenSet ? "••••••••" : undefined}
-                  name={SECRET_INPUT_NAME.NOTIFICATOR_TOKEN}
-                  onChange={(event) => {
-                    setAgentField("notificatorToken", event.currentTarget.value);
-                    setAgentField("notificatorTokenDirty", true);
-                  }}
-                  value={agentForm.notificatorToken}
-                />
-              </SimpleGrid>
-              <Group justify="space-between">
-                <Button
-                  onClick={() => {
-                    setAgentField("notificatorToken", EMPTY_VALUE);
-                    setAgentField("notificatorTokenDirty", true);
-                    setAgentField("notificatorTokenSet", false);
-                  }}
-                  variant="default"
-                >
-                  {SettingsPanelCopy.CLEAR_SECRET}
-                </Button>
-                <Button loading={notificatorUpdateMutation.isPending} onClick={saveNotificatorSettings}>
-                  {SettingsPanelCopy.NOTIFICATOR_SAVE}
-                </Button>
-              </Group>
-            </Stack>
-          ) : null}
-        </CardShell>
-      ) : null}
 
-      {showLeonid ? (
-        <CardShell
-          description={SettingsPanelCopy.LEONID_DESCRIPTION}
-          title={SettingsPanelCopy.LEONID_TITLE}
-        >
-          <NoticeAlert notice={leonidNotice} successTitle={SettingsPanelCopy.UPDATE_SUCCESS} />
-          {agentForm ? (
-            <Stack gap="md">
-              <SimpleGrid cols={FORM_COLUMNS}>
-                <TextInput
-                  label={SettingsPanelCopy.LEONID_URL_LABEL}
-                  onChange={(event) => setAgentField("leonidUrl", event.currentTarget.value)}
-                  value={agentForm.leonidUrl}
-                />
-                <PasswordInput
-                  autoComplete={SECRET_INPUT_AUTOCOMPLETE}
-                  label={SettingsPanelCopy.LEONID_TOKEN_LABEL}
-                  placeholder={agentForm.leonidTokenSet ? "••••••••" : undefined}
-                  name={SECRET_INPUT_NAME.LEONID_TOKEN}
-                  onChange={(event) => {
-                    setAgentField("leonidToken", event.currentTarget.value);
-                    setAgentField("leonidTokenDirty", true);
-                  }}
-                  value={agentForm.leonidToken}
-                />
-              </SimpleGrid>
-              <Group justify="space-between">
-                <Button
-                  onClick={() => {
-                    setAgentField("leonidToken", EMPTY_VALUE);
-                    setAgentField("leonidTokenDirty", true);
-                    setAgentField("leonidTokenSet", false);
-                  }}
-                  variant="default"
-                >
-                  {SettingsPanelCopy.CLEAR_SECRET}
-                </Button>
-                <Button loading={leonidUpdateMutation.isPending} onClick={saveLeonidSettings}>
-                  {SettingsPanelCopy.LEONID_SAVE}
-                </Button>
-              </Group>
-            </Stack>
-          ) : null}
-        </CardShell>
-      ) : null}
 
       {showStagings ? (
         <CardShell
@@ -751,12 +559,10 @@ export function SettingsPanel() {
   const showJenkins = enabledPluginIds.has(PluginId.JENKINS);
   const showStagings = enabledPluginIds.has(PluginId.STAGINGS);
   const showKuber = enabledPluginIds.has(PluginId.KUBER);
-  const showNotificator = enabledPluginIds.has(PluginId.NOTIFICATOR);
-  const showLeonid = enabledPluginIds.has(PluginId.LEONID);
   const showQaaGenerator = enabledPluginIds.has(PluginId.QAA_GENERATOR);
   const hasEnabledAgentPlugins =
-    showJenkins || showStagings || showKuber || showNotificator || showLeonid || showQaaGenerator;
-  const hasVisiblePluginSettings = hasEnabledAgentPlugins || showQaaGenerator;
+    showJenkins || showStagings || showKuber || showQaaGenerator;
+  const hasVisiblePluginSettings = hasEnabledAgentPlugins;
 
   if (!currentUser) {
     return (
@@ -789,8 +595,6 @@ export function SettingsPanel() {
               agentPort={agentPort}
               showJenkins={showJenkins}
               showKuber={showKuber}
-              showLeonid={showLeonid}
-              showNotificator={showNotificator}
               showQaaGenerator={showQaaGenerator}
               showStagings={showStagings}
               token={token ?? EMPTY_VALUE}

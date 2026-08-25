@@ -147,7 +147,7 @@ describe("Sidebar", () => {
     expect(mainMenuButtons).toEqual(["Administration", "Jenkins", "Kuber", "QAA generator", "Stagings"]);
   });
 
-  it("opens a nested admin tab directly from the sidebar tree", async () => {
+  it("opens the admin security tab directly from the sidebar tree", async () => {
     const user = userEvent.setup();
 
     useAuthStore.setState({
@@ -171,11 +171,11 @@ describe("Sidebar", () => {
 
     renderSidebar(PluginId.ADMIN);
 
-    await user.click(screen.getByRole("button", { name: "Users" }));
+    await user.click(screen.getByRole("button", { name: "Security" }));
 
-    expect(useUiStore.getState().tabsByPlugin[PluginId.ADMIN].activeTabId).toBe(TabId.ADMIN_USERS);
-    expect(useUiStore.getState().tabsByPlugin[PluginId.ADMIN].tabIds).toContain(TabId.ADMIN_USERS);
-    expect(useUiStore.getState().activeWorkspaceTabId).toBe(TabId.ADMIN_USERS);
-    expect(useUiStore.getState().workspaceTabIds).toContain(TabId.ADMIN_USERS);
+    expect(useUiStore.getState().tabsByPlugin[PluginId.ADMIN].activeTabId).toBe(TabId.ADMIN_SECURITY);
+    expect(useUiStore.getState().tabsByPlugin[PluginId.ADMIN].tabIds).toContain(TabId.ADMIN_SECURITY);
+    expect(useUiStore.getState().activeWorkspaceTabId).toBe(TabId.ADMIN_SECURITY);
+    expect(useUiStore.getState().workspaceTabIds).toContain(TabId.ADMIN_SECURITY);
   });
 });

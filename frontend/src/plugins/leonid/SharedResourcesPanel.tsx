@@ -18,7 +18,7 @@ import {
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { agentClient } from "@/api/agentClient";
+import { backendClient } from "@/api/backendClient";
 import type {
   LeonidSharedResource,
   LeonidSharedResourceInput,
@@ -27,10 +27,6 @@ import type {
 } from "@/api/types";
 import { QueryKey } from "@/constants";
 import { useAuthStore } from "@/store/authStore";
-
-interface SharedResourcesPanelProps {
-  agentPort: number;
-}
 
 interface LimitFormState {
   resource_name: string;
@@ -70,21 +66,21 @@ function formatError(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-export function SharedResourcesPanel({ agentPort }: SharedResourcesPanelProps) {
+export function SharedResourcesPanel() {
   const token = useAuthStore((state) => state.token) ?? "";
   const queryClient = useQueryClient();
 
   const limitTypesQuery = useQuery({
-    queryFn: ({ signal }) => agentClient.listLeonidSharedResourceLimitTypes(agentPort, token, signal),
-    queryKey: [QueryKey.LEONID_SHARED_RESOURCE_LIMIT_TYPES, agentPort, token],
+    queryFn: ({ signal }) => backendClient.listLeonidSharedResourceLimitTypes(token, signal),
+    queryKey: [QueryKey.LEONID_SHARED_RESOURCE_LIMIT_TYPES, token],
   });
   const limitsQuery = useQuery({
-    queryFn: ({ signal }) => agentClient.listLeonidSharedResourceLimits(agentPort, token, signal),
-    queryKey: [QueryKey.LEONID_SHARED_RESOURCE_LIMITS, agentPort, token],
+    queryFn: ({ signal }) => backendClient.listLeonidSharedResourceLimits(token, signal),
+    queryKey: [QueryKey.LEONID_SHARED_RESOURCE_LIMITS, token],
   });
   const resourcesQuery = useQuery({
-    queryFn: ({ signal }) => agentClient.listLeonidSharedResources(agentPort, token, signal),
-    queryKey: [QueryKey.LEONID_SHARED_RESOURCES, agentPort, token],
+    queryFn: ({ signal }) => backendClient.listLeonidSharedResources(token, signal),
+    queryKey: [QueryKey.LEONID_SHARED_RESOURCES, token],
   });
 
   const [limitModalOpen, setLimitModalOpen] = useState(false);
@@ -105,8 +101,8 @@ export function SharedResourcesPanel({ agentPort }: SharedResourcesPanelProps) {
   const limitMutation = useMutation({
     mutationFn: ({ id, payload }: { id: number | null; payload: LeonidSharedResourceLimitInput }) =>
       id === null
-        ? agentClient.createLeonidSharedResourceLimit(agentPort, token, payload)
-        : agentClient.updateLeonidSharedResourceLimit(agentPort, token, id, payload),
+        ? backendClient.createLeonidSharedResourceLimit(token, payload)
+        : backendClient.updateLeonidSharedResourceLimit(token, id, payload),
     onSuccess: async () => {
       await invalidateLimits();
       setLimitModalOpen(false);
@@ -115,8 +111,8 @@ export function SharedResourcesPanel({ agentPort }: SharedResourcesPanelProps) {
   const resourceMutation = useMutation({
     mutationFn: ({ id, payload }: { id: number | null; payload: LeonidSharedResourceInput }) =>
       id === null
-        ? agentClient.createLeonidSharedResource(agentPort, token, payload)
-        : agentClient.updateLeonidSharedResource(agentPort, token, id, payload),
+        ? backendClient.createLeonidSharedResource(token, payload)
+        : backendClient.updateLeonidSharedResource(token, id, payload),
     onSuccess: async () => {
       await invalidateResources();
       setResourceModalOpen(false);
@@ -124,14 +120,14 @@ export function SharedResourcesPanel({ agentPort }: SharedResourcesPanelProps) {
   });
   const toggleResourceMutation = useMutation({
     mutationFn: (resource: LeonidSharedResource) =>
-      agentClient.toggleLeonidSharedResource(agentPort, token, resource.id),
+      backendClient.toggleLeonidSharedResource(token, resource.id),
     onSuccess: invalidateResources,
   });
   const deleteMutation = useMutation({
     mutationFn: (target: DeleteTarget) =>
       target.kind === "limit"
-        ? agentClient.deleteLeonidSharedResourceLimit(agentPort, token, target.id)
-        : agentClient.deleteLeonidSharedResource(agentPort, token, target.id),
+        ? backendClient.deleteLeonidSharedResourceLimit(token, target.id)
+        : backendClient.deleteLeonidSharedResource(token, target.id),
     onSuccess: async (_data, target) => {
       await (target.kind === "limit" ? invalidateLimits() : invalidateResources());
       setDeleteTarget(null);

@@ -15,14 +15,10 @@ import {
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { agentClient } from "@/api/agentClient";
+import { backendClient } from "@/api/backendClient";
 import type { LeonidPipelineParam } from "@/api/types";
 import { QueryKey } from "@/constants";
 import { useAuthStore } from "@/store/authStore";
-
-interface PipelineConfigsPanelProps {
-  agentPort: number;
-}
 
 interface PipelineFormState {
   name: string;
@@ -50,13 +46,13 @@ function parseParams(raw: string): unknown {
   }
 }
 
-export function PipelineConfigsPanel({ agentPort }: PipelineConfigsPanelProps) {
+export function PipelineConfigsPanel() {
   const token = useAuthStore((state) => state.token) ?? "";
   const queryClient = useQueryClient();
 
   const pipelineParamsQuery = useQuery({
-    queryFn: ({ signal }) => agentClient.listLeonidPipelineParams(agentPort, token, signal),
-    queryKey: [QueryKey.LEONID_PIPELINE_PARAMS, agentPort, token],
+    queryFn: ({ signal }) => backendClient.listLeonidPipelineParams(token, signal),
+    queryKey: [QueryKey.LEONID_PIPELINE_PARAMS, token],
   });
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -69,8 +65,8 @@ export function PipelineConfigsPanel({ agentPort }: PipelineConfigsPanelProps) {
   const mutation = useMutation({
     mutationFn: ({ id, payload }: { id: number | null; payload: { name: string; job_path: string; params: unknown } }) =>
       id === null
-        ? agentClient.createLeonidPipelineParam(agentPort, token, payload)
-        : agentClient.updateLeonidPipelineParam(agentPort, token, id, payload),
+        ? backendClient.createLeonidPipelineParam(token, payload)
+        : backendClient.updateLeonidPipelineParam(token, id, payload),
     onSuccess: async () => {
       await invalidate();
       setModalOpen(false);
@@ -78,7 +74,7 @@ export function PipelineConfigsPanel({ agentPort }: PipelineConfigsPanelProps) {
   });
   const deleteMutation = useMutation({
     mutationFn: (pipelineParamId: number) =>
-      agentClient.deleteLeonidPipelineParam(agentPort, token, pipelineParamId),
+      backendClient.deleteLeonidPipelineParam(token, pipelineParamId),
     onSuccess: async () => {
       await invalidate();
       setDeleteTarget(null);

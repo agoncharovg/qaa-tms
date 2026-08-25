@@ -25,6 +25,12 @@ from app.core.constants import (
     DEFAULT_JENKINS_TREE_DEPTH,
     DEFAULT_JWT_EXPIRE_MINUTES,
     DEFAULT_JWT_SECRET,
+    DEFAULT_LEONID_REQUEST_TIMEOUT,
+    DEFAULT_LEONID_TOKEN,
+    DEFAULT_LEONID_URL,
+    DEFAULT_NOTIFICATOR_REQUEST_TIMEOUT,
+    DEFAULT_NOTIFICATOR_TOKEN,
+    DEFAULT_NOTIFICATOR_URL,
     DEFAULT_QAA_GENERATOR_BASE_URL,
     DEFAULT_QAA_GENERATOR_SUPERUSER_TOKEN,
     DEFAULT_STATIC_DIR,
@@ -105,6 +111,24 @@ class Settings(BaseSettings):
         default=DEFAULT_AGENT_DIST_DIR,
         alias=EnvKey.AGENT_DIST_DIR.value,
     )
+    leonid_url: str = Field(default=DEFAULT_LEONID_URL, alias=EnvKey.LEONID_URL.value)
+    leonid_token: str = Field(default=DEFAULT_LEONID_TOKEN, alias=EnvKey.LEONID_TOKEN.value)
+    leonid_request_timeout: float = Field(
+        default=DEFAULT_LEONID_REQUEST_TIMEOUT,
+        alias=EnvKey.LEONID_REQUEST_TIMEOUT.value,
+    )
+    notificator_url: str = Field(
+        default=DEFAULT_NOTIFICATOR_URL,
+        alias=EnvKey.NOTIFICATOR_URL.value,
+    )
+    notificator_token: str = Field(
+        default=DEFAULT_NOTIFICATOR_TOKEN,
+        alias=EnvKey.NOTIFICATOR_TOKEN.value,
+    )
+    notificator_request_timeout: float = Field(
+        default=DEFAULT_NOTIFICATOR_REQUEST_TIMEOUT,
+        alias=EnvKey.NOTIFICATOR_REQUEST_TIMEOUT.value,
+    )
     jenkins_common_url: str = Field(
         default=DEFAULT_JENKINS_COMMON_URL,
         alias=EnvKey.JENKINS_COMMON_URL.value,
@@ -145,7 +169,13 @@ class Settings(BaseSettings):
     def normalize_database_url(cls, value: str) -> str:
         return coerce_async_database_url(value)
 
-    @field_validator("jenkins_common_url", "qaa_generator_base_url", mode="after")
+    @field_validator(
+        "leonid_url",
+        "notificator_url",
+        "jenkins_common_url",
+        "qaa_generator_base_url",
+        mode="after",
+    )
     @classmethod
     def normalize_base_url(cls, value: str) -> str:
         return value.rstrip("/")
@@ -195,9 +225,7 @@ class Settings(BaseSettings):
                     raise ValueError("JENKINS_ROOT_FOLDERS must be a JSON array or CSV string.")
                 values = [str(item).strip() for item in parsed if str(item).strip()]
                 return values or list(DEFAULT_JENKINS_ROOT_FOLDERS)
-            values = [
-                item.strip() for item in stripped.split(GROUP_LIST_SEPARATOR) if item.strip()
-            ]
+            values = [item.strip() for item in stripped.split(GROUP_LIST_SEPARATOR) if item.strip()]
             return values or list(DEFAULT_JENKINS_ROOT_FOLDERS)
         raise ValueError("JENKINS_ROOT_FOLDERS must be a list or string.")
 
@@ -245,18 +273,14 @@ class Settings(BaseSettings):
             elif isinstance(item, str):
                 label, separator, path = item.partition(GROUP_LABEL_SEPARATOR)
                 if separator != GROUP_LABEL_SEPARATOR:
-                    raise ValueError(
-                        "JENKINS_ROOT_GROUPS entries must use LABEL=job/path syntax."
-                    )
+                    raise ValueError("JENKINS_ROOT_GROUPS entries must use LABEL=job/path syntax.")
                 label = label.strip()
                 path = path.strip().strip("/")
             else:
                 raise ValueError("JENKINS_ROOT_GROUPS entries must be strings or objects.")
 
             if not label or not path:
-                raise ValueError(
-                    "JENKINS_ROOT_GROUPS entries must include both label and path."
-                )
+                raise ValueError("JENKINS_ROOT_GROUPS entries must include both label and path.")
             parsed_groups.append(JenkinsRootGroup(label=label, path=path))
         return parsed_groups
 

@@ -1,8 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Alert, Stack, Tabs, Text } from "@mantine/core";
+import { Stack, Tabs } from "@mantine/core";
 
 import { ViewKey, type ViewKey as ViewKeyType } from "@/constants";
-import { CompanionGate } from "@/plugins/companion/CompanionGate";
 import {
   ProductsPanel,
   SlackChannelsPanel,
@@ -19,12 +18,10 @@ import {
   TeamsPanel,
   UsersPanel,
 } from "@/plugins/notificator/ReadOnlyPanels";
-import { useAuthStore } from "@/store/authStore";
-import { compareVersions } from "@/utils/compareVersions";
 
 interface NotificatorInnerTab {
   label: string;
-  render: (port: number) => ReactNode;
+  render: () => ReactNode;
   value: string;
 }
 
@@ -36,86 +33,71 @@ interface NotificatorSectionProps {
   >;
 }
 
-const NOTIFICATOR_SECTION_COPY = {
-  AGENT_ERROR: "Notificator companion discovery failed",
-  AGENT_LOADING: "Checking the local companion app before loading Notificator.",
-  COMPANION_UPDATE_BODY:
-    "The installed companion does not expose the full Notificator API used by this page. Update the companion before opening these tabs.",
-  COMPANION_UPDATE_TITLE: "Companion update required",
-} as const;
-const NOTIFICATOR_MIN_AGENT_VERSION = "0.2.0" as const;
-
-function NotificatorAgentSection({
-  mode,
-  port,
-}: {
-  mode: NotificatorSectionProps["mode"];
-  port: number;
-}) {
+export function NotificatorSection({ mode }: NotificatorSectionProps) {
   const innerTabs: NotificatorInnerTab[] =
     mode === ViewKey.NOTIFICATOR_CONTRACT_MANAGER
       ? [
           {
             value: "failure-mention-rules",
             label: "Failure Mention Rules",
-            render: (agentPort) => <FailureMentionRulesPanel agentPort={agentPort} />,
+            render: () => <FailureMentionRulesPanel />,
           },
           {
             value: "notifications",
             label: "Notifications",
-            render: (agentPort) => <NotificationsPanel agentPort={agentPort} />,
+            render: () => <NotificationsPanel />,
           },
           {
             value: "products",
             label: "Products",
-            render: (agentPort) => <ProductsPanel agentPort={agentPort} />,
+            render: () => <ProductsPanel />,
           },
           {
             value: "qaa-members",
             label: "QAA Members",
-            render: (agentPort) => <QaaMembersPanel agentPort={agentPort} />,
+            render: () => <QaaMembersPanel />,
           },
           {
             value: "slack-channels",
             label: "Slack Channels",
-            render: (agentPort) => <SlackChannelsPanel agentPort={agentPort} />,
+            render: () => <SlackChannelsPanel />,
           },
           {
             value: "sub-products",
             label: "Sub-products",
-            render: (agentPort) => <SubProductsPanel agentPort={agentPort} />,
+            render: () => <SubProductsPanel />,
           },
           {
             value: "teams",
             label: "Teams",
-            render: (agentPort) => <TeamsPanel agentPort={agentPort} />,
+            render: () => <TeamsPanel />,
           },
           {
             value: "users",
             label: "Users",
-            render: (agentPort) => <UsersPanel agentPort={agentPort} />,
+            render: () => <UsersPanel />,
           },
         ]
       : [
           {
             value: "events",
             label: "Events",
-            render: (agentPort) => <EventsPanel agentPort={agentPort} />,
+            render: () => <EventsPanel />,
           },
           {
             value: "fail-reasons",
             label: "Fail reasons",
-            render: (agentPort) => <FailReasonsPanel agentPort={agentPort} />,
+            render: () => <FailReasonsPanel />,
           },
           {
             value: "history",
             label: "History",
-            render: (agentPort) => <HistoryPanel agentPort={agentPort} />,
+            render: () => <HistoryPanel />,
           },
           {
             value: "recurrent-fail-notifications",
             label: "Recurrent fail notifications",
-            render: (agentPort) => <RecurrentFailsPanel agentPort={agentPort} />,
+            render: () => <RecurrentFailsPanel />,
           },
         ];
   const defaultTab = innerTabs[0]?.value ?? null;
@@ -151,35 +133,7 @@ function NotificatorAgentSection({
           ))}
         </Tabs.List>
       </Tabs>
-      {activeSection.render(port)}
+      {activeSection.render()}
     </Stack>
   );
 }
-
-export function NotificatorSection({ mode }: NotificatorSectionProps) {
-  const token = useAuthStore((state) => state.token);
-
-  return (
-    <CompanionGate
-      enabled={Boolean(token)}
-      errorTitle={NOTIFICATOR_SECTION_COPY.AGENT_ERROR}
-      loadingMessage={NOTIFICATOR_SECTION_COPY.AGENT_LOADING}
-    >
-      {({ agent, agentPort }) =>
-        compareVersions(agent.version, NOTIFICATOR_MIN_AGENT_VERSION) < 0 ? (
-          <Alert color="red" title={NOTIFICATOR_SECTION_COPY.COMPANION_UPDATE_TITLE}>
-            <Stack gap="xs">
-              <Text>{NOTIFICATOR_SECTION_COPY.COMPANION_UPDATE_BODY}</Text>
-              <Text c="dimmed" size="sm">
-                Installed: {agent.version}. Required: {NOTIFICATOR_MIN_AGENT_VERSION}.
-              </Text>
-            </Stack>
-          </Alert>
-        ) : (
-          <NotificatorAgentSection mode={mode} port={agentPort} />
-        )
-      }
-    </CompanionGate>
-  );
-}
-

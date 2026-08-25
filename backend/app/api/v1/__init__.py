@@ -8,6 +8,8 @@ from app.api.v1.authz import router as authz_router
 from app.api.v1.jenkins import router as jenkins_router
 from app.api.v1.jenkins_freeze import router as jenkins_freeze_router
 from app.api.v1.jenkins_resume_run import router as jenkins_resume_run_router
+from app.api.v1.leonid import router as leonid_router
+from app.api.v1.notificator import router as notificator_router
 from app.api.v1.operations import router as operations_router
 from app.api.v1.qaa_generator import router as qaa_generator_router
 from app.api.v1.qaa_generator_admin import router as qaa_generator_admin_router
@@ -23,6 +25,8 @@ router.include_router(authz_router)
 router.include_router(jenkins_router)
 router.include_router(jenkins_freeze_router)
 router.include_router(jenkins_resume_run_router)
+router.include_router(leonid_router)
+router.include_router(notificator_router)
 router.include_router(security_router)
 router.include_router(users_router)
 router.include_router(settings_router)

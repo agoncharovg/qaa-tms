@@ -12,6 +12,15 @@ import {
   buildBackendJenkinsBuildsPath,
   buildBackendJenkinsFolderPath,
   buildBackendJenkinsTreePath,
+  buildBackendLeonidObjectDefinitionsPath,
+  buildBackendLeonidObjectDefinitionTogglePath,
+  buildBackendLeonidObjectValuesPath,
+  buildBackendLeonidObjectValueTogglePath,
+  buildBackendLeonidPipelineParamsPath,
+  buildBackendLeonidSharedResourceLimitsPath,
+  buildBackendLeonidSharedResourceLimitTypesPath,
+  buildBackendLeonidSharedResourcesPath,
+  buildBackendLeonidSharedResourceTogglePath,
   buildBackendQaaServiceTokenRegeneratePath,
   buildBackendQaaServiceTokenRevokePath,
   buildBackendQaaUserPath,
@@ -22,6 +31,20 @@ import {
   buildBackendQaaRunResumePath,
   buildBackendQaaRunStopPath,
   buildBackendQaaRunStreamPath,
+  buildBackendNotificatorChoicesPath,
+  buildBackendNotificatorConfigsPath,
+  buildBackendNotificatorEventsPath,
+  buildBackendNotificatorFailReasonsPath,
+  buildBackendNotificatorFailureMentionRulesPath,
+  buildBackendNotificatorHistoryPath,
+  buildBackendNotificatorMuteStatusesPath,
+  buildBackendNotificatorProductsPath,
+  buildBackendNotificatorQaaMembersPath,
+  buildBackendNotificatorRecurrentFailsPath,
+  buildBackendNotificatorSlackChannelsPath,
+  buildBackendNotificatorSubProductsPath,
+  buildBackendNotificatorTeamsPath,
+  buildBackendNotificatorUsersPath,
   HttpHeader,
   HttpMethod,
   HttpStatus,
@@ -81,6 +104,35 @@ import type {
   UserPermissionsResponse,
   SecurityAuditListResponse,
   AuthzCheckResponse,
+  LeonidObjectDefinition,
+  LeonidObjectDefinitionInput,
+  LeonidObjectValue,
+  LeonidObjectValueInput,
+  LeonidPipelineParam,
+  LeonidPipelineParamInput,
+  LeonidSharedResource,
+  LeonidSharedResourceInput,
+  LeonidSharedResourceLimit,
+  LeonidSharedResourceLimitInput,
+  LeonidSharedResourceLimitType,
+  NotificatorChoices,
+  NotificatorEvent,
+  NotificatorFailReason,
+  NotificatorFailureMentionRule,
+  NotificatorFullUser,
+  NotificatorHistoryItem,
+  NotificatorMuteStatus,
+  NotificatorNotificationConfig,
+  NotificatorNotificationConfigInput,
+  NotificatorProduct,
+  NotificatorProductInput,
+  NotificatorProductTeam,
+  NotificatorQaaMember,
+  NotificatorRecurrentFail,
+  NotificatorSlackChannel,
+  NotificatorSlackChannelInput,
+  NotificatorSubProduct,
+  NotificatorSubProductInput,
 } from "@/api/types";
 import { resolveApiBaseUrl } from "@/core/runtimeConfig";
 import { parseSseStream } from "@/api/sse";
@@ -327,6 +379,57 @@ function buildQaaUsersListPath(params: QaaUsersListParams): string {
     : BackendPath.QAA_ADMIN_USERS;
 }
 
+
+function listNotificatorCollection<T>(
+  token: string,
+  path: string,
+  signal?: AbortSignal
+): Promise<T[]> {
+  return request<T[]>(path, { method: HttpMethod.GET }, token, signal);
+}
+
+function createNotificatorItem<T>(
+  token: string,
+  path: string,
+  payload: unknown,
+  signal?: AbortSignal
+): Promise<T> {
+  return request<T>(
+    path,
+    {
+      body: JSON.stringify(payload),
+      method: HttpMethod.POST,
+    },
+    token,
+    signal
+  );
+}
+
+function updateNotificatorItem<T>(
+  token: string,
+  path: string,
+  payload: unknown,
+  signal?: AbortSignal
+): Promise<T> {
+  return request<T>(
+    path,
+    {
+      body: JSON.stringify(payload),
+      method: HttpMethod.PUT,
+    },
+    token,
+    signal
+  );
+}
+
+function deleteNotificatorItem(
+  token: string,
+  path: string,
+  signal?: AbortSignal
+): Promise<void> {
+  return request<void>(path, { method: HttpMethod.DELETE }, token, signal);
+}
+
 export const backendClient = {
   getAgentManifest(signal?: AbortSignal): Promise<AgentManifest> {
     return request<AgentManifest>(BackendPath.AGENT_MANIFEST, { method: HttpMethod.GET }, undefined, signal);
@@ -546,6 +649,592 @@ export const backendClient = {
       signal
     );
   },
+
+
+getNotificatorChoices(token: string, signal?: AbortSignal): Promise<NotificatorChoices> {
+  return request<NotificatorChoices>(
+    buildBackendNotificatorChoicesPath(),
+    { method: HttpMethod.GET },
+    token,
+    signal
+  );
+},
+
+listNotificatorNotificationConfigs(
+  token: string,
+  productTeam?: string,
+  signal?: AbortSignal
+): Promise<NotificatorNotificationConfig[]> {
+  return listNotificatorCollection<NotificatorNotificationConfig>(
+    token,
+    buildBackendNotificatorConfigsPath({ productTeam }),
+    signal
+  );
+},
+
+createNotificatorNotificationConfig(
+  token: string,
+  payload: NotificatorNotificationConfigInput,
+  signal?: AbortSignal
+): Promise<NotificatorNotificationConfig> {
+  return createNotificatorItem<NotificatorNotificationConfig>(
+    token,
+    buildBackendNotificatorConfigsPath(),
+    payload,
+    signal
+  );
+},
+
+updateNotificatorNotificationConfig(
+  token: string,
+  configId: number,
+  payload: NotificatorNotificationConfigInput,
+  signal?: AbortSignal
+): Promise<NotificatorNotificationConfig> {
+  return updateNotificatorItem<NotificatorNotificationConfig>(
+    token,
+    buildBackendNotificatorConfigsPath({ configId }),
+    payload,
+    signal
+  );
+},
+
+deleteNotificatorNotificationConfig(
+  token: string,
+  configId: number,
+  signal?: AbortSignal
+): Promise<void> {
+  return deleteNotificatorItem(
+    token,
+    buildBackendNotificatorConfigsPath({ configId }),
+    signal
+  );
+},
+
+listNotificatorTeams(token: string, signal?: AbortSignal): Promise<NotificatorProductTeam[]> {
+  return listNotificatorCollection<NotificatorProductTeam>(
+    token,
+    buildBackendNotificatorTeamsPath(),
+    signal
+  );
+},
+
+listNotificatorProducts(token: string, signal?: AbortSignal): Promise<NotificatorProduct[]> {
+  return listNotificatorCollection<NotificatorProduct>(
+    token,
+    buildBackendNotificatorProductsPath(),
+    signal
+  );
+},
+
+createNotificatorProduct(
+  token: string,
+  payload: NotificatorProductInput,
+  signal?: AbortSignal
+): Promise<NotificatorProduct> {
+  return createNotificatorItem<NotificatorProduct>(
+    token,
+    buildBackendNotificatorProductsPath(),
+    payload,
+    signal
+  );
+},
+
+updateNotificatorProduct(
+  token: string,
+  productId: number,
+  payload: NotificatorProductInput,
+  signal?: AbortSignal
+): Promise<NotificatorProduct> {
+  return updateNotificatorItem<NotificatorProduct>(
+    token,
+    buildBackendNotificatorProductsPath(productId),
+    payload,
+    signal
+  );
+},
+
+deleteNotificatorProduct(
+  token: string,
+  productId: number,
+  signal?: AbortSignal
+): Promise<void> {
+  return deleteNotificatorItem(token, buildBackendNotificatorProductsPath(productId), signal);
+},
+
+listNotificatorSubProducts(
+  token: string,
+  signal?: AbortSignal
+): Promise<NotificatorSubProduct[]> {
+  return listNotificatorCollection<NotificatorSubProduct>(
+    token,
+    buildBackendNotificatorSubProductsPath(),
+    signal
+  );
+},
+
+createNotificatorSubProduct(
+  token: string,
+  payload: NotificatorSubProductInput,
+  signal?: AbortSignal
+): Promise<NotificatorSubProduct> {
+  return createNotificatorItem<NotificatorSubProduct>(
+    token,
+    buildBackendNotificatorSubProductsPath(),
+    payload,
+    signal
+  );
+},
+
+updateNotificatorSubProduct(
+  token: string,
+  subProductId: number,
+  payload: NotificatorSubProductInput,
+  signal?: AbortSignal
+): Promise<NotificatorSubProduct> {
+  return updateNotificatorItem<NotificatorSubProduct>(
+    token,
+    buildBackendNotificatorSubProductsPath(subProductId),
+    payload,
+    signal
+  );
+},
+
+deleteNotificatorSubProduct(
+  token: string,
+  subProductId: number,
+  signal?: AbortSignal
+): Promise<void> {
+  return deleteNotificatorItem(
+    token,
+    buildBackendNotificatorSubProductsPath(subProductId),
+    signal
+  );
+},
+
+listNotificatorSlackChannels(
+  token: string,
+  signal?: AbortSignal
+): Promise<NotificatorSlackChannel[]> {
+  return listNotificatorCollection<NotificatorSlackChannel>(
+    token,
+    buildBackendNotificatorSlackChannelsPath(),
+    signal
+  );
+},
+
+createNotificatorSlackChannel(
+  token: string,
+  payload: NotificatorSlackChannelInput,
+  signal?: AbortSignal
+): Promise<NotificatorSlackChannel> {
+  return createNotificatorItem<NotificatorSlackChannel>(
+    token,
+    buildBackendNotificatorSlackChannelsPath(),
+    payload,
+    signal
+  );
+},
+
+updateNotificatorSlackChannel(
+  token: string,
+  channelId: number,
+  payload: NotificatorSlackChannelInput,
+  signal?: AbortSignal
+): Promise<NotificatorSlackChannel> {
+  return updateNotificatorItem<NotificatorSlackChannel>(
+    token,
+    buildBackendNotificatorSlackChannelsPath(channelId),
+    payload,
+    signal
+  );
+},
+
+deleteNotificatorSlackChannel(
+  token: string,
+  channelId: number,
+  signal?: AbortSignal
+): Promise<void> {
+  return deleteNotificatorItem(
+    token,
+    buildBackendNotificatorSlackChannelsPath(channelId),
+    signal
+  );
+},
+
+listNotificatorUsers(token: string, signal?: AbortSignal): Promise<NotificatorFullUser[]> {
+  return listNotificatorCollection<NotificatorFullUser>(
+    token,
+    buildBackendNotificatorUsersPath(),
+    signal
+  );
+},
+
+listNotificatorQaaMembers(token: string, signal?: AbortSignal): Promise<NotificatorQaaMember[]> {
+  return listNotificatorCollection<NotificatorQaaMember>(
+    token,
+    buildBackendNotificatorQaaMembersPath(),
+    signal
+  );
+},
+
+listNotificatorFailureMentionRules(
+  token: string,
+  signal?: AbortSignal
+): Promise<NotificatorFailureMentionRule[]> {
+  return listNotificatorCollection<NotificatorFailureMentionRule>(
+    token,
+    buildBackendNotificatorFailureMentionRulesPath(),
+    signal
+  );
+},
+
+listNotificatorEvents(token: string, signal?: AbortSignal): Promise<NotificatorEvent[]> {
+  return listNotificatorCollection<NotificatorEvent>(
+    token,
+    buildBackendNotificatorEventsPath(),
+    signal
+  );
+},
+
+listNotificatorRecurrentFails(
+  token: string,
+  signal?: AbortSignal
+): Promise<NotificatorRecurrentFail[]> {
+  return listNotificatorCollection<NotificatorRecurrentFail>(
+    token,
+    buildBackendNotificatorRecurrentFailsPath(),
+    signal
+  );
+},
+
+listNotificatorFailReasons(
+  token: string,
+  signal?: AbortSignal
+): Promise<NotificatorFailReason[]> {
+  return listNotificatorCollection<NotificatorFailReason>(
+    token,
+    buildBackendNotificatorFailReasonsPath(),
+    signal
+  );
+},
+
+listNotificatorMuteStatuses(
+  token: string,
+  signal?: AbortSignal
+): Promise<NotificatorMuteStatus[]> {
+  return listNotificatorCollection<NotificatorMuteStatus>(
+    token,
+    buildBackendNotificatorMuteStatusesPath(),
+    signal
+  );
+},
+
+listNotificatorHistory(token: string, signal?: AbortSignal): Promise<NotificatorHistoryItem[]> {
+  return listNotificatorCollection<NotificatorHistoryItem>(
+    token,
+    buildBackendNotificatorHistoryPath(),
+    signal
+  );
+},
+
+listLeonidSharedResourceLimitTypes(
+  token: string,
+  signal?: AbortSignal
+): Promise<LeonidSharedResourceLimitType[]> {
+  return request<LeonidSharedResourceLimitType[]>(
+    buildBackendLeonidSharedResourceLimitTypesPath(),
+    { method: HttpMethod.GET },
+    token,
+    signal
+  );
+},
+
+listLeonidSharedResourceLimits(
+  token: string,
+  signal?: AbortSignal
+): Promise<LeonidSharedResourceLimit[]> {
+  return request<LeonidSharedResourceLimit[]>(
+    buildBackendLeonidSharedResourceLimitsPath(),
+    { method: HttpMethod.GET },
+    token,
+    signal
+  );
+},
+
+createLeonidSharedResourceLimit(
+  token: string,
+  payload: LeonidSharedResourceLimitInput,
+  signal?: AbortSignal
+): Promise<LeonidSharedResourceLimit> {
+  return request<LeonidSharedResourceLimit>(
+    buildBackendLeonidSharedResourceLimitsPath(),
+    { body: JSON.stringify(payload), method: HttpMethod.POST },
+    token,
+    signal
+  );
+},
+
+updateLeonidSharedResourceLimit(
+  token: string,
+  limitId: number,
+  payload: LeonidSharedResourceLimitInput,
+  signal?: AbortSignal
+): Promise<LeonidSharedResourceLimit> {
+  return request<LeonidSharedResourceLimit>(
+    buildBackendLeonidSharedResourceLimitsPath(limitId),
+    { body: JSON.stringify(payload), method: HttpMethod.PUT },
+    token,
+    signal
+  );
+},
+
+deleteLeonidSharedResourceLimit(
+  token: string,
+  limitId: number,
+  signal?: AbortSignal
+): Promise<void> {
+  return request<void>(
+    buildBackendLeonidSharedResourceLimitsPath(limitId),
+    { method: HttpMethod.DELETE },
+    token,
+    signal
+  );
+},
+
+listLeonidSharedResources(token: string, signal?: AbortSignal): Promise<LeonidSharedResource[]> {
+  return request<LeonidSharedResource[]>(
+    buildBackendLeonidSharedResourcesPath(),
+    { method: HttpMethod.GET },
+    token,
+    signal
+  );
+},
+
+createLeonidSharedResource(
+  token: string,
+  payload: LeonidSharedResourceInput,
+  signal?: AbortSignal
+): Promise<LeonidSharedResource> {
+  return request<LeonidSharedResource>(
+    buildBackendLeonidSharedResourcesPath(),
+    { body: JSON.stringify(payload), method: HttpMethod.POST },
+    token,
+    signal
+  );
+},
+
+updateLeonidSharedResource(
+  token: string,
+  resourceId: number,
+  payload: LeonidSharedResourceInput,
+  signal?: AbortSignal
+): Promise<LeonidSharedResource> {
+  return request<LeonidSharedResource>(
+    buildBackendLeonidSharedResourcesPath(resourceId),
+    { body: JSON.stringify(payload), method: HttpMethod.PUT },
+    token,
+    signal
+  );
+},
+
+toggleLeonidSharedResource(
+  token: string,
+  resourceId: number,
+  signal?: AbortSignal
+): Promise<LeonidSharedResource> {
+  return request<LeonidSharedResource>(
+    buildBackendLeonidSharedResourceTogglePath(resourceId),
+    { method: HttpMethod.POST },
+    token,
+    signal
+  );
+},
+
+deleteLeonidSharedResource(
+  token: string,
+  resourceId: number,
+  signal?: AbortSignal
+): Promise<void> {
+  return request<void>(
+    buildBackendLeonidSharedResourcesPath(resourceId),
+    { method: HttpMethod.DELETE },
+    token,
+    signal
+  );
+},
+
+listLeonidObjectDefinitions(
+  token: string,
+  signal?: AbortSignal
+): Promise<LeonidObjectDefinition[]> {
+  return request<LeonidObjectDefinition[]>(
+    buildBackendLeonidObjectDefinitionsPath(),
+    { method: HttpMethod.GET },
+    token,
+    signal
+  );
+},
+
+createLeonidObjectDefinition(
+  token: string,
+  payload: LeonidObjectDefinitionInput,
+  signal?: AbortSignal
+): Promise<LeonidObjectDefinition> {
+  return request<LeonidObjectDefinition>(
+    buildBackendLeonidObjectDefinitionsPath(),
+    { body: JSON.stringify(payload), method: HttpMethod.POST },
+    token,
+    signal
+  );
+},
+
+updateLeonidObjectDefinition(
+  token: string,
+  definitionId: number,
+  payload: LeonidObjectDefinitionInput,
+  signal?: AbortSignal
+): Promise<LeonidObjectDefinition> {
+  return request<LeonidObjectDefinition>(
+    buildBackendLeonidObjectDefinitionsPath(definitionId),
+    { body: JSON.stringify(payload), method: HttpMethod.PUT },
+    token,
+    signal
+  );
+},
+
+toggleLeonidObjectDefinition(
+  token: string,
+  definitionId: number,
+  signal?: AbortSignal
+): Promise<LeonidObjectDefinition> {
+  return request<LeonidObjectDefinition>(
+    buildBackendLeonidObjectDefinitionTogglePath(definitionId),
+    { method: HttpMethod.POST },
+    token,
+    signal
+  );
+},
+
+deleteLeonidObjectDefinition(
+  token: string,
+  definitionId: number,
+  signal?: AbortSignal
+): Promise<void> {
+  return request<void>(
+    buildBackendLeonidObjectDefinitionsPath(definitionId),
+    { method: HttpMethod.DELETE },
+    token,
+    signal
+  );
+},
+
+listLeonidObjectValues(token: string, signal?: AbortSignal): Promise<LeonidObjectValue[]> {
+  return request<LeonidObjectValue[]>(
+    buildBackendLeonidObjectValuesPath(),
+    { method: HttpMethod.GET },
+    token,
+    signal
+  );
+},
+
+createLeonidObjectValue(
+  token: string,
+  payload: LeonidObjectValueInput,
+  signal?: AbortSignal
+): Promise<LeonidObjectValue> {
+  return request<LeonidObjectValue>(
+    buildBackendLeonidObjectValuesPath(),
+    { body: JSON.stringify(payload), method: HttpMethod.POST },
+    token,
+    signal
+  );
+},
+
+updateLeonidObjectValue(
+  token: string,
+  valueId: number,
+  payload: LeonidObjectValueInput,
+  signal?: AbortSignal
+): Promise<LeonidObjectValue> {
+  return request<LeonidObjectValue>(
+    buildBackendLeonidObjectValuesPath(valueId),
+    { body: JSON.stringify(payload), method: HttpMethod.PUT },
+    token,
+    signal
+  );
+},
+
+toggleLeonidObjectValue(
+  token: string,
+  valueId: number,
+  signal?: AbortSignal
+): Promise<LeonidObjectValue> {
+  return request<LeonidObjectValue>(
+    buildBackendLeonidObjectValueTogglePath(valueId),
+    { method: HttpMethod.POST },
+    token,
+    signal
+  );
+},
+
+deleteLeonidObjectValue(token: string, valueId: number, signal?: AbortSignal): Promise<void> {
+  return request<void>(
+    buildBackendLeonidObjectValuesPath(valueId),
+    { method: HttpMethod.DELETE },
+    token,
+    signal
+  );
+},
+
+listLeonidPipelineParams(token: string, signal?: AbortSignal): Promise<LeonidPipelineParam[]> {
+  return request<LeonidPipelineParam[]>(
+    buildBackendLeonidPipelineParamsPath(),
+    { method: HttpMethod.GET },
+    token,
+    signal
+  );
+},
+
+createLeonidPipelineParam(
+  token: string,
+  payload: LeonidPipelineParamInput,
+  signal?: AbortSignal
+): Promise<LeonidPipelineParam> {
+  return request<LeonidPipelineParam>(
+    buildBackendLeonidPipelineParamsPath(),
+    { body: JSON.stringify(payload), method: HttpMethod.POST },
+    token,
+    signal
+  );
+},
+
+updateLeonidPipelineParam(
+  token: string,
+  pipelineParamId: number,
+  payload: LeonidPipelineParamInput,
+  signal?: AbortSignal
+): Promise<LeonidPipelineParam> {
+  return request<LeonidPipelineParam>(
+    buildBackendLeonidPipelineParamsPath(pipelineParamId),
+    { body: JSON.stringify(payload), method: HttpMethod.PUT },
+    token,
+    signal
+  );
+},
+
+deleteLeonidPipelineParam(
+  token: string,
+  pipelineParamId: number,
+  signal?: AbortSignal
+): Promise<void> {
+  return request<void>(
+    buildBackendLeonidPipelineParamsPath(pipelineParamId),
+    { method: HttpMethod.DELETE },
+    token,
+    signal
+  );
+},
 
   createQaaRun(
     token: string,

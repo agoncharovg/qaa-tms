@@ -51,7 +51,7 @@ describe("ServerSettingsPage", () => {
     renderWithProviders(<ServerSettingsPage />);
 
     expect(await screen.findByDisplayValue("https://qaa.example/api/v1")).toBeInTheDocument();
-    expect(screen.getByText("•••• set")).toBeInTheDocument();
+    expect(screen.getByLabelText("Superuser token")).toHaveAttribute("placeholder", "••••••••");
     expect(screen.getByLabelText("Superuser token")).toHaveAttribute("autocomplete", "new-password");
     expect(screen.getByLabelText("Superuser token")).toHaveAttribute("name", "qaa-generator-superuser-token");
     expect(screen.queryByLabelText("Actor")).not.toBeInTheDocument();

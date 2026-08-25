@@ -26,10 +26,6 @@ from app.core.constants import (
     DEFAULT_KUBECONFIG_ACTIVE_PATH,
     DEFAULT_KUBECTL_BIN,
     DEFAULT_KUBECTL_REQUEST_TIMEOUT,
-    DEFAULT_LEONID_REQUEST_TIMEOUT,
-    DEFAULT_LEONID_URL,
-    DEFAULT_NOTIFICATOR_REQUEST_TIMEOUT,
-    DEFAULT_NOTIFICATOR_URL,
     DEFAULT_STAGING_KUBECONFIG,
     DEFAULT_STAGING_KUBECONFIG_MAX_AGE_HOURS,
     DEFAULT_STAGING_KUBECONFIG_URL,
@@ -73,21 +69,6 @@ class Settings(BaseSettings):
         alias=EnvKey.CORS_ORIGINS.value,
     )
     backend_url: str = Field(default=DEFAULT_BACKEND_URL, alias=EnvKey.BACKEND_URL.value)
-    notificator_url: str = Field(
-        default=DEFAULT_NOTIFICATOR_URL,
-        alias=EnvKey.NOTIFICATOR_URL.value,
-    )
-    notificator_token: str = Field(default="", alias=EnvKey.NOTIFICATOR_TOKEN.value)
-    notificator_request_timeout: float = Field(
-        default=DEFAULT_NOTIFICATOR_REQUEST_TIMEOUT,
-        alias=EnvKey.NOTIFICATOR_REQUEST_TIMEOUT.value,
-    )
-    leonid_url: str = Field(default=DEFAULT_LEONID_URL, alias=EnvKey.LEONID_URL.value)
-    leonid_token: str = Field(default="", alias=EnvKey.LEONID_TOKEN.value)
-    leonid_request_timeout: float = Field(
-        default=DEFAULT_LEONID_REQUEST_TIMEOUT,
-        alias=EnvKey.LEONID_REQUEST_TIMEOUT.value,
-    )
     jenkins_url: str = Field(default=DEFAULT_JENKINS_URL, alias=EnvKey.JENKINS_URL.value)
     jenkins_username: str = Field(default="", alias=EnvKey.JENKINS_USERNAME.value)
     jenkins_token: str = Field(default="", alias=EnvKey.JENKINS_TOKEN.value)
@@ -166,15 +147,6 @@ class Settings(BaseSettings):
     def normalize_base_url(cls, value: str) -> str:
         return value.rstrip("/")
 
-    @field_validator("notificator_url", "leonid_url", mode="before")
-    @classmethod
-    def normalize_optional_base_url(cls, value: Any) -> str:
-        if value is None:
-            return ""
-        if isinstance(value, str) and not value.strip():
-            return ""
-        return str(value).rstrip("/")
-
     @field_validator("jenkins_root_groups", mode="before")
     @classmethod
     def parse_jenkins_root_groups(cls, value: Any) -> list[JenkinsRootGroup]:
@@ -246,18 +218,6 @@ class Settings(BaseSettings):
             values = [item.strip() for item in stripped.split(GROUP_LIST_SEPARATOR) if item.strip()]
             return values or list(DEFAULT_JENKINS_ROOT_FOLDERS)
         raise ValueError("AGENT_JENKINS_ROOT_FOLDERS must be a list or string.")
-
-    @property
-    def leonid_configured(self) -> bool:
-        return bool(self.leonid_url)
-
-    @property
-    def leonid_write_configured(self) -> bool:
-        return bool(self.leonid_url and self.leonid_token)
-
-    @property
-    def notificator_configured(self) -> bool:
-        return bool(self.notificator_url and self.notificator_token)
 
     @property
     def jenkins_configured(self) -> bool:

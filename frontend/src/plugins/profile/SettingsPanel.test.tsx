@@ -40,10 +40,6 @@ const agentSettingsResponse = {
   jenkins_url: "https://jenkins.example",
   jenkins_username: "agent-user",
   jenkins_token_set: true,
-  notificator_url: "https://notificator.example",
-  notificator_token_set: true,
-  leonid_url: "https://leonid.example",
-  leonid_token_set: false,
   qaa_generator_token_set: false,
   jenkins_root_groups: [
     { label: "BE", path: "job/.QAA/job/E2E" },
@@ -114,31 +110,16 @@ describe("SettingsPanel", () => {
     expect(screen.queryByRole("heading", { name: "Jenkins" })).not.toBeInTheDocument();
   });
 
-  it("renders Notificator settings only when that plugin is enabled and keeps the token write-only", async () => {
+  it("does not render migrated shared-token settings even when those plugins are enabled", () => {
     useAuthStore.setState({
-      currentUser: createCurrentUser([PluginId.NOTIFICATOR]),
+      currentUser: createCurrentUser([PluginId.NOTIFICATOR, PluginId.LEONID]),
       token: "token-123",
     });
-    agentClientMock.discoverAgent.mockResolvedValue({
-      agent: {
-        app: "qaa-tms-agent",
-        os: "linux",
-        stagingsInstalled: true,
-        stagingsSha: "abc123",
-        version: "0.1.0",
-      },
-      port: 47600,
-    });
-    agentClientMock.getSettings.mockResolvedValue(agentSettingsResponse);
 
     renderWithProviders(<SettingsPanel />);
 
-    expect(await screen.findByRole("heading", { name: "Notificator" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Notificator" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Leonid" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Jenkins" })).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Service URL")).toHaveValue("https://notificator.example");
-    expect(screen.getByLabelText("Service token")).toHaveValue("");
-    expect(screen.getByText("•••• set")).toBeInTheDocument();
   });
 
   it("saves Jenkins, Stagings, and Kuber settings with partial payloads", async () => {
@@ -201,68 +182,6 @@ describe("SettingsPanel", () => {
     await waitFor(() => {
       expect(agentClientMock.updateSettings).toHaveBeenCalledWith(47600, "token-123", {
         kubeconfig: "/tmp/kubeconfig",
-      });
-    });
-  });
-
-  it("saves Notificator and Leonid settings with write-only token payloads", async () => {
-    const user = userEvent.setup();
-
-    useAuthStore.setState({
-      currentUser: createCurrentUser([PluginId.NOTIFICATOR, PluginId.LEONID]),
-      token: "token-123",
-    });
-    agentClientMock.discoverAgent.mockResolvedValue({
-      agent: {
-        app: "qaa-tms-agent",
-        os: "linux",
-        stagingsInstalled: true,
-        stagingsSha: "abc123",
-        version: "0.1.0",
-      },
-      port: 47600,
-    });
-    agentClientMock.getSettings.mockResolvedValue(agentSettingsResponse);
-    agentClientMock.updateSettings.mockResolvedValue({
-      ...agentSettingsResponse,
-      leonid_token_set: true,
-      notificator_token_set: true,
-    });
-
-    renderWithProviders(<SettingsPanel />);
-
-    expect(await screen.findByRole("heading", { name: "Notificator" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Leonid" })).toBeInTheDocument();
-
-    const serviceUrlInputs = await screen.findAllByLabelText("Service URL");
-    const serviceTokenInputs = screen.getAllByLabelText("Service token");
-
-    await user.clear(serviceUrlInputs[0]);
-    await user.type(serviceUrlInputs[0], "https://updated.notificator");
-    await user.clear(serviceTokenInputs[0]);
-    await user.type(serviceTokenInputs[0], "shared-notificator-token");
-    await user.click(screen.getByRole("button", { name: "Save Notificator settings" }));
-
-    await waitFor(() => {
-      expect(agentClientMock.updateSettings).toHaveBeenCalledWith(47600, "token-123", {
-        notificator_url: "https://updated.notificator",
-        notificator_token: "shared-notificator-token",
-      });
-    });
-
-    const updatedServiceUrlInputs = await screen.findAllByLabelText("Service URL");
-    const updatedServiceTokenInputs = screen.getAllByLabelText("Service token");
-
-    await user.clear(updatedServiceUrlInputs[1]);
-    await user.type(updatedServiceUrlInputs[1], "https://updated.leonid");
-    await user.clear(updatedServiceTokenInputs[1]);
-    await user.type(updatedServiceTokenInputs[1], "shared-leonid-token");
-    await user.click(screen.getByRole("button", { name: "Save Leonid settings" }));
-
-    await waitFor(() => {
-      expect(agentClientMock.updateSettings).toHaveBeenCalledWith(47600, "token-123", {
-        leonid_url: "https://updated.leonid",
-        leonid_token: "shared-leonid-token",
       });
     });
   });

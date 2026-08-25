@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Annotated, cast
 
+import httpx
 import jwt
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -24,6 +25,8 @@ from app.core.security import decode_access_token
 from app.models.user import User
 from app.services.authorization import has_permission
 from app.services.jenkins_cache import JenkinsCache
+from app.services.leonid_client import LeonidClient
+from app.services.notificator_client import NotificatorClient
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -36,6 +39,22 @@ async def get_db(request: Request) -> AsyncIterator[AsyncSession]:
 
 def get_jenkins_cache(request: Request) -> JenkinsCache:
     return cast(JenkinsCache, request.app.state.jenkins_cache)
+
+
+def get_leonid_http_client(request: Request) -> httpx.AsyncClient:
+    return cast(httpx.AsyncClient, request.app.state.leonid_http_client)
+
+
+def get_leonid_client(request: Request) -> LeonidClient:
+    return LeonidClient(get_settings(request), get_leonid_http_client(request))
+
+
+def get_notificator_http_client(request: Request) -> httpx.AsyncClient:
+    return cast(httpx.AsyncClient, request.app.state.notificator_http_client)
+
+
+def get_notificator_client(request: Request) -> NotificatorClient:
+    return NotificatorClient(get_settings(request), get_notificator_http_client(request))
 
 
 def get_settings(request: Request) -> Settings:

@@ -18,7 +18,7 @@ import {
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { agentClient } from "@/api/agentClient";
+import { backendClient } from "@/api/backendClient";
 import type {
   LeonidObjectDefinition,
   LeonidObjectDefinitionInput,
@@ -27,10 +27,6 @@ import type {
 } from "@/api/types";
 import { QueryKey } from "@/constants";
 import { useAuthStore } from "@/store/authStore";
-
-interface ObjectsPanelProps {
-  agentPort: number;
-}
 
 interface DefinitionFormState {
   object_name: string;
@@ -70,17 +66,17 @@ function formatError(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-export function ObjectsPanel({ agentPort }: ObjectsPanelProps) {
+export function ObjectsPanel() {
   const token = useAuthStore((state) => state.token) ?? "";
   const queryClient = useQueryClient();
 
   const definitionsQuery = useQuery({
-    queryFn: ({ signal }) => agentClient.listLeonidObjectDefinitions(agentPort, token, signal),
-    queryKey: [QueryKey.LEONID_OBJECT_DEFINITIONS, agentPort, token],
+    queryFn: ({ signal }) => backendClient.listLeonidObjectDefinitions(token, signal),
+    queryKey: [QueryKey.LEONID_OBJECT_DEFINITIONS, token],
   });
   const valuesQuery = useQuery({
-    queryFn: ({ signal }) => agentClient.listLeonidObjectValues(agentPort, token, signal),
-    queryKey: [QueryKey.LEONID_OBJECT_VALUES, agentPort, token],
+    queryFn: ({ signal }) => backendClient.listLeonidObjectValues(token, signal),
+    queryKey: [QueryKey.LEONID_OBJECT_VALUES, token],
   });
 
   const [definitionModalOpen, setDefinitionModalOpen] = useState(false);
@@ -100,8 +96,8 @@ export function ObjectsPanel({ agentPort }: ObjectsPanelProps) {
   const definitionMutation = useMutation({
     mutationFn: ({ id, payload }: { id: number | null; payload: LeonidObjectDefinitionInput }) =>
       id === null
-        ? agentClient.createLeonidObjectDefinition(agentPort, token, payload)
-        : agentClient.updateLeonidObjectDefinition(agentPort, token, id, payload),
+        ? backendClient.createLeonidObjectDefinition(token, payload)
+        : backendClient.updateLeonidObjectDefinition(token, id, payload),
     onSuccess: async () => {
       await invalidateDefinitions();
       setDefinitionModalOpen(false);
@@ -110,8 +106,8 @@ export function ObjectsPanel({ agentPort }: ObjectsPanelProps) {
   const valueMutation = useMutation({
     mutationFn: ({ id, payload }: { id: number | null; payload: LeonidObjectValueInput }) =>
       id === null
-        ? agentClient.createLeonidObjectValue(agentPort, token, payload)
-        : agentClient.updateLeonidObjectValue(agentPort, token, id, payload),
+        ? backendClient.createLeonidObjectValue(token, payload)
+        : backendClient.updateLeonidObjectValue(token, id, payload),
     onSuccess: async () => {
       await invalidateValues();
       setValueModalOpen(false);
@@ -119,18 +115,18 @@ export function ObjectsPanel({ agentPort }: ObjectsPanelProps) {
   });
   const toggleDefinitionMutation = useMutation({
     mutationFn: (definition: LeonidObjectDefinition) =>
-      agentClient.toggleLeonidObjectDefinition(agentPort, token, definition.id),
+      backendClient.toggleLeonidObjectDefinition(token, definition.id),
     onSuccess: invalidateDefinitions,
   });
   const toggleValueMutation = useMutation({
-    mutationFn: (value: LeonidObjectValue) => agentClient.toggleLeonidObjectValue(agentPort, token, value.id),
+    mutationFn: (value: LeonidObjectValue) => backendClient.toggleLeonidObjectValue(token, value.id),
     onSuccess: invalidateValues,
   });
   const deleteMutation = useMutation({
     mutationFn: (target: DeleteTarget) =>
       target.kind === "definition"
-        ? agentClient.deleteLeonidObjectDefinition(agentPort, token, target.id)
-        : agentClient.deleteLeonidObjectValue(agentPort, token, target.id),
+        ? backendClient.deleteLeonidObjectDefinition(token, target.id)
+        : backendClient.deleteLeonidObjectValue(token, target.id),
     onSuccess: async (_data, target) => {
       await (target.kind === "definition" ? invalidateDefinitions() : invalidateValues());
       setDeleteTarget(null);

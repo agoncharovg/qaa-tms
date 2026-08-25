@@ -140,18 +140,13 @@ def validate_job_path(settings: Settings, path: str) -> str:
         or parsed.query
         or parsed.fragment
         or JenkinsPathToken.URL_SCHEME_SEPARATOR in raw_path
-        or any(
-            part == ".."
-            for part in normalized_path.split(JenkinsPathToken.PATH_SEPARATOR)
-        )
+        or any(part == ".." for part in normalized_path.split(JenkinsPathToken.PATH_SEPARATOR))
     ):
         raise JenkinsPathOutOfScopeError(ErrorMessage.JENKINS_PATH_OUT_OF_SCOPE.value)
 
     if not any(
         normalized_path == allowed_path
-        or normalized_path.startswith(
-            f"{allowed_path}{JenkinsPathToken.PATH_SEPARATOR}"
-        )
+        or normalized_path.startswith(f"{allowed_path}{JenkinsPathToken.PATH_SEPARATOR}")
         for allowed_path in allowed_root_paths(settings)
     ):
         raise JenkinsPathOutOfScopeError(ErrorMessage.JENKINS_PATH_OUT_OF_SCOPE.value)
@@ -416,8 +411,7 @@ def _map_node(settings: Settings, raw: Mapping[str, Any]) -> JenkinsNode:
         JenkinsNodeKind.FOLDER if JENKINS_FOLDER_CLASS in class_name else JenkinsNodeKind.PIPELINE
     )
     children = [
-        _map_node(settings, child)
-        for child in _read_object_list(raw, JenkinsField.CHILDREN)
+        _map_node(settings, child) for child in _read_object_list(raw, JenkinsField.CHILDREN)
     ]
     builds = (
         [_map_build(build) for build in _read_object_list(raw, JenkinsField.BUILDS)]

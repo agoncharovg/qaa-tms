@@ -83,6 +83,26 @@ export const BackendPath = {
   JENKINS_FOLDER: "/api/v1/jenkins/folder",
   JENKINS_FREEZES: "/api/v1/jenkins/freezes",
   JENKINS_RESUME_RUNS: "/api/v1/jenkins/resume-runs",
+  LEONID_SHARED_RESOURCE_LIMIT_TYPES: "/api/v1/leonid/shared_resource_limit_types",
+  LEONID_SHARED_RESOURCE_LIMITS: "/api/v1/leonid/shared_resource_limits",
+  LEONID_SHARED_RESOURCES: "/api/v1/leonid/shared_resources",
+  LEONID_OBJECT_DEFINITIONS: "/api/v1/leonid/object_definitions",
+  LEONID_OBJECT_VALUES: "/api/v1/leonid/object_values",
+  LEONID_PIPELINE_PARAMS: "/api/v1/leonid/pipeline_params",
+  NOTIFICATOR_CHOICES: "/api/v1/notificator/choices",
+  NOTIFICATOR_CONFIGS: "/api/v1/notificator/notification_configs",
+  NOTIFICATOR_TEAMS: "/api/v1/notificator/teams",
+  NOTIFICATOR_PRODUCTS: "/api/v1/notificator/products",
+  NOTIFICATOR_SUB_PRODUCTS: "/api/v1/notificator/sub_products",
+  NOTIFICATOR_SLACK_CHANNELS: "/api/v1/notificator/slack_channels",
+  NOTIFICATOR_USERS: "/api/v1/notificator/users",
+  NOTIFICATOR_QAA_MEMBERS: "/api/v1/notificator/qaa_members",
+  NOTIFICATOR_FAILURE_MENTION_RULES: "/api/v1/notificator/failure_mention_rules",
+  NOTIFICATOR_EVENTS: "/api/v1/notificator/events",
+  NOTIFICATOR_RECURRENT_FAILS: "/api/v1/notificator/recurrent_fails",
+  NOTIFICATOR_FAIL_REASONS: "/api/v1/notificator/fail_reasons",
+  NOTIFICATOR_MUTE_STATUSES: "/api/v1/notificator/mute_statuses",
+  NOTIFICATOR_HISTORY: "/api/v1/notificator/history",
   ME: "/api/v1/me",
   ME_PLUGINS: "/api/v1/me/plugins",
   SETTINGS: "/api/v1/settings",
@@ -228,8 +248,144 @@ export function buildBackendQaaServiceTokenRevokePath(tokenId: string): string {
   return `${BackendPath.QAA_ADMIN_SERVICE_TOKENS}/${encodeURIComponent(tokenId)}${BackendPath.REVOKE}`;
 }
 
+
 export function buildBackendQaaServiceTokenRegeneratePath(tokenId: string): string {
   return `${BackendPath.QAA_ADMIN_SERVICE_TOKENS}/${encodeURIComponent(tokenId)}${BackendPath.SERVICE_TOKEN_REGENERATE}`;
+}
+
+export function buildBackendLeonidSharedResourceLimitTypesPath(limitTypeId?: number): string {
+  if (typeof limitTypeId === "number") {
+    return `${BackendPath.LEONID_SHARED_RESOURCE_LIMIT_TYPES}/${encodeURIComponent(String(limitTypeId))}`;
+  }
+
+  return BackendPath.LEONID_SHARED_RESOURCE_LIMIT_TYPES;
+}
+
+export function buildBackendLeonidSharedResourceLimitsPath(limitId?: number): string {
+  if (typeof limitId === "number") {
+    return `${BackendPath.LEONID_SHARED_RESOURCE_LIMITS}/${encodeURIComponent(String(limitId))}`;
+  }
+
+  return BackendPath.LEONID_SHARED_RESOURCE_LIMITS;
+}
+
+export function buildBackendLeonidSharedResourcesPath(resourceId?: number): string {
+  if (typeof resourceId === "number") {
+    return `${BackendPath.LEONID_SHARED_RESOURCES}/${encodeURIComponent(String(resourceId))}`;
+  }
+
+  return BackendPath.LEONID_SHARED_RESOURCES;
+}
+
+export function buildBackendLeonidSharedResourceTogglePath(resourceId: number): string {
+  return `${buildBackendLeonidSharedResourcesPath(resourceId)}/toggle_enabled`;
+}
+
+export function buildBackendLeonidObjectDefinitionsPath(definitionId?: number): string {
+  if (typeof definitionId === "number") {
+    return `${BackendPath.LEONID_OBJECT_DEFINITIONS}/${encodeURIComponent(String(definitionId))}`;
+  }
+
+  return BackendPath.LEONID_OBJECT_DEFINITIONS;
+}
+
+export function buildBackendLeonidObjectDefinitionTogglePath(definitionId: number): string {
+  return `${buildBackendLeonidObjectDefinitionsPath(definitionId)}/toggle_enabled`;
+}
+
+export function buildBackendLeonidObjectValuesPath(valueId?: number): string {
+  if (typeof valueId === "number") {
+    return `${BackendPath.LEONID_OBJECT_VALUES}/${encodeURIComponent(String(valueId))}`;
+  }
+
+  return BackendPath.LEONID_OBJECT_VALUES;
+}
+
+export function buildBackendLeonidObjectValueTogglePath(valueId: number): string {
+  return `${buildBackendLeonidObjectValuesPath(valueId)}/toggle_enabled`;
+}
+
+export function buildBackendLeonidPipelineParamsPath(pipelineParamId?: number): string {
+  if (typeof pipelineParamId === "number") {
+    return `${BackendPath.LEONID_PIPELINE_PARAMS}/${encodeURIComponent(String(pipelineParamId))}`;
+  }
+
+  return BackendPath.LEONID_PIPELINE_PARAMS;
+}
+
+function buildBackendNotificatorItemPath(basePath: string, itemId?: number): string {
+  if (typeof itemId === "number") {
+    return `${basePath}/${encodeURIComponent(String(itemId))}`;
+  }
+
+  return basePath;
+}
+
+export function buildBackendNotificatorChoicesPath(): string {
+  return BackendPath.NOTIFICATOR_CHOICES;
+}
+
+export function buildBackendNotificatorConfigsPath(options?: {
+  configId?: number;
+  productTeam?: string;
+}): string {
+  const path = buildBackendNotificatorItemPath(BackendPath.NOTIFICATOR_CONFIGS, options?.configId);
+  if (!options?.productTeam || typeof options.configId === "number") {
+    return path;
+  }
+
+  const params = new URLSearchParams({
+    product_team: options.productTeam,
+  });
+  return `${path}?${params.toString()}`;
+}
+
+export function buildBackendNotificatorTeamsPath(teamId?: number): string {
+  return buildBackendNotificatorItemPath(BackendPath.NOTIFICATOR_TEAMS, teamId);
+}
+
+export function buildBackendNotificatorProductsPath(productId?: number): string {
+  return buildBackendNotificatorItemPath(BackendPath.NOTIFICATOR_PRODUCTS, productId);
+}
+
+export function buildBackendNotificatorSubProductsPath(subProductId?: number): string {
+  return buildBackendNotificatorItemPath(BackendPath.NOTIFICATOR_SUB_PRODUCTS, subProductId);
+}
+
+export function buildBackendNotificatorSlackChannelsPath(channelId?: number): string {
+  return buildBackendNotificatorItemPath(BackendPath.NOTIFICATOR_SLACK_CHANNELS, channelId);
+}
+
+export function buildBackendNotificatorUsersPath(userId?: number): string {
+  return buildBackendNotificatorItemPath(BackendPath.NOTIFICATOR_USERS, userId);
+}
+
+export function buildBackendNotificatorQaaMembersPath(memberId?: number): string {
+  return buildBackendNotificatorItemPath(BackendPath.NOTIFICATOR_QAA_MEMBERS, memberId);
+}
+
+export function buildBackendNotificatorFailureMentionRulesPath(ruleId?: number): string {
+  return buildBackendNotificatorItemPath(BackendPath.NOTIFICATOR_FAILURE_MENTION_RULES, ruleId);
+}
+
+export function buildBackendNotificatorEventsPath(eventId?: number): string {
+  return buildBackendNotificatorItemPath(BackendPath.NOTIFICATOR_EVENTS, eventId);
+}
+
+export function buildBackendNotificatorRecurrentFailsPath(recurrentFailId?: number): string {
+  return buildBackendNotificatorItemPath(BackendPath.NOTIFICATOR_RECURRENT_FAILS, recurrentFailId);
+}
+
+export function buildBackendNotificatorFailReasonsPath(failReasonId?: number): string {
+  return buildBackendNotificatorItemPath(BackendPath.NOTIFICATOR_FAIL_REASONS, failReasonId);
+}
+
+export function buildBackendNotificatorMuteStatusesPath(muteStatusId?: number): string {
+  return buildBackendNotificatorItemPath(BackendPath.NOTIFICATOR_MUTE_STATUSES, muteStatusId);
+}
+
+export function buildBackendNotificatorHistoryPath(historyItemId?: number): string {
+  return buildBackendNotificatorItemPath(BackendPath.NOTIFICATOR_HISTORY, historyItemId);
 }
 
 export const AgentPath = {
@@ -237,26 +393,6 @@ export const AgentPath = {
   SETTINGS: "/settings",
   PREFLIGHT: "/preflight",
   UPDATE: "/update",
-  NOTIFICATOR_CHOICES: "/notificator/choices",
-  NOTIFICATOR_CONFIGS: "/notificator/notification_configs",
-  NOTIFICATOR_TEAMS: "/notificator/teams",
-  NOTIFICATOR_PRODUCTS: "/notificator/products",
-  NOTIFICATOR_SUB_PRODUCTS: "/notificator/sub_products",
-  NOTIFICATOR_SLACK_CHANNELS: "/notificator/slack_channels",
-  NOTIFICATOR_USERS: "/notificator/users",
-  NOTIFICATOR_QAA_MEMBERS: "/notificator/qaa_members",
-  NOTIFICATOR_FAILURE_MENTION_RULES: "/notificator/failure_mention_rules",
-  NOTIFICATOR_EVENTS: "/notificator/events",
-  NOTIFICATOR_RECURRENT_FAILS: "/notificator/recurrent_fails",
-  NOTIFICATOR_FAIL_REASONS: "/notificator/fail_reasons",
-  NOTIFICATOR_MUTE_STATUSES: "/notificator/mute_statuses",
-  NOTIFICATOR_HISTORY: "/notificator/history",
-  LEONID_SHARED_RESOURCE_LIMIT_TYPES: "/leonid/shared_resource_limit_types",
-  LEONID_SHARED_RESOURCE_LIMITS: "/leonid/shared_resource_limits",
-  LEONID_SHARED_RESOURCES: "/leonid/shared_resources",
-  LEONID_OBJECT_DEFINITIONS: "/leonid/object_definitions",
-  LEONID_OBJECT_VALUES: "/leonid/object_values",
-  LEONID_PIPELINE_PARAMS: "/leonid/pipeline_params",
   JENKINS_SCOPE: "/jenkins/scope",
   JENKINS_TREE: "/jenkins/tree",
   JENKINS_BUILDS: "/jenkins/builds",
@@ -357,141 +493,6 @@ export function buildAgentJenkinsFolderPath(path: string): string {
     path,
   });
   return `${AgentPath.JENKINS_FOLDER}?${params.toString()}`;
-}
-
-export function buildAgentLeonidSharedResourceLimitTypesPath(limitTypeId?: number): string {
-  if (typeof limitTypeId === "number") {
-    return `${AgentPath.LEONID_SHARED_RESOURCE_LIMIT_TYPES}/${encodeURIComponent(String(limitTypeId))}`;
-  }
-
-  return AgentPath.LEONID_SHARED_RESOURCE_LIMIT_TYPES;
-}
-
-export function buildAgentLeonidSharedResourceLimitsPath(limitId?: number): string {
-  if (typeof limitId === "number") {
-    return `${AgentPath.LEONID_SHARED_RESOURCE_LIMITS}/${encodeURIComponent(String(limitId))}`;
-  }
-
-  return AgentPath.LEONID_SHARED_RESOURCE_LIMITS;
-}
-
-export function buildAgentLeonidSharedResourcesPath(resourceId?: number): string {
-  if (typeof resourceId === "number") {
-    return `${AgentPath.LEONID_SHARED_RESOURCES}/${encodeURIComponent(String(resourceId))}`;
-  }
-
-  return AgentPath.LEONID_SHARED_RESOURCES;
-}
-
-export function buildAgentLeonidSharedResourceTogglePath(resourceId: number): string {
-  return `${buildAgentLeonidSharedResourcesPath(resourceId)}/toggle_enabled`;
-}
-
-export function buildAgentLeonidObjectDefinitionsPath(definitionId?: number): string {
-  if (typeof definitionId === "number") {
-    return `${AgentPath.LEONID_OBJECT_DEFINITIONS}/${encodeURIComponent(String(definitionId))}`;
-  }
-
-  return AgentPath.LEONID_OBJECT_DEFINITIONS;
-}
-
-export function buildAgentLeonidObjectDefinitionTogglePath(definitionId: number): string {
-  return `${buildAgentLeonidObjectDefinitionsPath(definitionId)}/toggle_enabled`;
-}
-
-export function buildAgentLeonidObjectValuesPath(valueId?: number): string {
-  if (typeof valueId === "number") {
-    return `${AgentPath.LEONID_OBJECT_VALUES}/${encodeURIComponent(String(valueId))}`;
-  }
-
-  return AgentPath.LEONID_OBJECT_VALUES;
-}
-
-export function buildAgentLeonidObjectValueTogglePath(valueId: number): string {
-  return `${buildAgentLeonidObjectValuesPath(valueId)}/toggle_enabled`;
-}
-
-export function buildAgentLeonidPipelineParamsPath(pipelineParamId?: number): string {
-  if (typeof pipelineParamId === "number") {
-    return `${AgentPath.LEONID_PIPELINE_PARAMS}/${encodeURIComponent(String(pipelineParamId))}`;
-  }
-
-  return AgentPath.LEONID_PIPELINE_PARAMS;
-}
-
-function buildAgentNotificatorItemPath(basePath: string, itemId?: number): string {
-  if (typeof itemId === "number") {
-    return `${basePath}/${encodeURIComponent(String(itemId))}`;
-  }
-
-  return basePath;
-}
-
-export function buildAgentNotificatorChoicesPath(): string {
-  return AgentPath.NOTIFICATOR_CHOICES;
-}
-
-export function buildAgentNotificatorConfigsPath(options?: {
-  configId?: number;
-  productTeam?: string;
-}): string {
-  const path = buildAgentNotificatorItemPath(AgentPath.NOTIFICATOR_CONFIGS, options?.configId);
-  if (!options?.productTeam || typeof options.configId === "number") {
-    return path;
-  }
-
-  const params = new URLSearchParams({
-    product_team: options.productTeam,
-  });
-  return `${path}?${params.toString()}`;
-}
-
-export function buildAgentNotificatorTeamsPath(teamId?: number): string {
-  return buildAgentNotificatorItemPath(AgentPath.NOTIFICATOR_TEAMS, teamId);
-}
-
-export function buildAgentNotificatorProductsPath(productId?: number): string {
-  return buildAgentNotificatorItemPath(AgentPath.NOTIFICATOR_PRODUCTS, productId);
-}
-
-export function buildAgentNotificatorSubProductsPath(subProductId?: number): string {
-  return buildAgentNotificatorItemPath(AgentPath.NOTIFICATOR_SUB_PRODUCTS, subProductId);
-}
-
-export function buildAgentNotificatorSlackChannelsPath(channelId?: number): string {
-  return buildAgentNotificatorItemPath(AgentPath.NOTIFICATOR_SLACK_CHANNELS, channelId);
-}
-
-export function buildAgentNotificatorUsersPath(userId?: number): string {
-  return buildAgentNotificatorItemPath(AgentPath.NOTIFICATOR_USERS, userId);
-}
-
-export function buildAgentNotificatorQaaMembersPath(memberId?: number): string {
-  return buildAgentNotificatorItemPath(AgentPath.NOTIFICATOR_QAA_MEMBERS, memberId);
-}
-
-export function buildAgentNotificatorFailureMentionRulesPath(ruleId?: number): string {
-  return buildAgentNotificatorItemPath(AgentPath.NOTIFICATOR_FAILURE_MENTION_RULES, ruleId);
-}
-
-export function buildAgentNotificatorEventsPath(eventId?: number): string {
-  return buildAgentNotificatorItemPath(AgentPath.NOTIFICATOR_EVENTS, eventId);
-}
-
-export function buildAgentNotificatorRecurrentFailsPath(recurrentFailId?: number): string {
-  return buildAgentNotificatorItemPath(AgentPath.NOTIFICATOR_RECURRENT_FAILS, recurrentFailId);
-}
-
-export function buildAgentNotificatorFailReasonsPath(failReasonId?: number): string {
-  return buildAgentNotificatorItemPath(AgentPath.NOTIFICATOR_FAIL_REASONS, failReasonId);
-}
-
-export function buildAgentNotificatorMuteStatusesPath(muteStatusId?: number): string {
-  return buildAgentNotificatorItemPath(AgentPath.NOTIFICATOR_MUTE_STATUSES, muteStatusId);
-}
-
-export function buildAgentNotificatorHistoryPath(historyItemId?: number): string {
-  return buildAgentNotificatorItemPath(AgentPath.NOTIFICATOR_HISTORY, historyItemId);
 }
 
 export function buildAgentKubeNamespacesPath(context?: string | null): string {

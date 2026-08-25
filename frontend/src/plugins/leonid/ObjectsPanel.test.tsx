@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-const agentClientMock = vi.hoisted(() => ({
+const backendClientMock = vi.hoisted(() => ({
   createLeonidObjectDefinition: vi.fn(),
   createLeonidObjectValue: vi.fn(),
   deleteLeonidObjectDefinition: vi.fn(),
@@ -15,13 +15,12 @@ const agentClientMock = vi.hoisted(() => ({
   updateLeonidObjectValue: vi.fn(),
 }));
 
-vi.mock("@/api/agentClient", () => ({ agentClient: agentClientMock }));
+vi.mock("@/api/backendClient", () => ({ backendClient: backendClientMock }));
 
 import { ObjectsPanel } from "@/plugins/leonid/ObjectsPanel";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
 import { renderWithProviders } from "@/test/render";
 
-const PORT = 47600;
 const TOKEN = "test-token";
 
 describe("ObjectsPanel", () => {
@@ -29,23 +28,23 @@ describe("ObjectsPanel", () => {
     vi.clearAllMocks();
     resetAuthStoreState();
     useAuthStore.setState({ token: TOKEN });
-    agentClientMock.listLeonidObjectDefinitions.mockResolvedValue([
+    backendClientMock.listLeonidObjectDefinitions.mockResolvedValue([
       { id: 1, object_name: "origins", comment: null, enabled: true },
     ]);
-    agentClientMock.listLeonidObjectValues.mockResolvedValue([]);
-    agentClientMock.createLeonidObjectDefinition.mockResolvedValue({});
-    agentClientMock.deleteLeonidObjectDefinition.mockResolvedValue(undefined);
-    agentClientMock.toggleLeonidObjectDefinition.mockResolvedValue({});
+    backendClientMock.listLeonidObjectValues.mockResolvedValue([]);
+    backendClientMock.createLeonidObjectDefinition.mockResolvedValue({});
+    backendClientMock.deleteLeonidObjectDefinition.mockResolvedValue(undefined);
+    backendClientMock.toggleLeonidObjectDefinition.mockResolvedValue({});
   });
 
   it("renders object definitions from the agent", async () => {
-    renderWithProviders(<ObjectsPanel agentPort={PORT} />);
+    renderWithProviders(<ObjectsPanel />);
     expect(await screen.findByText("origins")).toBeInTheDocument();
   });
 
   it("creates an object definition through the modal", async () => {
     const user = userEvent.setup();
-    renderWithProviders(<ObjectsPanel agentPort={PORT} />);
+    renderWithProviders(<ObjectsPanel />);
     await screen.findByText("origins");
 
     await user.click(screen.getByRole("button", { name: "Add object definition" }));
@@ -53,7 +52,7 @@ describe("ObjectsPanel", () => {
     await user.type(within(dialog).getByLabelText("Object name"), "buckets");
     await user.click(within(dialog).getByRole("button", { name: "Save" }));
 
-    expect(agentClientMock.createLeonidObjectDefinition).toHaveBeenCalledWith(PORT, TOKEN, {
+    expect(backendClientMock.createLeonidObjectDefinition).toHaveBeenCalledWith(TOKEN, {
       object_name: "buckets",
       comment: null,
       enabled: true,
@@ -62,28 +61,28 @@ describe("ObjectsPanel", () => {
 
   it("toggles an object definition", async () => {
     const user = userEvent.setup();
-    renderWithProviders(<ObjectsPanel agentPort={PORT} />);
+    renderWithProviders(<ObjectsPanel />);
     await screen.findByText("origins");
 
     await user.click(screen.getByRole("button", { name: "Toggle object definition origins" }));
-    expect(agentClientMock.toggleLeonidObjectDefinition).toHaveBeenCalledWith(PORT, TOKEN, 1);
+    expect(backendClientMock.toggleLeonidObjectDefinition).toHaveBeenCalledWith(TOKEN, 1);
   });
 
   it("deletes an object definition after confirmation", async () => {
     const user = userEvent.setup();
-    renderWithProviders(<ObjectsPanel agentPort={PORT} />);
+    renderWithProviders(<ObjectsPanel />);
     await screen.findByText("origins");
 
     await user.click(screen.getByRole("button", { name: "Delete object definition origins" }));
     const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "Delete" }));
 
-    expect(agentClientMock.deleteLeonidObjectDefinition).toHaveBeenCalledWith(PORT, TOKEN, 1);
+    expect(backendClientMock.deleteLeonidObjectDefinition).toHaveBeenCalledWith(TOKEN, 1);
   });
 
   it("shows an error alert when the list request fails", async () => {
-    agentClientMock.listLeonidObjectDefinitions.mockRejectedValue(new Error("boom"));
-    renderWithProviders(<ObjectsPanel agentPort={PORT} />);
+    backendClientMock.listLeonidObjectDefinitions.mockRejectedValue(new Error("boom"));
+    renderWithProviders(<ObjectsPanel />);
     expect(await screen.findByText("Leonid objects failed")).toBeInTheDocument();
     expect(screen.getByText("boom")).toBeInTheDocument();
   });
