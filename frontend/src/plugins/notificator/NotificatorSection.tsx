@@ -1,5 +1,8 @@
-import { CompanionGate } from "@/plugins/companion/CompanionGate";
+import { useEffect, useState, type ReactNode } from "react";
+import { Stack, Tabs } from "@mantine/core";
+
 import { ViewKey, type ViewKey as ViewKeyType } from "@/constants";
+import { CompanionGate } from "@/plugins/companion/CompanionGate";
 import {
   ProductsPanel,
   SlackChannelsPanel,
@@ -11,7 +14,6 @@ import {
   FailReasonsPanel,
   FailureMentionRulesPanel,
   HistoryPanel,
-  MuteStatusesPanel,
   QaaMembersPanel,
   RecurrentFailsPanel,
   TeamsPanel,
@@ -19,22 +21,17 @@ import {
 } from "@/plugins/notificator/ReadOnlyPanels";
 import { useAuthStore } from "@/store/authStore";
 
+interface NotificatorInnerTab {
+  label: string;
+  render: (port: number) => ReactNode;
+  value: string;
+}
+
 interface NotificatorSectionProps {
   mode: Extract<
     ViewKeyType,
+    | typeof ViewKey.NOTIFICATOR_CONTRACT_MANAGER
     | typeof ViewKey.NOTIFICATOR_NOTIFICATIONS
-    | typeof ViewKey.NOTIFICATOR_TEAMS
-    | typeof ViewKey.NOTIFICATOR_PRODUCTS
-    | typeof ViewKey.NOTIFICATOR_SUB_PRODUCTS
-    | typeof ViewKey.NOTIFICATOR_SLACK_CHANNELS
-    | typeof ViewKey.NOTIFICATOR_USERS
-    | typeof ViewKey.NOTIFICATOR_QAA_MEMBERS
-    | typeof ViewKey.NOTIFICATOR_FAILURE_MENTION_RULES
-    | typeof ViewKey.NOTIFICATOR_EVENTS
-    | typeof ViewKey.NOTIFICATOR_RECURRENT_FAILS
-    | typeof ViewKey.NOTIFICATOR_FAIL_REASONS
-    | typeof ViewKey.NOTIFICATOR_MUTE_STATUSES
-    | typeof ViewKey.NOTIFICATOR_HISTORY
   >;
 }
 
@@ -50,55 +47,108 @@ function NotificatorAgentSection({
   mode: NotificatorSectionProps["mode"];
   port: number;
 }) {
-  if (mode === ViewKey.NOTIFICATOR_TEAMS) {
-    return <TeamsPanel agentPort={port} />;
+  const innerTabs: NotificatorInnerTab[] =
+    mode === ViewKey.NOTIFICATOR_CONTRACT_MANAGER
+      ? [
+          {
+            value: "failure-mention-rules",
+            label: "Failure Mention Rules",
+            render: (agentPort) => <FailureMentionRulesPanel agentPort={agentPort} />,
+          },
+          {
+            value: "notifications",
+            label: "Notifications",
+            render: (agentPort) => <NotificationsPanel agentPort={agentPort} />,
+          },
+          {
+            value: "products",
+            label: "Products",
+            render: (agentPort) => <ProductsPanel agentPort={agentPort} />,
+          },
+          {
+            value: "qaa-members",
+            label: "QAA Members",
+            render: (agentPort) => <QaaMembersPanel agentPort={agentPort} />,
+          },
+          {
+            value: "slack-channels",
+            label: "Slack Channels",
+            render: (agentPort) => <SlackChannelsPanel agentPort={agentPort} />,
+          },
+          {
+            value: "sub-products",
+            label: "Sub-products",
+            render: (agentPort) => <SubProductsPanel agentPort={agentPort} />,
+          },
+          {
+            value: "teams",
+            label: "Teams",
+            render: (agentPort) => <TeamsPanel agentPort={agentPort} />,
+          },
+          {
+            value: "users",
+            label: "Users",
+            render: (agentPort) => <UsersPanel agentPort={agentPort} />,
+          },
+        ]
+      : [
+          {
+            value: "events",
+            label: "Events",
+            render: (agentPort) => <EventsPanel agentPort={agentPort} />,
+          },
+          {
+            value: "fail-reasons",
+            label: "Fail reasons",
+            render: (agentPort) => <FailReasonsPanel agentPort={agentPort} />,
+          },
+          {
+            value: "history",
+            label: "History",
+            render: (agentPort) => <HistoryPanel agentPort={agentPort} />,
+          },
+          {
+            value: "recurrent-fail-notifications",
+            label: "Recurrent fail notifications",
+            render: (agentPort) => <RecurrentFailsPanel agentPort={agentPort} />,
+          },
+        ];
+  const defaultTab = innerTabs[0]?.value ?? null;
+  const [activeTab, setActiveTab] = useState<string | null>(defaultTab);
+
+  useEffect(() => {
+    setActiveTab(defaultTab);
+  }, [defaultTab]);
+
+  const activeSection = innerTabs.find((tab) => tab.value === activeTab) ?? innerTabs[0];
+
+  if (!activeSection) {
+    return null;
   }
 
-  if (mode === ViewKey.NOTIFICATOR_PRODUCTS) {
-    return <ProductsPanel agentPort={port} />;
-  }
+  return (
+    <Stack gap="md">
+      <Tabs
+        onChange={(value) => {
+          if (!value) {
+            return;
+          }
 
-  if (mode === ViewKey.NOTIFICATOR_SUB_PRODUCTS) {
-    return <SubProductsPanel agentPort={port} />;
-  }
-
-  if (mode === ViewKey.NOTIFICATOR_SLACK_CHANNELS) {
-    return <SlackChannelsPanel agentPort={port} />;
-  }
-
-  if (mode === ViewKey.NOTIFICATOR_USERS) {
-    return <UsersPanel agentPort={port} />;
-  }
-
-  if (mode === ViewKey.NOTIFICATOR_QAA_MEMBERS) {
-    return <QaaMembersPanel agentPort={port} />;
-  }
-
-  if (mode === ViewKey.NOTIFICATOR_FAILURE_MENTION_RULES) {
-    return <FailureMentionRulesPanel agentPort={port} />;
-  }
-
-  if (mode === ViewKey.NOTIFICATOR_EVENTS) {
-    return <EventsPanel agentPort={port} />;
-  }
-
-  if (mode === ViewKey.NOTIFICATOR_RECURRENT_FAILS) {
-    return <RecurrentFailsPanel agentPort={port} />;
-  }
-
-  if (mode === ViewKey.NOTIFICATOR_FAIL_REASONS) {
-    return <FailReasonsPanel agentPort={port} />;
-  }
-
-  if (mode === ViewKey.NOTIFICATOR_MUTE_STATUSES) {
-    return <MuteStatusesPanel agentPort={port} />;
-  }
-
-  if (mode === ViewKey.NOTIFICATOR_HISTORY) {
-    return <HistoryPanel agentPort={port} />;
-  }
-
-  return <NotificationsPanel agentPort={port} />;
+          setActiveTab(value);
+        }}
+        value={activeSection.value}
+      >
+        <Tabs.List>
+          {innerTabs.map((tab) => (
+            <Tabs.Tab key={tab.value} value={tab.value}>
+              {tab.label}
+            </Tabs.Tab>
+          ))}
+        </Tabs.List>
+      </Tabs>
+      {activeSection.render(port)}
+    </Stack>
+  );
 }
 
 export function NotificatorSection({ mode }: NotificatorSectionProps) {
@@ -114,3 +164,4 @@ export function NotificatorSection({ mode }: NotificatorSectionProps) {
     </CompanionGate>
   );
 }
+
