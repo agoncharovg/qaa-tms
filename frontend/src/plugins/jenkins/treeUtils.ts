@@ -71,6 +71,17 @@ export function hasDisabledPipeline(node: JenkinsNode): boolean {
   return node.children.some((child) => hasDisabledPipeline(child));
 }
 
+// A folder can still be frozen as long as it holds at least one enabled (non-disabled)
+// pipeline. This is deliberately independent of the "frozen" indicator: a folder that
+// already contains a manually-disabled pipeline is still freezable for the rest of its
+// subtree, so the freeze action must not be gated on hasDisabledPipeline.
+export function hasFreezablePipeline(node: JenkinsNode): boolean {
+  if (node.kind === "pipeline") {
+    return node.status !== JenkinsStatus.DISABLED;
+  }
+  return node.children.some((child) => hasFreezablePipeline(child));
+}
+
 export function countPipelineStatuses(node: JenkinsNode): JenkinsStatusCounts {
   return flattenPipelines(node).reduce((counts, pipeline) => {
     switch (pipeline.status) {

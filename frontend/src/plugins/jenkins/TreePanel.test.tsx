@@ -186,6 +186,64 @@ function buildTreeRoots(pipelineStatus: string = "passed") {
   ];
 }
 
+// A BE folder that already holds one disabled pipeline (Smoke) alongside an enabled one
+// (Regression). The folder reads as "frozen" (has a disabled descendant) yet must still be
+// freezable, because Regression can still be locked.
+function buildPartiallyDisabledRoots() {
+  return [
+    {
+      builds: [],
+      children: [
+        {
+          builds: [],
+          children: [
+            {
+              builds: [],
+              children: [],
+              color: "disabled",
+              kind: "pipeline",
+              name: "Smoke",
+              scheduled: false,
+              synthetic: false,
+              path: "job/.QAA/job/E2E/job/PREPROD/job/Smoke",
+              status: "disabled",
+              url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/",
+            },
+            {
+              builds: [],
+              children: [],
+              color: "blue",
+              kind: "pipeline",
+              name: "Regression",
+              scheduled: false,
+              synthetic: false,
+              path: "job/.QAA/job/E2E/job/PREPROD/job/Regression",
+              status: "passed",
+              url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Regression/",
+            },
+          ],
+          color: null,
+          kind: "folder",
+          name: "BE",
+          scheduled: false,
+          synthetic: false,
+          path: "job/.QAA/job/E2E/job/PREPROD",
+          status: null,
+          url: "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/",
+        },
+      ],
+      color: null,
+      kind: "folder",
+      name: "PREPROD",
+      scheduled: false,
+      synthetic: true,
+      path: "",
+      status: null,
+      url: "",
+    },
+  ];
+}
+
 function buildScope() {
   return {
     historyLimit: 8,
@@ -650,6 +708,26 @@ describe("TreePanel", () => {
     );
 
     expect(buildHistoryLineMock.renderCount).toBe(renderCountBeforeResume + 1);
+  });
+
+  it("still offers Freeze on a partially-disabled folder so the remaining pipelines can be locked", async () => {
+    backendClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsTreeCache.mockResolvedValue({
+      fetchedAt: "2026-08-17T10:00:00Z",
+      refreshLease: null,
+      roots: buildPartiallyDisabledRoots(),
+      signature: "scope-1234",
+      stale: false,
+    });
+    backendClientMock.getJenkinsFreezes.mockResolvedValue([]);
+
+    renderWithProviders(<TreePanel />);
+
+    expect(await screen.findByText("Regression")).toBeInTheDocument();
+    // The folder is frozen (holds a disabled pipeline) but not fully — the snowflake stays.
+    const beRow = screen.getAllByText("BE")[0]?.closest('[data-frozen="true"]');
+    expect(beRow).not.toBeNull();
+    expect(within(beRow as HTMLElement).getByRole("button", { name: "Freeze folder..." })).toBeInTheDocument();
   });
 
   it("freezes a folder through reserve, agent snapshot, and snapshot put in order", async () => {

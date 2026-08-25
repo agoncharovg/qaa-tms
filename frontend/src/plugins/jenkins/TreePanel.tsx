@@ -70,6 +70,7 @@ import {
   findNodeByPath,
   flattenPipelines,
   hasDisabledPipeline,
+  hasFreezablePipeline,
 } from "@/plugins/jenkins/treeUtils";
 import { useJenkinsBuilds } from "@/plugins/jenkins/useJenkinsBuilds";
 import { useJenkinsFreezes } from "@/plugins/jenkins/useJenkinsFreezes";
@@ -879,7 +880,12 @@ function TreeNodeRow({
   // and launching a campaign would only produce skipped items.
   const resumeFreeze = actionableFolder && frozen ? activeFreezeForPath(node.path) : null;
   const showResumeAction = actionableFolder && resumeFreeze !== null;
-  const showFreezeAction = actionableFolder && !frozen;
+  // Offer "Freeze" unless the folder is *fully* frozen (holds disabled pipelines with none
+  // left to freeze). A partially-disabled folder — one disabled pipeline (manual or from a
+  // partial resume) alongside enabled ones — must still expose the snowflake so the rest can
+  // be frozen. Gating on `!frozen` alone hid it on any folder with a single disabled pipeline.
+  // Empty / not-yet-expanded folders (children === []) stay freezable, as before.
+  const showFreezeAction = actionableFolder && (!frozen || hasFreezablePipeline(node));
   const loadingFreezeState = actionableFolder && isMutatingPath(resumeFreeze?.folderPath ?? node.path);
 
   return (
