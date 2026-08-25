@@ -76,6 +76,7 @@ class AgentSettingsRead(BaseModel):
     staging_bin: str | None
     stagings_repo: str | None
     staging_kubeconfig: str
+    notebook_root: str
     staging_kubeconfig_url: str
     kubeconfig_active_path: str
     staging_kubeconfig_max_age_hours: int
@@ -102,6 +103,7 @@ class AgentSettingsUpdate(BaseModel):
     staging_bin: str | None = None
     stagings_repo: str | None = None
     staging_kubeconfig: str | None = None
+    notebook_root: str | None = None
     staging_kubeconfig_url: str | None = None
     kubeconfig_active_path: str | None = None
     staging_kubeconfig_max_age_hours: int | None = None
@@ -125,6 +127,7 @@ def to_agent_settings_read(settings: Settings) -> AgentSettingsRead:
         staging_bin=settings.staging_bin,
         stagings_repo=settings.stagings_repo,
         staging_kubeconfig=settings.staging_kubeconfig,
+        notebook_root=settings.notebook_root,
         staging_kubeconfig_url=settings.staging_kubeconfig_url,
         kubeconfig_active_path=settings.kubeconfig_active_path,
         staging_kubeconfig_max_age_hours=settings.staging_kubeconfig_max_age_hours,
@@ -132,6 +135,137 @@ def to_agent_settings_read(settings: Settings) -> AgentSettingsRead:
         kubeconfig=settings.kubeconfig,
         kubectl_request_timeout=settings.kubectl_request_timeout,
     )
+
+
+type NotebookFlags = dict[str, object]
+
+
+class NotebookBookmarkWriteNode(BaseModel):
+    """Bookmark node written into `__contents__`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    children: list[NotebookBookmarkWriteNode] = Field(default_factory=list)
+    flags: NotebookFlags = Field(default_factory=dict)
+    notes: dict[str, NotebookFlags] = Field(default_factory=dict)
+
+
+class NotebookBookmarkNode(BaseModel):
+    """Resolved bookmark tree entry returned to the frontend."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    name: str
+    note_count: int = Field(alias="noteCount")
+    flags: NotebookFlags = Field(default_factory=dict)
+    children: list[NotebookBookmarkNode] = Field(default_factory=list)
+
+
+class NotebookContentsWriteRequest(BaseModel):
+    """Whole-tree notebook contents update payload."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    bookmarks: list[NotebookBookmarkWriteNode] = Field(default_factory=list)
+
+
+class NotebookContentsResponse(BaseModel):
+    """Notebook bookmark tree response."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    bookmarks: list[NotebookBookmarkNode] = Field(default_factory=list)
+
+
+class NotebookBookmarkCreateRequest(BaseModel):
+    """Bookmark create payload."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    flags: NotebookFlags = Field(default_factory=dict)
+
+
+class NotebookBookmarkUpdateRequest(BaseModel):
+    """Bookmark rename and flags update payload."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    bookmark: str = Field(min_length=1)
+    name: str | None = Field(default=None, min_length=1)
+    flags: NotebookFlags | None = None
+
+
+class NotebookNoteSummary(BaseModel):
+    """Notebook note row returned for a bookmark."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    name: str
+    preview_lines: list[str] = Field(default_factory=list, alias="previewLines")
+    flags: NotebookFlags = Field(default_factory=dict)
+
+
+class NotebookNotesResponse(BaseModel):
+    """Notebook notes listed for a bookmark."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    bookmark: str
+    notes: list[NotebookNoteSummary] = Field(default_factory=list)
+
+
+class NotebookNoteReadResponse(BaseModel):
+    """Full notebook note payload."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    bookmark: str
+    name: str
+    text: str
+    preview_lines: list[str] = Field(default_factory=list, alias="previewLines")
+    flags: NotebookFlags = Field(default_factory=dict)
+
+
+class NotebookNoteCreateRequest(BaseModel):
+    """Notebook note create payload."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    bookmark: str = Field(min_length=1)
+    name: str | None = Field(default=None, min_length=1)
+    text: str
+    flags: NotebookFlags | None = None
+
+
+class NotebookNoteUpdateRequest(BaseModel):
+    """Notebook note update payload."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    bookmark: str = Field(min_length=1)
+    text: str | None = None
+    flags: NotebookFlags | None = None
+
+
+class NotebookSearchMatch(BaseModel):
+    """Notebook search hit."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    bookmark: str
+    name: str
+    preview_lines: list[str] = Field(default_factory=list, alias="previewLines")
+
+
+class NotebookSearchResponse(BaseModel):
+    """Notebook search response."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    query: str
+    matches: list[NotebookSearchMatch] = Field(default_factory=list)
 
 
 class QaaRunCreateRequest(BaseModel):

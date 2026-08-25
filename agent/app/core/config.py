@@ -26,6 +26,7 @@ from app.core.constants import (
     DEFAULT_KUBECONFIG_ACTIVE_PATH,
     DEFAULT_KUBECTL_BIN,
     DEFAULT_KUBECTL_REQUEST_TIMEOUT,
+    DEFAULT_NOTEBOOK_ROOT,
     DEFAULT_STAGING_KUBECONFIG,
     DEFAULT_STAGING_KUBECONFIG_MAX_AGE_HOURS,
     DEFAULT_STAGING_KUBECONFIG_URL,
@@ -106,6 +107,10 @@ class Settings(BaseSettings):
     staging_kubeconfig: str = Field(
         default=DEFAULT_STAGING_KUBECONFIG,
         alias=StagingEnvKey.KUBECONFIG.value,
+    )
+    notebook_root: str = Field(
+        default=DEFAULT_NOTEBOOK_ROOT,
+        alias=EnvKey.NOTEBOOK_ROOT.value,
     )
     staging_kubeconfig_url: str = Field(
         default=DEFAULT_STAGING_KUBECONFIG_URL,

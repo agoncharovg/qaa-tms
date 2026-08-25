@@ -26,6 +26,7 @@ def write_agent_env(path: Path) -> None:
                 "AGENT_STAGING_BIN=/usr/local/bin/staging",
                 "AGENT_STAGINGS_REPO=/tmp/stagings",
                 "STAGING_KUBECONFIG=~/.kube/ai-staging.yaml",
+                "AGENT_NOTEBOOK_ROOT=~/qaa-notebook",
                 "AGENT_STAGING_KUBECONFIG_URL=https://kubeconf.example/config",
                 "AGENT_KUBECONFIG_ACTIVE_PATH=~/.kube/config",
                 "AGENT_STAGING_KUBECONFIG_MAX_AGE_HOURS=48",
@@ -98,6 +99,7 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
             "staging_bin": "/opt/staging",
             "stagings_repo": "/work/stagings",
             "staging_kubeconfig": "~/.kube/updated.yaml",
+            "notebook_root": "/tmp/notebook",
             "staging_kubeconfig_url": "https://updated.example/config",
             "kubeconfig_active_path": "~/.kube/active.yaml",
             "staging_kubeconfig_max_age_hours": 72,
@@ -120,6 +122,7 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
     assert updated["jenkins_root_folders"] == ["UPDATED", "MORE"]
     assert updated["jenkins_history_limit"] == 10
     assert updated["staging_bin"] == "/opt/staging"
+    assert updated["notebook_root"] == "/tmp/notebook"
     assert updated["kubectl_request_timeout"] == "20s"
 
     runtime_settings = client._transport.app.state.settings
@@ -133,15 +136,18 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
     ]
     assert runtime_settings.jenkins_root_folders == ["UPDATED", "MORE"]
     assert runtime_settings.jenkins_history_limit == 10
-    assert client._transport.app.state.job_manager._settings.jenkins_url == "https://updated.jenkins"
+    assert runtime_settings.notebook_root == "/tmp/notebook"
+    assert (
+        client._transport.app.state.job_manager._settings.jenkins_url == "https://updated.jenkins"
+    )
 
     serialized_env = env_path.read_text(encoding="utf-8")
     assert "AGENT_JENKINS_TOKEN=\n" in serialized_env
     assert "AGENT_QAA_GENERATOR_TOKEN=\n" in serialized_env
     assert (
         "AGENT_JENKINS_ROOT_GROUPS="
-        "BE=job/.QAA/job/E2E/job/UPDATED,FE=job/.QAA/job/UI_E2E/job/UPDATED\n"
-        in serialized_env
+        "BE=job/.QAA/job/E2E/job/UPDATED,FE=job/.QAA/job/UI_E2E/job/UPDATED\n" in serialized_env
     )
     assert "AGENT_JENKINS_ROOT_FOLDERS=UPDATED,MORE\n" in serialized_env
     assert "AGENT_JENKINS_HISTORY_LIMIT=10\n" in serialized_env
+    assert "AGENT_NOTEBOOK_ROOT=/tmp/notebook\n" in serialized_env

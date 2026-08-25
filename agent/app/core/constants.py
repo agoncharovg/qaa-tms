@@ -10,6 +10,10 @@ class AgentPath(StrEnum):
     SETTINGS = "/settings"
     PREFLIGHT = "/preflight"
     UPDATE = "/update"
+    NOTEBOOK_CONTENTS = "/notebook/contents"
+    NOTEBOOK_BOOKMARK = "/notebook/bookmark"
+    NOTEBOOK_NOTE = "/notebook/note"
+    NOTEBOOK_SEARCH = "/notebook/search"
     JENKINS_SCOPE = "/jenkins/scope"
     JENKINS_TREE = "/jenkins/tree"
     JENKINS_BUILDS = "/jenkins/builds"
@@ -138,6 +142,7 @@ class EnvKey(StrEnum):
     STAGING_KUBECONFIG_URL = "AGENT_STAGING_KUBECONFIG_URL"
     KUBECONFIG_ACTIVE_PATH = "AGENT_KUBECONFIG_ACTIVE_PATH"
     STAGING_KUBECONFIG_MAX_AGE_HOURS = "AGENT_STAGING_KUBECONFIG_MAX_AGE_HOURS"
+    NOTEBOOK_ROOT = "AGENT_NOTEBOOK_ROOT"
 
 
 class EnvFile(StrEnum):
@@ -194,6 +199,8 @@ class PermissionKey(StrEnum):
     JENKINS_READ = "jenkins.read"
     JENKINS_FREEZE = "jenkins.freeze"
     JENKINS_RESUME = "jenkins.resume"
+    NOTEBOOK_READ = "notebook.read"
+    NOTEBOOK_WRITE = "notebook.write"
     STATISTICS_READ = "statistics.read"
     STAGINGS_READ = "stagings.read"
     STAGINGS_DEPLOY = "stagings.deploy"
@@ -428,6 +435,7 @@ DEFAULT_JENKINS_RESUME_PAUSE_SECONDS = 1.0
 DEFAULT_JENKINS_BUILDS_LIMIT = 15
 SMOKE_FOLDER_HISTORY_LIMIT = 30
 DEFAULT_STAGING_KUBECONFIG = "~/.kube/ai-staging.yaml"
+DEFAULT_NOTEBOOK_ROOT = "~/qaa-notebook"
 DEFAULT_AUTH_CACHE_TTL_SECONDS = 30
 DEFAULT_BACKEND_TIMEOUT_SECONDS = 10.0
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 5.0

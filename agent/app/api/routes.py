@@ -78,6 +78,15 @@ from app.schemas import (
     NamespaceDeployRecipeResponse,
     NamespaceListResponse,
     NamespaceStatusResponse,
+    NotebookBookmarkCreateRequest,
+    NotebookBookmarkUpdateRequest,
+    NotebookContentsResponse,
+    NotebookContentsWriteRequest,
+    NotebookNoteCreateRequest,
+    NotebookNoteReadResponse,
+    NotebookNotesResponse,
+    NotebookNoteUpdateRequest,
+    NotebookSearchResponse,
     PreflightItem,
     SyncRequest,
     to_agent_settings_read,
@@ -125,6 +134,24 @@ from app.services.namespaces import (
     read_namespace_status,
     stream_namespace_logs,
 )
+from app.services.notebook import (
+    NotebookBookmarkNotFoundError,
+    NotebookConflictError,
+    NotebookNoteNotFoundError,
+    NotebookPathValidationError,
+    NotebookRootMissingError,
+    create_bookmark,
+    delete_bookmark,
+    delete_note,
+    list_bookmarks,
+    list_notes,
+    read_note,
+    rename_bookmark,
+    search,
+    set_flags,
+    write_contents,
+    write_note,
+)
 from app.services.preflight import collect_preflight
 from app.services.staging import StagingNotInstalledError, build_ping_response
 from app.services.update import UpdateUnsupportedError, spawn_update_helper
@@ -158,6 +185,10 @@ StagingsSyncAuth = Annotated[AuthContext, Depends(require_permission(PermissionK
 StagingsE2eRunAuth = Annotated[
     AuthContext, Depends(require_permission(PermissionKey.STAGINGS_E2E_RUN))
 ]
+NotebookReadAuth = Annotated[AuthContext, Depends(require_permission(PermissionKey.NOTEBOOK_READ))]
+NotebookWriteAuth = Annotated[
+    AuthContext, Depends(require_permission(PermissionKey.NOTEBOOK_WRITE))
+]
 logger = logging.getLogger(__name__)
 
 AGENT_SETTINGS_ENV_KEY_BY_FIELD = {
@@ -177,6 +208,7 @@ AGENT_SETTINGS_ENV_KEY_BY_FIELD = {
     "kubectl_request_timeout": EnvKey.KUBECTL_REQUEST_TIMEOUT,
     "staging_bin": EnvKey.STAGING_BIN,
     "staging_kubeconfig": StagingEnvKey.KUBECONFIG,
+    "notebook_root": EnvKey.NOTEBOOK_ROOT,
     "staging_kubeconfig_max_age_hours": EnvKey.STAGING_KUBECONFIG_MAX_AGE_HOURS,
     "staging_kubeconfig_url": EnvKey.STAGING_KUBECONFIG_URL,
     "stagings_repo": EnvKey.STAGINGS_REPO,
@@ -245,6 +277,289 @@ async def update_companion_settings(
         backend_client=request.app.state.backend_client,
     )
     return to_agent_settings_read(updated_settings)
+
+
+@router.get(AgentPath.NOTEBOOK_CONTENTS.value, response_model=NotebookContentsResponse)
+async def get_notebook_contents(
+    _: NotebookReadAuth,
+    settings: SettingsDep,
+) -> NotebookContentsResponse:
+    try:
+        return list_bookmarks(settings)
+    except NotebookRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+
+@router.put(AgentPath.NOTEBOOK_CONTENTS.value, response_model=NotebookContentsResponse)
+async def put_notebook_contents(
+    request_body: NotebookContentsWriteRequest,
+    _: NotebookWriteAuth,
+    settings: SettingsDep,
+) -> NotebookContentsResponse:
+    try:
+        write_contents(
+            settings,
+            [bookmark.model_dump(mode="python") for bookmark in request_body.bookmarks],
+        )
+        return list_bookmarks(settings)
+    except NotebookPathValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+
+@router.post(AgentPath.NOTEBOOK_BOOKMARK.value, response_model=NotebookContentsResponse)
+async def post_notebook_bookmark(
+    request_body: NotebookBookmarkCreateRequest,
+    _: NotebookWriteAuth,
+    settings: SettingsDep,
+) -> NotebookContentsResponse:
+    try:
+        create_bookmark(settings, request_body.name)
+        if request_body.flags:
+            set_flags(settings, request_body.name, None, request_body.flags)
+        return list_bookmarks(settings)
+    except (NotebookConflictError, NotebookPathValidationError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+
+@router.put(AgentPath.NOTEBOOK_BOOKMARK.value, response_model=NotebookContentsResponse)
+async def put_notebook_bookmark(
+    request_body: NotebookBookmarkUpdateRequest,
+    _: NotebookWriteAuth,
+    settings: SettingsDep,
+) -> NotebookContentsResponse:
+    if request_body.name is None and request_body.flags is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No bookmark changes requested.",
+        )
+    try:
+        bookmark_name = request_body.bookmark
+        if request_body.name is not None:
+            rename_bookmark(settings, request_body.bookmark, request_body.name)
+            bookmark_name = request_body.name
+        if request_body.flags is not None:
+            set_flags(settings, bookmark_name, None, request_body.flags)
+        return list_bookmarks(settings)
+    except NotebookRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except NotebookBookmarkNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except (NotebookConflictError, NotebookPathValidationError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+
+@router.delete(AgentPath.NOTEBOOK_BOOKMARK.value, response_model=NotebookContentsResponse)
+async def delete_notebook_bookmark(
+    _: NotebookWriteAuth,
+    settings: SettingsDep,
+    bookmark: str = Query(...),
+) -> NotebookContentsResponse:
+    try:
+        delete_bookmark(settings, bookmark)
+        return list_bookmarks(settings)
+    except NotebookRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except NotebookBookmarkNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except NotebookPathValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+
+@router.get(AgentPath.NOTEBOOK_NOTE.value, response_model=NotebookNotesResponse)
+async def get_notebook_notes(
+    _: NotebookReadAuth,
+    settings: SettingsDep,
+    bookmark: str = Query(...),
+) -> NotebookNotesResponse:
+    try:
+        return list_notes(settings, bookmark)
+    except NotebookRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except NotebookBookmarkNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except NotebookPathValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+
+@router.get(
+    f"{AgentPath.NOTEBOOK_NOTE.value}/{{name}}",
+    response_model=NotebookNoteReadResponse,
+)
+async def get_notebook_note(
+    name: str,
+    _: NotebookReadAuth,
+    settings: SettingsDep,
+    bookmark: str = Query(...),
+) -> NotebookNoteReadResponse:
+    try:
+        return read_note(settings, bookmark, name)
+    except NotebookRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except (NotebookBookmarkNotFoundError, NotebookNoteNotFoundError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except NotebookPathValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+
+@router.post(AgentPath.NOTEBOOK_NOTE.value, response_model=NotebookNoteReadResponse)
+async def post_notebook_note(
+    request_body: NotebookNoteCreateRequest,
+    _: NotebookWriteAuth,
+    settings: SettingsDep,
+) -> NotebookNoteReadResponse:
+    try:
+        note_name = write_note(
+            settings,
+            request_body.bookmark,
+            request_body.name,
+            request_body.text,
+        )
+        if request_body.flags is not None:
+            set_flags(settings, request_body.bookmark, note_name, request_body.flags)
+        return read_note(settings, request_body.bookmark, note_name)
+    except NotebookRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except (NotebookBookmarkNotFoundError, NotebookNoteNotFoundError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except NotebookPathValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+
+@router.put(
+    f"{AgentPath.NOTEBOOK_NOTE.value}/{{name}}",
+    response_model=NotebookNoteReadResponse,
+)
+async def put_notebook_note(
+    name: str,
+    request_body: NotebookNoteUpdateRequest,
+    _: NotebookWriteAuth,
+    settings: SettingsDep,
+) -> NotebookNoteReadResponse:
+    if request_body.text is None and request_body.flags is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No note changes requested.",
+        )
+    try:
+        if request_body.text is not None:
+            write_note(settings, request_body.bookmark, name, request_body.text)
+        if request_body.flags is not None:
+            set_flags(settings, request_body.bookmark, name, request_body.flags)
+        return read_note(settings, request_body.bookmark, name)
+    except NotebookRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except (NotebookBookmarkNotFoundError, NotebookNoteNotFoundError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except NotebookPathValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+
+@router.delete(
+    f"{AgentPath.NOTEBOOK_NOTE.value}/{{name}}",
+    response_model=NotebookNotesResponse,
+)
+async def delete_notebook_note(
+    name: str,
+    _: NotebookWriteAuth,
+    settings: SettingsDep,
+    bookmark: str = Query(...),
+) -> NotebookNotesResponse:
+    try:
+        delete_note(settings, bookmark, name)
+        return list_notes(settings, bookmark)
+    except NotebookRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except (NotebookBookmarkNotFoundError, NotebookNoteNotFoundError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except NotebookPathValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+
+@router.get(AgentPath.NOTEBOOK_SEARCH.value, response_model=NotebookSearchResponse)
+async def get_notebook_search(
+    _: NotebookReadAuth,
+    settings: SettingsDep,
+    query: str = Query(..., min_length=1),
+) -> NotebookSearchResponse:
+    try:
+        return search(settings, query)
+    except NotebookRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
 
 
 @router.get(AgentPath.PREFLIGHT.value, response_model=list[PreflightItem])
