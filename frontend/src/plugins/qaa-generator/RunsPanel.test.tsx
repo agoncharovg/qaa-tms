@@ -205,4 +205,45 @@ describe("RunsPanel", () => {
       TabId.QAA_LIVE
     );
   });
+
+  it("waits for a terminal status before requesting artifacts", async () => {
+    const user = userEvent.setup();
+
+    renderWithProviders(<RunsPanel agentPort={47600} hasPersonalToken />);
+
+    await user.click(await screen.findByText("run-123"));
+
+    expect(await screen.findByText("Artifacts pending")).toBeInTheDocument();
+    expect(
+      screen.getByText("Artifacts appear after the run reaches a terminal status.")
+    ).toBeInTheDocument();
+    expect(getQaaRunArtifactsMock).not.toHaveBeenCalled();
+  });
+
+  it("loads artifacts for terminal runs", async () => {
+    const user = userEvent.setup();
+    getQaaRunMock.mockResolvedValueOnce({
+      created_at: "2026-08-11T10:00:00Z",
+      effective_actor: "email:user@example.com",
+      jira_key: "QAA-123",
+      run_id: "run-123",
+      status: "completed",
+      updated_at: "2026-08-11T10:01:00Z",
+    });
+
+    renderWithProviders(<RunsPanel agentPort={47600} hasPersonalToken />);
+
+    await user.click(await screen.findByText("run-123"));
+
+    await waitFor(() => {
+      expect(getQaaRunArtifactsMock).toHaveBeenCalledWith(
+        47600,
+        "token-123",
+        "run-123",
+        expect.anything()
+      );
+    });
+
+    expect(await screen.findByText("Generated report")).toBeInTheDocument();
+  });
 });

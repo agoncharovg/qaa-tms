@@ -32,9 +32,12 @@ import {
 } from "@/constants";
 import { useAuthStore } from "@/store/authStore";
 import { useActivateQaaGeneratorTab } from "@/plugins/qaa-generator/tabNavigation";
+import { isTerminalQaaRunStatus } from "@/plugins/qaa-generator/runState";
 import { useQaaRunLive } from "@/plugins/qaa-generator/useQaaRunLive";
 
 const RUNS_PANEL_COPY = {
+  ARTIFACTS_PENDING_MESSAGE: "Artifacts appear after the run reaches a terminal status.",
+  ARTIFACTS_PENDING_TITLE: "Artifacts pending",
   DETAIL_TITLE: "Run details",
   EMPTY: "No QAA runs matched the current filters.",
   ERROR_TITLE: "QAA runs request failed",
@@ -167,8 +170,10 @@ export function RunsPanel({ agentPort, hasPersonalToken }: RunsPanelProps) {
     queryKey: [QueryKey.QAA_RUN_DETAIL, agentPort, token, selectedRunId],
   });
 
+  const selectedRunStatus = detailQuery.data?.status;
+  const selectedRunIsTerminal = selectedRunStatus ? isTerminalQaaRunStatus(selectedRunStatus) : false;
   const artifactsQuery = useQuery({
-    enabled: Boolean(token && selectedRunId && hasPersonalToken),
+    enabled: Boolean(token && selectedRunId && hasPersonalToken && selectedRunIsTerminal),
     queryFn: ({ signal }) =>
       qaaAgentClient.getQaaRunArtifacts(agentPort, token ?? "", selectedRunId ?? "", signal),
     queryKey: [QueryKey.QAA_RUN_ARTIFACTS, agentPort, token, selectedRunId],
@@ -421,6 +426,12 @@ export function RunsPanel({ agentPort, hasPersonalToken }: RunsPanelProps) {
               <Loader size="lg" />
               <Text c="dimmed">Loading artifacts.</Text>
             </Stack>
+          ) : null}
+
+          {detailQuery.data && !selectedRunIsTerminal ? (
+            <Alert color="blue" title={RUNS_PANEL_COPY.ARTIFACTS_PENDING_TITLE}>
+              <Text>{RUNS_PANEL_COPY.ARTIFACTS_PENDING_MESSAGE}</Text>
+            </Alert>
           ) : null}
 
           {artifactsQuery.isError ? (
