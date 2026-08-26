@@ -115,13 +115,15 @@ def is_empty_password_hash(password_hash: str | None) -> bool:
 
 
 def create_access_token(subject: str, settings: Settings, session_version: int) -> str:
-    expires_at = datetime.now(UTC) + timedelta(minutes=settings.jwt_expire_minutes)
     payload: dict[str, Any] = {
         JwtClaim.SUBJECT.value: subject,
-        JwtClaim.EXPIRES_AT.value: expires_at,
         JwtClaim.TOKEN_TYPE.value: TokenType.BEARER.value,
         JwtClaim.SESSION_VERSION.value: session_version,
     }
+    if settings.jwt_expire_minutes > 0:
+        payload[JwtClaim.EXPIRES_AT.value] = datetime.now(UTC) + timedelta(
+            minutes=settings.jwt_expire_minutes
+        )
     return jwt.encode(payload, settings.jwt_secret, algorithm=JwtAlgorithm.HS256.value)
 
 

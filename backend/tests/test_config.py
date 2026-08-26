@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from app.core.config import Settings
-from app.core.constants import EnvKey
+from app.core.constants import DEFAULT_JWT_EXPIRE_MINUTES, EnvKey
 
 
 @pytest.mark.parametrize(
@@ -29,6 +29,13 @@ def test_cors_origins_loads_from_env(
     settings = Settings()
 
     assert settings.cors_origins == expected
+
+
+def test_jwt_expiry_defaults_to_disabled() -> None:
+    settings = Settings(_env_file=None, jwt_secret="test-secret")
+
+    assert settings.jwt_expire_minutes == DEFAULT_JWT_EXPIRE_MINUTES
+    assert settings.jwt_expire_minutes == 0
 
 
 def test_qaa_generator_base_url_loads_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
