@@ -1567,9 +1567,9 @@ deleteLeonidPipelineParam(
     }
 
     for await (const frame of parseSseStream(response.body, signal)) {
-      if (frame.event !== "message") {
-        continue;
-      }
+      // qaa-generator names each frame after the run event_type (RUN_STARTED,
+      // RUN_COMPLETED, ...), never "message", so we handle every data frame.
+      // Keepalive comments carry no data and are never yielded by the parser.
       onMessage(JSON.parse(frame.data) as QaaRunEvent);
     }
   },

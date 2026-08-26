@@ -617,8 +617,9 @@ describe("backendClient operations", () => {
     fetchMock.mockResolvedValue(
       new Response(
         createChunkedStream([
-          'data: {"sequence":1,"event_type":"stage","message":"started","payload":{}}\n\n',
-          'data: {"sequence":2,"event_type":"stage","message":"done","payload":{}}\n\n',
+          ": keepalive\n\n",
+          'id: 1\nevent: RUN_STARTED\ndata: {"sequence":1,"event_type":"RUN_STARTED","message":"started","payload":{}}\n\n',
+          'id: 2\nevent: STAGE\ndata: {"sequence":2,"event_type":"STAGE","message":"done","payload":{}}\n\n',
         ]),
         {
           headers: {
@@ -641,13 +642,13 @@ describe("backendClient operations", () => {
     );
     expect(messages).toEqual([
       {
-        event_type: "stage",
+        event_type: "RUN_STARTED",
         message: "started",
         payload: {},
         sequence: 1,
       },
       {
-        event_type: "stage",
+        event_type: "STAGE",
         message: "done",
         payload: {},
         sequence: 2,
