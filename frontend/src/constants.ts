@@ -4,6 +4,7 @@ export const PluginId = {
   QAA_GENERATOR: "qaa-generator",
   JENKINS: "jenkins",
   LEONID: "leonid",
+  NOTEBOOK: "notebook",
   NOTIFICATOR: "notificator",
   STATISTICS: "statistics",
   ADMIN: "admin",
@@ -30,6 +31,7 @@ export const IconName = {
   CLUSTER: "cluster",
   JENKINS: "jenkins",
   LEONID: "leonid",
+  NOTEBOOK: "notebook",
   NOTIFICATOR: "notificator",
   ROCKET: "rocket",
   SPARKLES: "sparkles",
@@ -400,6 +402,10 @@ export const AgentPath = {
   JENKINS_FREEZE: "/jenkins/freeze",
   JENKINS_RESUME: "/jenkins/resume",
   JENKINS_RESUME_RUN: "/jenkins/resume-run",
+  NOTEBOOK_BOOKMARK: "/notebook/bookmark",
+  NOTEBOOK_CONTENTS: "/notebook/contents",
+  NOTEBOOK_NOTE: "/notebook/note",
+  NOTEBOOK_SEARCH: "/notebook/search",
   KUBECONFIG_STATUS: "/staging/kubeconfig/status",
   KUBECONFIG_REFRESH: "/staging/kubeconfig/refresh",
   KUBECONFIG_ACTIVATE: "/staging/kubeconfig/activate",
@@ -493,6 +499,34 @@ export function buildAgentJenkinsFolderPath(path: string): string {
     path,
   });
   return `${AgentPath.JENKINS_FOLDER}?${params.toString()}`;
+}
+
+export function buildAgentNotebookNotesPath(bookmark: string): string {
+  const params = new URLSearchParams({
+    bookmark,
+  });
+  return `${AgentPath.NOTEBOOK_NOTE}?${params.toString()}`;
+}
+
+export function buildAgentNotebookNotePath(bookmark: string, name: string): string {
+  const params = new URLSearchParams({
+    bookmark,
+  });
+  return `${AgentPath.NOTEBOOK_NOTE}/${encodeURIComponent(name)}?${params.toString()}`;
+}
+
+export function buildAgentNotebookBookmarkPath(bookmark: string): string {
+  const params = new URLSearchParams({
+    bookmark,
+  });
+  return `${AgentPath.NOTEBOOK_BOOKMARK}?${params.toString()}`;
+}
+
+export function buildAgentNotebookSearchPath(query: string): string {
+  const params = new URLSearchParams({
+    query,
+  });
+  return `${AgentPath.NOTEBOOK_SEARCH}?${params.toString()}`;
 }
 
 export function buildAgentKubeNamespacesPath(context?: string | null): string {
@@ -778,6 +812,8 @@ export const ViewKey = {
   LEONID_SHARED_RESOURCES: "leonid-shared-resources",
   LEONID_OBJECTS: "leonid-objects",
   LEONID_PIPELINE_CONFIGS: "leonid-pipeline-configs",
+  NOTEBOOK_BROWSE: "notebook-browse",
+  NOTEBOOK_SEARCH: "notebook-search",
   NOTIFICATOR_CONTRACT_MANAGER: "notificator-contract-manager",
   NOTIFICATOR_NOTIFICATIONS: "notificator-notifications",
   STATISTICS_SMOKE: "statistics-smoke",
@@ -807,6 +843,8 @@ export const TabId = {
   LEONID_SHARED_RESOURCES: "tab-leonid-shared-resources",
   LEONID_OBJECTS: "tab-leonid-objects",
   LEONID_PIPELINE_CONFIGS: "tab-leonid-pipeline-configs",
+  NOTEBOOK_BROWSE: "tab-notebook-browse",
+  NOTEBOOK_SEARCH: "tab-notebook-search",
   NOTIFICATOR_CONTRACT_MANAGER: "tab-notificator-contract-manager",
   NOTIFICATOR_NOTIFICATIONS: "tab-notificator-notifications",
   STATISTICS_SMOKE: "tab-statistics-smoke",
@@ -836,6 +874,8 @@ export const TabTitle: Record<TabId, string> = {
   [TabId.LEONID_SHARED_RESOURCES]: "Shared resources",
   [TabId.LEONID_OBJECTS]: "Objects",
   [TabId.LEONID_PIPELINE_CONFIGS]: "Pipeline configs",
+  [TabId.NOTEBOOK_BROWSE]: "Notes",
+  [TabId.NOTEBOOK_SEARCH]: "Search",
   [TabId.NOTIFICATOR_CONTRACT_MANAGER]: "Contract manager",
   [TabId.NOTIFICATOR_NOTIFICATIONS]: "Notifications",
   [TabId.STATISTICS_SMOKE]: "Smoke",
@@ -883,6 +923,10 @@ export const QueryKey = {
   AGENT_PREFLIGHT: "agent-preflight",
   AGENT_SETTINGS: "agent-settings",
   AGENT_JOB: "agent-job",
+  NOTEBOOK_CONTENTS: "notebook-contents",
+  NOTEBOOK_NOTES: "notebook-notes",
+  NOTEBOOK_NOTE: "notebook-note",
+  NOTEBOOK_SEARCH: "notebook-search",
   AGENT_NAMESPACES: "agent-namespaces",
   AGENT_NAMESPACE_STATUS: "agent-namespace-status",
   AGENT_NAMESPACE_CREDS: "agent-namespace-creds",

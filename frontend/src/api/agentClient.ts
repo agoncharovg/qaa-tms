@@ -4,6 +4,10 @@ import {
   AGENT_REQUEST_HEADER,
   AGENT_REQUEST_HEADER_VALUE,
   AgentPath,
+  buildAgentNotebookBookmarkPath,
+  buildAgentNotebookNotePath,
+  buildAgentNotebookNotesPath,
+  buildAgentNotebookSearchPath,
   buildAgentJenkinsBuildsPath,
   buildAgentJenkinsFolderPath,
   buildAgentJenkinsScopePath,
@@ -69,6 +73,10 @@ import type {
   NamespaceDeployRecipe,
   NamespaceList,
   NamespaceStatus,
+  NotebookContentsResponse,
+  NotebookNoteReadResponse,
+  NotebookNotesResponse,
+  NotebookSearchResponse,
   PreflightItem,
   SyncRequest,
 } from "@/api/types";
@@ -508,6 +516,168 @@ export const agentClient = {
   getJenkinsFolder,
   getJenkinsScope,
   getJenkinsTree,
+  getNotebookTree(
+    port: number,
+    token: string,
+    signal?: AbortSignal
+  ): Promise<NotebookContentsResponse> {
+    return readAgentJson<NotebookContentsResponse>(
+      port,
+      AgentPath.NOTEBOOK_CONTENTS,
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
+  listNotes(
+    port: number,
+    token: string,
+    bookmark: string,
+    signal?: AbortSignal
+  ): Promise<NotebookNotesResponse> {
+    return readAgentJson<NotebookNotesResponse>(
+      port,
+      buildAgentNotebookNotesPath(bookmark),
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
+  readNote(
+    port: number,
+    token: string,
+    bookmark: string,
+    name: string,
+    signal?: AbortSignal
+  ): Promise<NotebookNoteReadResponse> {
+    return readAgentJson<NotebookNoteReadResponse>(
+      port,
+      buildAgentNotebookNotePath(bookmark, name),
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
+  writeNote(
+    port: number,
+    token: string,
+    payload: {
+      bookmark: string;
+      flags?: Record<string, unknown>;
+      name?: string;
+      text: string;
+    },
+    signal?: AbortSignal
+  ): Promise<NotebookNoteReadResponse> {
+    return readAgentJson<NotebookNoteReadResponse>(
+      port,
+      AgentPath.NOTEBOOK_NOTE,
+      createJsonBody(payload),
+      token,
+      signal
+    );
+  },
+
+  updateNote(
+    port: number,
+    token: string,
+    name: string,
+    payload: {
+      bookmark: string;
+      flags?: Record<string, unknown>;
+      text?: string;
+    },
+    signal?: AbortSignal
+  ): Promise<NotebookNoteReadResponse> {
+    return readAgentJson<NotebookNoteReadResponse>(
+      port,
+      buildAgentNotebookNotePath(payload.bookmark, name),
+      createJsonBody(payload, HttpMethod.PUT),
+      token,
+      signal
+    );
+  },
+
+  deleteNote(
+    port: number,
+    token: string,
+    bookmark: string,
+    name: string,
+    signal?: AbortSignal
+  ): Promise<NotebookNotesResponse> {
+    return readAgentJson<NotebookNotesResponse>(
+      port,
+      buildAgentNotebookNotePath(bookmark, name),
+      { method: HttpMethod.DELETE },
+      token,
+      signal
+    );
+  },
+
+  createBookmark(
+    port: number,
+    token: string,
+    name: string,
+    signal?: AbortSignal
+  ): Promise<NotebookContentsResponse> {
+    return readAgentJson<NotebookContentsResponse>(
+      port,
+      AgentPath.NOTEBOOK_BOOKMARK,
+      createJsonBody({ name }),
+      token,
+      signal
+    );
+  },
+
+  renameBookmark(
+    port: number,
+    token: string,
+    bookmark: string,
+    name: string,
+    signal?: AbortSignal
+  ): Promise<NotebookContentsResponse> {
+    return readAgentJson<NotebookContentsResponse>(
+      port,
+      AgentPath.NOTEBOOK_BOOKMARK,
+      createJsonBody({ bookmark, name }, HttpMethod.PUT),
+      token,
+      signal
+    );
+  },
+
+  deleteBookmark(
+    port: number,
+    token: string,
+    bookmark: string,
+    signal?: AbortSignal
+  ): Promise<NotebookContentsResponse> {
+    return readAgentJson<NotebookContentsResponse>(
+      port,
+      buildAgentNotebookBookmarkPath(bookmark),
+      { method: HttpMethod.DELETE },
+      token,
+      signal
+    );
+  },
+
+  searchNotes(
+    port: number,
+    token: string,
+    query: string,
+    signal?: AbortSignal
+  ): Promise<NotebookSearchResponse> {
+    return readAgentJson<NotebookSearchResponse>(
+      port,
+      buildAgentNotebookSearchPath(query),
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
   getSettings(port: number, token: string, signal?: AbortSignal): Promise<AgentSettings> {
     return readAgentJson<AgentSettings>(
       port,

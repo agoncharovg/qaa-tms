@@ -4,6 +4,7 @@ import type { TablerIcon } from "@tabler/icons-react";
 import {
   IconBell,
   IconChartBar,
+  IconNotebook,
   IconPuzzle,
   IconRocket,
   IconServer,
@@ -54,6 +55,7 @@ export const ICON_REGISTRY: Record<IconName, TablerIcon> = {
   [IconName.CLUSTER]: IconServer,
   [IconName.JENKINS]: JenkinsIcon,
   [IconName.LEONID]: IconShieldCheck,
+  [IconName.NOTEBOOK]: IconNotebook,
   [IconName.NOTIFICATOR]: IconBell,
   [IconName.ROCKET]: IconRocket,
   [IconName.SPARKLES]: IconSparkles,

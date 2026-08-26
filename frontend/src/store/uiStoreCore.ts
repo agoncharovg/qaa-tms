@@ -95,6 +95,7 @@ export function createBootstrapTabsByPlugin(): TabsByPlugin {
     [PluginId.ADMIN]: createEmptyPluginState(),
     [PluginId.JENKINS]: createEmptyPluginState(),
     [PluginId.KUBER]: createEmptyPluginState(),
+    [PluginId.NOTEBOOK]: createEmptyPluginState(),
     [PluginId.PROFILE]: createEmptyPluginState(),
     [PluginId.QAA_GENERATOR]: createEmptyPluginState(),
     [PluginId.STAGINGS]: createEmptyPluginState(),

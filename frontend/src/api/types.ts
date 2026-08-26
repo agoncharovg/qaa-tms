@@ -157,6 +157,7 @@ export interface AgentSettings {
   stagings_repo: string | null;
   staging_kubeconfig: string;
   staging_kubeconfig_url: string;
+  notebook_root: string;
   kubeconfig_active_path: string;
   staging_kubeconfig_max_age_hours: number;
   kubectl_bin: string;
@@ -179,11 +180,53 @@ export interface AgentSettingsUpdate {
   stagings_repo?: string | null;
   staging_kubeconfig?: string;
   staging_kubeconfig_url?: string;
+  notebook_root?: string;
   kubeconfig_active_path?: string;
   staging_kubeconfig_max_age_hours?: number;
   kubectl_bin?: string;
   kubeconfig?: string;
   kubectl_request_timeout?: string;
+}
+
+export interface NotebookBookmarkNode {
+  name: string;
+  noteCount: number;
+  flags: Record<string, unknown>;
+  children: NotebookBookmarkNode[];
+}
+
+export interface NotebookContentsResponse {
+  bookmarks: NotebookBookmarkNode[];
+}
+
+export interface NotebookNoteSummary {
+  name: string;
+  previewLines: string[];
+  flags: Record<string, unknown>;
+}
+
+export interface NotebookNotesResponse {
+  bookmark: string;
+  notes: NotebookNoteSummary[];
+}
+
+export interface NotebookNoteReadResponse {
+  bookmark: string;
+  name: string;
+  text: string;
+  previewLines: string[];
+  flags: Record<string, unknown>;
+}
+
+export interface NotebookSearchMatch {
+  bookmark: string;
+  name: string;
+  previewLines: string[];
+}
+
+export interface NotebookSearchResponse {
+  query: string;
+  matches: NotebookSearchMatch[];
 }
 
 export interface NotificatorChannel {

@@ -52,6 +52,11 @@ const SettingsPanelCopy = {
   QAA_GENERATOR_SAVE: "Save qaa-generator token",
   QAA_GENERATOR_TITLE: "QAA generator",
   QAA_GENERATOR_TOKEN_LABEL: "Personal token",
+  NOTEBOOK_DESCRIPTION:
+    "Your personal notebook stays in local files under this folder. The companion reads and writes them on this machine only, and they never leave this machine.",
+  NOTEBOOK_ROOT_LABEL: "Notebook folder path",
+  NOTEBOOK_SAVE: "Save Notebook settings",
+  NOTEBOOK_TITLE: "Notebook",
   SECTION_DESCRIPTION:
     "Edit only the personal credentials required by the plugins enabled for your account.",
   TITLE: "Settings",
@@ -95,6 +100,7 @@ type AgentFormState = {
   jenkinsUrl: string;
   jenkinsUsername: string;
   kubeconfig: string;
+  notebookRoot: string;
   stagingKubeconfig: string;
   stagingKubeconfigUrl: string;
 };
@@ -112,6 +118,7 @@ function buildAgentFormState(settings: AgentSettings): AgentFormState {
     jenkinsUrl: settings.jenkins_url,
     jenkinsUsername: settings.jenkins_username,
     kubeconfig: settings.kubeconfig,
+    notebookRoot: settings.notebook_root,
     stagingKubeconfig: settings.staging_kubeconfig,
     stagingKubeconfigUrl: settings.staging_kubeconfig_url,
   };
@@ -187,6 +194,7 @@ function SettingsPanelAgentSettings({
   agentPort,
   showJenkins,
   showKuber,
+  showNotebook,
   showQaaGenerator,
   showStagings,
   token,
@@ -194,6 +202,7 @@ function SettingsPanelAgentSettings({
   agentPort: number;
   showJenkins: boolean;
   showKuber: boolean;
+  showNotebook: boolean;
   showQaaGenerator: boolean;
   showStagings: boolean;
   token: string;
@@ -201,6 +210,7 @@ function SettingsPanelAgentSettings({
   const queryClient = useQueryClient();
   const [agentForm, setAgentForm] = useState<AgentFormState | null>(null);
   const [jenkinsNotice, setJenkinsNotice] = useState<Notice | null>(null);
+  const [notebookNotice, setNotebookNotice] = useState<Notice | null>(null);
   const [stagingsNotice, setStagingsNotice] = useState<Notice | null>(null);
   const [kuberNotice, setKuberNotice] = useState<Notice | null>(null);
   const [qaaGeneratorForm, setQaaGeneratorForm] = useState<QaaGeneratorFormState | null>(null);
@@ -254,6 +264,26 @@ function SettingsPanelAgentSettings({
     },
     onError: (error) => {
       setStagingsNotice({
+        message: error instanceof Error ? error.message : SettingsPanelCopy.UPDATE_FAILED,
+        status: NoticeStatus.ERROR,
+      });
+    },
+  });
+
+  const notebookUpdateMutation = useMutation({
+    mutationFn: async (payload: AgentSettingsUpdate) => {
+      return agentClient.updateSettings(agentPort, token, payload);
+    },
+    onSuccess: async (updatedSettings) => {
+      setAgentForm(buildAgentFormState(updatedSettings));
+      setNotebookNotice({
+        message: SettingsPanelCopy.UPDATE_SUCCESS,
+        status: NoticeStatus.SUCCESS,
+      });
+      await queryClient.invalidateQueries({ queryKey: [QueryKey.AGENT_SETTINGS] });
+    },
+    onError: (error) => {
+      setNotebookNotice({
         message: error instanceof Error ? error.message : SettingsPanelCopy.UPDATE_FAILED,
         status: NoticeStatus.ERROR,
       });
@@ -358,6 +388,17 @@ function SettingsPanelAgentSettings({
     stagingsUpdateMutation.mutate({
       staging_kubeconfig: agentForm.stagingKubeconfig,
       staging_kubeconfig_url: agentForm.stagingKubeconfigUrl,
+    });
+  }
+
+  function saveNotebookSettings(): void {
+    if (!agentForm) {
+      return;
+    }
+
+    setNotebookNotice(null);
+    notebookUpdateMutation.mutate({
+      notebook_root: agentForm.notebookRoot,
     });
   }
 
@@ -491,6 +532,29 @@ function SettingsPanelAgentSettings({
         </CardShell>
       ) : null}
 
+      {showNotebook ? (
+        <CardShell
+          description={SettingsPanelCopy.NOTEBOOK_DESCRIPTION}
+          title={SettingsPanelCopy.NOTEBOOK_TITLE}
+        >
+          <NoticeAlert notice={notebookNotice} successTitle={SettingsPanelCopy.UPDATE_SUCCESS} />
+          {agentForm ? (
+            <Stack gap="md">
+              <TextInput
+                label={SettingsPanelCopy.NOTEBOOK_ROOT_LABEL}
+                onChange={(event) => setAgentField("notebookRoot", event.currentTarget.value)}
+                value={agentForm.notebookRoot}
+              />
+              <Group justify="flex-end">
+                <Button loading={notebookUpdateMutation.isPending} onClick={saveNotebookSettings}>
+                  {SettingsPanelCopy.NOTEBOOK_SAVE}
+                </Button>
+              </Group>
+            </Stack>
+          ) : null}
+        </CardShell>
+      ) : null}
+
       {showKuber ? (
         <CardShell
           description={SettingsPanelCopy.KUBER_DESCRIPTION}
@@ -557,11 +621,12 @@ export function SettingsPanel() {
     ? enabledOptionalPluginIdSet(currentUser.enabled_plugins)
     : new Set<PluginIdType>();
   const showJenkins = enabledPluginIds.has(PluginId.JENKINS);
+  const showNotebook = enabledPluginIds.has(PluginId.NOTEBOOK);
   const showStagings = enabledPluginIds.has(PluginId.STAGINGS);
   const showKuber = enabledPluginIds.has(PluginId.KUBER);
   const showQaaGenerator = enabledPluginIds.has(PluginId.QAA_GENERATOR);
   const hasEnabledAgentPlugins =
-    showJenkins || showStagings || showKuber || showQaaGenerator;
+    showJenkins || showNotebook || showStagings || showKuber || showQaaGenerator;
   const hasVisiblePluginSettings = hasEnabledAgentPlugins;
 
   if (!currentUser) {
@@ -595,6 +660,7 @@ export function SettingsPanel() {
               agentPort={agentPort}
               showJenkins={showJenkins}
               showKuber={showKuber}
+              showNotebook={showNotebook}
               showQaaGenerator={showQaaGenerator}
               showStagings={showStagings}
               token={token ?? EMPTY_VALUE}
