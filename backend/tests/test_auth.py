@@ -3,7 +3,15 @@ from __future__ import annotations
 import jwt
 from fastapi.testclient import TestClient
 
-from app.core.constants import DevPassword, DevUsername, JwtAlgorithm, JwtClaim, PluginId, RoutePath, TokenType
+from app.core.constants import (
+    DevPassword,
+    DevUsername,
+    JwtAlgorithm,
+    JwtClaim,
+    PluginId,
+    RoutePath,
+    TokenType,
+)
 
 DEFAULT_OPTIONAL_PLUGIN_IDS = [
     PluginId.STAGINGS.value,
@@ -12,6 +20,7 @@ DEFAULT_OPTIONAL_PLUGIN_IDS = [
     PluginId.JENKINS.value,
     PluginId.STATISTICS.value,
     PluginId.LEONID.value,
+    PluginId.NOTEBOOK.value,
     PluginId.NOTIFICATOR.value,
 ]
 
@@ -81,3 +90,30 @@ def test_me_returns_authenticated_user(client: TestClient) -> None:
     assert response.status_code == 200
     assert response.json()["username"] == DevUsername.ADMIN.value
     assert response.json()["enabled_plugins"] == DEFAULT_OPTIONAL_PLUGIN_IDS
+
+
+def test_authz_check_allows_notebook_permissions_for_engineer_seed(client: TestClient) -> None:
+    login_response = client.post(
+        f"/api/v1{RoutePath.AUTH.value}{RoutePath.LOGIN.value}",
+        json={"username": DevUsername.TEST.value, "password": DevPassword.EMPTY.value},
+    )
+    token = login_response.json()["access_token"]
+
+    response = client.post(
+        f"/api/v1{RoutePath.AUTHZ.value}{RoutePath.CHECK.value}",
+        headers={"Authorization": f"{TokenType.BEARER.value.capitalize()} {token}"},
+        json={
+            "checks": [
+                {"permission": "notebook.read"},
+                {"permission": "notebook.write"},
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "results": [
+            {"permission": "notebook.read", "allowed": True},
+            {"permission": "notebook.write", "allowed": True},
+        ]
+    }

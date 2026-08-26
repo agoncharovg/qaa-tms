@@ -10,6 +10,7 @@ class PluginId(StrEnum):
     JENKINS = "jenkins"
     STATISTICS = "statistics"
     LEONID = "leonid"
+    NOTEBOOK = "notebook"
     NOTIFICATOR = "notificator"
     ADMIN = "admin"
     PROFILE = "profile"
@@ -277,6 +278,8 @@ class PermissionKey(StrEnum):
     NOTIFICATOR_WRITE = "notificator.write"
     LEONID_READ = "leonid.read"
     LEONID_WRITE = "leonid.write"
+    NOTEBOOK_READ = "notebook.read"
+    NOTEBOOK_WRITE = "notebook.write"
 
 
 class SettingsSurface(StrEnum):
@@ -428,6 +431,7 @@ OPTIONAL_PLUGIN_IDS = (
     PluginId.JENKINS,
     PluginId.STATISTICS,
     PluginId.LEONID,
+    PluginId.NOTEBOOK,
     PluginId.NOTIFICATOR,
 )
 SYSTEM_PLUGIN_IDS = (PluginId.ADMIN, PluginId.PROFILE)
