@@ -418,8 +418,8 @@ export function UsersMatrix() {
     transform: "rotate(180deg)",
     whiteSpace: "nowrap",
     fontSize: 14,
-    padding: "4px 2px",
-    height: 120,
+    padding: "8px 2px",
+    height: 180,
     verticalAlign: "bottom",
   };
 
