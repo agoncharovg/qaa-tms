@@ -1,16 +1,18 @@
 import { useEffect, useState } from "react";
 import {
+  ActionIcon,
   Button,
   Grid,
   Group,
+  Modal,
   Paper,
   Stack,
-  Table,
   Text,
   TextInput,
+  Tooltip,
   Title,
 } from "@mantine/core";
-import { IconNote, IconPlus, IconRotateClockwise } from "@tabler/icons-react";
+import { IconNote, IconPencil, IconPlus, IconRotateClockwise, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { agentClient } from "@/api/agentClient";
@@ -32,15 +34,16 @@ import {
 } from "@/plugins/notebook/notebookShared";
 
 const NOTEBOOK_BROWSE_COPY = {
-  BOOKMARKS_DESCRIPTION: "Top-level bookmarks only for v1. Nested children are ignored in the UI but remain safe in the stored tree.",
-  BOOKMARKS_TITLE: "Bookmarks",
   BOOKMARK_CREATE: "Create bookmark",
   BOOKMARK_DELETE: "Delete bookmark",
   BOOKMARK_DELETE_CONFIRM: "Delete this bookmark and all its notes?",
   BOOKMARK_EMPTY: "No bookmarks exist yet.",
-  BOOKMARK_FORM_LABEL: "New bookmark name",
+  BOOKMARK_MODAL_CANCEL: "Cancel",
+  BOOKMARK_MODAL_CREATE_TITLE: "Create bookmark",
+  BOOKMARK_MODAL_LABEL: "Bookmark name",
   BOOKMARK_RENAME: "Rename bookmark",
-  BOOKMARK_SELECTED_LABEL: "Selected bookmark name",
+  BOOKMARK_MODAL_RENAME_TITLE: "Rename bookmark",
+  BOOKMARK_MODAL_SAVE: "Save",
   COMPANION_LOADING: "Checking the local companion app before loading notebook bookmarks.",
   CONTENTS_ERROR: "Notebook contents failed",
   CONTENTS_FALLBACK: "Unable to load notebook bookmarks.",
@@ -54,10 +57,14 @@ const NOTEBOOK_BROWSE_COPY = {
   NOTE_EMPTY: "No notes were returned for the selected bookmark.",
   NOTE_LOAD_ERROR: "Notes failed",
   NOTE_LOAD_FALLBACK: "Unable to load notes for the selected bookmark.",
-  NOTE_TABLE_DESCRIPTION: "Each note is a timestamp-named local text file. The preview shows the first three lines.",
-  NOTE_TABLE_TITLE: "Notes",
   REFRESH: "Refresh",
+  SELECT_BOOKMARK_PROMPT: "Select a bookmark to list its notes.",
 } as const;
+
+type BookmarkModalState = {
+  mode: "create" | "rename";
+  open: boolean;
+};
 
 function findBookmark(bookmarks: NotebookBookmarkNode[], bookmarkName: string | null): NotebookBookmarkNode | null {
   if (!bookmarkName) {
@@ -81,8 +88,11 @@ export function NotebookBrowsePanel() {
   const { agentPort, companionUnavailable, preflightQuery, probedPorts, token } = useNotebookAgent();
   const [bookmarkNotice, setBookmarkNotice] = useState<NotebookNotice | null>(null);
   const [noteNotice, setNoteNotice] = useState<NotebookNotice | null>(null);
-  const [newBookmarkName, setNewBookmarkName] = useState("");
-  const [bookmarkNameDraft, setBookmarkNameDraft] = useState("");
+  const [bookmarkModal, setBookmarkModal] = useState<BookmarkModalState>({
+    mode: "create",
+    open: false,
+  });
+  const [bookmarkModalName, setBookmarkModalName] = useState("");
   const [selectedBookmark, setSelectedBookmark] = useState<string | null>(null);
   const [selectedNoteName, setSelectedNoteName] = useState<string | null>(null);
   const [editorText, setEditorText] = useState("");
@@ -127,10 +137,6 @@ export function NotebookBrowsePanel() {
   }, [contentsQuery.data?.bookmarks, selectedBookmark]);
 
   useEffect(() => {
-    setBookmarkNameDraft(selectedBookmarkNode?.name ?? "");
-  }, [selectedBookmarkNode?.name]);
-
-  useEffect(() => {
     setSelectedNoteName(null);
     setEditorText("");
   }, [selectedBookmark]);
@@ -162,11 +168,11 @@ export function NotebookBrowsePanel() {
       return agentClient.createBookmark(agentPort, token, name);
     },
     onSuccess: async (_response, name) => {
-      setBookmarkNotice({
-        message: "Bookmark created.",
-        status: "success",
+      setBookmarkModal({
+        mode: "create",
+        open: false,
       });
-      setNewBookmarkName("");
+      setBookmarkModalName("");
       setSelectedBookmark(name);
       await invalidateNotebookQueries(queryClient);
     },
@@ -187,10 +193,11 @@ export function NotebookBrowsePanel() {
       return agentClient.renameBookmark(agentPort, token, selectedBookmark, name);
     },
     onSuccess: async (_response, name) => {
-      setBookmarkNotice({
-        message: "Bookmark renamed.",
-        status: "success",
+      setBookmarkModal({
+        mode: "rename",
+        open: false,
       });
+      setBookmarkModalName("");
       setSelectedBookmark(name);
       await invalidateNotebookQueries(queryClient);
     },
@@ -211,10 +218,6 @@ export function NotebookBrowsePanel() {
       return agentClient.deleteBookmark(agentPort, token, selectedBookmark);
     },
     onSuccess: async (response) => {
-      setBookmarkNotice({
-        message: "Bookmark deleted.",
-        status: "success",
-      });
       setSelectedBookmark(response.bookmarks[0]?.name ?? null);
       setSelectedNoteName(null);
       await invalidateNotebookQueries(queryClient);
@@ -239,10 +242,6 @@ export function NotebookBrowsePanel() {
       });
     },
     onSuccess: async (response) => {
-      setNoteNotice({
-        message: "Note created.",
-        status: "success",
-      });
       setSelectedNoteName(response.name);
       setEditorText(response.text);
       await invalidateNotebookQueries(queryClient);
@@ -267,10 +266,6 @@ export function NotebookBrowsePanel() {
       });
     },
     onSuccess: async (response) => {
-      setNoteNotice({
-        message: "Note saved.",
-        status: "success",
-      });
       setEditorText(response.text);
       await invalidateNotebookQueries(queryClient);
     },
@@ -291,10 +286,6 @@ export function NotebookBrowsePanel() {
       return agentClient.deleteNote(agentPort, token, selectedBookmark, selectedNoteName);
     },
     onSuccess: async (response) => {
-      setNoteNotice({
-        message: "Note deleted.",
-        status: "success",
-      });
       setSelectedNoteName(response.notes[0]?.name ?? null);
       setEditorText("");
       await invalidateNotebookQueries(queryClient);
@@ -309,7 +300,12 @@ export function NotebookBrowsePanel() {
 
   const notes = notesQuery.data?.notes ?? [];
   const hasUnsavedChanges = editorText !== (noteQuery.data?.text ?? "");
-  const bookmarkActionDisabled = companionUnavailable || createBookmarkMutation.isPending;
+  const bookmarkModalNameTrimmed = bookmarkModalName.trim();
+  const bookmarkCreateDisabled = companionUnavailable || createBookmarkMutation.isPending;
+  const bookmarkRenameDisabled = companionUnavailable || !selectedBookmark || renameBookmarkMutation.isPending;
+  const bookmarkDeleteDisabled = companionUnavailable || !selectedBookmark || deleteBookmarkMutation.isPending;
+  const isBookmarkModalSaving =
+    bookmarkModal.mode === "create" ? createBookmarkMutation.isPending : renameBookmarkMutation.isPending;
   const noteActionDisabled =
     companionUnavailable ||
     !selectedBookmark ||
@@ -317,24 +313,49 @@ export function NotebookBrowsePanel() {
     updateNoteMutation.isPending ||
     deleteNoteMutation.isPending;
 
-  function handleCreateBookmark(): void {
-    const trimmedName = newBookmarkName.trim();
-    if (!trimmedName) {
-      return;
-    }
-
-    setBookmarkNotice(null);
-    createBookmarkMutation.mutate(trimmedName);
+  function openCreateBookmarkModal(): void {
+    setBookmarkModal({
+      mode: "create",
+      open: true,
+    });
+    setBookmarkModalName("");
   }
 
-  function handleRenameBookmark(): void {
-    const trimmedName = bookmarkNameDraft.trim();
-    if (!trimmedName || !selectedBookmark) {
+  function openRenameBookmarkModal(): void {
+    if (!selectedBookmarkNode) {
       return;
     }
 
+    setBookmarkModal({
+      mode: "rename",
+      open: true,
+    });
+    setBookmarkModalName(selectedBookmarkNode.name);
+  }
+
+  function closeBookmarkModal(): void {
+    setBookmarkModal((current) => ({
+      ...current,
+      open: false,
+    }));
+  }
+
+  function handleBookmarkModalSave(): void {
     setBookmarkNotice(null);
-    renameBookmarkMutation.mutate(trimmedName);
+    if (bookmarkModal.mode === "create") {
+      if (!bookmarkModalNameTrimmed) {
+        return;
+      }
+
+      createBookmarkMutation.mutate(bookmarkModalNameTrimmed);
+      return;
+    }
+
+    if (!bookmarkModalNameTrimmed || !selectedBookmark) {
+      return;
+    }
+
+    renameBookmarkMutation.mutate(bookmarkModalNameTrimmed);
   }
 
   function handleDeleteBookmark(): void {
@@ -382,6 +403,45 @@ export function NotebookBrowsePanel() {
 
   return (
     <Stack gap="lg">
+      <Modal
+        onClose={closeBookmarkModal}
+        opened={bookmarkModal.open}
+        title={
+          bookmarkModal.mode === "create"
+            ? NOTEBOOK_BROWSE_COPY.BOOKMARK_MODAL_CREATE_TITLE
+            : NOTEBOOK_BROWSE_COPY.BOOKMARK_MODAL_RENAME_TITLE
+        }
+      >
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleBookmarkModalSave();
+          }}
+        >
+          <Stack gap="md">
+            <TextInput
+              autoFocus
+              disabled={isBookmarkModalSaving}
+              label={NOTEBOOK_BROWSE_COPY.BOOKMARK_MODAL_LABEL}
+              onChange={(event) => setBookmarkModalName(event.currentTarget.value)}
+              value={bookmarkModalName}
+            />
+            <Group justify="flex-end">
+              <Button onClick={closeBookmarkModal} type="button" variant="default">
+                {NOTEBOOK_BROWSE_COPY.BOOKMARK_MODAL_CANCEL}
+              </Button>
+              <Button
+                disabled={bookmarkModalNameTrimmed.length === 0}
+                loading={isBookmarkModalSaving}
+                type="submit"
+              >
+                {NOTEBOOK_BROWSE_COPY.BOOKMARK_MODAL_SAVE}
+              </Button>
+            </Group>
+          </Stack>
+        </form>
+      </Modal>
+
       <Group justify="space-between">
         <div>
           <Title order={2}>{NOTEBOOK_BROWSE_COPY.NOTEBOOK_TITLE}</Title>
@@ -414,25 +474,44 @@ export function NotebookBrowsePanel() {
       ) : (
         <Grid>
           <Grid.Col span={{ base: 12, lg: 3 }}>
-            <NotebookSurface
-              description={NOTEBOOK_BROWSE_COPY.BOOKMARKS_DESCRIPTION}
-              title={NOTEBOOK_BROWSE_COPY.BOOKMARKS_TITLE}
-            >
+            <NotebookSurface>
               <NotebookNoticeAlert notice={bookmarkNotice} />
               <Stack gap="md">
-                <Group align="flex-end">
-                  <TextInput
-                    label={NOTEBOOK_BROWSE_COPY.BOOKMARK_FORM_LABEL}
-                    onChange={(event) => setNewBookmarkName(event.currentTarget.value)}
-                    value={newBookmarkName}
-                  />
-                  <Button
-                    disabled={bookmarkActionDisabled || newBookmarkName.trim().length === 0}
-                    leftSection={<IconPlus size={16} />}
-                    onClick={handleCreateBookmark}
-                  >
-                    {NOTEBOOK_BROWSE_COPY.BOOKMARK_CREATE}
-                  </Button>
+                <Group gap="xs">
+                  <Tooltip label={NOTEBOOK_BROWSE_COPY.BOOKMARK_CREATE}>
+                    <ActionIcon
+                      aria-label={NOTEBOOK_BROWSE_COPY.BOOKMARK_CREATE}
+                      disabled={bookmarkCreateDisabled}
+                      onClick={openCreateBookmarkModal}
+                      size="lg"
+                      variant="light"
+                    >
+                      <IconPlus size={18} />
+                    </ActionIcon>
+                  </Tooltip>
+                  <Tooltip label={NOTEBOOK_BROWSE_COPY.BOOKMARK_RENAME}>
+                    <ActionIcon
+                      aria-label={NOTEBOOK_BROWSE_COPY.BOOKMARK_RENAME}
+                      disabled={bookmarkRenameDisabled}
+                      onClick={openRenameBookmarkModal}
+                      size="lg"
+                      variant="light"
+                    >
+                      <IconPencil size={18} />
+                    </ActionIcon>
+                  </Tooltip>
+                  <Tooltip label={NOTEBOOK_BROWSE_COPY.BOOKMARK_DELETE}>
+                    <ActionIcon
+                      aria-label={NOTEBOOK_BROWSE_COPY.BOOKMARK_DELETE}
+                      color="red"
+                      disabled={bookmarkDeleteDisabled}
+                      onClick={handleDeleteBookmark}
+                      size="lg"
+                      variant="light"
+                    >
+                      <IconTrash size={18} />
+                    </ActionIcon>
+                  </Tooltip>
                 </Group>
 
                 {contentsQuery.data?.bookmarks.length ? (
@@ -458,32 +537,6 @@ export function NotebookBrowsePanel() {
                     </Text>
                   </Paper>
                 )}
-
-                <TextInput
-                  disabled={!selectedBookmark}
-                  label={NOTEBOOK_BROWSE_COPY.BOOKMARK_SELECTED_LABEL}
-                  onChange={(event) => setBookmarkNameDraft(event.currentTarget.value)}
-                  value={bookmarkNameDraft}
-                />
-                <Group grow>
-                  <Button
-                    disabled={!selectedBookmark || bookmarkNameDraft.trim().length === 0}
-                    loading={renameBookmarkMutation.isPending}
-                    onClick={handleRenameBookmark}
-                    variant="light"
-                  >
-                    {NOTEBOOK_BROWSE_COPY.BOOKMARK_RENAME}
-                  </Button>
-                  <Button
-                    color="red"
-                    disabled={!selectedBookmark}
-                    loading={deleteBookmarkMutation.isPending}
-                    onClick={handleDeleteBookmark}
-                    variant="light"
-                  >
-                    {NOTEBOOK_BROWSE_COPY.BOOKMARK_DELETE}
-                  </Button>
-                </Group>
               </Stack>
             </NotebookSurface>
           </Grid.Col>
@@ -491,30 +544,26 @@ export function NotebookBrowsePanel() {
           <Grid.Col span={{ base: 12, lg: 9 }}>
             <Grid>
               <Grid.Col span={{ base: 12, md: 4 }}>
-                <NotebookSurface
-                  description={NOTEBOOK_BROWSE_COPY.NOTE_TABLE_DESCRIPTION}
-                  title={selectedBookmark ?? NOTEBOOK_BROWSE_COPY.NOTE_TABLE_TITLE}
-                >
+                <NotebookSurface>
                   <NotebookNoticeAlert notice={noteNotice} />
-                  <Group justify="space-between">
-                    <Text c="dimmed" size="sm">
-                      {selectedBookmarkNode ? `${selectedBookmarkNode.noteCount} note(s)` : "Choose a bookmark first."}
-                    </Text>
-                    <Button
-                      disabled={!selectedBookmark || noteActionDisabled}
-                      leftSection={<IconNote size={16} />}
-                      loading={createNoteMutation.isPending}
-                      onClick={handleCreateNote}
-                      size="xs"
-                    >
-                      {NOTEBOOK_BROWSE_COPY.NOTE_CREATE}
-                    </Button>
+                  <Group gap="xs">
+                    <Tooltip label={NOTEBOOK_BROWSE_COPY.NOTE_CREATE}>
+                      <ActionIcon
+                        aria-label={NOTEBOOK_BROWSE_COPY.NOTE_CREATE}
+                        disabled={noteActionDisabled}
+                        onClick={handleCreateNote}
+                        size="lg"
+                        variant="light"
+                      >
+                        <IconNote size={18} />
+                      </ActionIcon>
+                    </Tooltip>
                   </Group>
 
                   {!selectedBookmark ? (
                     <Paper p="lg" radius="md" withBorder>
                       <Text c="dimmed" ta="center">
-                        Select a bookmark to list its notes.
+                        {NOTEBOOK_BROWSE_COPY.SELECT_BOOKMARK_PROMPT}
                       </Text>
                     </Paper>
                   ) : notesQuery.isLoading ? (
@@ -533,37 +582,38 @@ export function NotebookBrowsePanel() {
                       </Text>
                     </Paper>
                   ) : (
-                    <Table.ScrollContainer minWidth={420}>
-                      <Table highlightOnHover striped withTableBorder>
-                        <Table.Thead>
-                          <Table.Tr>
-                            <Table.Th>Name</Table.Th>
-                            <Table.Th>Preview</Table.Th>
-                          </Table.Tr>
-                        </Table.Thead>
-                        <Table.Tbody>
-                          {notes.map((note) => (
-                            <Table.Tr
-                              key={note.name}
-                              onClick={() => setSelectedNoteName(note.name)}
-                              style={{
-                                backgroundColor: selectedNoteName === note.name ? "var(--mantine-color-dark-6)" : undefined,
-                                cursor: "pointer",
-                              }}
+                    <Stack gap="xs">
+                      {notes.map((note) => {
+                        const isSelected = selectedNoteName === note.name;
+
+                        return (
+                          <Button
+                            fullWidth
+                            key={note.name}
+                            onClick={() => setSelectedNoteName(note.name)}
+                            styles={{
+                              inner: {
+                                justifyContent: "flex-start",
+                              },
+                              label: {
+                                whiteSpace: "normal",
+                                width: "100%",
+                              },
+                            }}
+                            variant={isSelected ? "filled" : "light"}
+                          >
+                            <Text
+                              c={isSelected ? undefined : "dimmed"}
+                              size="sm"
+                              ta="left"
+                              style={{ whiteSpace: "pre-wrap", width: "100%" }}
                             >
-                              <Table.Td style={{ verticalAlign: "top", whiteSpace: "nowrap" }}>
-                                {note.name}
-                              </Table.Td>
-                              <Table.Td>
-                                <Text c="dimmed" size="sm" style={{ whiteSpace: "pre-wrap" }}>
-                                  {buildPreviewText(note.previewLines)}
-                                </Text>
-                              </Table.Td>
-                            </Table.Tr>
-                          ))}
-                        </Table.Tbody>
-                      </Table>
-                    </Table.ScrollContainer>
+                              {buildPreviewText(note.previewLines)}
+                            </Text>
+                          </Button>
+                        );
+                      })}
+                    </Stack>
                   )}
                 </NotebookSurface>
               </Grid.Col>

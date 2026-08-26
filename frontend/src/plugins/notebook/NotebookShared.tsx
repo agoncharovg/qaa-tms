@@ -12,7 +12,6 @@ import {
 } from "@mantine/core";
 import {
   IconAlertCircle,
-  IconCheck,
   IconPlugConnectedX,
   IconRotateClockwise,
 } from "@tabler/icons-react";
@@ -88,17 +87,15 @@ export function NotebookCompanionUnavailableAlert({
 }
 
 export function NotebookNoticeAlert({ notice }: { notice: NotebookNotice | null }) {
-  if (!notice) {
+  if (!notice || notice.status === "success") {
     return null;
   }
 
-  const isSuccess = notice.status === "success";
-
   return (
     <Alert
-      color={isSuccess ? "teal" : "red"}
-      icon={isSuccess ? <IconCheck size={ALERT_ICON_SIZE_PX} /> : <IconAlertCircle size={ALERT_ICON_SIZE_PX} />}
-      title={isSuccess ? "Saved" : "Request failed"}
+      color="red"
+      icon={<IconAlertCircle size={ALERT_ICON_SIZE_PX} />}
+      title="Request failed"
     >
       {notice.message}
     </Alert>
@@ -111,18 +108,22 @@ export function NotebookSurface({
   title,
 }: {
   children: ReactNode;
-  description: string;
-  title: string;
+  description?: string;
+  title?: string;
 }) {
   return (
     <Card padding="lg" radius="lg" withBorder>
       <Stack gap="md">
-        <div>
-          <Title order={3}>{title}</Title>
-          <Text c="dimmed" size="sm">
-            {description}
-          </Text>
-        </div>
+        {title || description ? (
+          <div>
+            {title ? <Title order={3}>{title}</Title> : null}
+            {description ? (
+              <Text c="dimmed" size="sm">
+                {description}
+              </Text>
+            ) : null}
+          </div>
+        ) : null}
         {children}
       </Stack>
     </Card>
@@ -217,10 +218,8 @@ export function NotebookNoteEditor({
         value={text}
       />
       <Group justify="space-between">
-        <Text c={hasUnsavedChanges ? "yellow" : "dimmed"} size="sm">
-          {hasUnsavedChanges ? "Unsaved changes." : "Saved locally."}
-        </Text>
-        <Group>
+        {hasUnsavedChanges ? <Text c="yellow" size="sm">Unsaved changes.</Text> : null}
+        <Group style={{ marginLeft: "auto" }}>
           <Button
             color="red"
             disabled={deleteDisabled}
