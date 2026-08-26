@@ -9,6 +9,7 @@ from app.core.constants import DevPassword, DevUsername, OperationStatus, Operat
 DEFAULT_OPTIONAL_PLUGIN_IDS = [
     PluginId.STAGINGS.value,
     PluginId.KUBER.value,
+    PluginId.ASSISTANT.value,
     PluginId.QAA_GENERATOR.value,
     PluginId.JENKINS.value,
     PluginId.STATISTICS.value,

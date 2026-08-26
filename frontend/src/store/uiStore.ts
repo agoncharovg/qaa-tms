@@ -35,6 +35,7 @@ const DEFAULT_VISIBILITY_USER: PluginVisibilityUser = {
   enabled_plugins: [
     PluginId.STAGINGS,
     PluginId.KUBER,
+    PluginId.ASSISTANT,
     PluginId.QAA_GENERATOR,
     PluginId.JENKINS,
     PluginId.NOTIFICATOR,

@@ -30,6 +30,7 @@ import {
   HttpHeader,
   HttpMethod,
   JobStreamEvent,
+  LlmStreamEvent,
   MediaType,
   type Product,
 } from "@/constants";
@@ -69,6 +70,15 @@ import type {
   JobRead,
   JobStreamMessage,
   JobTerminalEvent,
+  LlmChatRequest,
+  LlmDoneEvent,
+  LlmErrorEvent,
+  LlmModelInfo,
+  LlmStreamMessage,
+  LlmTextDeltaEvent,
+  LlmToolResultEvent,
+  LlmToolStartEvent,
+  LlmUsageEvent,
   NamespaceCreds,
   NamespaceDeployRecipe,
   NamespaceList,
@@ -415,9 +425,35 @@ async function streamAgentCommand(
   onMessage: (message: JobStreamMessage) => void,
   signal?: AbortSignal
 ): Promise<void> {
+  return streamAgentSse(
+    port,
+    token,
+    path,
+    { method: HttpMethod.GET },
+    (frame) => {
+      const message = parseJobStreamMessage(frame.event, frame.data);
+      if (message) {
+        onMessage(message);
+      }
+    },
+    signal
+  );
+}
+
+async function streamAgentSse(
+  port: number,
+  token: string,
+  path: string,
+  init: RequestInit,
+  onFrame: (frame: { event: string; data: string }) => void,
+  signal?: AbortSignal
+): Promise<void> {
   const response = await fetch(buildAgentUrl(port, path), {
-    headers: createAgentHeaders(token),
-    method: HttpMethod.GET,
+    ...init,
+    headers: createAgentHeaders(token, {
+      ...init.headers,
+      [HttpHeader.ACCEPT]: MediaType.TEXT_EVENT_STREAM,
+    }),
     signal,
   });
 
@@ -431,11 +467,90 @@ async function streamAgentCommand(
   }
 
   for await (const frame of parseSseStream(response.body, signal)) {
-    const message = parseJobStreamMessage(frame.event, frame.data);
-    if (message) {
-      onMessage(message);
-    }
+    onFrame(frame);
   }
+}
+
+function parseLlmStreamMessage(event: string, data: string): LlmStreamMessage | null {
+  if (event === LlmStreamEvent.TEXT_DELTA) {
+    return {
+      data: JSON.parse(data) as LlmTextDeltaEvent,
+      event: LlmStreamEvent.TEXT_DELTA,
+    };
+  }
+
+  if (event === LlmStreamEvent.TOOL_START) {
+    return {
+      data: JSON.parse(data) as LlmToolStartEvent,
+      event: LlmStreamEvent.TOOL_START,
+    };
+  }
+
+  if (event === LlmStreamEvent.TOOL_RESULT) {
+    return {
+      data: JSON.parse(data) as LlmToolResultEvent,
+      event: LlmStreamEvent.TOOL_RESULT,
+    };
+  }
+
+  if (event === LlmStreamEvent.USAGE) {
+    return {
+      data: JSON.parse(data) as LlmUsageEvent,
+      event: LlmStreamEvent.USAGE,
+    };
+  }
+
+  if (event === LlmStreamEvent.DONE) {
+    return {
+      data: JSON.parse(data) as LlmDoneEvent,
+      event: LlmStreamEvent.DONE,
+    };
+  }
+
+  if (event === LlmStreamEvent.ERROR) {
+    return {
+      data: JSON.parse(data) as LlmErrorEvent,
+      event: LlmStreamEvent.ERROR,
+    };
+  }
+
+  return null;
+}
+
+function getLlmModels(
+  port: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<LlmModelInfo[]> {
+  return readAgentJson<LlmModelInfo[]>(
+    port,
+    AgentPath.LLM_MODELS,
+    { method: HttpMethod.GET },
+    token,
+    signal
+  );
+}
+
+async function streamLlmChat(
+  port: number,
+  token: string,
+  body: LlmChatRequest,
+  onMessage: (message: LlmStreamMessage) => void,
+  signal?: AbortSignal
+): Promise<void> {
+  return streamAgentSse(
+    port,
+    token,
+    AgentPath.LLM_CHAT,
+    createJsonBody(body),
+    (frame) => {
+      const message = parseLlmStreamMessage(frame.event, frame.data);
+      if (message) {
+        onMessage(message);
+      }
+    },
+    signal
+  );
 }
 
 export const agentClient = {
@@ -516,6 +631,7 @@ export const agentClient = {
   getJenkinsFolder,
   getJenkinsScope,
   getJenkinsTree,
+  getLlmModels,
   getNotebookTree(
     port: number,
     token: string,
@@ -902,6 +1018,8 @@ export const agentClient = {
       signal
     );
   },
+
+  streamLlmChat,
 
   sync(
     port: number,

@@ -1,6 +1,7 @@
 export const PluginId = {
   STAGINGS: "stagings",
   KUBER: "kuber",
+  ASSISTANT: "assistant",
   QAA_GENERATOR: "qaa-generator",
   JENKINS: "jenkins",
   LEONID: "leonid",
@@ -28,6 +29,7 @@ export const NavSection = {
 export type NavSection = (typeof NavSection)[keyof typeof NavSection];
 
 export const IconName = {
+  ASSISTANT: "assistant",
   CLUSTER: "cluster",
   JENKINS: "jenkins",
   LEONID: "leonid",
@@ -395,6 +397,8 @@ export const AgentPath = {
   SETTINGS: "/settings",
   PREFLIGHT: "/preflight",
   UPDATE: "/update",
+  LLM_MODELS: "/llm/models",
+  LLM_CHAT: "/llm/chat",
   JENKINS_SCOPE: "/jenkins/scope",
   JENKINS_TREE: "/jenkins/tree",
   JENKINS_BUILDS: "/jenkins/builds",
@@ -435,6 +439,12 @@ export const AgentPath = {
 } as const;
 
 export type AgentPath = (typeof AgentPath)[keyof typeof AgentPath];
+
+export const ToolsNamespace = {
+  KUBE: "kube",
+} as const;
+
+export type ToolsNamespace = (typeof ToolsNamespace)[keyof typeof ToolsNamespace];
 
 export function buildAgentJobPath(jobId: string): string {
   return `${AgentPath.JOBS}/${encodeURIComponent(jobId)}`;
@@ -806,6 +816,7 @@ export const HttpStatus = {
 export type HttpStatus = (typeof HttpStatus)[keyof typeof HttpStatus];
 
 export const ViewKey = {
+  ASSISTANT_CHAT: "assistant-chat",
   STAGINGS_PREFLIGHT: "stagings-preflight",
   JENKINS_TREE: "jenkins-tree",
   JENKINS_BOARD: "jenkins-board",
@@ -837,6 +848,7 @@ export const ViewKey = {
 export type ViewKey = (typeof ViewKey)[keyof typeof ViewKey];
 
 export const TabId = {
+  ASSISTANT_CHAT: "tab-assistant-chat",
   STAGINGS_PREFLIGHT: "tab-stagings-preflight",
   JENKINS_TREE: "tab-jenkins-tree",
   JENKINS_BOARD: "tab-jenkins-board",
@@ -868,6 +880,7 @@ export const TabId = {
 export type TabId = (typeof TabId)[keyof typeof TabId];
 
 export const TabTitle: Record<TabId, string> = {
+  [TabId.ASSISTANT_CHAT]: "Assistant",
   [TabId.STAGINGS_PREFLIGHT]: "Preflight",
   [TabId.JENKINS_TREE]: "Tree",
   [TabId.JENKINS_BOARD]: "Pinned",
@@ -922,6 +935,7 @@ export const QueryKey = {
   AGENT_MANIFEST: "agent-manifest",
   AGENT_PREFLIGHT: "agent-preflight",
   AGENT_SETTINGS: "agent-settings",
+  LLM_MODELS: "llm-models",
   AGENT_JOB: "agent-job",
   NOTEBOOK_CONTENTS: "notebook-contents",
   NOTEBOOK_NOTES: "notebook-notes",
@@ -983,6 +997,32 @@ export const QueryKey = {
 } as const;
 
 export type QueryKey = (typeof QueryKey)[keyof typeof QueryKey];
+
+export const LlmProvider = {
+  ANTHROPIC: "anthropic",
+  OPENAI: "openai",
+} as const;
+
+export type LlmProvider = (typeof LlmProvider)[keyof typeof LlmProvider];
+
+export const LlmMessageRole = {
+  SYSTEM: "system",
+  USER: "user",
+  ASSISTANT: "assistant",
+} as const;
+
+export type LlmMessageRole = (typeof LlmMessageRole)[keyof typeof LlmMessageRole];
+
+export const LlmStreamEvent = {
+  TEXT_DELTA: "text_delta",
+  TOOL_START: "tool_start",
+  TOOL_RESULT: "tool_result",
+  USAGE: "usage",
+  DONE: "done",
+  ERROR: "error",
+} as const;
+
+export type LlmStreamEvent = (typeof LlmStreamEvent)[keyof typeof LlmStreamEvent];
 
 export const CompanionStatusKind = {
   LOADING: "loading",

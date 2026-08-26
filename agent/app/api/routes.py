@@ -74,6 +74,8 @@ from app.schemas import (
     KubePodsResponse,
     KubeTopResponse,
     KubeUseContextRequest,
+    LlmChatRequest,
+    LlmModelInfo,
     NamespaceCredsResponse,
     NamespaceDeployRecipeResponse,
     NamespaceListResponse,
@@ -127,6 +129,12 @@ from app.services.kubeconfig import (
     read_status,
     refresh,
 )
+from app.services.llm.models import (
+    LlmModelsJsonError,
+    LlmProviderKeyMissingError,
+    LlmUnknownModelLabelError,
+)
+from app.services.llm.service import LlmService
 from app.services.namespaces import (
     list_namespaces,
     read_namespace_creds,
@@ -189,12 +197,18 @@ NotebookReadAuth = Annotated[AuthContext, Depends(require_permission(PermissionK
 NotebookWriteAuth = Annotated[
     AuthContext, Depends(require_permission(PermissionKey.NOTEBOOK_WRITE))
 ]
+AssistantAuth = Annotated[
+    AuthContext, Depends(require_permission(PermissionKey.ASSISTANT_USE))
+]
 logger = logging.getLogger(__name__)
 
 AGENT_SETTINGS_ENV_KEY_BY_FIELD = {
     "jenkins_history_limit": EnvKey.JENKINS_HISTORY_LIMIT,
     "jenkins_root_folders": EnvKey.JENKINS_ROOT_FOLDERS,
     "jenkins_root_groups": EnvKey.JENKINS_ROOT_GROUPS,
+    "llm_anthropic_key": EnvKey.LLM_ANTHROPIC_KEY,
+    "llm_models": EnvKey.LLM_MODELS,
+    "llm_openai_key": EnvKey.LLM_OPENAI_KEY,
     "qaa_generator_token": EnvKey.QAA_GENERATOR_TOKEN,
     "jenkins_request_timeout": EnvKey.JENKINS_REQUEST_TIMEOUT,
     "jenkins_stuck_min_idle_hours": EnvKey.JENKINS_STUCK_MIN_IDLE_HOURS,
@@ -277,6 +291,36 @@ async def update_companion_settings(
         backend_client=request.app.state.backend_client,
     )
     return to_agent_settings_read(updated_settings)
+
+
+@router.get(AgentPath.LLM_MODELS.value, response_model=list[LlmModelInfo])
+async def get_llm_models(
+    _: AssistantAuth,
+    settings: SettingsDep,
+) -> list[LlmModelInfo]:
+    try:
+        return LlmService(settings).list_models()
+    except LlmModelsJsonError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+
+@router.post(AgentPath.LLM_CHAT.value)
+async def post_llm_chat(
+    request_body: LlmChatRequest,
+    _: AssistantAuth,
+    settings: SettingsDep,
+) -> StreamingResponse:
+    try:
+        stream = LlmService(settings).stream_chat(request_body)
+    except (LlmModelsJsonError, LlmProviderKeyMissingError, LlmUnknownModelLabelError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    return _build_sse_response(stream)
 
 
 @router.get(AgentPath.NOTEBOOK_CONTENTS.value, response_model=NotebookContentsResponse)

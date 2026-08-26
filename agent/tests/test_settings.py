@@ -16,6 +16,12 @@ def write_agent_env(path: Path) -> None:
                 "AGENT_JENKINS_URL=https://initial.jenkins",
                 "AGENT_JENKINS_USERNAME=initial-user",
                 "AGENT_JENKINS_TOKEN=initial-token",
+                "AGENT_LLM_ANTHROPIC_KEY=initial-anthropic-key",
+                "AGENT_LLM_OPENAI_KEY=initial-openai-key",
+                (
+                    "AGENT_LLM_MODELS="
+                    '[{"label":"Claude","provider":"anthropic","model_id":"claude-sonnet","params":{"max_tokens":1024}}]'
+                ),
                 "AGENT_QAA_GENERATOR_TOKEN=initial-qaa-token",
                 "AGENT_JENKINS_ROOT_GROUPS=BE=job/.QAA/job/E2E,FE=job/.QAA/job/UI_E2E",
                 "AGENT_JENKINS_ROOT_FOLDERS=PREPROD,PROD",
@@ -67,6 +73,11 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
     assert get_response.status_code == 200
     body = get_response.json()
     assert body["jenkins_token_set"] is True
+    assert body["llm_anthropic_key_set"] is True
+    assert body["llm_openai_key_set"] is True
+    assert body["llm_models"] == (
+        '[{"label":"Claude","provider":"anthropic","model_id":"claude-sonnet","params":{"max_tokens":1024}}]'
+    )
     assert body["qaa_generator_token_set"] is True
     assert body["jenkins_root_groups"] == [
         {"label": "BE", "path": "job/.QAA/job/E2E"},
@@ -75,6 +86,8 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
     assert body["jenkins_root_folders"] == ["PREPROD", "PROD"]
     assert body["jenkins_history_limit"] == 8
     assert "jenkins_token" not in body
+    assert "llm_anthropic_key" not in body
+    assert "llm_openai_key" not in body
     assert "qaa_generator_token" not in body
     assert "host" not in body
     assert "backend_url" not in body
@@ -86,6 +99,11 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
             "jenkins_url": "https://updated.jenkins",
             "jenkins_username": "updated-user",
             "jenkins_token": "",
+            "llm_anthropic_key": "",
+            "llm_openai_key": "",
+            "llm_models": (
+                '[{"label":"Codex","provider":"openai","model_id":"gpt-5","params":{"reasoning_effort":"high"}}]'
+            ),
             "qaa_generator_token": "",
             "jenkins_root_groups": [
                 {"label": "BE", "path": "job/.QAA/job/E2E/job/UPDATED"},
@@ -114,6 +132,11 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
     assert updated["jenkins_url"] == "https://updated.jenkins"
     assert updated["jenkins_username"] == "updated-user"
     assert updated["jenkins_token_set"] is False
+    assert updated["llm_anthropic_key_set"] is False
+    assert updated["llm_openai_key_set"] is False
+    assert updated["llm_models"] == (
+        '[{"label":"Codex","provider":"openai","model_id":"gpt-5","params":{"reasoning_effort":"high"}}]'
+    )
     assert updated["qaa_generator_token_set"] is False
     assert updated["jenkins_root_groups"] == [
         {"label": "BE", "path": "job/.QAA/job/E2E/job/UPDATED"},
@@ -129,6 +152,11 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
     assert runtime_settings.jenkins_url == "https://updated.jenkins"
     assert runtime_settings.jenkins_username == "updated-user"
     assert runtime_settings.jenkins_token == ""
+    assert runtime_settings.llm_anthropic_key == ""
+    assert runtime_settings.llm_openai_key == ""
+    assert runtime_settings.llm_models == (
+        '[{"label":"Codex","provider":"openai","model_id":"gpt-5","params":{"reasoning_effort":"high"}}]'
+    )
     assert runtime_settings.qaa_generator_token == ""
     assert [(group.label, group.path) for group in runtime_settings.jenkins_root_groups] == [
         ("BE", "job/.QAA/job/E2E/job/UPDATED"),
@@ -143,6 +171,13 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
 
     serialized_env = env_path.read_text(encoding="utf-8")
     assert "AGENT_JENKINS_TOKEN=\n" in serialized_env
+    assert "AGENT_LLM_ANTHROPIC_KEY=\n" in serialized_env
+    assert "AGENT_LLM_OPENAI_KEY=\n" in serialized_env
+    assert (
+        "AGENT_LLM_MODELS="
+        '[{"label":"Codex","provider":"openai","model_id":"gpt-5","params":{"reasoning_effort":"high"}}]\n'
+        in serialized_env
+    )
     assert "AGENT_QAA_GENERATOR_TOKEN=\n" in serialized_env
     assert (
         "AGENT_JENKINS_ROOT_GROUPS="

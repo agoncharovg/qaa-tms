@@ -10,6 +10,8 @@ class AgentPath(StrEnum):
     SETTINGS = "/settings"
     PREFLIGHT = "/preflight"
     UPDATE = "/update"
+    LLM_MODELS = "/llm/models"
+    LLM_CHAT = "/llm/chat"
     NOTEBOOK_CONTENTS = "/notebook/contents"
     NOTEBOOK_BOOKMARK = "/notebook/bookmark"
     NOTEBOOK_NOTE = "/notebook/note"
@@ -123,6 +125,9 @@ class EnvKey(StrEnum):
     PORT = "AGENT_PORT"
     CORS_ORIGINS = "AGENT_CORS_ORIGINS"
     BACKEND_URL = "AGENT_BACKEND_URL"
+    LLM_ANTHROPIC_KEY = "AGENT_LLM_ANTHROPIC_KEY"
+    LLM_OPENAI_KEY = "AGENT_LLM_OPENAI_KEY"
+    LLM_MODELS = "AGENT_LLM_MODELS"
     JENKINS_URL = "AGENT_JENKINS_URL"
     JENKINS_USERNAME = "AGENT_JENKINS_USERNAME"
     JENKINS_TOKEN = "AGENT_JENKINS_TOKEN"
@@ -211,6 +216,7 @@ class PermissionKey(StrEnum):
     KUBER_READ = "kuber.read"
     KUBER_USE_CONTEXT = "kuber.use_context"
     KUBER_DELETE_POD = "kuber.delete_pod"
+    ASSISTANT_USE = "assistant.use"
     QAA_READ = "qaa.read"
     QAA_RUN = "qaa.run"
     QAA_ADMIN = "qaa.admin"
@@ -263,6 +269,24 @@ class VpnProbeHost(StrEnum):
 class SseEvent(StrEnum):
     LOG = "log"
     TERMINAL = "terminal"
+
+
+class LlmProvider(StrEnum):
+    ANTHROPIC = "anthropic"
+    OPENAI = "openai"
+
+
+class LlmMessageRole(StrEnum):
+    SYSTEM = "system"
+    USER = "user"
+    ASSISTANT = "assistant"
+
+
+class LlmStreamEvent(StrEnum):
+    TEXT_DELTA = "text_delta"
+    USAGE = "usage"
+    DONE = "done"
+    ERROR = "error"
 
 
 class StagingCommand(StrEnum):
@@ -449,6 +473,7 @@ DEFAULT_STAGING_BINARY_NAME = "staging"
 DEFAULT_KUBECTL_BIN = "kubectl"
 DEFAULT_KUBECTL_REQUEST_TIMEOUT = "10s"
 DEFAULT_KUBE_LOG_TAIL = 200
+DEFAULT_LLM_MODELS = "[]"
 GROUP_LABEL_SEPARATOR = "="
 GROUP_LIST_SEPARATOR = ","
 JENKINS_JOB_PATH_SEGMENT = "job"

@@ -9,8 +9,10 @@ description = "QAA-TMS local companion agent"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+  "anthropic==0.116.0",
   "fastapi>=0.115.0",
   "httpx>=0.28.0",
+  "openai==2.44.0",
   "pydantic-settings>=2.7.0",
   "uvicorn[standard]>=0.34.0",
 ]
@@ -43,4 +45,3 @@ python_version = "3.12"
 plugins = ["pydantic.mypy"]
 strict = true
 warn_unused_ignores = true
-

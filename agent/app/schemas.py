@@ -21,6 +21,8 @@ from app.core.constants import (
     JobStatus,
     KubeconfigAction,
     KubeconfigReason,
+    LlmMessageRole,
+    LlmProvider,
     PreflightKey,
     Product,
 )
@@ -66,6 +68,9 @@ class AgentSettingsRead(BaseModel):
     jenkins_url: str
     jenkins_username: str
     jenkins_token_set: bool
+    llm_models: str
+    llm_anthropic_key_set: bool
+    llm_openai_key_set: bool
     jenkins_root_groups: list[JenkinsRootGroup]
     qaa_generator_token_set: bool
     jenkins_root_folders: list[str]
@@ -93,6 +98,9 @@ class AgentSettingsUpdate(BaseModel):
     jenkins_url: str | None = None
     jenkins_username: str | None = None
     jenkins_token: str | None = None
+    llm_models: str | None = None
+    llm_anthropic_key: str | None = None
+    llm_openai_key: str | None = None
     jenkins_root_groups: list[JenkinsRootGroup] | None = None
     qaa_generator_token: str | None = None
     jenkins_root_folders: list[str] | None = None
@@ -117,6 +125,9 @@ def to_agent_settings_read(settings: Settings) -> AgentSettingsRead:
         jenkins_url=settings.jenkins_url,
         jenkins_username=settings.jenkins_username,
         jenkins_token_set=bool(settings.jenkins_token),
+        llm_models=settings.llm_models,
+        llm_anthropic_key_set=bool(settings.llm_anthropic_key),
+        llm_openai_key_set=bool(settings.llm_openai_key),
         jenkins_root_groups=list(settings.jenkins_root_groups),
         qaa_generator_token_set=bool(settings.qaa_generator_token),
         jenkins_root_folders=list(settings.jenkins_root_folders),
@@ -135,6 +146,81 @@ def to_agent_settings_read(settings: Settings) -> AgentSettingsRead:
         kubeconfig=settings.kubeconfig,
         kubectl_request_timeout=settings.kubectl_request_timeout,
     )
+
+
+class LlmModelInfo(BaseModel):
+    """Configured model metadata exposed to the frontend."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    label: str
+    provider: LlmProvider
+    model_id: str = Field(alias="modelId")
+    params: dict[str, object] = Field(default_factory=dict)
+
+
+class LlmChatMessage(BaseModel):
+    """Single chat message exchanged with the LLM."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    role: LlmMessageRole
+    content: str = Field(min_length=1)
+
+
+class LlmSeedContext(BaseModel):
+    """Optional lightweight context injected as a system seed."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    context: str | None = None
+    namespace: str | None = None
+    pod: str | None = None
+
+
+class LlmChatRequest(BaseModel):
+    """Chat request body for agent-side LLM streaming."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    model: str = Field(min_length=1)
+    messages: list[LlmChatMessage] = Field(min_length=1)
+    seed_context: LlmSeedContext | None = Field(default=None, alias="seedContext")
+    tools_namespace: str | None = Field(default=None, alias="toolsNamespace")
+
+
+class LlmTextDeltaEvent(BaseModel):
+    """Text chunk streamed from the provider."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    delta: str
+
+
+class LlmUsageEvent(BaseModel):
+    """Usage metadata streamed after completion."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    input_tokens: int | None = Field(default=None, alias="inputTokens")
+    output_tokens: int | None = Field(default=None, alias="outputTokens")
+    total_tokens: int | None = Field(default=None, alias="totalTokens")
+
+
+class LlmDoneEvent(BaseModel):
+    """Terminal stream marker payload."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    done: bool = True
+
+
+class LlmErrorEvent(BaseModel):
+    """Error payload surfaced over SSE."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    message: str
 
 
 type NotebookFlags = dict[str, object]

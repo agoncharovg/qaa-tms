@@ -93,6 +93,7 @@ export function writeStoredUiState(state: PersistedUiState): void {
 export function createBootstrapTabsByPlugin(): TabsByPlugin {
   return {
     [PluginId.ADMIN]: createEmptyPluginState(),
+    [PluginId.ASSISTANT]: createEmptyPluginState(),
     [PluginId.JENKINS]: createEmptyPluginState(),
     [PluginId.KUBER]: createEmptyPluginState(),
     [PluginId.NOTEBOOK]: createEmptyPluginState(),

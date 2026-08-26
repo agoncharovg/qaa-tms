@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncIterator, Awaitable, Callable
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -17,11 +18,11 @@ from app.services.command import (
 )
 
 
-def encode_sse(event: SseEvent, payload: dict[str, Any]) -> str:
+def encode_sse(event: str | StrEnum, payload: dict[str, Any]) -> str:
     """Encode a single SSE frame in the format consumed by the frontend parser."""
 
     data = json.dumps(payload, separators=(",", ":"))
-    return f"event: {event.value}\ndata: {data}\n\n"
+    return f"event: {str(event)}\ndata: {data}\n\n"
 
 
 async def stream_process_log_frames(

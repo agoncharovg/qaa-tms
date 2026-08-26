@@ -16,6 +16,7 @@ from app.core.constants import (
 DEFAULT_OPTIONAL_PLUGIN_IDS = [
     PluginId.STAGINGS.value,
     PluginId.KUBER.value,
+    PluginId.ASSISTANT.value,
     PluginId.QAA_GENERATOR.value,
     PluginId.JENKINS.value,
     PluginId.STATISTICS.value,
@@ -106,6 +107,7 @@ def test_authz_check_allows_notebook_permissions_for_engineer_seed(client: TestC
             "checks": [
                 {"permission": "notebook.read"},
                 {"permission": "notebook.write"},
+                {"permission": "assistant.use"},
             ]
         },
     )
@@ -115,5 +117,6 @@ def test_authz_check_allows_notebook_permissions_for_engineer_seed(client: TestC
         "results": [
             {"permission": "notebook.read", "allowed": True},
             {"permission": "notebook.write", "allowed": True},
+            {"permission": "assistant.use", "allowed": True},
         ]
     }

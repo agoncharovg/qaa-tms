@@ -4,6 +4,7 @@ import type { TablerIcon } from "@tabler/icons-react";
 import {
   IconBell,
   IconChartBar,
+  IconMessageChatbot,
   IconNotebook,
   IconPuzzle,
   IconRocket,
@@ -52,6 +53,7 @@ const JenkinsIcon = forwardRef<SVGSVGElement, LocalIconProps>(function JenkinsIc
 export const FALLBACK_PLUGIN_ICON = IconPuzzle;
 
 export const ICON_REGISTRY: Record<IconName, TablerIcon> = {
+  [IconName.ASSISTANT]: IconMessageChatbot,
   [IconName.CLUSTER]: IconServer,
   [IconName.JENKINS]: JenkinsIcon,
   [IconName.LEONID]: IconShieldCheck,

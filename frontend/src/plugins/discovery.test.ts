@@ -4,6 +4,10 @@ vi.mock("@/plugins/admin/UsersPage", () => ({
   UsersPage: () => null,
 }));
 
+vi.mock("@/plugins/assistant/AssistantSection", () => ({
+  AssistantSection: () => null,
+}));
+
 vi.mock("@/plugins/admin/ServerSettingsPage", () => ({
   ServerSettingsPage: () => null,
 }));
@@ -78,6 +82,7 @@ describe("plugin discovery", () => {
       PluginId.NOTIFICATOR,
       PluginId.STATISTICS,
       PluginId.NOTEBOOK,
+      PluginId.ASSISTANT,
       PluginId.ADMIN,
       PluginId.PROFILE,
     ]);
@@ -99,8 +104,10 @@ describe("plugin discovery", () => {
     expect(PLUGINS[6]?.requiresAgent).toBe(false);
     expect(PLUGINS[7]?.kind).toBe(PluginKind.OPTIONAL);
     expect(PLUGINS[7]?.requiresAgent).toBe(true);
-    expect(PLUGINS[8]?.kind).toBe(PluginKind.SYSTEM);
+    expect(PLUGINS[8]?.kind).toBe(PluginKind.OPTIONAL);
+    expect(PLUGINS[8]?.requiresAgent).toBe(true);
     expect(PLUGINS[9]?.kind).toBe(PluginKind.SYSTEM);
+    expect(PLUGINS[10]?.kind).toBe(PluginKind.SYSTEM);
   });
 
   it("rejects duplicate plugin ids", () => {

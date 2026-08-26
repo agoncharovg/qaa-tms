@@ -31,7 +31,7 @@ vi.mock("@/api/backendClient", () => ({
 }));
 
 import { SettingsPanel } from "@/plugins/profile/SettingsPanel";
-import { PluginId } from "@/constants";
+import { LlmProvider, PluginId } from "@/constants";
 import { renderWithProviders } from "@/test/render";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
 import type { User } from "@/api/types";
@@ -40,6 +40,16 @@ const agentSettingsResponse = {
   jenkins_url: "https://jenkins.example",
   jenkins_username: "agent-user",
   jenkins_token_set: true,
+  llm_models: JSON.stringify([
+    {
+      label: "Claude Sonnet",
+      provider: LlmProvider.ANTHROPIC,
+      model_id: "claude-sonnet-4",
+      params: { max_tokens: 1024 },
+    },
+  ]),
+  llm_anthropic_key_set: true,
+  llm_openai_key_set: false,
   qaa_generator_token_set: false,
   jenkins_root_groups: [
     { label: "BE", path: "job/.QAA/job/E2E" },
@@ -78,6 +88,10 @@ describe("SettingsPanel", () => {
   beforeEach(() => {
     localStorage.clear();
     resetAuthStoreState();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    });
     agentClientMock.discoverAgent.mockReset();
     agentClientMock.getPing.mockReset();
     agentClientMock.getSettings.mockReset();
@@ -224,6 +238,130 @@ describe("SettingsPanel", () => {
     });
     await waitFor(() => {
       expect(screen.getAllByText("Settings saved.").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("saves Assistant models and only sends dirty secret fields", async () => {
+    const user = userEvent.setup();
+
+    useAuthStore.setState({
+      currentUser: createCurrentUser([PluginId.ASSISTANT]),
+      token: "token-123",
+    });
+    agentClientMock.discoverAgent.mockResolvedValue({
+      agent: {
+        app: "qaa-tms-agent",
+        os: "linux",
+        stagingsInstalled: true,
+        stagingsSha: "abc123",
+        version: "0.1.0",
+      },
+      port: 47600,
+    });
+    agentClientMock.getSettings.mockResolvedValue(agentSettingsResponse);
+    agentClientMock.updateSettings.mockResolvedValue({
+      ...agentSettingsResponse,
+      llm_models: JSON.stringify([
+        {
+          label: "Claude Sonnet",
+          provider: LlmProvider.ANTHROPIC,
+          model_id: "claude-sonnet-4",
+          params: { max_tokens: 2048 },
+        },
+        {
+          label: "Codex High",
+          provider: LlmProvider.OPENAI,
+          model_id: "gpt-5",
+          params: { reasoning_effort: "high" },
+        },
+      ]),
+      llm_anthropic_key_set: true,
+      llm_openai_key_set: true,
+    });
+
+    renderWithProviders(<SettingsPanel />);
+
+    expect(await screen.findByRole("heading", { name: "Assistant" })).toBeInTheDocument();
+    expect(screen.getByText("Anthropic key configured")).toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText("Anthropic API key"));
+    await user.type(screen.getByLabelText("Anthropic API key"), "anthropic-secret");
+    await user.click(screen.getByRole("button", { name: "Add model" }));
+    await user.type(screen.getAllByLabelText("Label")[1] ?? screen.getByLabelText("Label"), "Codex High");
+    await user.click(screen.getAllByLabelText("Provider")[1] ?? screen.getByLabelText("Provider"));
+    await user.click(await screen.findByRole("option", { name: "OpenAI" }));
+    await user.type(screen.getAllByLabelText("Model ID")[1] ?? screen.getByLabelText("Model ID"), "gpt-5");
+    await user.click(
+      screen.getAllByLabelText("Reasoning effort")[1] ?? screen.getByLabelText("Reasoning effort")
+    );
+    await user.click(await screen.findByRole("option", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save Assistant settings" }));
+
+    await waitFor(() => {
+      expect(agentClientMock.updateSettings).toHaveBeenCalledWith(47600, "token-123", {
+        llm_anthropic_key: "anthropic-secret",
+        llm_models: JSON.stringify([
+          {
+            label: "Claude Sonnet",
+            model_id: "claude-sonnet-4",
+            provider: LlmProvider.ANTHROPIC,
+            params: { max_tokens: 1024 },
+          },
+          {
+            label: "Codex High",
+            model_id: "gpt-5",
+            provider: LlmProvider.OPENAI,
+            params: { reasoning_effort: "high" },
+          },
+        ]),
+      });
+    });
+  });
+
+  it("clears Assistant secrets with explicit empty strings", async () => {
+    const user = userEvent.setup();
+
+    useAuthStore.setState({
+      currentUser: createCurrentUser([PluginId.ASSISTANT]),
+      token: "token-123",
+    });
+    agentClientMock.discoverAgent.mockResolvedValue({
+      agent: {
+        app: "qaa-tms-agent",
+        os: "linux",
+        stagingsInstalled: true,
+        stagingsSha: "abc123",
+        version: "0.1.0",
+      },
+      port: 47600,
+    });
+    agentClientMock.getSettings.mockResolvedValue(agentSettingsResponse);
+    agentClientMock.updateSettings.mockResolvedValue({
+      ...agentSettingsResponse,
+      llm_anthropic_key_set: false,
+      llm_openai_key_set: false,
+    });
+
+    renderWithProviders(<SettingsPanel />);
+
+    await screen.findByRole("heading", { name: "Assistant" });
+    await user.click(screen.getByRole("button", { name: "Clear Anthropic key" }));
+    await user.click(screen.getByRole("button", { name: "Clear OpenAI key" }));
+    await user.click(screen.getByRole("button", { name: "Save Assistant settings" }));
+
+    await waitFor(() => {
+      expect(agentClientMock.updateSettings).toHaveBeenCalledWith(47600, "token-123", {
+        llm_anthropic_key: "",
+        llm_models: JSON.stringify([
+          {
+            label: "Claude Sonnet",
+            model_id: "claude-sonnet-4",
+            provider: LlmProvider.ANTHROPIC,
+            params: { max_tokens: 1024 },
+          },
+        ]),
+        llm_openai_key: "",
+      });
     });
   });
 });

@@ -10,6 +10,9 @@ import type {
   JobStreamEvent,
   KubeconfigAction,
   KubeconfigReason,
+  LlmMessageRole,
+  LlmProvider,
+  LlmStreamEvent,
   NamespaceLogStatus,
   NamespaceOrigin,
   OperationStatus,
@@ -20,6 +23,7 @@ import type {
   QaaRunProfile,
   QaaRunStatus,
   TabId,
+  ToolsNamespace,
   ViewKey,
 } from "@/constants";
 
@@ -146,6 +150,9 @@ export interface AgentSettings {
   jenkins_url: string;
   jenkins_username: string;
   jenkins_token_set: boolean;
+  llm_models: string;
+  llm_anthropic_key_set: boolean;
+  llm_openai_key_set: boolean;
   jenkins_root_groups: JenkinsRootGroup[];
   qaa_generator_token_set: boolean;
   jenkins_root_folders: string[];
@@ -169,6 +176,9 @@ export interface AgentSettingsUpdate {
   jenkins_url?: string;
   jenkins_username?: string;
   jenkins_token?: string;
+  llm_models?: string;
+  llm_anthropic_key?: string;
+  llm_openai_key?: string;
   jenkins_root_groups?: JenkinsRootGroup[];
   qaa_generator_token?: string;
   jenkins_root_folders?: string[];
@@ -187,6 +197,67 @@ export interface AgentSettingsUpdate {
   kubeconfig?: string;
   kubectl_request_timeout?: string;
 }
+
+export interface LlmModelInfo {
+  label: string;
+  provider: LlmProvider;
+  modelId: string;
+  params: Record<string, unknown>;
+}
+
+export interface LlmChatMessage {
+  role: LlmMessageRole;
+  content: string;
+}
+
+export interface LlmSeedContext {
+  context?: string | null;
+  namespace?: string | null;
+  pod?: string | null;
+}
+
+export interface LlmChatRequest {
+  model: string;
+  messages: LlmChatMessage[];
+  seedContext?: LlmSeedContext;
+  toolsNamespace?: ToolsNamespace;
+}
+
+export interface LlmTextDeltaEvent {
+  delta: string;
+}
+
+export interface LlmToolStartEvent {
+  toolName: string;
+  arguments: Record<string, unknown>;
+}
+
+export interface LlmToolResultEvent {
+  toolName: string;
+  result: string;
+}
+
+export interface LlmUsageEvent {
+  inputTokens: number | null;
+  outputTokens: number | null;
+  totalTokens: number | null;
+}
+
+export interface LlmDoneEvent {
+  done: boolean;
+}
+
+export interface LlmErrorEvent {
+  message: string;
+}
+
+export type LlmStreamMessage =
+  | { event: typeof LlmStreamEvent.TEXT_DELTA; data: LlmTextDeltaEvent }
+  | { event: typeof LlmStreamEvent.TOOL_START; data: LlmToolStartEvent }
+  | { event: typeof LlmStreamEvent.TOOL_RESULT; data: LlmToolResultEvent }
+  | { event: typeof LlmStreamEvent.USAGE; data: LlmUsageEvent }
+  | { event: typeof LlmStreamEvent.DONE; data: LlmDoneEvent }
+  | { event: typeof LlmStreamEvent.ERROR; data: LlmErrorEvent };
 
 export interface NotebookBookmarkNode {
   name: string;

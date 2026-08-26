@@ -1,10 +1,13 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   Alert,
+  Badge,
   Button,
   Card,
   Group,
   Loader,
+  NumberInput,
+  Select,
   PasswordInput,
   SimpleGrid,
   Stack,
@@ -21,7 +24,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { agentClient } from "@/api/agentClient";
 import type { AgentSettings, AgentSettingsUpdate } from "@/api/types";
 import { usePalette } from "@/app/theme/usePalette";
-import { PluginId, QueryKey, type PluginId as PluginIdType } from "@/constants";
+import {
+  LlmProvider,
+  PluginId,
+  QueryKey,
+  type PluginId as PluginIdType,
+} from "@/constants";
 import { CompanionGate } from "@/plugins/companion/CompanionGate";
 import { usePluginsContext } from "@/plugins/context";
 import { useAuthStore } from "@/store/authStore";
@@ -30,6 +38,32 @@ const SettingsPanelCopy = {
   AGENT_ERROR: "Companion settings failed to load",
   AGENT_LOADING: "Checking the local companion app.",
   AGENT_SETTINGS_LOADING: "Loading companion settings.",
+  ASSISTANT_ADD_MODEL: "Add model",
+  ASSISTANT_ANTHROPIC_BADGE: "Anthropic key configured",
+  ASSISTANT_ANTHROPIC_CLEAR: "Clear Anthropic key",
+  ASSISTANT_ANTHROPIC_KEY_LABEL: "Anthropic API key",
+  ASSISTANT_DESCRIPTION:
+    "Your personal LLM provider keys and model catalog are written to the local companion `.env` on this machine.",
+  ASSISTANT_MAX_TOKENS_LABEL: "Max tokens",
+  ASSISTANT_MODELS_LABEL: "Models",
+  ASSISTANT_MODEL_ID_LABEL: "Model ID",
+  ASSISTANT_MODEL_LABEL: "Label",
+  ASSISTANT_NO_MODELS: "No Assistant models configured yet.",
+  ASSISTANT_OPENAI_BADGE: "OpenAI key configured",
+  ASSISTANT_OPENAI_CLEAR: "Clear OpenAI key",
+  ASSISTANT_OPENAI_KEY_LABEL: "OpenAI API key",
+  ASSISTANT_PRIVACY_NOTE:
+    "Pod data and chat messages sent through Assistant go directly from this machine to the selected provider.",
+  ASSISTANT_PROVIDER_ANTHROPIC: "Anthropic",
+  ASSISTANT_PROVIDER_LABEL: "Provider",
+  ASSISTANT_PROVIDER_OPENAI: "OpenAI",
+  ASSISTANT_REASONING_EFFORT_HIGH: "High",
+  ASSISTANT_REASONING_EFFORT_LABEL: "Reasoning effort",
+  ASSISTANT_REASONING_EFFORT_LOW: "Low",
+  ASSISTANT_REASONING_EFFORT_MEDIUM: "Medium",
+  ASSISTANT_REMOVE_MODEL: "Remove model",
+  ASSISTANT_SAVE: "Save Assistant settings",
+  ASSISTANT_TITLE: "Assistant",
   CLEAR_SECRET: "Clear stored value",
   EMPTY_STATE: "No plugin-specific settings are enabled for this user.",
   JENKINS_DESCRIPTION:
@@ -84,9 +118,32 @@ const PAGE_TITLE_ORDER = 2 as const;
 
 const SECRET_INPUT_AUTOCOMPLETE = "new-password" as const;
 const SECRET_INPUT_NAME = {
+  ASSISTANT_ANTHROPIC_KEY: "assistant-anthropic-key",
+  ASSISTANT_OPENAI_KEY: "assistant-openai-key",
   JENKINS_TOKEN: "jenkins-personal-token",
   QAA_GENERATOR_TOKEN: "qaa-generator-personal-token",
 } as const;
+
+const EMPTY_LLM_REASONING_EFFORT = "" as const;
+const LLM_MODEL_MIN_VALUE = 0 as const;
+
+const LLM_REASONING_EFFORT = {
+  HIGH: "high",
+  LOW: "low",
+  MEDIUM: "medium",
+  NONE: EMPTY_LLM_REASONING_EFFORT,
+} as const;
+
+type LlmReasoningEffort =
+  (typeof LLM_REASONING_EFFORT)[keyof typeof LLM_REASONING_EFFORT];
+
+type LlmModelDraft = {
+  label: string;
+  maxTokens: number | "";
+  modelId: string;
+  provider: (typeof LlmProvider)[keyof typeof LlmProvider];
+  reasoningEffort: LlmReasoningEffort;
+};
 
 type Notice = {
   message: string;
@@ -100,6 +157,13 @@ type AgentFormState = {
   jenkinsUrl: string;
   jenkinsUsername: string;
   kubeconfig: string;
+  llmAnthropicKey: string;
+  llmAnthropicKeyDirty: boolean;
+  llmAnthropicKeySet: boolean;
+  llmModels: LlmModelDraft[];
+  llmOpenaiKey: string;
+  llmOpenaiKeyDirty: boolean;
+  llmOpenaiKeySet: boolean;
   notebookRoot: string;
   stagingKubeconfig: string;
   stagingKubeconfigUrl: string;
@@ -110,6 +174,101 @@ type QaaGeneratorFormState = {
   tokenSet: boolean;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isLlmProviderValue(
+  value: unknown
+): value is (typeof LlmProvider)[keyof typeof LlmProvider] {
+  return value === LlmProvider.ANTHROPIC || value === LlmProvider.OPENAI;
+}
+
+function isLlmReasoningEffortValue(value: unknown): value is LlmReasoningEffort {
+  return (
+    value === LLM_REASONING_EFFORT.NONE ||
+    value === LLM_REASONING_EFFORT.LOW ||
+    value === LLM_REASONING_EFFORT.MEDIUM ||
+    value === LLM_REASONING_EFFORT.HIGH
+  );
+}
+
+function buildEmptyLlmModelDraft(): LlmModelDraft {
+  return {
+    label: EMPTY_VALUE,
+    maxTokens: EMPTY_VALUE,
+    modelId: EMPTY_VALUE,
+    provider: LlmProvider.ANTHROPIC,
+    reasoningEffort: LLM_REASONING_EFFORT.NONE,
+  };
+}
+
+function parseAssistantModels(rawValue: string): LlmModelDraft[] {
+  try {
+    const parsed = JSON.parse(rawValue) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.flatMap((item) => {
+      if (!isRecord(item)) {
+        return [];
+      }
+
+      const params = isRecord(item.params) ? item.params : null;
+      const reasoningEffort = params?.reasoning_effort;
+      const maxTokens = params?.max_tokens;
+      const provider = isLlmProviderValue(item.provider)
+        ? item.provider
+        : LlmProvider.ANTHROPIC;
+
+      return [
+        {
+          label: typeof item.label === "string" ? item.label : EMPTY_VALUE,
+          maxTokens: typeof maxTokens === "number" ? maxTokens : EMPTY_VALUE,
+          modelId: typeof item.model_id === "string" ? item.model_id : EMPTY_VALUE,
+          provider,
+          reasoningEffort: isLlmReasoningEffortValue(reasoningEffort)
+            ? reasoningEffort
+            : LLM_REASONING_EFFORT.NONE,
+        },
+      ];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function serializeAssistantModels(models: LlmModelDraft[]): string {
+  return JSON.stringify(
+    models.flatMap((model) => {
+      const label = model.label.trim();
+      const modelId = model.modelId.trim();
+      if (!label || !modelId) {
+        return [];
+      }
+
+      const params: Record<string, number | string> = {};
+      if (model.reasoningEffort) {
+        params.reasoning_effort = model.reasoningEffort;
+      }
+      if (typeof model.maxTokens === "number") {
+        params.max_tokens = model.maxTokens;
+      }
+
+      const payload: Record<string, unknown> = {
+        label,
+        model_id: modelId,
+        provider: model.provider,
+      };
+      if (Object.keys(params).length > 0) {
+        payload.params = params;
+      }
+      return [payload];
+    })
+  );
+}
+
 function buildAgentFormState(settings: AgentSettings): AgentFormState {
   return {
     jenkinsToken: EMPTY_VALUE,
@@ -118,6 +277,13 @@ function buildAgentFormState(settings: AgentSettings): AgentFormState {
     jenkinsUrl: settings.jenkins_url,
     jenkinsUsername: settings.jenkins_username,
     kubeconfig: settings.kubeconfig,
+    llmAnthropicKey: EMPTY_VALUE,
+    llmAnthropicKeyDirty: false,
+    llmAnthropicKeySet: settings.llm_anthropic_key_set,
+    llmModels: parseAssistantModels(settings.llm_models),
+    llmOpenaiKey: EMPTY_VALUE,
+    llmOpenaiKeyDirty: false,
+    llmOpenaiKeySet: settings.llm_openai_key_set,
     notebookRoot: settings.notebook_root,
     stagingKubeconfig: settings.staging_kubeconfig,
     stagingKubeconfigUrl: settings.staging_kubeconfig_url,
@@ -192,6 +358,7 @@ function CardShell({
 
 function SettingsPanelAgentSettings({
   agentPort,
+  showAssistant,
   showJenkins,
   showKuber,
   showNotebook,
@@ -200,6 +367,7 @@ function SettingsPanelAgentSettings({
   token,
 }: {
   agentPort: number;
+  showAssistant: boolean;
   showJenkins: boolean;
   showKuber: boolean;
   showNotebook: boolean;
@@ -209,6 +377,7 @@ function SettingsPanelAgentSettings({
 }) {
   const queryClient = useQueryClient();
   const [agentForm, setAgentForm] = useState<AgentFormState | null>(null);
+  const [assistantNotice, setAssistantNotice] = useState<Notice | null>(null);
   const [jenkinsNotice, setJenkinsNotice] = useState<Notice | null>(null);
   const [notebookNotice, setNotebookNotice] = useState<Notice | null>(null);
   const [stagingsNotice, setStagingsNotice] = useState<Notice | null>(null);
@@ -247,8 +416,25 @@ function SettingsPanelAgentSettings({
       });
     },
   });
-
-
+  const assistantUpdateMutation = useMutation({
+    mutationFn: async (payload: AgentSettingsUpdate) => {
+      return agentClient.updateSettings(agentPort, token, payload);
+    },
+    onSuccess: async (updatedSettings) => {
+      setAgentForm(buildAgentFormState(updatedSettings));
+      setAssistantNotice({
+        message: SettingsPanelCopy.UPDATE_SUCCESS,
+        status: NoticeStatus.SUCCESS,
+      });
+      await queryClient.invalidateQueries({ queryKey: [QueryKey.AGENT_SETTINGS] });
+    },
+    onError: (error) => {
+      setAssistantNotice({
+        message: error instanceof Error ? error.message : SettingsPanelCopy.UPDATE_FAILED,
+        status: NoticeStatus.ERROR,
+      });
+    },
+  });
 
   const stagingsUpdateMutation = useMutation({
     mutationFn: async (payload: AgentSettingsUpdate) => {
@@ -361,6 +547,58 @@ function SettingsPanelAgentSettings({
     });
   }
 
+  function setAssistantModelField<Key extends keyof LlmModelDraft>(
+    index: number,
+    key: Key,
+    value: LlmModelDraft[Key]
+  ): void {
+    setAgentForm((currentForm) => {
+      if (!currentForm) {
+        return currentForm;
+      }
+
+      const nextModels = [...currentForm.llmModels];
+      const currentModel = nextModels[index];
+      if (!currentModel) {
+        return currentForm;
+      }
+      nextModels[index] = {
+        ...currentModel,
+        [key]: value,
+      };
+      return {
+        ...currentForm,
+        llmModels: nextModels,
+      };
+    });
+  }
+
+  function addAssistantModel(): void {
+    setAgentForm((currentForm) => {
+      if (!currentForm) {
+        return currentForm;
+      }
+
+      return {
+        ...currentForm,
+        llmModels: [...currentForm.llmModels, buildEmptyLlmModelDraft()],
+      };
+    });
+  }
+
+  function removeAssistantModel(index: number): void {
+    setAgentForm((currentForm) => {
+      if (!currentForm) {
+        return currentForm;
+      }
+
+      return {
+        ...currentForm,
+        llmModels: currentForm.llmModels.filter((_, currentIndex) => currentIndex !== index),
+      };
+    });
+  }
+
   function saveJenkinsSettings(): void {
     if (!agentForm) {
       return;
@@ -377,7 +615,23 @@ function SettingsPanelAgentSettings({
     jenkinsUpdateMutation.mutate(payload);
   }
 
+  function saveAssistantSettings(): void {
+    if (!agentForm) {
+      return;
+    }
 
+    setAssistantNotice(null);
+    const payload: AgentSettingsUpdate = {
+      llm_models: serializeAssistantModels(agentForm.llmModels),
+    };
+    if (agentForm.llmAnthropicKeyDirty) {
+      payload.llm_anthropic_key = agentForm.llmAnthropicKey;
+    }
+    if (agentForm.llmOpenaiKeyDirty) {
+      payload.llm_openai_key = agentForm.llmOpenaiKey;
+    }
+    assistantUpdateMutation.mutate(payload);
+  }
 
   function saveStagingsSettings(): void {
     if (!agentForm) {
@@ -500,7 +754,186 @@ function SettingsPanelAgentSettings({
         </CardShell>
       ) : null}
 
-
+      {showAssistant ? (
+        <CardShell
+          description={SettingsPanelCopy.ASSISTANT_DESCRIPTION}
+          title={SettingsPanelCopy.ASSISTANT_TITLE}
+        >
+          <NoticeAlert notice={assistantNotice} successTitle={SettingsPanelCopy.UPDATE_SUCCESS} />
+          {agentForm ? (
+            <Stack gap="md">
+              <Text c="dimmed" size="sm">
+                {SettingsPanelCopy.ASSISTANT_PRIVACY_NOTE}
+              </Text>
+              <Group gap="xs">
+                {agentForm.llmAnthropicKeySet ? (
+                  <Badge variant="light">{SettingsPanelCopy.ASSISTANT_ANTHROPIC_BADGE}</Badge>
+                ) : null}
+                {agentForm.llmOpenaiKeySet ? (
+                  <Badge variant="light">{SettingsPanelCopy.ASSISTANT_OPENAI_BADGE}</Badge>
+                ) : null}
+              </Group>
+              <PasswordInput
+                autoComplete={SECRET_INPUT_AUTOCOMPLETE}
+                label={SettingsPanelCopy.ASSISTANT_ANTHROPIC_KEY_LABEL}
+                name={SECRET_INPUT_NAME.ASSISTANT_ANTHROPIC_KEY}
+                onChange={(event) => {
+                  setAgentField("llmAnthropicKey", event.currentTarget.value);
+                  setAgentField("llmAnthropicKeyDirty", true);
+                }}
+                placeholder={agentForm.llmAnthropicKeySet ? "••••••••" : undefined}
+                value={agentForm.llmAnthropicKey}
+              />
+              <Group justify="flex-start">
+                <Button
+                  onClick={() => {
+                    setAgentField("llmAnthropicKey", EMPTY_VALUE);
+                    setAgentField("llmAnthropicKeyDirty", true);
+                    setAgentField("llmAnthropicKeySet", false);
+                  }}
+                  variant="default"
+                >
+                  {SettingsPanelCopy.ASSISTANT_ANTHROPIC_CLEAR}
+                </Button>
+              </Group>
+              <PasswordInput
+                autoComplete={SECRET_INPUT_AUTOCOMPLETE}
+                label={SettingsPanelCopy.ASSISTANT_OPENAI_KEY_LABEL}
+                name={SECRET_INPUT_NAME.ASSISTANT_OPENAI_KEY}
+                onChange={(event) => {
+                  setAgentField("llmOpenaiKey", event.currentTarget.value);
+                  setAgentField("llmOpenaiKeyDirty", true);
+                }}
+                placeholder={agentForm.llmOpenaiKeySet ? "••••••••" : undefined}
+                value={agentForm.llmOpenaiKey}
+              />
+              <Group justify="flex-start">
+                <Button
+                  onClick={() => {
+                    setAgentField("llmOpenaiKey", EMPTY_VALUE);
+                    setAgentField("llmOpenaiKeyDirty", true);
+                    setAgentField("llmOpenaiKeySet", false);
+                  }}
+                  variant="default"
+                >
+                  {SettingsPanelCopy.ASSISTANT_OPENAI_CLEAR}
+                </Button>
+              </Group>
+              <Stack gap="sm">
+                <Text fw={500} size="sm">
+                  {SettingsPanelCopy.ASSISTANT_MODELS_LABEL}
+                </Text>
+                {agentForm.llmModels.length === 0 ? (
+                  <Text c="dimmed" size="sm">
+                    {SettingsPanelCopy.ASSISTANT_NO_MODELS}
+                  </Text>
+                ) : null}
+                {agentForm.llmModels.map((model, index) => (
+                  <Card key={`assistant-model-${index}`} padding="sm" radius="md" withBorder>
+                    <Stack gap="sm">
+                      <SimpleGrid cols={FORM_COLUMNS}>
+                        <TextInput
+                          label={SettingsPanelCopy.ASSISTANT_MODEL_LABEL}
+                          onChange={(event) =>
+                            setAssistantModelField(index, "label", event.currentTarget.value)
+                          }
+                          value={model.label}
+                        />
+                        <Select
+                          data={[
+                            {
+                              label: SettingsPanelCopy.ASSISTANT_PROVIDER_ANTHROPIC,
+                              value: LlmProvider.ANTHROPIC,
+                            },
+                            {
+                              label: SettingsPanelCopy.ASSISTANT_PROVIDER_OPENAI,
+                              value: LlmProvider.OPENAI,
+                            },
+                          ]}
+                          label={SettingsPanelCopy.ASSISTANT_PROVIDER_LABEL}
+                          onChange={(value) => {
+                            if (value === LlmProvider.ANTHROPIC || value === LlmProvider.OPENAI) {
+                              setAssistantModelField(index, "provider", value);
+                            }
+                          }}
+                          value={model.provider}
+                        />
+                        <TextInput
+                          label={SettingsPanelCopy.ASSISTANT_MODEL_ID_LABEL}
+                          onChange={(event) =>
+                            setAssistantModelField(index, "modelId", event.currentTarget.value)
+                          }
+                          value={model.modelId}
+                        />
+                        <NumberInput
+                          allowNegative={false}
+                          label={SettingsPanelCopy.ASSISTANT_MAX_TOKENS_LABEL}
+                          min={LLM_MODEL_MIN_VALUE}
+                          onChange={(value) => {
+                            setAssistantModelField(
+                              index,
+                              "maxTokens",
+                              typeof value === "number" ? value : EMPTY_VALUE
+                            );
+                          }}
+                          value={model.maxTokens}
+                        />
+                        <Select
+                          clearable
+                          data={[
+                            {
+                              label: SettingsPanelCopy.ASSISTANT_REASONING_EFFORT_LOW,
+                              value: LLM_REASONING_EFFORT.LOW,
+                            },
+                            {
+                              label: SettingsPanelCopy.ASSISTANT_REASONING_EFFORT_MEDIUM,
+                              value: LLM_REASONING_EFFORT.MEDIUM,
+                            },
+                            {
+                              label: SettingsPanelCopy.ASSISTANT_REASONING_EFFORT_HIGH,
+                              value: LLM_REASONING_EFFORT.HIGH,
+                            },
+                          ]}
+                          label={SettingsPanelCopy.ASSISTANT_REASONING_EFFORT_LABEL}
+                          onChange={(value) =>
+                            setAssistantModelField(
+                              index,
+                              "reasoningEffort",
+                              isLlmReasoningEffortValue(value)
+                                ? value
+                                : LLM_REASONING_EFFORT.NONE
+                            )
+                          }
+                          value={model.reasoningEffort || null}
+                        />
+                      </SimpleGrid>
+                      <Group justify="flex-end">
+                        <Button
+                          onClick={() => removeAssistantModel(index)}
+                          variant="default"
+                        >
+                          {SettingsPanelCopy.ASSISTANT_REMOVE_MODEL}
+                        </Button>
+                      </Group>
+                    </Stack>
+                  </Card>
+                ))}
+                <Group justify="space-between">
+                  <Button onClick={addAssistantModel} variant="default">
+                    {SettingsPanelCopy.ASSISTANT_ADD_MODEL}
+                  </Button>
+                  <Button
+                    loading={assistantUpdateMutation.isPending}
+                    onClick={saveAssistantSettings}
+                  >
+                    {SettingsPanelCopy.ASSISTANT_SAVE}
+                  </Button>
+                </Group>
+              </Stack>
+            </Stack>
+          ) : null}
+        </CardShell>
+      ) : null}
 
       {showStagings ? (
         <CardShell
@@ -624,9 +1057,15 @@ export function SettingsPanel() {
   const showNotebook = enabledPluginIds.has(PluginId.NOTEBOOK);
   const showStagings = enabledPluginIds.has(PluginId.STAGINGS);
   const showKuber = enabledPluginIds.has(PluginId.KUBER);
+  const showAssistant = enabledPluginIds.has(PluginId.ASSISTANT);
   const showQaaGenerator = enabledPluginIds.has(PluginId.QAA_GENERATOR);
   const hasEnabledAgentPlugins =
-    showJenkins || showNotebook || showStagings || showKuber || showQaaGenerator;
+    showAssistant ||
+    showJenkins ||
+    showNotebook ||
+    showStagings ||
+    showKuber ||
+    showQaaGenerator;
   const hasVisiblePluginSettings = hasEnabledAgentPlugins;
 
   if (!currentUser) {
@@ -658,6 +1097,7 @@ export function SettingsPanel() {
           {({ agentPort }) => (
             <SettingsPanelAgentSettings
               agentPort={agentPort}
+              showAssistant={showAssistant}
               showJenkins={showJenkins}
               showKuber={showKuber}
               showNotebook={showNotebook}

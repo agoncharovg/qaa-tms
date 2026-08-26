@@ -6,6 +6,7 @@ from enum import StrEnum
 class PluginId(StrEnum):
     STAGINGS = "stagings"
     KUBER = "kuber"
+    ASSISTANT = "assistant"
     QAA_GENERATOR = "qaa-generator"
     JENKINS = "jenkins"
     STATISTICS = "statistics"
@@ -271,6 +272,7 @@ class PermissionKey(StrEnum):
     KUBER_READ = "kuber.read"
     KUBER_USE_CONTEXT = "kuber.use_context"
     KUBER_DELETE_POD = "kuber.delete_pod"
+    ASSISTANT_USE = "assistant.use"
     QAA_READ = "qaa.read"
     QAA_RUN = "qaa.run"
     QAA_ADMIN = "qaa.admin"
@@ -427,6 +429,7 @@ class DevPassword(StrEnum):
 OPTIONAL_PLUGIN_IDS = (
     PluginId.STAGINGS,
     PluginId.KUBER,
+    PluginId.ASSISTANT,
     PluginId.QAA_GENERATOR,
     PluginId.JENKINS,
     PluginId.STATISTICS,

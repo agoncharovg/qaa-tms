@@ -26,6 +26,7 @@ from app.core.constants import (
     DEFAULT_KUBECONFIG_ACTIVE_PATH,
     DEFAULT_KUBECTL_BIN,
     DEFAULT_KUBECTL_REQUEST_TIMEOUT,
+    DEFAULT_LLM_MODELS,
     DEFAULT_NOTEBOOK_ROOT,
     DEFAULT_STAGING_KUBECONFIG,
     DEFAULT_STAGING_KUBECONFIG_MAX_AGE_HOURS,
@@ -73,6 +74,9 @@ class Settings(BaseSettings):
     jenkins_url: str = Field(default=DEFAULT_JENKINS_URL, alias=EnvKey.JENKINS_URL.value)
     jenkins_username: str = Field(default="", alias=EnvKey.JENKINS_USERNAME.value)
     jenkins_token: str = Field(default="", alias=EnvKey.JENKINS_TOKEN.value)
+    llm_anthropic_key: str = Field(default="", alias=EnvKey.LLM_ANTHROPIC_KEY.value)
+    llm_openai_key: str = Field(default="", alias=EnvKey.LLM_OPENAI_KEY.value)
+    llm_models: str = Field(default=DEFAULT_LLM_MODELS, alias=EnvKey.LLM_MODELS.value)
     jenkins_root_groups: Annotated[list[JenkinsRootGroup], NoDecode] = Field(
         default_factory=build_default_jenkins_root_groups,
         alias=EnvKey.JENKINS_ROOT_GROUPS.value,
