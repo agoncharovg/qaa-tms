@@ -473,8 +473,8 @@ export function NotebookBrowsePanel() {
         />
       ) : (
         <Grid>
-          <Grid.Col span={{ base: 12, lg: 3 }}>
-            <NotebookSurface>
+          <Grid.Col span={{ base: 12, lg: 2, md: 3 }}>
+            <NotebookSurface title="Bookmarks">
               <NotebookNoticeAlert notice={bookmarkNotice} />
               <Stack gap="md">
                 <Group gap="xs">
@@ -541,111 +541,109 @@ export function NotebookBrowsePanel() {
             </NotebookSurface>
           </Grid.Col>
 
-          <Grid.Col span={{ base: 12, lg: 9 }}>
-            <Grid>
-              <Grid.Col span={{ base: 12, md: 4 }}>
-                <NotebookSurface>
-                  <NotebookNoticeAlert notice={noteNotice} />
-                  <Group gap="xs">
-                    <Tooltip label={NOTEBOOK_BROWSE_COPY.NOTE_CREATE}>
-                      <ActionIcon
-                        aria-label={NOTEBOOK_BROWSE_COPY.NOTE_CREATE}
-                        disabled={noteActionDisabled}
-                        onClick={handleCreateNote}
-                        size="lg"
-                        variant="light"
-                      >
-                        <IconNote size={18} />
-                      </ActionIcon>
-                    </Tooltip>
-                  </Group>
+          <Grid.Col span={{ base: 12, lg: 2, md: 3 }}>
+            <NotebookSurface title="Notes">
+              <NotebookNoticeAlert notice={noteNotice} />
+              <Group gap="xs">
+                <Tooltip label={NOTEBOOK_BROWSE_COPY.NOTE_CREATE}>
+                  <ActionIcon
+                    aria-label={NOTEBOOK_BROWSE_COPY.NOTE_CREATE}
+                    disabled={noteActionDisabled}
+                    onClick={handleCreateNote}
+                    size="lg"
+                    variant="light"
+                  >
+                    <IconNote size={18} />
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
 
-                  {!selectedBookmark ? (
-                    <Paper p="lg" radius="md" withBorder>
-                      <Text c="dimmed" ta="center">
-                        {NOTEBOOK_BROWSE_COPY.SELECT_BOOKMARK_PROMPT}
-                      </Text>
-                    </Paper>
-                  ) : notesQuery.isLoading ? (
-                    <NotebookLoadingState message="Loading notes from the companion app." />
-                  ) : notesQuery.isError ? (
-                    <NotebookErrorAlert
-                      error={notesQuery.error}
-                      fallback={NOTEBOOK_BROWSE_COPY.NOTE_LOAD_FALLBACK}
-                      onRetry={() => void notesQuery.refetch()}
-                      title={NOTEBOOK_BROWSE_COPY.NOTE_LOAD_ERROR}
-                    />
-                  ) : notes.length === 0 ? (
-                    <Paper p="lg" radius="md" withBorder>
-                      <Text c="dimmed" ta="center">
-                        {NOTEBOOK_BROWSE_COPY.NOTE_EMPTY}
-                      </Text>
-                    </Paper>
-                  ) : (
-                    <Stack gap="xs">
-                      {notes.map((note) => {
-                        const isSelected = selectedNoteName === note.name;
-
-                        return (
-                          <Button
-                            fullWidth
-                            key={note.name}
-                            onClick={() => setSelectedNoteName(note.name)}
-                            styles={{
-                              inner: {
-                                justifyContent: "flex-start",
-                              },
-                              label: {
-                                whiteSpace: "normal",
-                                width: "100%",
-                              },
-                            }}
-                            variant={isSelected ? "filled" : "light"}
-                          >
-                            <Text
-                              c={isSelected ? undefined : "dimmed"}
-                              size="sm"
-                              ta="left"
-                              style={{ whiteSpace: "pre-wrap", width: "100%" }}
-                            >
-                              {buildPreviewText(note.previewLines)}
-                            </Text>
-                          </Button>
-                        );
-                      })}
-                    </Stack>
-                  )}
-                </NotebookSurface>
-              </Grid.Col>
-
-              <Grid.Col span={{ base: 12, md: 8 }}>
-                <NotebookNoteEditor
-                  bookmark={selectedBookmark}
-                  deleteButtonLabel={NOTEBOOK_BROWSE_COPY.NOTE_DELETE}
-                  deleteDisabled={!selectedNoteName || deleteNoteMutation.isPending}
-                  emptyBody={NOTEBOOK_BROWSE_COPY.EDITOR_EMPTY_BODY}
-                  emptyTitle={NOTEBOOK_BROWSE_COPY.EDITOR_EMPTY_TITLE}
-                  error={noteQuery.error}
-                  hasSelection={Boolean(selectedNoteName)}
-                  hasUnsavedChanges={hasUnsavedChanges}
-                  isDeleting={deleteNoteMutation.isPending}
-                  isLoading={noteQuery.isLoading}
-                  isSaving={updateNoteMutation.isPending}
-                  note={noteQuery.data}
-                  onDelete={handleDeleteNote}
-                  onRetry={() => void noteQuery.refetch()}
-                  onSave={handleSaveNote}
-                  onTextChange={setEditorText}
-                  saveDisabled={
-                    !selectedNoteName ||
-                    !hasUnsavedChanges ||
-                    updateNoteMutation.isPending ||
-                    deleteNoteMutation.isPending
-                  }
-                  text={editorText}
+              {!selectedBookmark ? (
+                <Paper p="lg" radius="md" withBorder>
+                  <Text c="dimmed" ta="center">
+                    {NOTEBOOK_BROWSE_COPY.SELECT_BOOKMARK_PROMPT}
+                  </Text>
+                </Paper>
+              ) : notesQuery.isLoading ? (
+                <NotebookLoadingState message="Loading notes from the companion app." />
+              ) : notesQuery.isError ? (
+                <NotebookErrorAlert
+                  error={notesQuery.error}
+                  fallback={NOTEBOOK_BROWSE_COPY.NOTE_LOAD_FALLBACK}
+                  onRetry={() => void notesQuery.refetch()}
+                  title={NOTEBOOK_BROWSE_COPY.NOTE_LOAD_ERROR}
                 />
-              </Grid.Col>
-            </Grid>
+              ) : notes.length === 0 ? (
+                <Paper p="lg" radius="md" withBorder>
+                  <Text c="dimmed" ta="center">
+                    {NOTEBOOK_BROWSE_COPY.NOTE_EMPTY}
+                  </Text>
+                </Paper>
+              ) : (
+                <Stack gap="xs">
+                  {notes.map((note) => {
+                    const isSelected = selectedNoteName === note.name;
+
+                    return (
+                      <Button
+                        fullWidth
+                        key={note.name}
+                        onClick={() => setSelectedNoteName(note.name)}
+                        style={{ height: "auto", paddingBlock: "0.75rem" }}
+                        styles={{
+                          inner: {
+                            alignItems: "flex-start",
+                            justifyContent: "flex-start",
+                          },
+                          label: {
+                            whiteSpace: "normal",
+                            width: "100%",
+                          },
+                        }}
+                        variant={isSelected ? "filled" : "light"}
+                      >
+                        <Text
+                          c={isSelected ? undefined : "dimmed"}
+                          size="sm"
+                          ta="left"
+                          style={{ whiteSpace: "pre-wrap", width: "100%" }}
+                        >
+                          {buildPreviewText(note.previewLines)}
+                        </Text>
+                      </Button>
+                    );
+                  })}
+                </Stack>
+              )}
+            </NotebookSurface>
+          </Grid.Col>
+
+          <Grid.Col span={{ base: 12, lg: 8, md: 6 }}>
+            <NotebookNoteEditor
+              bookmark={selectedBookmark}
+              deleteButtonLabel={NOTEBOOK_BROWSE_COPY.NOTE_DELETE}
+              deleteDisabled={!selectedNoteName || deleteNoteMutation.isPending}
+              emptyBody={NOTEBOOK_BROWSE_COPY.EDITOR_EMPTY_BODY}
+              emptyTitle={NOTEBOOK_BROWSE_COPY.EDITOR_EMPTY_TITLE}
+              error={noteQuery.error}
+              hasSelection={Boolean(selectedNoteName)}
+              hasUnsavedChanges={hasUnsavedChanges}
+              isDeleting={deleteNoteMutation.isPending}
+              isLoading={noteQuery.isLoading}
+              isSaving={updateNoteMutation.isPending}
+              note={noteQuery.data}
+              onDelete={handleDeleteNote}
+              onRetry={() => void noteQuery.refetch()}
+              onSave={handleSaveNote}
+              onTextChange={setEditorText}
+              saveDisabled={
+                !selectedNoteName ||
+                !hasUnsavedChanges ||
+                updateNoteMutation.isPending ||
+                deleteNoteMutation.isPending
+              }
+              text={editorText}
+            />
           </Grid.Col>
         </Grid>
       )}
