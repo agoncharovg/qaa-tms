@@ -43,6 +43,7 @@ function seedAuthAndTabs(): void {
       created_at: "2026-08-09T00:00:00Z",
       display_name: "Test User",
       enabled_plugins: ["stagings"],
+      effective_permissions: ["stagings.read"],
       qaa_generator_token_set: false,
       id: 2,
       is_admin: false,

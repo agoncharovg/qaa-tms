@@ -43,6 +43,7 @@ const adminUser: User = {
   created_at: "2026-08-11T00:00:00Z",
   display_name: "Administrator",
   enabled_plugins: QAA_ENABLED_PLUGINS,
+  effective_permissions: ["qaa.read"],
   id: 1,
   is_admin: true,
   updated_at: "2026-08-11T00:00:00Z",
@@ -54,6 +55,7 @@ const viewerUser: User = {
   created_at: "2026-08-11T00:00:00Z",
   display_name: "Viewer",
   enabled_plugins: QAA_ENABLED_PLUGINS,
+  effective_permissions: ["qaa.read"],
   id: 2,
   is_admin: false,
   updated_at: "2026-08-11T00:00:00Z",
@@ -107,6 +109,7 @@ function setAdminState(): void {
   });
   resetUiStoreState({
     enabled_plugins: QAA_ENABLED_PLUGINS,
+  effective_permissions: ["qaa.read"],
     is_admin: true,
   });
 }
@@ -145,6 +148,7 @@ describe("QAA generator AdminPanel", () => {
     resetAuthStoreState();
     resetUiStoreState({
       enabled_plugins: QAA_ENABLED_PLUGINS,
+  effective_permissions: ["qaa.read"],
       is_admin: false,
     });
     mockQaaLists();
@@ -393,6 +397,7 @@ describe("QAA generator AdminPanel", () => {
     });
     resetUiStoreState({
       enabled_plugins: QAA_ENABLED_PLUGINS,
+  effective_permissions: ["qaa.read"],
       is_admin: false,
     });
 

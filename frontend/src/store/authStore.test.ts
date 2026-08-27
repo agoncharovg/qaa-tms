@@ -22,6 +22,7 @@ const loginResponse: LoginResponse = {
     created_at: "2026-08-09T00:00:00Z",
     display_name: "Administrator",
     enabled_plugins: ["stagings"],
+    effective_permissions: ["stagings.read"],
     qaa_generator_token_set: false,
     id: 1,
     is_admin: true,
@@ -54,6 +55,7 @@ describe("authStore", () => {
 
     expect(useAuthStore.getState().token).toBe("token-123");
     expect(useAuthStore.getState().currentUser?.username).toBe("admin");
+    expect(useAuthStore.getState().currentUser?.effective_permissions).toEqual(["stagings.read"]);
     expect(localStorage.getItem(StorageKey.TOKEN)).toBe("token-123");
     expect(JSON.parse(localStorage.getItem(StorageKey.REMEMBER_ME) ?? "{}")).toEqual({
       password: "admin",

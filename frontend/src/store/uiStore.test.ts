@@ -152,10 +152,12 @@ describe("uiStore", () => {
 
     const sanitized = readStoredTabsByPlugin({
       enabled_plugins: [PluginId.QAA_GENERATOR],
+      effective_permissions: ["qaa.read"],
       is_admin: false,
     });
     const workspace = readStoredWorkspaceTabsState({
       enabled_plugins: [PluginId.QAA_GENERATOR],
+      effective_permissions: ["qaa.read"],
       is_admin: false,
     });
 
@@ -187,6 +189,7 @@ describe("uiStore", () => {
     restoreUiStoreFromStorage();
     syncTabsForUser({
       enabled_plugins: [PluginId.STATISTICS],
+      effective_permissions: ["statistics.read"],
       is_admin: false,
     });
 

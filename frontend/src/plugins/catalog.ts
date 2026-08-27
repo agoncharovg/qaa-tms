@@ -7,6 +7,7 @@ import {
   type TabId as TabIdType,
 } from "@/constants";
 import { PLUGINS } from "@/plugins/discovery";
+import { pluginPermitted } from "@/plugins/permissions";
 
 export const PLUGIN_IDS = PLUGINS.map((plugin) => plugin.id);
 export const OPTIONAL_PLUGIN_IDS = PLUGINS.filter(
@@ -15,6 +16,8 @@ export const OPTIONAL_PLUGIN_IDS = PLUGINS.filter(
 export const SYSTEM_PLUGIN_IDS = PLUGINS.filter(
   (plugin) => plugin.kind === PluginKind.SYSTEM
 ).map((plugin) => plugin.id);
+
+export { PLUGIN_REQUIRED_READ_PERMISSION, pluginPermitted } from "@/plugins/permissions";
 
 function matchesPluginRoute(route: string, pathname: string): boolean {
   return pathname === route || pathname.startsWith(`${route}/`);
@@ -45,13 +48,16 @@ export function enabledOptionalPluginIdSet(
 
 export function pluginVisible(
   plugin: PluginSpec,
-  user: Pick<User, "enabled_plugins" | "is_admin"> | null | undefined,
+  user: Pick<User, "enabled_plugins" | "is_admin" | "effective_permissions"> | null | undefined,
   enabledOptionalIds: ReadonlySet<PluginIdType>
 ): boolean {
   if (!user) {
     return false;
   }
   if (plugin.adminOnly && !user.is_admin) {
+    return false;
+  }
+  if (!pluginPermitted(plugin, user)) {
     return false;
   }
   if (plugin.kind === PluginKind.SYSTEM) {
@@ -68,7 +74,7 @@ export function tabVisible(
 }
 
 export function visiblePlugins(
-  user: Pick<User, "enabled_plugins" | "is_admin"> | null | undefined,
+  user: Pick<User, "enabled_plugins" | "is_admin" | "effective_permissions"> | null | undefined,
   enabledOptionalIds: ReadonlySet<PluginIdType>
 ): PluginManifest[] {
   return PLUGINS.filter((plugin) => pluginVisible(plugin, user, enabledOptionalIds));
@@ -79,7 +85,7 @@ export function pluginNavSection(plugin: Pick<PluginManifest, "navSection">): Na
 }
 
 export function primaryVisiblePlugins(
-  user: Pick<User, "enabled_plugins" | "is_admin"> | null | undefined,
+  user: Pick<User, "enabled_plugins" | "is_admin" | "effective_permissions"> | null | undefined,
   enabledOptionalIds: ReadonlySet<PluginIdType>
 ): PluginManifest[] {
   return visiblePlugins(user, enabledOptionalIds).filter(
@@ -88,7 +94,7 @@ export function primaryVisiblePlugins(
 }
 
 export function accountVisiblePlugins(
-  user: Pick<User, "enabled_plugins" | "is_admin"> | null | undefined,
+  user: Pick<User, "enabled_plugins" | "is_admin" | "effective_permissions"> | null | undefined,
   enabledOptionalIds: ReadonlySet<PluginIdType>
 ): PluginManifest[] {
   return visiblePlugins(user, enabledOptionalIds).filter(

@@ -3,6 +3,8 @@ export {
   enabledOptionalPluginIdSet,
   OPTIONAL_PLUGIN_IDS,
   pluginById,
+  pluginPermitted,
+  PLUGIN_REQUIRED_READ_PERMISSION,
   pluginNavSection,
   pluginByRoute,
   PLUGIN_IDS,

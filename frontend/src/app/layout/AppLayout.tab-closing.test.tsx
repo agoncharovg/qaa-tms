@@ -57,6 +57,7 @@ const TEST_USER = {
   created_at: "2026-08-21T00:00:00.000Z",
   display_name: "Test User",
   enabled_plugins: [PluginId.STAGINGS, PluginId.KUBER, PluginId.QAA_GENERATOR, PluginId.JENKINS],
+  effective_permissions: ["stagings.read", "kuber.read", "qaa.read", "jenkins.read"],
   id: 1,
   is_admin: false,
   updated_at: "2026-08-21T00:00:00.000Z",

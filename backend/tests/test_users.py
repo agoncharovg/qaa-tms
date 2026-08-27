@@ -4,7 +4,14 @@ from typing import Any, cast
 
 from fastapi.testclient import TestClient
 
-from app.core.constants import DevPassword, DevUsername, OperationStatus, OperationType, PluginId
+from app.core.constants import (
+    DevPassword,
+    DevUsername,
+    OperationStatus,
+    OperationType,
+    PermissionKey,
+    PluginId,
+)
 
 DEFAULT_OPTIONAL_PLUGIN_IDS = [
     PluginId.STAGINGS.value,
@@ -230,6 +237,15 @@ def test_me_returns_enabled_plugins_default_for_seeded_user_and_me_plugins_is_se
     assert me_response.json()["enabled_plugins"] == DEFAULT_OPTIONAL_PLUGIN_IDS
     assert plugins_response.status_code == 200
     assert plugins_response.json() == {"enabled_plugins": DEFAULT_OPTIONAL_PLUGIN_IDS}
+
+
+def test_login_returns_effective_permissions_for_current_user(client: TestClient) -> None:
+    _, user = login(client, DevUsername.TEST.value, DevPassword.EMPTY.value)
+
+    assert user["effective_permissions"] is not None
+    assert PermissionKey.JENKINS_READ.value in user["effective_permissions"]
+    assert PermissionKey.PROFILE_SELF_READ.value in user["effective_permissions"]
+    assert PermissionKey.SECURITY_READ.value not in user["effective_permissions"]
 
 
 def test_patch_me_updates_display_name_and_auto_login(client: TestClient) -> None:

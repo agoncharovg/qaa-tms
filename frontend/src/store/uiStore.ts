@@ -29,7 +29,7 @@ import {
   writeStoredUiState,
 } from "@/store/uiStoreCore";
 
-type PluginVisibilityUser = Pick<User, "enabled_plugins" | "is_admin">;
+type PluginVisibilityUser = Pick<User, "enabled_plugins" | "is_admin" | "effective_permissions">;
 
 const DEFAULT_VISIBILITY_USER: PluginVisibilityUser = {
   enabled_plugins: [
@@ -57,6 +57,7 @@ function resolveVisibilityUser(user: PluginVisibilityUser | null | undefined): P
 
   return {
     enabled_plugins: user.enabled_plugins,
+    effective_permissions: user.effective_permissions,
     is_admin: user.is_admin,
   };
 }

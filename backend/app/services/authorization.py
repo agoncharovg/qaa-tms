@@ -220,6 +220,13 @@ async def seed_security_catalog(session: AsyncSession) -> None:
             permission.system = True
     await session.flush()
 
+    valid_keys = {seed.key.value for seed in PERMISSION_SEEDS}
+    stale_permissions = [row for row in permissions_by_key.values() if row.key not in valid_keys]
+    for permission in stale_permissions:
+        await session.delete(permission)
+    if stale_permissions:
+        await session.flush()
+
     role_rows = list(
         await session.scalars(
             select(SecurityRole)

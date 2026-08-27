@@ -19,6 +19,7 @@ import { QueryKey } from "@/constants";
 import { resolveIcon } from "@/core/plugins/icons";
 import { PluginKind } from "@/core/plugins/types";
 import { usePluginsContext } from "@/plugins/context";
+import { pluginPermitted } from "@/plugins/permissions";
 import { useAuthStore } from "@/store/authStore";
 
 export function PluginsPanel() {
@@ -57,7 +58,9 @@ export function PluginsPanel() {
   }
 
   const resolvedCurrentUser = currentUser;
-  const optionalPlugins = plugins.filter((plugin) => plugin.kind === PluginKind.OPTIONAL);
+  const optionalPlugins = plugins.filter(
+    (plugin) => plugin.kind === PluginKind.OPTIONAL && pluginPermitted(plugin, resolvedCurrentUser)
+  );
   const enabledOptionalIds = enabledOptionalPluginIdSet(resolvedCurrentUser.enabled_plugins);
   const systemPlugins = plugins.filter(
     (plugin) =>

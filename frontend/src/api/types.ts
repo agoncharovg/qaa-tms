@@ -35,6 +35,7 @@ export interface User {
   group_id?: number | null;
   role?: { id: number; key: string | null; display_name: string } | null;
   group?: { id: number; key: string | null; display_name: string } | null;
+  effective_permissions?: string[];
   created_at: string;
   updated_at: string;
 }

@@ -45,6 +45,7 @@ describe("PluginsPanel", () => {
         created_at: "2026-08-09T00:00:00Z",
         display_name: "Test User",
         enabled_plugins: ["stagings"],
+        effective_permissions: ["stagings.read"],
         qaa_generator_token_set: false,
         id: 2,
         is_admin: false,
@@ -85,6 +86,23 @@ describe("PluginsPanel", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Stagings" })).toBeInTheDocument();
     });
+  });
+
+  it("hides optional plugins when the user has no plugin read permissions", () => {
+    act(() => {
+      useAuthStore.setState({
+        currentUser: {
+          ...useAuthStore.getState().currentUser!,
+          effective_permissions: [],
+        },
+      });
+      syncTabsForUser(useAuthStore.getState().currentUser);
+    });
+
+    renderProfileSurface();
+
+    expect(screen.getByText("No optional plugins")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Toggle Stagings")).not.toBeInTheDocument();
   });
 
   it("shows the moved profile plugins page and exposes Administration only for admins", async () => {
