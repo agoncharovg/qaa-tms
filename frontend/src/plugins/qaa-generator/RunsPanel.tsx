@@ -191,6 +191,9 @@ export function RunsPanel({ agentPort, hasPersonalToken }: RunsPanelProps) {
     }) ?? [];
 
   function openRunInLive(runId: string): void {
+    // Close the detail drawer so the switched-to Live tab isn't left covered by the
+    // drawer overlay (the drawer renders in a body-level portal).
+    setSelectedRunId(null);
     startRun(runId);
     activateTab(TabId.QAA_LIVE);
   }

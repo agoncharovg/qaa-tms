@@ -3,15 +3,13 @@ import { useUiStore } from "@/store/uiStoreCore";
 
 export function useActivateQaaGeneratorTab() {
   const openTab = useUiStore((state) => state.openTab);
-  const switchTab = useUiStore((state) => state.switchTab);
-  const pluginTabs = useUiStore((state) => state.tabsByPlugin[PluginId.QAA_GENERATOR]);
 
+  // `openTab` opens the tab if it isn't open yet and always makes it active, so it
+  // covers both cases. The previous switchTab branch relied on a render-captured
+  // snapshot of the plugin's open tabs, and switchTab silently no-ops when that
+  // tab is not present in the live state — which could drop the auto-switch to the
+  // Live tab after starting a run. openTab has no such guard.
   return (tabId: TabIdType): void => {
-    if (pluginTabs.tabIds.includes(tabId)) {
-      switchTab(PluginId.QAA_GENERATOR, tabId);
-      return;
-    }
-
     openTab(PluginId.QAA_GENERATOR, tabId);
   };
 }

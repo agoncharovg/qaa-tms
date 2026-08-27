@@ -204,6 +204,28 @@ describe("RunsPanel", () => {
     expect(useUiStore.getState().tabsByPlugin[PluginId.QAA_GENERATOR].activeTabId).toBe(
       TabId.QAA_LIVE
     );
+    // activeWorkspaceTabId is what Workspace renders — the run only becomes visible
+    // in Live when this switches, so assert it here (not just the plugin-tab state).
+    expect(useUiStore.getState().activeWorkspaceTabId).toBe(TabId.QAA_LIVE);
+  });
+
+  it("opens a run in Live even when the Live tab is already open", async () => {
+    const user = userEvent.setup();
+
+    // Live was opened earlier in the session; the user is now browsing Runs. This is
+    // the path that previously went through switchTab (which no-ops on a stale tab set).
+    useUiStore.getState().openTab(PluginId.QAA_GENERATOR, TabId.QAA_LIVE);
+    useUiStore.getState().openTab(PluginId.QAA_GENERATOR, TabId.QAA_RUNS);
+    useUiStore.getState().switchTab(PluginId.QAA_GENERATOR, TabId.QAA_RUNS);
+    expect(useUiStore.getState().activeWorkspaceTabId).toBe(TabId.QAA_RUNS);
+
+    renderWithProviders(<RunsPanel agentPort={47600} hasPersonalToken />);
+
+    await user.click(await screen.findByText("run-123"));
+    await user.click(await screen.findByRole("button", { name: "Open in Live" }));
+
+    expect(startRunMock).toHaveBeenCalledWith("run-123");
+    expect(useUiStore.getState().activeWorkspaceTabId).toBe(TabId.QAA_LIVE);
   });
 
   it("waits for a terminal status before requesting artifacts", async () => {

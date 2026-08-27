@@ -117,6 +117,42 @@ describe("GeneratePanel", () => {
       });
     });
     expect(startRunMock).toHaveBeenCalledWith("run-123");
+    // The run must auto-open in Live (the tab that actually drives the workspace).
+    await waitFor(() => {
+      expect(useUiStore.getState().activeWorkspaceTabId).toBe(TabId.QAA_LIVE);
+    });
+  });
+
+  it("switches to Live on generate even when the Live tab is already open", async () => {
+    const user = userEvent.setup();
+    createQaaRunMock.mockResolvedValue({
+      branch: null,
+      created_at: "2026-08-11T10:00:00Z",
+      dry_run: false,
+      jira_key: "QAA-123",
+      profile: "balanced",
+      run_id: "run-777",
+      skip_exec: false,
+      skip_pr: false,
+      status: "queued",
+      updated_at: "2026-08-11T10:00:00Z",
+    });
+
+    // Live was opened by a previous run, then the user came back to Generate.
+    useUiStore.getState().openTab(PluginId.QAA_GENERATOR, TabId.QAA_LIVE);
+    useUiStore.getState().openTab(PluginId.QAA_GENERATOR, TabId.QAA_GENERATE);
+    useUiStore.getState().switchTab(PluginId.QAA_GENERATOR, TabId.QAA_GENERATE);
+    expect(useUiStore.getState().activeWorkspaceTabId).toBe(TabId.QAA_GENERATE);
+
+    renderWithProviders(<GeneratePanel agentPort={47600} hasPersonalToken />);
+
+    await user.type(screen.getByRole("textbox", { name: /Jira key/i }), "QAA-123");
+    await user.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() => {
+      expect(useUiStore.getState().activeWorkspaceTabId).toBe(TabId.QAA_LIVE);
+    });
+    expect(startRunMock).toHaveBeenCalledWith("run-777");
   });
 
   it("offers to open the existing run after a duplicate 409", async () => {
