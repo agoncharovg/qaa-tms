@@ -60,7 +60,11 @@ export function useQaaRunLive(agentPort: number, hasPersonalToken: boolean) {
 
   useEffect(() => {
     const runId = liveRun?.runId;
-    if (!token || !runId || isRunTerminal || !hasPersonalToken) {
+    // Do NOT gate on `isRunTerminal`: the REST poll can report a terminal status
+    // before the SSE stream has delivered its trailing events (brief_author done,
+    // RUN_COMPLETED). Let the stream drain on its own — the server emits the final
+    // events and then closes it, ending the `for await` loop in streamQaaRun.
+    if (!token || !runId || !hasPersonalToken) {
       return;
     }
 
@@ -101,13 +105,7 @@ export function useQaaRunLive(agentPort: number, hasPersonalToken: boolean) {
         streamAbortControllerRef.current = null;
       }
     };
-  }, [agentPort, hasPersonalToken, isRunTerminal, liveRun?.runId, reduceLiveRun, token]);
-
-  useEffect(() => {
-    if (liveRun && isRunTerminal) {
-      streamAbortControllerRef.current?.abort();
-    }
-  }, [isRunTerminal, liveRun]);
+  }, [agentPort, hasPersonalToken, liveRun?.runId, reduceLiveRun, token]);
 
   useEffect(() => {
     if (logViewportRef.current) {

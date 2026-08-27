@@ -34,7 +34,11 @@ const LIVE_RUN_PANEL_COPY = {
 } as const;
 
 function formatEventLine(event: QaaLiveRunState["events"][number]): string {
-  return `${event.sequence} ${event.event_type}: ${event.message}`;
+  // Lifecycle events have no message — show just the type instead of "...: null".
+  const message = event.message?.trim();
+  return message
+    ? `${event.sequence} ${event.event_type}: ${message}`
+    : `${event.sequence} ${event.event_type}`;
 }
 
 interface LiveRunPanelProps {

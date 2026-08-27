@@ -624,7 +624,9 @@ export interface QaaRunListResponse {
 export interface QaaRunEvent {
   sequence: number;
   event_type: string;
-  message: string;
+  // Lifecycle events (RUN_QUEUED, RUN_STARTING, RUN_STARTED, ...) carry no
+  // message — the external qaa-generator service sends null for them.
+  message: string | null;
   payload: Record<string, unknown> | null;
 }
 

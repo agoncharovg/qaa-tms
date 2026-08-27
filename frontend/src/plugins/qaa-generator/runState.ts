@@ -35,11 +35,21 @@ export function reduceQaaLiveRunState(
   action: QaaLiveRunAction
 ): QaaLiveRunState {
   switch (action.type) {
-    case "append-event":
+    case "append-event": {
+      const incoming = action.event;
+      // The external qaa-generator stream replays its full history from sequence 0
+      // on every (re)connection, so the same event can arrive more than once — dedup
+      // by sequence. Keep the log ordered by sequence so a replay interleaving with
+      // live frames can't scramble it (STAGE_COMPLETED before its STAGE_STARTED).
+      if (state.events.some((event) => event.sequence === incoming.sequence)) {
+        return state;
+      }
+      const events = [...state.events, incoming].sort((a, b) => a.sequence - b.sequence);
       return {
         ...state,
-        events: [...state.events, action.event],
+        events,
       };
+    }
     case "hydrate-run":
       return {
         ...state,
