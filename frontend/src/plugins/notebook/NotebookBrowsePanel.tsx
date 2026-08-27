@@ -196,6 +196,8 @@ export function NotebookBrowsePanel() {
   const [editorText, setEditorText] = useState("");
   const [draggedNoteName, setDraggedNoteName] = useState<string | null>(null);
   const [dragOverBookmarkName, setDragOverBookmarkName] = useState<string | null>(null);
+  const [draggedBookmarkName, setDraggedBookmarkName] = useState<string | null>(null);
+  const [bookmarkDropIndex, setBookmarkDropIndex] = useState<number | null>(null);
   const pendingSelectedNoteNameRef = useRef<string | null>(null);
 
   const contentsQuery = useQuery({
@@ -484,6 +486,55 @@ export function NotebookBrowsePanel() {
     },
   });
 
+  const reorderBookmarksMutation = useMutation({
+    mutationFn: async (names: string[]) => {
+      if (!token || agentPort === null) {
+        throw new Error("Authentication is required.");
+      }
+
+      return agentClient.reorderBookmarks(agentPort, token, names);
+    },
+    onMutate: async (names) => {
+      await queryClient.cancelQueries({ queryKey: [QueryKey.NOTEBOOK_CONTENTS, token, agentPort] });
+      const previous = queryClient.getQueryData<NotebookContentsResponse>([
+        QueryKey.NOTEBOOK_CONTENTS,
+        token,
+        agentPort,
+      ]);
+      if (previous) {
+        const byName = new Map(previous.bookmarks.map((b) => [b.name, b]));
+        const reordered = names.map((name) => byName.get(name)).filter(Boolean) as NotebookBookmarkNode[];
+        for (const b of previous.bookmarks) {
+          if (!names.includes(b.name)) {
+            reordered.push(b);
+          }
+        }
+        queryClient.setQueryData<NotebookContentsResponse>(
+          [QueryKey.NOTEBOOK_CONTENTS, token, agentPort],
+          { bookmarks: reordered }
+        );
+      }
+      return { previous };
+    },
+    onError: (_error, _names, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData<NotebookContentsResponse>(
+          [QueryKey.NOTEBOOK_CONTENTS, token, agentPort],
+          context.previous
+        );
+      }
+      setBookmarkNotice({
+        message: "Unable to reorder bookmarks.",
+        status: "error",
+      });
+    },
+    onSettled: () => {
+      setDraggedBookmarkName(null);
+      setBookmarkDropIndex(null);
+      void queryClient.invalidateQueries({ queryKey: [QueryKey.NOTEBOOK_CONTENTS] });
+    },
+  });
+
   const notes = notesQuery.data?.notes ?? [];
   const hasUnsavedChanges = editorText !== (noteQuery.data?.text ?? "");
   const bookmarkModalNameTrimmed = bookmarkModalName.trim();
@@ -589,6 +640,14 @@ export function NotebookBrowsePanel() {
   }
 
   function handleBookmarkDragOver(event: DragEvent<HTMLButtonElement>, bookmarkName: string): void {
+    if (draggedBookmarkName !== null) {
+      handleBookmarkReorderDragOver(
+        event,
+        (contentsQuery.data?.bookmarks ?? []).findIndex((bookmark) => bookmark.name === bookmarkName)
+      );
+      return;
+    }
+
     if (!selectedBookmark || !draggedNoteName || selectedBookmark === bookmarkName || moveNoteMutation.isPending) {
       return;
     }
@@ -601,6 +660,11 @@ export function NotebookBrowsePanel() {
   }
 
   function handleBookmarkDrop(event: DragEvent<HTMLButtonElement>, bookmarkName: string): void {
+    if (draggedBookmarkName !== null) {
+      handleBookmarkReorderDrop(event);
+      return;
+    }
+
     event.preventDefault();
     if (!selectedBookmark || !draggedNoteName || selectedBookmark === bookmarkName || moveNoteMutation.isPending) {
       setDragOverBookmarkName(null);
@@ -614,6 +678,68 @@ export function NotebookBrowsePanel() {
       targetBookmark: bookmarkName,
       text: draggedNoteName === selectedNoteName && hasUnsavedChanges ? editorText : undefined,
     });
+  }
+
+  function handleBookmarkReorderDragStart(event: DragEvent<HTMLButtonElement>, bookmarkName: string): void {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("application/x-bookmark-reorder", bookmarkName);
+    setDraggedBookmarkName(bookmarkName);
+    setBookmarkDropIndex(null);
+  }
+
+  function handleBookmarkReorderDragEnd(): void {
+    setDraggedBookmarkName(null);
+    setBookmarkDropIndex(null);
+  }
+
+  function handleBookmarkReorderDragOver(event: DragEvent<HTMLButtonElement>, bookmarkIndex: number): void {
+    if (draggedBookmarkName === null || bookmarkIndex < 0) {
+      return;
+    }
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const dropIndex = event.clientY <= rect.top + rect.height / 2 ? bookmarkIndex : bookmarkIndex + 1;
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    if (bookmarkDropIndex !== dropIndex) {
+      setBookmarkDropIndex(dropIndex);
+    }
+  }
+
+  function handleBookmarkReorderDrop(event: DragEvent<HTMLButtonElement>): void {
+    event.preventDefault();
+
+    const bookmarks = contentsQuery.data?.bookmarks ?? [];
+    if (draggedBookmarkName === null || bookmarkDropIndex === null || reorderBookmarksMutation.isPending) {
+      setDraggedBookmarkName(null);
+      setBookmarkDropIndex(null);
+      return;
+    }
+
+    const currentIndex = bookmarks.findIndex((bookmark) => bookmark.name === draggedBookmarkName);
+    if (currentIndex < 0) {
+      setDraggedBookmarkName(null);
+      setBookmarkDropIndex(null);
+      return;
+    }
+
+    const reordered = [...bookmarks];
+    const [draggedBookmark] = reordered.splice(currentIndex, 1);
+    const insertIndex = currentIndex < bookmarkDropIndex ? bookmarkDropIndex - 1 : bookmarkDropIndex;
+    reordered.splice(insertIndex, 0, draggedBookmark);
+
+    const newOrder = reordered.map((bookmark) => bookmark.name);
+    const existingOrder = bookmarks.map((bookmark) => bookmark.name);
+    if (newOrder.every((name, index) => name === existingOrder[index])) {
+      setDraggedBookmarkName(null);
+      setBookmarkDropIndex(null);
+      return;
+    }
+
+    reorderBookmarksMutation.mutate(newOrder);
+    setDraggedBookmarkName(null);
+    setBookmarkDropIndex(null);
   }
 
   if (preflightQuery.isLoading) {
@@ -746,34 +872,65 @@ export function NotebookBrowsePanel() {
 
                 {contentsQuery.data?.bookmarks.length ? (
                   <Stack gap="xs">
-                    {contentsQuery.data.bookmarks.map((bookmark) => {
+                    {contentsQuery.data.bookmarks.map((bookmark, index, bookmarks) => {
                       const isDropTarget =
                         draggedNoteName !== null &&
                         dragOverBookmarkName === bookmark.name &&
                         selectedBookmark !== bookmark.name;
+                      const showReorderIndicator =
+                        bookmarkDropIndex === index &&
+                        draggedBookmarkName !== null &&
+                        draggedBookmarkName !== bookmark.name;
+                      const bookmarkDraggable =
+                        !moveNoteMutation.isPending && !reorderBookmarksMutation.isPending;
 
                       return (
-                        <Button
-                          fullWidth
-                          key={bookmark.name}
-                          onClick={() => setSelectedBookmark(bookmark.name)}
-                          onDragOver={(event) => handleBookmarkDragOver(event, bookmark.name)}
-                          onDrop={(event) => handleBookmarkDrop(event, bookmark.name)}
-                          style={
-                            isDropTarget
-                              ? {
-                                  outline: "2px dashed var(--mantine-color-blue-5)",
-                                  outlineOffset: 2,
-                                }
-                              : undefined
-                          }
-                          variant={selectedBookmark === bookmark.name ? "filled" : "light"}
-                        >
-                          <Group justify="space-between" w="100%" wrap="nowrap">
-                            <span>{bookmark.name}</span>
-                            <span>{bookmark.noteCount}</span>
-                          </Group>
-                        </Button>
+                        <div key={bookmark.name}>
+                          {showReorderIndicator ? (
+                            <div
+                              style={{
+                                background: "var(--mantine-color-blue-5)",
+                                borderRadius: "1px",
+                                height: "2px",
+                              }}
+                            />
+                          ) : null}
+                          <Button
+                            draggable={bookmarkDraggable}
+                            fullWidth
+                            onClick={() => setSelectedBookmark(bookmark.name)}
+                            onDragEnd={handleBookmarkReorderDragEnd}
+                            onDragOver={(event) => handleBookmarkDragOver(event, bookmark.name)}
+                            onDragStart={(event) => handleBookmarkReorderDragStart(event, bookmark.name)}
+                            onDrop={(event) => handleBookmarkDrop(event, bookmark.name)}
+                            style={{
+                              ...(isDropTarget
+                                ? {
+                                    outline: "2px dashed var(--mantine-color-blue-5)",
+                                    outlineOffset: 2,
+                                  }
+                                : {}),
+                              cursor: bookmarkDraggable ? "grab" : "default",
+                            }}
+                            variant={selectedBookmark === bookmark.name ? "filled" : "light"}
+                          >
+                            <Group justify="space-between" w="100%" wrap="nowrap">
+                              <span>{bookmark.name}</span>
+                              <span>{bookmark.noteCount}</span>
+                            </Group>
+                          </Button>
+                          {bookmarkDropIndex === bookmarks.length &&
+                          index === bookmarks.length - 1 &&
+                          draggedBookmarkName !== null ? (
+                            <div
+                              style={{
+                                background: "var(--mantine-color-blue-5)",
+                                borderRadius: "1px",
+                                height: "2px",
+                              }}
+                            />
+                          ) : null}
+                        </div>
                       );
                     })}
                   </Stack>

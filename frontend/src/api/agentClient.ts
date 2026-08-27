@@ -683,6 +683,21 @@ export const agentClient = {
     );
   },
 
+  reorderBookmarks(
+    port: number,
+    token: string,
+    bookmarks: string[],
+    signal?: AbortSignal
+  ): Promise<NotebookContentsResponse> {
+    return readAgentJson<NotebookContentsResponse>(
+      port,
+      AgentPath.NOTEBOOK_CONTENTS,
+      createJsonBody({ bookmarks }, HttpMethod.PATCH),
+      token,
+      signal
+    );
+  },
+
   searchNotes(
     port: number,
     token: string,

@@ -19,6 +19,7 @@ from app.services.notebook import (
     list_notes,
     move_note,
     read_note,
+    reorder_bookmarks,
     rename_bookmark,
     search,
     set_flags,
@@ -137,6 +138,40 @@ def test_move_note_rejects_target_name_conflict(tmp_path: Path) -> None:
 
     with pytest.raises(NotebookConflictError):
         move_note(settings, "alpha", "beta", note_name)
+
+
+def test_reorder_bookmarks_preserves_flags_and_notes(tmp_path: Path) -> None:
+    root = tmp_path / "notebook"
+    settings = build_settings(root)
+    create_bookmark(settings, "alpha")
+    create_bookmark(settings, "beta")
+    create_bookmark(settings, "gamma")
+    note_name = write_note(settings, "alpha", None, "body")
+    set_flags(settings, "alpha", None, {"star": True})
+    set_flags(settings, "alpha", note_name, {"important": True})
+
+    reorder_bookmarks(settings, ["gamma", "alpha", "beta"])
+
+    tree = list_bookmarks(settings)
+    assert [b.name for b in tree.bookmarks] == ["gamma", "alpha", "beta"]
+
+    stored = read_contents_json(root)
+    alpha_node = next(n for n in stored if n["name"] == "alpha")
+    assert alpha_node["flags"] == {"star": True}
+    assert alpha_node["notes"][note_name] == {"important": True}
+
+
+def test_reorder_bookmarks_appends_unlisted(tmp_path: Path) -> None:
+    root = tmp_path / "notebook"
+    settings = build_settings(root)
+    create_bookmark(settings, "alpha")
+    create_bookmark(settings, "beta")
+    create_bookmark(settings, "gamma")
+
+    reorder_bookmarks(settings, ["gamma"])
+
+    tree = list_bookmarks(settings)
+    assert [b.name for b in tree.bookmarks] == ["gamma", "alpha", "beta"]
 
 
 def test_self_heal_uses_filesystem_truth(tmp_path: Path) -> None:

@@ -82,6 +82,7 @@ from app.schemas import (
     NotebookBookmarkUpdateRequest,
     NotebookContentsResponse,
     NotebookContentsWriteRequest,
+    NotebookReorderRequest,
     NotebookNoteCreateRequest,
     NotebookNoteReadResponse,
     NotebookNotesResponse,
@@ -148,6 +149,7 @@ from app.services.notebook import (
     move_note,
     read_note,
     rename_bookmark,
+    reorder_bookmarks,
     search,
     set_flags,
     write_contents,
@@ -310,6 +312,22 @@ async def put_notebook_contents(
     except NotebookPathValidationError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+
+@router.patch(AgentPath.NOTEBOOK_CONTENTS.value, response_model=NotebookContentsResponse)
+async def patch_notebook_contents(
+    request_body: NotebookReorderRequest,
+    _: NotebookWriteAuth,
+    settings: SettingsDep,
+) -> NotebookContentsResponse:
+    try:
+        reorder_bookmarks(settings, request_body.bookmarks)
+        return list_bookmarks(settings)
+    except NotebookRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
         ) from exc
 

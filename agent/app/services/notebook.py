@@ -197,6 +197,23 @@ def write_contents(settings: Settings, contents: object) -> None:
     _write_contents_atomically(root, _normalize_contents_tree(contents, root))
 
 
+def reorder_bookmarks(settings: Settings, names: list[str]) -> None:
+    root = _resolve_root(settings)
+    contents = _read_contents_from_root(root)
+    by_name: dict[str, NotebookContentsNode] = {}
+    for node in contents:
+        by_name[node["name"]] = node
+    reordered: NotebookContentsTree = []
+    for name in names:
+        if name in by_name:
+            reordered.append(by_name.pop(name))
+    for node in contents:
+        if node["name"] in by_name:
+            reordered.append(node)
+            del by_name[node["name"]]
+    _write_contents_atomically(root, reordered)
+
+
 def set_flags(
     settings: Settings,
     bookmark: str,

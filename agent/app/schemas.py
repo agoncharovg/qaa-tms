@@ -173,6 +173,14 @@ class NotebookContentsWriteRequest(BaseModel):
     bookmarks: list[NotebookBookmarkWriteNode] = Field(default_factory=list)
 
 
+class NotebookReorderRequest(BaseModel):
+    """Bookmark reorder payload — an ordered list of bookmark names."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    bookmarks: list[str] = Field(min_length=1)
+
+
 class NotebookContentsResponse(BaseModel):
     """Notebook bookmark tree response."""
 

@@ -9,6 +9,7 @@ const agentClientMock = vi.hoisted(() => ({
   getNotebookTree: vi.fn(),
   listNotes: vi.fn(),
   readNote: vi.fn(),
+  reorderBookmarks: vi.fn(),
   renameBookmark: vi.fn(),
   searchNotes: vi.fn(),
   updateNote: vi.fn(),
@@ -251,6 +252,55 @@ describe("NotebookBrowsePanel", () => {
         bookmark: "Ops",
         text: undefined,
       });
+    });
+  });
+
+  it("reorders bookmarks through drag and drop", async () => {
+    agentClientMock.getNotebookTree.mockResolvedValue({
+      bookmarks: [
+        { children: [], flags: {}, name: "Alpha", noteCount: 0 },
+        { children: [], flags: {}, name: "Beta", noteCount: 0 },
+        { children: [], flags: {}, name: "Gamma", noteCount: 0 },
+      ],
+    });
+    agentClientMock.listNotes.mockResolvedValue({ bookmark: "Alpha", notes: [] });
+    agentClientMock.reorderBookmarks.mockResolvedValue({
+      bookmarks: [
+        { children: [], flags: {}, name: "Gamma", noteCount: 0 },
+        { children: [], flags: {}, name: "Alpha", noteCount: 0 },
+        { children: [], flags: {}, name: "Beta", noteCount: 0 },
+      ],
+    });
+
+    renderWithProviders(<NotebookBrowsePanel />);
+
+    const gammaButton = await screen.findByRole("button", { name: /Gamma/i });
+    const alphaButton = await screen.findByRole("button", { name: /Alpha/i });
+    vi.spyOn(alphaButton, "getBoundingClientRect").mockReturnValue({
+      bottom: 40,
+      height: 40,
+      left: 0,
+      right: 100,
+      top: 0,
+      width: 100,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    const dataTransfer = {
+      dropEffect: "none",
+      effectAllowed: "all",
+      getData: vi.fn().mockReturnValue("Gamma"),
+      setData: vi.fn(),
+      types: ["application/x-bookmark-reorder"],
+    };
+
+    fireEvent.dragStart(gammaButton, { dataTransfer });
+    fireEvent.dragOver(alphaButton, { clientY: 5, dataTransfer });
+    fireEvent.drop(alphaButton, { dataTransfer });
+
+    await waitFor(() => {
+      expect(agentClientMock.reorderBookmarks).toHaveBeenCalledWith(PORT, TOKEN, ["Alpha", "Gamma", "Beta"]);
     });
   });
 
