@@ -25,6 +25,7 @@ import { usePalette } from "@/app/theme/usePalette";
 import { PluginId, QueryKey, type PluginId as PluginIdType } from "@/constants";
 import { CompanionGate } from "@/plugins/companion/CompanionGate";
 import { usePluginsContext } from "@/plugins/context";
+import { canEditPluginSettings } from "@/plugins/permissions";
 import { useAuthStore } from "@/store/authStore";
 
 const SettingsPanelCopy = {
@@ -635,11 +636,17 @@ export function SettingsPanel() {
   const enabledPluginIds = currentUser
     ? enabledOptionalPluginIdSet(currentUser.enabled_plugins)
     : new Set<PluginIdType>();
-  const showJenkins = enabledPluginIds.has(PluginId.JENKINS);
-  const showNotebook = enabledPluginIds.has(PluginId.NOTEBOOK);
-  const showStagings = enabledPluginIds.has(PluginId.STAGINGS);
-  const showKuber = enabledPluginIds.has(PluginId.KUBER);
-  const showQaaGenerator = enabledPluginIds.has(PluginId.QAA_GENERATOR);
+  // A section shows only when the plugin is enabled for the account AND the user
+  // can actually edit its settings — i.e. holds one of the plugin's action
+  // permissions (freeze/resume, deploy, …). Read-only users have no use for these
+  // credential/token settings: read paths use a shared read-only token instead.
+  const canSeePluginSettings = (pluginId: PluginIdType): boolean =>
+    enabledPluginIds.has(pluginId) && canEditPluginSettings(pluginId, currentUser);
+  const showJenkins = canSeePluginSettings(PluginId.JENKINS);
+  const showNotebook = canSeePluginSettings(PluginId.NOTEBOOK);
+  const showStagings = canSeePluginSettings(PluginId.STAGINGS);
+  const showKuber = canSeePluginSettings(PluginId.KUBER);
+  const showQaaGenerator = canSeePluginSettings(PluginId.QAA_GENERATOR);
   const hasEnabledAgentPlugins =
     showJenkins || showNotebook || showStagings || showKuber || showQaaGenerator;
   const hasVisiblePluginSettings = hasEnabledAgentPlugins;

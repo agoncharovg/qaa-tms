@@ -56,4 +56,16 @@ describe("ProfilePage", () => {
     expect(screen.getByText(ProfilePageTestCopy.SETTINGS_PANEL)).toBeInTheDocument();
     expect(screen.queryByText(ProfilePageTestCopy.ACCOUNT_PANEL)).not.toBeInTheDocument();
   });
+
+  it("persists the selected section into the URL so it survives a reload", async () => {
+    const user = userEvent.setup();
+
+    renderWithProviders(<ProfilePage />);
+
+    await user.click(screen.getByRole("button", { name: ProfilePageTestCopy.SETTINGS_SECTION_LABEL }));
+
+    // The URL now carries the section, so remounting (F5) restores Settings, not Account.
+    expect(new URLSearchParams(window.location.search).get("section")).toBe("settings");
+    expect(screen.getByText(ProfilePageTestCopy.SETTINGS_PANEL)).toBeInTheDocument();
+  });
 });

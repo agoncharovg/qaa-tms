@@ -58,6 +58,7 @@ import { getBuildHistoryLineWidth } from "@/plugins/jenkins/buildHistoryLayout";
 import { JenkinsFreezeBadge } from "@/plugins/jenkins/JenkinsFreezeBadge";
 import { JenkinsResumeProgressModal } from "@/plugins/jenkins/JenkinsResumeProgressModal";
 import { useJenkinsStore } from "@/plugins/jenkins/jenkinsStore";
+import { hasPermission } from "@/plugins/permissions";
 import {
   formatDuration,
   formatRelativeAge,
@@ -120,9 +121,17 @@ function haveSameNodeKeys(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
+// Backend endpoints behind the freeze/resume controls require these permissions
+// (backend PermissionKey.JENKINS_FREEZE / JENKINS_RESUME). Gate the icons on them
+// so read-only users (e.g. `jenkins.read`-only guests) never see actions that 403.
+const JENKINS_FREEZE_PERMISSION = "jenkins.freeze";
+const JENKINS_RESUME_PERMISSION = "jenkins.resume";
+
 interface TreeNodeRowProps {
   activeFreezeForPath: (path: string) => JenkinsFreezeRead | null;
   agentPort: number | null;
+  canFreeze: boolean;
+  canResume: boolean;
   coveringActiveFreezes: (path: string) => JenkinsFreezeRead[];
   depth: number;
   expandedNodeKeys: string[];
@@ -144,6 +153,8 @@ interface TreeNodeRowProps {
 interface JenkinsTreeRowsProps {
   activeFreezeForPath: (path: string) => JenkinsFreezeRead | null;
   agentPort: number | null;
+  canFreeze: boolean;
+  canResume: boolean;
   coveringActiveFreezes: (path: string) => JenkinsFreezeRead[];
   expandedNodeKeys: string[];
   historyLimit: number | null;
@@ -573,6 +584,8 @@ export function TreePanel() {
         <JenkinsTreeRows
           activeFreezeForPath={freezesState.activeFreezeForPath}
           agentPort={agentPort}
+          canFreeze={hasPermission(currentUser, JENKINS_FREEZE_PERMISSION)}
+          canResume={hasPermission(currentUser, JENKINS_RESUME_PERMISSION)}
           coveringActiveFreezes={freezesState.coveringActiveFreezes}
           expandedNodeKeys={expandedNodeKeys ?? []}
           historyLimit={treeState.historyLimit}
@@ -596,6 +609,8 @@ export function TreePanel() {
 const JenkinsTreeRows = memo(function JenkinsTreeRows({
   activeFreezeForPath,
   agentPort,
+  canFreeze,
+  canResume,
   coveringActiveFreezes,
   expandedNodeKeys,
   historyLimit,
@@ -620,6 +635,8 @@ const JenkinsTreeRows = memo(function JenkinsTreeRows({
             key={nodeKey}
             activeFreezeForPath={activeFreezeForPath}
             agentPort={agentPort}
+            canFreeze={canFreeze}
+            canResume={canResume}
             coveringActiveFreezes={coveringActiveFreezes}
             depth={0}
             expandedNodeKeys={expandedNodeKeys ?? []}
@@ -830,6 +847,8 @@ function JenkinsMutationCompanionPrompt({
 function TreeNodeRow({
   activeFreezeForPath,
   agentPort,
+  canFreeze,
+  canResume,
   coveringActiveFreezes,
   depth,
   expandedNodeKeys,
@@ -879,13 +898,13 @@ function TreeNodeRow({
   // item in this subtree. Otherwise the disabled state came from an earlier/manual lock
   // and launching a campaign would only produce skipped items.
   const resumeFreeze = actionableFolder && frozen ? activeFreezeForPath(node.path) : null;
-  const showResumeAction = actionableFolder && resumeFreeze !== null;
+  const showResumeAction = canResume && actionableFolder && resumeFreeze !== null;
   // Offer "Freeze" unless the folder is *fully* frozen (holds disabled pipelines with none
   // left to freeze). A partially-disabled folder — one disabled pipeline (manual or from a
   // partial resume) alongside enabled ones — must still expose the snowflake so the rest can
   // be frozen. Gating on `!frozen` alone hid it on any folder with a single disabled pipeline.
   // Empty / not-yet-expanded folders (children === []) stay freezable, as before.
-  const showFreezeAction = actionableFolder && (!frozen || hasFreezablePipeline(node));
+  const showFreezeAction = canFreeze && actionableFolder && (!frozen || hasFreezablePipeline(node));
   const loadingFreezeState = actionableFolder && isMutatingPath(resumeFreeze?.folderPath ?? node.path);
 
   return (
@@ -1044,6 +1063,8 @@ function TreeNodeRow({
                   key={childNodeKey}
                   activeFreezeForPath={activeFreezeForPath}
                   agentPort={agentPort}
+                  canFreeze={canFreeze}
+                  canResume={canResume}
                   coveringActiveFreezes={coveringActiveFreezes}
                   depth={depth + 1}
                   expandedNodeKeys={expandedNodeKeys ?? []}

@@ -393,6 +393,7 @@ describe("TreePanel", () => {
         auto_login: false,
         created_at: "2026-08-12T00:00:00Z",
         display_name: "Test User",
+        effective_permissions: ["jenkins.read", "jenkins.freeze", "jenkins.resume"],
         enabled_plugins: ["jenkins"],
         qaa_generator_token_set: false,
         id: 2,
@@ -469,6 +470,70 @@ describe("TreePanel", () => {
       "_blank",
       "noopener"
     );
+  });
+
+  it("hides freeze and resume actions from a jenkins.read-only user while still rendering the tree", async () => {
+    useAuthStore.setState({
+      currentUser: {
+        auto_login: false,
+        created_at: "2026-08-12T00:00:00Z",
+        display_name: "Guest User",
+        effective_permissions: ["jenkins.read"],
+        enabled_plugins: ["jenkins"],
+        qaa_generator_token_set: false,
+        id: 3,
+        is_admin: false,
+        updated_at: "2026-08-12T00:00:00Z",
+        username: "guest",
+      },
+      token: "token-123",
+    });
+
+    // Serve a frozen folder so a resume icon would render for a privileged user; the
+    // read-only guest must see neither the freeze nor the resume control.
+    backendClientMock.getJenkinsScope.mockResolvedValue(buildScope());
+    backendClientMock.getJenkinsTreeCache.mockResolvedValue({
+      fetchedAt: "2026-08-17T10:00:00Z",
+      refreshLease: null,
+      roots: buildTreeRoots("disabled"),
+      signature: "scope-1234",
+      stale: false,
+    });
+    backendClientMock.getJenkinsFreezes.mockResolvedValue([
+      {
+        applied: true,
+        createdAt: "2026-08-17T10:00:00Z",
+        createdBy: "someone",
+        folderName: "BE",
+        folderPath: "job/.QAA/job/E2E/job/PREPROD",
+        id: "freeze-exact",
+        killBuilds: false,
+        mergedIntoId: null,
+        reason: "DR freeze",
+        resolvedAt: null,
+        resolvedBy: null,
+        signature: "scope-1234",
+        snapshot: [
+          {
+            fullName: ".QAA/E2E/PREPROD/Smoke",
+            name: "Smoke",
+            path: "job/.QAA/job/E2E/job/PREPROD/job/Smoke",
+            scheduled: false,
+            wasBuilding: false,
+            wasDisabled: false,
+          },
+        ],
+        status: "active",
+      },
+    ]);
+
+    renderWithProviders(<TreePanel />);
+
+    // The tree still renders and pin actions remain available to read-only users.
+    expect(await screen.findByText("PREPROD")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Pin to board" }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Freeze folder..." })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Resume folder" })).not.toBeInTheDocument();
   });
 
   it("shows the companion prompt for freeze actions without blocking read-only Jenkins data", async () => {

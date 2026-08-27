@@ -73,10 +73,28 @@ function resolveInitialProfileSection(): ProfileSectionType {
   return ProfileSection.ACCOUNT;
 }
 
+// Persist the chosen section into the URL query param so the selection survives a
+// reload (F5) — `resolveInitialProfileSection` reads it back on mount. Using the URL
+// (rather than a store) keeps a single source of truth shared with deep-links.
+function persistProfileSection(section: ProfileSectionType): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const url = new URL(window.location.href);
+  url.searchParams.set(PROFILE_SECTION_QUERY_PARAM, section);
+  window.history.replaceState(window.history.state, "", url);
+}
+
 export function ProfilePage() {
   const palette = usePalette();
   const [activeSection, setActiveSection] = useState<ProfileSectionType>(resolveInitialProfileSection);
   const ActivePanel = profilePanelBySection[activeSection];
+
+  const selectSection = (section: ProfileSectionType): void => {
+    setActiveSection(section);
+    persistProfileSection(section);
+  };
 
   return (
     <Group align={PROFILE_NAV_ALIGNMENT} gap={PROFILE_LAYOUT_GAP} wrap={PROFILE_NAV_WRAP}>
@@ -114,7 +132,7 @@ export function ProfilePage() {
                     w={PROFILE_NAV_INDICATOR_SIZE_PX}
                   />
                 }
-                onClick={() => setActiveSection(section)}
+                onClick={() => selectSection(section)}
                 styles={{
                   label: {
                     fontWeight: active ? PROFILE_SECTION_ACTIVE_LABEL_WEIGHT : PROFILE_SECTION_LABEL_WEIGHT,

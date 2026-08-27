@@ -32,6 +32,10 @@ vi.mock("@/api/backendClient", () => ({
 
 import { SettingsPanel } from "@/plugins/profile/SettingsPanel";
 import { PluginId } from "@/constants";
+import {
+  PLUGIN_REQUIRED_READ_PERMISSION,
+  PLUGIN_SETTINGS_ACTION_PERMISSIONS,
+} from "@/plugins/permissions";
 import { renderWithProviders } from "@/test/render";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
 import type { User } from "@/api/types";
@@ -63,11 +67,25 @@ const agentSettingsResponse = {
   kubectl_request_timeout: "10s",
 };
 
-function createCurrentUser(enabledPlugins: User["enabled_plugins"]): User {
+function createCurrentUser(
+  enabledPlugins: User["enabled_plugins"],
+  effectivePermissions?: string[]
+): User {
+  // Default: grant each enabled plugin its read AND action permissions (the
+  // engineer case) so settings sections render. Tests exercising the RBAC gate
+  // pass an explicit, narrower list.
+  const permissions =
+    effectivePermissions ??
+    enabledPlugins.flatMap((pluginId) => {
+      const readPermission = PLUGIN_REQUIRED_READ_PERMISSION[pluginId];
+      const actionPermissions = PLUGIN_SETTINGS_ACTION_PERMISSIONS[pluginId] ?? [];
+      return [...(readPermission ? [readPermission] : []), ...actionPermissions];
+    });
   return {
     auto_login: false,
     created_at: "2026-08-13T00:00:00Z",
     display_name: "Test User",
+    effective_permissions: permissions,
     enabled_plugins: enabledPlugins,
     id: 2,
     is_admin: false,
@@ -122,6 +140,35 @@ describe("SettingsPanel", () => {
 
     expect(screen.queryByRole("heading", { name: "Notificator" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Leonid" })).not.toBeInTheDocument();
+  });
+
+  it("hides a plugin's settings section for a read-only user and shows it only with an action permission", async () => {
+    // Both plugins are enabled for the account. The user can only READ Jenkins
+    // (no freeze/resume) but can DEPLOY stagings — so only Stagings settings show.
+    useAuthStore.setState({
+      currentUser: createCurrentUser(
+        [PluginId.JENKINS, PluginId.STAGINGS],
+        ["jenkins.read", "stagings.read", "stagings.deploy"]
+      ),
+      token: "token-123",
+    });
+    agentClientMock.discoverAgent.mockResolvedValue({
+      agent: {
+        app: "qaa-tms-agent",
+        os: "linux",
+        stagingsInstalled: true,
+        stagingsSha: "abc123",
+        version: "0.1.0",
+      },
+      port: 47600,
+    });
+    agentClientMock.getSettings.mockResolvedValue(agentSettingsResponse);
+
+    renderWithProviders(<SettingsPanel />);
+
+    // The permitted section renders; the unpermitted one never appears.
+    expect(await screen.findByRole("heading", { name: "Stagings" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Jenkins" })).not.toBeInTheDocument();
   });
 
   it("saves Jenkins, Stagings, and Kuber settings with partial payloads", async () => {
