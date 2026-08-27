@@ -6,6 +6,8 @@ const agentClientMock = vi.hoisted(() => ({
   getJenkinsTree: vi.fn(),
 }));
 
+const discoverAgentMock = vi.hoisted(() => vi.fn());
+
 const backendClientMock = vi.hoisted(() => ({
   getJenkinsFreezes: vi.fn(),
   getJenkinsScope: vi.fn(),
@@ -23,6 +25,7 @@ vi.mock("@/api/agentClient", () => ({
     }
   },
   agentClient: agentClientMock,
+  discoverAgent: discoverAgentMock,
 }));
 
 vi.mock("@/api/backendClient", () => ({
@@ -221,6 +224,7 @@ function buildTreeRoots() {
 describe("BoardPanel", () => {
   beforeEach(() => {
     agentClientMock.getJenkinsTree.mockReset();
+    discoverAgentMock.mockReset();
     backendClientMock.getJenkinsFreezes.mockReset();
     backendClientMock.getJenkinsScope.mockReset();
     backendClientMock.getJenkinsTreeCache.mockReset();
@@ -252,6 +256,7 @@ describe("BoardPanel", () => {
     });
     backendClientMock.getJenkinsScope.mockResolvedValue(buildScope());
     backendClientMock.getJenkinsFreezes.mockResolvedValue([]);
+    discoverAgentMock.mockResolvedValue(null);
   });
 
   it("renders recursive status counts from the shared cache and opens the folder on double click", async () => {
@@ -436,6 +441,42 @@ describe("BoardPanel", () => {
 
     expect(await screen.findByText("Smoke")).toBeInTheDocument();
     expect(screen.getByText("Smoke").closest('[data-frozen="true"]')).not.toBeNull();
+  });
+
+  it("warms a cold cache from the companion when pinned opens first", async () => {
+    useJenkinsStore.setState({
+      pinnedPaths: ["job/.QAA/job/E2E/job/PREPROD"],
+    });
+    discoverAgentMock.mockResolvedValue({ port: 47600 });
+    agentClientMock.getJenkinsTree.mockResolvedValue({
+      roots: buildTreeRoots(),
+    });
+    backendClientMock.getJenkinsTreeCache
+      .mockResolvedValueOnce({
+        fetchedAt: null,
+        refreshLease: "lease-1",
+        roots: [],
+        signature: "scope-1234",
+        stale: true,
+      })
+      .mockResolvedValue({
+        fetchedAt: "2026-08-17T10:00:00Z",
+        refreshLease: null,
+        roots: buildTreeRoots(),
+        signature: "scope-1234",
+        stale: false,
+      });
+
+    renderWithProviders(<BoardPanel />);
+
+    expect(await screen.findByText("BE")).toBeInTheDocument();
+    expect(discoverAgentMock).toHaveBeenCalled();
+    expect(agentClientMock.getJenkinsTree).toHaveBeenCalledWith(47600, "token-123");
+    expect(backendClientMock.putJenkinsTreeCache).toHaveBeenCalledWith("token-123", {
+      refreshLease: "lease-1",
+      roots: buildTreeRoots(),
+      signature: "scope-1234",
+    });
   });
 
   it("renders stale shared cache data without requiring companion discovery", async () => {

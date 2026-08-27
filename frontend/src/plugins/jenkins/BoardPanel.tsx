@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   ActionIcon,
   Alert,
@@ -15,13 +16,14 @@ import {
 } from "@mantine/core";
 import { IconAlertCircle, IconPinnedOff } from "@tabler/icons-react";
 
-import { AgentRequestError } from "@/api/agentClient";
+import { AgentRequestError, discoverAgent } from "@/api/agentClient";
 import type { JenkinsRootGroup } from "@/api/types";
 import {
   JenkinsNodeKind,
   JenkinsStatusColor,
   JenkinsStatusLabel,
   PluginId,
+  QueryKey,
   TabId,
 } from "@/constants";
 import { BuildHistoryLine } from "@/plugins/jenkins/BuildHistoryLine";
@@ -60,6 +62,9 @@ const BoardPanelCopy = {
   ITEM_MISSING: "This pinned item is no longer available inside the configured Jenkins scope.",
   GRAY: "Gray",
   LOADING: "Loading pinned Jenkins folders.",
+  COMPANION_REQUIRED_BODY:
+    "The shared Jenkins cache is empty. Start the companion app so the pinned board can populate from your personal Jenkins access.",
+  COMPANION_REQUIRED_TITLE: "Start the companion to load pinned folders",
   OTHER_TITLE: "Other",
   PINNED_TITLE: "Pinned",
   RUNNING: "Running",
@@ -69,6 +74,7 @@ const BoardPanelCopy = {
   SUCCESS: "Passed",
   FAILED: "Failed",
   UNPIN: "Unpin from board",
+  WARMING: "Warming the shared Jenkins cache for pinned folders.",
 } as const;
 
 const BoardPanelValue = {
@@ -84,8 +90,16 @@ export function BoardPanel() {
   const unpin = useJenkinsStore((state) => state.unpin);
   const isActive = useUiStore((state) => state.tabsByPlugin[PluginId.JENKINS].activeTabId === TabId.JENKINS_BOARD);
   const [expandedPaths, setExpandedPaths] = useState<string[]>([]);
+  const companionQuery = useQuery({
+    enabled: Boolean(token),
+    queryFn: ({ signal }) => discoverAgent(signal),
+    queryKey: [QueryKey.AGENT_DISCOVERY, token],
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+  const agentPort = companionQuery.data?.port ?? null;
   const treeState = useJenkinsTree({
-    agentPort: null,
+    agentPort,
     enabled: true,
     isActive,
     token,
@@ -129,6 +143,32 @@ export function BoardPanel() {
 
   if (treeState.error && treeState.roots.length === 0) {
     return renderBoardError(treeState.error);
+  }
+
+  if (treeState.roots.length === 0) {
+    const isColdCache = treeState.stale;
+    const isWarming =
+      isColdCache && (companionQuery.isLoading || agentPort !== null || treeState.isRefreshing);
+
+    if (isWarming) {
+      return (
+        <Stack align="center" gap="md" py="xl">
+          <Loader size="lg" />
+          <Text c="dimmed">{BoardPanelCopy.WARMING}</Text>
+        </Stack>
+      );
+    }
+
+    if (isColdCache && agentPort === null && !companionQuery.isLoading) {
+      return (
+        <Paper p="xl" radius="lg" withBorder>
+          <Stack gap="sm">
+            <Title order={3}>{BoardPanelCopy.COMPANION_REQUIRED_TITLE}</Title>
+            <Text c="dimmed">{BoardPanelCopy.COMPANION_REQUIRED_BODY}</Text>
+          </Stack>
+        </Paper>
+      );
+    }
   }
 
   const pinnedSections = buildPinnedSections(pinnedPaths, treeState.rootFolders, treeState.rootGroups);
