@@ -1,9 +1,14 @@
 export interface SseFrame {
   event: string;
   data: string;
+  id: string | null;
 }
 
-function finalizeFrame(event: string | null, dataLines: string[]): SseFrame | null {
+function finalizeFrame(
+  event: string | null,
+  dataLines: string[],
+  id: string | null
+): SseFrame | null {
   if (dataLines.length === 0) {
     return null;
   }
@@ -11,6 +16,7 @@ function finalizeFrame(event: string | null, dataLines: string[]): SseFrame | nu
   return {
     data: dataLines.join("\n"),
     event: event ?? "message",
+    id,
   };
 }
 
@@ -23,6 +29,7 @@ export async function* parseSseStream(
   let aborted = signal?.aborted ?? false;
   let buffer = "";
   let currentEvent: string | null = null;
+  let currentId: string | null = null;
   let currentDataLines: string[] = [];
 
   const handleAbort = () => {
@@ -51,7 +58,7 @@ export async function* parseSseStream(
         buffer = buffer.slice(newlineIndex + 1);
 
         if (line.length === 0) {
-          const frame = finalizeFrame(currentEvent, currentDataLines);
+          const frame = finalizeFrame(currentEvent, currentDataLines, currentId);
           if (frame) {
             yield frame;
           }
@@ -74,6 +81,11 @@ export async function* parseSseStream(
           continue;
         }
 
+        if (field === "id") {
+          currentId = valuePart;
+          continue;
+        }
+
         if (field === "data") {
           currentDataLines.push(valuePart);
         }
@@ -91,12 +103,14 @@ export async function* parseSseStream(
 
         if (field === "event") {
           currentEvent = valuePart;
+        } else if (field === "id") {
+          currentId = valuePart;
         } else if (field === "data") {
           currentDataLines.push(valuePart);
         }
       }
 
-      const trailingFrame = finalizeFrame(currentEvent, currentDataLines);
+      const trailingFrame = finalizeFrame(currentEvent, currentDataLines, currentId);
       if (trailingFrame) {
         yield trailingFrame;
       }

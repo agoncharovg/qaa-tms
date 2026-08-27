@@ -13,6 +13,26 @@ const QAA_LIVE_COPY = {
   TOKEN_REQUIRED: "Set your personal qaa-generator token in Profile / Settings.",
 } as const;
 
+const QAA_STREAM_RECONNECT_DELAY_MS = 1000;
+
+function delay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timeout);
+      resolve();
+    };
+    const timeout = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 function invalidateQaaRunQueries(queryClient: ReturnType<typeof useQueryClient>): Promise<unknown> {
   return queryClient.invalidateQueries({
     queryKey: [QueryKey.QAA_RUNS],
@@ -27,9 +47,14 @@ export function useQaaRunLive(agentPort: number, hasPersonalToken: boolean) {
   const reduceLiveRun = useQaaGeneratorStore((state) => state.reduceLiveRun);
   const startRun = useQaaGeneratorStore((state) => state.startRun);
   const streamAbortControllerRef = useRef<AbortController | null>(null);
+  const lastEventIdRef = useRef<string | null>(null);
   const logViewportRef = useRef<HTMLDivElement | null>(null);
   const currentRunStatus = liveRun?.run?.status;
   const isRunTerminal = currentRunStatus ? isTerminalQaaRunStatus(currentRunStatus) : false;
+  // Read the latest terminal status from inside the long-lived reconnect loop
+  // without making it an effect dependency (which would tear the stream down).
+  const isRunTerminalRef = useRef(isRunTerminal);
+  isRunTerminalRef.current = isRunTerminal;
 
   const runQuery = useQuery({
     enabled: Boolean(token && liveRun?.runId && hasPersonalToken),
@@ -60,10 +85,6 @@ export function useQaaRunLive(agentPort: number, hasPersonalToken: boolean) {
 
   useEffect(() => {
     const runId = liveRun?.runId;
-    // Do NOT gate on `isRunTerminal`: the REST poll can report a terminal status
-    // before the SSE stream has delivered its trailing events (brief_author done,
-    // RUN_COMPLETED). Let the stream drain on its own — the server emits the final
-    // events and then closes it, ending the `for await` loop in streamQaaRun.
     if (!token || !runId || !hasPersonalToken) {
       return;
     }
@@ -71,33 +92,48 @@ export function useQaaRunLive(agentPort: number, hasPersonalToken: boolean) {
     const controller = new AbortController();
     streamAbortControllerRef.current?.abort();
     streamAbortControllerRef.current = controller;
+    lastEventIdRef.current = null;
 
-    void qaaAgentClient
-      .streamQaaRun(
-        agentPort,
-        token,
-        runId,
-        (event) => {
+    // The qaa-generator stream delivers events up to the current tip and then
+    // closes rather than staying open indefinitely, so a single connection would
+    // freeze the log at whatever stage was live when it connected. Reconnect —
+    // resuming via Last-Event-ID — until the run reaches a terminal status. Dedup
+    // in the reducer makes any events replayed across reconnects harmless.
+    const runStream = async (): Promise<void> => {
+      while (!controller.signal.aborted && !isRunTerminalRef.current) {
+        try {
+          await qaaAgentClient.streamQaaRun(
+            agentPort,
+            token,
+            runId,
+            (event, eventId) => {
+              if (eventId) {
+                lastEventIdRef.current = eventId;
+              }
+              reduceLiveRun({ event, type: "append-event" });
+              reduceLiveRun({ type: "clear-stream-error" });
+            },
+            controller.signal,
+            lastEventIdRef.current
+          );
+        } catch (error: unknown) {
+          if (controller.signal.aborted) {
+            return;
+          }
           reduceLiveRun({
-            event,
-            type: "append-event",
+            message: error instanceof Error ? error.message : QAA_LIVE_COPY.STREAM_FAILED,
+            type: "set-stream-error",
           });
-          reduceLiveRun({
-            type: "clear-stream-error",
-          });
-        },
-        controller.signal
-      )
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) {
-          return;
         }
 
-        reduceLiveRun({
-          message: error instanceof Error ? error.message : QAA_LIVE_COPY.STREAM_FAILED,
-          type: "set-stream-error",
-        });
-      });
+        if (controller.signal.aborted || isRunTerminalRef.current) {
+          return;
+        }
+        await delay(QAA_STREAM_RECONNECT_DELAY_MS, controller.signal);
+      }
+    };
+
+    void runStream();
 
     return () => {
       controller.abort();

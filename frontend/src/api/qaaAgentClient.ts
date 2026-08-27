@@ -168,13 +168,21 @@ export const qaaAgentClient = {
     port: number,
     token: string,
     runId: string,
-    onMessage: (message: QaaRunEvent) => void,
-    signal?: AbortSignal
+    onMessage: (message: QaaRunEvent, eventId: string | null) => void,
+    signal?: AbortSignal,
+    lastEventId?: string | null
   ): Promise<void> {
+    const streamHeaders: Record<string, string> = {
+      [HttpHeader.ACCEPT]: MediaType.TEXT_EVENT_STREAM,
+    };
+    // Resume after the last received event so a reconnect doesn't replay the whole
+    // history — the proxy forwards this header to the qaa-generator service.
+    if (lastEventId) {
+      streamHeaders[HttpHeader.LAST_EVENT_ID] = lastEventId;
+    }
+
     const response = await fetch(buildAgentUrl(port, buildQaaRunStreamPath(runId)), {
-      headers: createAgentHeaders(token, {
-        [HttpHeader.ACCEPT]: MediaType.TEXT_EVENT_STREAM,
-      }),
+      headers: createAgentHeaders(token, streamHeaders),
       method: HttpMethod.GET,
       signal,
     });
@@ -198,7 +206,7 @@ export const qaaAgentClient = {
       // qaa-generator names each frame after the run event_type (RUN_STARTED,
       // RUN_COMPLETED, ...), never "message", so we handle every data frame.
       // Keepalive comments carry no data and are never yielded by the parser.
-      onMessage(JSON.parse(frame.data) as QaaRunEvent);
+      onMessage(JSON.parse(frame.data) as QaaRunEvent, frame.id);
     }
   },
 };

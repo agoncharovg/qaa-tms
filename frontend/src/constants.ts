@@ -786,6 +786,7 @@ export const HttpHeader = {
   ACCEPT: "Accept",
   AUTHORIZATION: "Authorization",
   CONTENT_TYPE: "Content-Type",
+  LAST_EVENT_ID: "Last-Event-ID",
 } as const;
 
 export type HttpHeader = (typeof HttpHeader)[keyof typeof HttpHeader];
