@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const agentClientMock = vi.hoisted(() => ({
@@ -29,6 +29,7 @@ vi.mock("@/api/agentClient", async () => {
   };
 });
 
+import { AgentRequestError } from "@/api/agentClient";
 import { PluginId } from "@/constants";
 import { NotebookBrowsePanel } from "@/plugins/notebook/NotebookBrowsePanel";
 import { renderWithProviders } from "@/test/render";
@@ -163,10 +164,254 @@ describe("NotebookBrowsePanel", () => {
     await user.click(screen.getByRole("button", { name: "Save note" }));
 
     await waitFor(() => {
-      expect(agentClientMock.updateNote).toHaveBeenCalledWith(PORT, TOKEN, SECOND_NOTE_NAME, {
+      expect(agentClientMock.updateNote).toHaveBeenCalledWith(PORT, TOKEN, BOOKMARK, SECOND_NOTE_NAME, {
         bookmark: BOOKMARK,
         text: "Updated line",
       });
+    });
+  });
+
+  it("moves a note to another bookmark through drag and drop", async () => {
+    agentClientMock.getNotebookTree.mockResolvedValue({
+      bookmarks: [
+        {
+          children: [],
+          flags: {},
+          name: BOOKMARK,
+          noteCount: 1,
+        },
+        {
+          children: [],
+          flags: {},
+          name: "Ops",
+          noteCount: 1,
+        },
+      ],
+    });
+
+    agentClientMock.listNotes.mockImplementation((_port, _token, bookmark) => {
+      if (bookmark === "Ops") {
+        return {
+          bookmark: "Ops",
+          notes: [
+            {
+              flags: {},
+              name: NOTE_NAME,
+              previewLines: ["Moved line"],
+            },
+          ],
+        };
+      }
+
+      return {
+        bookmark: BOOKMARK,
+        notes: [
+          {
+            flags: {},
+            name: NOTE_NAME,
+            previewLines: ["Drag me"],
+          },
+        ],
+      };
+    });
+
+    agentClientMock.readNote.mockResolvedValue({
+      bookmark: BOOKMARK,
+      flags: {},
+      name: NOTE_NAME,
+      previewLines: ["Drag me"],
+      text: "Drag me",
+    });
+
+    agentClientMock.updateNote.mockResolvedValue({
+      bookmark: "Ops",
+      flags: {},
+      name: NOTE_NAME,
+      previewLines: ["Drag me"],
+      text: "Drag me",
+    });
+
+    renderWithProviders(<NotebookBrowsePanel />);
+
+    const noteButton = await screen.findByRole("button", { name: /Drag me/i });
+    const targetBookmarkButton = await screen.findByRole("button", { name: /Ops/i });
+    const dataTransfer = {
+      dropEffect: "none",
+      effectAllowed: "all",
+      getData: vi.fn(),
+      setData: vi.fn(),
+    };
+
+    fireEvent.dragStart(noteButton, { dataTransfer });
+    fireEvent.dragOver(targetBookmarkButton, { dataTransfer });
+    fireEvent.drop(targetBookmarkButton, { dataTransfer });
+
+    await waitFor(() => {
+      expect(agentClientMock.updateNote).toHaveBeenCalledWith(PORT, TOKEN, BOOKMARK, NOTE_NAME, {
+        bookmark: "Ops",
+        text: undefined,
+      });
+    });
+  });
+
+  it("falls back to copy-delete move for an older companion agent", async () => {
+    const user = userEvent.setup();
+    const bookmarks = [
+      {
+        children: [],
+        flags: {},
+        name: BOOKMARK,
+        noteCount: 1,
+      },
+      {
+        children: [],
+        flags: {},
+        name: "Ops",
+        noteCount: 0,
+      },
+    ];
+    const notesByBookmark = {
+      Ops: [] as Array<{ flags: Record<string, unknown>; name: string; previewLines: string[] }>,
+      [BOOKMARK]: [
+        {
+          flags: { important: true },
+          name: NOTE_NAME,
+          previewLines: ["Drag me"],
+        },
+      ],
+    };
+
+    agentClientMock.getNotebookTree.mockImplementation(() => ({
+      bookmarks: bookmarks.map((bookmark) => ({ ...bookmark })),
+    }));
+
+    agentClientMock.listNotes.mockImplementation((_port: number, _token: string, bookmark: string) => ({
+      bookmark,
+      notes: [...(notesByBookmark[bookmark as keyof typeof notesByBookmark] ?? [])],
+    }));
+
+    agentClientMock.readNote.mockImplementation(
+      (_port: number, _token: string, bookmark: string, name: string) => ({
+        bookmark,
+        flags: { important: true },
+        name,
+        previewLines: ["Drag me"],
+        text: "Drag me",
+      })
+    );
+
+    agentClientMock.updateNote.mockRejectedValue(new AgentRequestError("No note changes requested.", 400));
+    agentClientMock.writeNote.mockImplementation(
+      (_port: number, _token: string, payload: { name?: string; text: string }) => {
+      bookmarks[0].noteCount = 0;
+      bookmarks[1].noteCount = 1;
+      notesByBookmark["Ops"] = [
+        {
+          flags: { important: true },
+          name: payload.name ?? NOTE_NAME,
+          previewLines: ["Drag me"],
+        },
+      ];
+      return {
+        bookmark: "Ops",
+        flags: { important: true },
+        name: payload.name ?? NOTE_NAME,
+        previewLines: ["Drag me"],
+        text: payload.text,
+      };
+      }
+    );
+    agentClientMock.deleteNote.mockImplementation(() => {
+      bookmarks[0].noteCount = 0;
+      notesByBookmark[BOOKMARK] = [];
+      return Promise.reject(new TypeError("Failed to fetch"));
+    });
+
+    renderWithProviders(<NotebookBrowsePanel />);
+
+    const noteButton = await screen.findByRole("button", { name: /Drag me/i });
+    const targetBookmarkButton = await screen.findByRole("button", { name: /Ops/i });
+    const dataTransfer = {
+      dropEffect: "none",
+      effectAllowed: "all",
+      getData: vi.fn(),
+      setData: vi.fn(),
+    };
+
+    fireEvent.dragStart(noteButton, { dataTransfer });
+    fireEvent.dragOver(targetBookmarkButton, { dataTransfer });
+    fireEvent.drop(targetBookmarkButton, { dataTransfer });
+
+    await waitFor(() => {
+      expect(agentClientMock.writeNote).toHaveBeenCalledWith(PORT, TOKEN, {
+        bookmark: "Ops",
+        flags: { important: true },
+        name: NOTE_NAME,
+        text: "Drag me",
+      });
+    });
+
+    await user.click(screen.getByRole("button", { name: /^Research\s*0$/i }));
+    expect(screen.queryByRole("button", { name: /Drag me/i })).not.toBeInTheDocument();
+    expect(screen.getByText("No notes were returned for the selected bookmark.")).toBeInTheDocument();
+  });
+
+  it("deletes the selected note and shows the empty state", async () => {
+    const user = userEvent.setup();
+
+    agentClientMock.getNotebookTree.mockResolvedValue({
+      bookmarks: [
+        {
+          children: [],
+          flags: {},
+          name: BOOKMARK,
+          noteCount: 1,
+        },
+      ],
+    });
+
+    let deleted = false;
+
+    agentClientMock.listNotes.mockImplementation(() => ({
+      bookmark: BOOKMARK,
+      notes: deleted
+        ? []
+        : [
+            {
+              flags: {},
+              name: NOTE_NAME,
+              previewLines: ["Delete me"],
+            },
+          ],
+    }));
+
+    agentClientMock.readNote.mockResolvedValue({
+      bookmark: BOOKMARK,
+      flags: {},
+      name: NOTE_NAME,
+      previewLines: ["Delete me"],
+      text: "Delete me",
+    });
+
+    agentClientMock.deleteNote.mockImplementation(() => {
+      deleted = true;
+      return Promise.resolve({ bookmark: BOOKMARK, notes: [] });
+    });
+
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    renderWithProviders(<NotebookBrowsePanel />);
+
+    await screen.findByRole("button", { name: /Delete me/i });
+    await screen.findByLabelText("Notebook note body");
+    await user.click(screen.getByRole("button", { name: "Delete note" }));
+
+    await waitFor(() => {
+      expect(agentClientMock.deleteNote).toHaveBeenCalledWith(PORT, TOKEN, BOOKMARK, NOTE_NAME);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("No notes were returned for the selected bookmark.")).toBeInTheDocument();
     });
   });
 

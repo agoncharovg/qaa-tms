@@ -22,6 +22,7 @@ import type {
   NamespaceDeployRecipe,
   NamespaceList,
   NamespaceStatus,
+  NotebookNoteReadResponse,
   SyncRequest,
 } from "@/api/types";
 import { agentClient } from "@/api/agentClient";
@@ -647,3 +648,44 @@ describe("agentClient namespace reads", () => {
     expect(headers.get("X-QAA-TMS")).toBe("1");
   });
 });
+
+describe("agentClient notebook requests", () => {
+  const fetchMock = vi.fn<typeof fetch>();
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  it("sends note updates using the source bookmark in the URL and the target bookmark in the payload", async () => {
+    const response: NotebookNoteReadResponse = {
+      bookmark: "Ops",
+      flags: {},
+      name: "2026-08-25-14-30-05",
+      previewLines: ["Moved line"],
+      text: "Moved line",
+    };
+
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));
+
+    expect(
+      await agentClient.updateNote(47600, "token-123", "Research", "2026-08-25-14-30-05", {
+        bookmark: "Ops",
+      })
+    ).toEqual(response);
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    const headers = new Headers(init?.headers);
+
+    expect(url).toBe(
+      "http://127.0.0.1:47600/notebook/note/2026-08-25-14-30-05?bookmark=Research"
+    );
+    expect(init?.method).toBe("PUT");
+    expect(init?.body).toBe(JSON.stringify({ bookmark: "Ops" }));
+    expect(headers.get("Authorization")).toBe("Bearer token-123");
+    expect(headers.get("Content-Type")).toBe("application/json");
+    expect(headers.get("Accept")).toBe("application/json");
+    expect(headers.get("X-QAA-TMS")).toBe("1");
+  });
+});
+

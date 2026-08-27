@@ -584,6 +584,7 @@ export const agentClient = {
   updateNote(
     port: number,
     token: string,
+    bookmark: string,
     name: string,
     payload: {
       bookmark: string;
@@ -594,7 +595,7 @@ export const agentClient = {
   ): Promise<NotebookNoteReadResponse> {
     return readAgentJson<NotebookNoteReadResponse>(
       port,
-      buildAgentNotebookNotePath(payload.bookmark, name),
+      buildAgentNotebookNotePath(bookmark, name),
       createJsonBody(payload, HttpMethod.PUT),
       token,
       signal

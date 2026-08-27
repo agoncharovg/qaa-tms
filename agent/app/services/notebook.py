@@ -124,6 +124,24 @@ def write_note(settings: Settings, bookmark: str, name: str | None, text: str) -
     return note_name
 
 
+def move_note(settings: Settings, source_bookmark: str, target_bookmark: str, name: str) -> None:
+    root = _resolve_root(settings)
+    source_bookmark_name, source_bookmark_path = _require_bookmark(root, source_bookmark)
+    target_bookmark_name, target_bookmark_path = _require_bookmark(root, target_bookmark)
+    note_name, source_note_path = _require_note(root, source_bookmark_path, name)
+    if source_bookmark_name == target_bookmark_name:
+        return
+    target_note_path = _note_path(root, target_bookmark_path, note_name)
+    if target_note_path.exists():
+        raise NotebookConflictError(
+            f"Note already exists in bookmark {target_bookmark_name}: {note_name}"
+        )
+    source_note_path.rename(target_note_path)
+    contents = _read_contents_from_root(root)
+    if _move_note_flags(contents, source_bookmark_name, target_bookmark_name, note_name):
+        _write_contents_atomically(root, contents)
+
+
 def delete_note(settings: Settings, bookmark: str, name: str) -> None:
     root = _resolve_root(settings)
     bookmark_name, bookmark_path = _require_bookmark(root, bookmark)
@@ -463,6 +481,35 @@ def _clear_note_flags(contents: NotebookContentsTree, bookmark: str, note: str) 
         node["notes"] = note_flags
     else:
         node.pop("notes", None)
+    return True
+
+
+def _move_note_flags(
+    contents: NotebookContentsTree,
+    source_bookmark: str,
+    target_bookmark: str,
+    note: str,
+) -> bool:
+    if source_bookmark == target_bookmark:
+        return False
+    source_node = _find_node(contents, source_bookmark)
+    if source_node is None or "notes" not in source_node:
+        return False
+    source_note_flags = dict(source_node["notes"])
+    note_flags = source_note_flags.pop(note, None)
+    if note_flags is None:
+        return False
+    if source_note_flags:
+        source_node["notes"] = source_note_flags
+    else:
+        source_node.pop("notes", None)
+    target_node = _find_node(contents, target_bookmark)
+    if target_node is None:
+        target_node = {"name": target_bookmark}
+        contents.append(target_node)
+    target_note_flags = dict(target_node.get("notes", {}))
+    target_note_flags[note] = note_flags
+    target_node["notes"] = target_note_flags
     return True
 
 

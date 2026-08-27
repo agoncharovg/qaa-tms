@@ -9,6 +9,7 @@ from app.core.config import Settings
 from app.core.constants import EnvKey
 from app.services import notebook as notebook_service
 from app.services.notebook import (
+    NotebookConflictError,
     NotebookPathValidationError,
     NotebookRootMissingError,
     create_bookmark,
@@ -16,6 +17,7 @@ from app.services.notebook import (
     delete_note,
     list_bookmarks,
     list_notes,
+    move_note,
     read_note,
     rename_bookmark,
     search,
@@ -101,6 +103,40 @@ def test_sparse_flags_overlay_set_and_clear(tmp_path: Path) -> None:
     stored = read_contents_json(root)
     assert "flags" not in stored[0]
     assert "notes" not in stored[0]
+
+
+def test_move_note_between_bookmarks_preserves_text_and_flags(tmp_path: Path) -> None:
+    root = tmp_path / "notebook"
+    settings = build_settings(root)
+    create_bookmark(settings, "alpha")
+    create_bookmark(settings, "beta")
+    note_name = write_note(settings, "alpha", None, "line1\nline2")
+    set_flags(settings, "alpha", note_name, {"important": True})
+
+    move_note(settings, "alpha", "beta", note_name)
+
+    assert list_notes(settings, "alpha").notes == []
+    moved = read_note(settings, "beta", note_name)
+    assert moved.text == "line1\nline2"
+    assert moved.flags == {"important": True}
+
+    stored = read_contents_json(root)
+    alpha = next(node for node in stored if node["name"] == "alpha")
+    beta = next(node for node in stored if node["name"] == "beta")
+    assert "notes" not in alpha
+    assert beta["notes"][note_name] == {"important": True}
+
+
+def test_move_note_rejects_target_name_conflict(tmp_path: Path) -> None:
+    root = tmp_path / "notebook"
+    settings = build_settings(root)
+    create_bookmark(settings, "alpha")
+    create_bookmark(settings, "beta")
+    note_name = write_note(settings, "alpha", None, "source")
+    write_note(settings, "beta", note_name, "target")
+
+    with pytest.raises(NotebookConflictError):
+        move_note(settings, "alpha", "beta", note_name)
 
 
 def test_self_heal_uses_filesystem_truth(tmp_path: Path) -> None:

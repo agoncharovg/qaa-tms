@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { type DragEvent, useEffect, useRef, useState } from "react";
 import {
   ActionIcon,
   Button,
@@ -15,8 +15,13 @@ import {
 import { IconNote, IconPencil, IconPlus, IconRotateClockwise, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { agentClient } from "@/api/agentClient";
-import type { NotebookBookmarkNode } from "@/api/types";
+import { AgentRequestError, agentClient } from "@/api/agentClient";
+import type {
+  NotebookBookmarkNode,
+  NotebookContentsResponse,
+  NotebookNoteReadResponse,
+  NotebookNotesResponse,
+} from "@/api/types";
 import { QueryKey } from "@/constants";
 
 import {
@@ -83,6 +88,99 @@ async function invalidateNotebookQueries(queryClient: ReturnType<typeof useQuery
   ]);
 }
 
+function buildPreviewLines(text: string): string[] {
+  return text.split(/\r?\n/).slice(0, 3);
+}
+
+function buildNoteSummary(note: NotebookNoteReadResponse) {
+  return {
+    flags: note.flags,
+    name: note.name,
+    previewLines: note.previewLines,
+  };
+}
+
+function applyMovedNoteToCache(
+  queryClient: ReturnType<typeof useQueryClient>,
+  token: string | null,
+  agentPort: number | null,
+  sourceBookmark: string,
+  note: NotebookNoteReadResponse
+): void {
+  if (token === null || agentPort === null || sourceBookmark === note.bookmark) {
+    return;
+  }
+
+  queryClient.setQueryData<NotebookContentsResponse | undefined>(
+    [QueryKey.NOTEBOOK_CONTENTS, token, agentPort],
+    (current) => {
+      if (!current) {
+        return current;
+      }
+
+      return {
+        bookmarks: current.bookmarks.map((bookmark) => {
+          if (bookmark.name === sourceBookmark) {
+            return {
+              ...bookmark,
+              noteCount: Math.max(0, bookmark.noteCount - 1),
+            };
+          }
+          if (bookmark.name === note.bookmark) {
+            return {
+              ...bookmark,
+              noteCount: bookmark.noteCount + 1,
+            };
+          }
+          return bookmark;
+        }),
+      };
+    }
+  );
+
+  queryClient.setQueryData<NotebookNotesResponse | undefined>(
+    [QueryKey.NOTEBOOK_NOTES, token, agentPort, sourceBookmark],
+    (current) => {
+      if (!current) {
+        return current;
+      }
+
+      return {
+        ...current,
+        notes: current.notes.filter((currentNote) => currentNote.name !== note.name),
+      };
+    }
+  );
+
+  queryClient.setQueryData<NotebookNotesResponse | undefined>(
+    [QueryKey.NOTEBOOK_NOTES, token, agentPort, note.bookmark],
+    (current) => {
+      const movedNote = buildNoteSummary(note);
+      if (!current) {
+        return {
+          bookmark: note.bookmark,
+          notes: [movedNote],
+        };
+      }
+
+      return {
+        ...current,
+        bookmark: note.bookmark,
+        notes: [movedNote, ...current.notes.filter((currentNote) => currentNote.name !== note.name)],
+      };
+    }
+  );
+
+  queryClient.removeQueries({
+    exact: true,
+    queryKey: [QueryKey.NOTEBOOK_NOTE, token, agentPort, sourceBookmark, note.name],
+  });
+  queryClient.setQueryData<NotebookNoteReadResponse>(
+    [QueryKey.NOTEBOOK_NOTE, token, agentPort, note.bookmark, note.name],
+    note
+  );
+}
+
 export function NotebookBrowsePanel() {
   const queryClient = useQueryClient();
   const { agentPort, companionUnavailable, preflightQuery, probedPorts, token } = useNotebookAgent();
@@ -96,6 +194,9 @@ export function NotebookBrowsePanel() {
   const [selectedBookmark, setSelectedBookmark] = useState<string | null>(null);
   const [selectedNoteName, setSelectedNoteName] = useState<string | null>(null);
   const [editorText, setEditorText] = useState("");
+  const [draggedNoteName, setDraggedNoteName] = useState<string | null>(null);
+  const [dragOverBookmarkName, setDragOverBookmarkName] = useState<string | null>(null);
+  const pendingSelectedNoteNameRef = useRef<string | null>(null);
 
   const contentsQuery = useQuery({
     enabled: Boolean(token && agentPort !== null),
@@ -137,8 +238,9 @@ export function NotebookBrowsePanel() {
   }, [contentsQuery.data?.bookmarks, selectedBookmark]);
 
   useEffect(() => {
-    setSelectedNoteName(null);
+    setSelectedNoteName(pendingSelectedNoteNameRef.current);
     setEditorText("");
+    pendingSelectedNoteNameRef.current = null;
   }, [selectedBookmark]);
 
   useEffect(() => {
@@ -260,7 +362,7 @@ export function NotebookBrowsePanel() {
         throw new Error("Select a note first.");
       }
 
-      return agentClient.updateNote(agentPort, token, selectedNoteName, {
+      return agentClient.updateNote(agentPort, token, selectedBookmark, selectedNoteName, {
         bookmark: selectedBookmark,
         text,
       });
@@ -283,7 +385,7 @@ export function NotebookBrowsePanel() {
         throw new Error("Select a note first.");
       }
 
-      return agentClient.deleteNote(agentPort, token, selectedBookmark, selectedNoteName);
+      return await agentClient.deleteNote(agentPort, token, selectedBookmark, selectedNoteName);
     },
     onSuccess: async (response) => {
       setSelectedNoteName(response.notes[0]?.name ?? null);
@@ -298,12 +400,99 @@ export function NotebookBrowsePanel() {
     },
   });
 
+  const moveNoteMutation = useMutation({
+    mutationFn: async ({
+      name,
+      sourceBookmark,
+      targetBookmark,
+      text,
+    }: {
+      name: string;
+      sourceBookmark: string;
+      targetBookmark: string;
+      text?: string;
+    }) => {
+      if (!token || agentPort === null) {
+        throw new Error("Authentication is required.");
+      }
+
+      try {
+        return await agentClient.updateNote(agentPort, token, sourceBookmark, name, {
+          bookmark: targetBookmark,
+          text,
+        });
+      } catch (error) {
+        if (!(error instanceof AgentRequestError) || error.message !== "No note changes requested.") {
+          throw error;
+        }
+
+        const targetNotes = await agentClient.listNotes(agentPort, token, targetBookmark);
+        if (targetNotes.notes.some((note) => note.name === name)) {
+          throw new Error(`Note already exists in bookmark ${targetBookmark}: ${name}`);
+        }
+
+        const sourceNote =
+          sourceBookmark === selectedBookmark &&
+          name === selectedNoteName &&
+          noteQuery.data !== undefined &&
+          noteQuery.data !== null
+            ? noteQuery.data
+            : await agentClient.readNote(agentPort, token, sourceBookmark, name);
+        const movedText = text ?? sourceNote.text;
+        const movedNote: NotebookNoteReadResponse = {
+          ...sourceNote,
+          bookmark: targetBookmark,
+          name,
+          previewLines: movedText === sourceNote.text ? sourceNote.previewLines : buildPreviewLines(movedText),
+          text: movedText,
+        };
+
+        await agentClient.writeNote(agentPort, token, {
+          bookmark: targetBookmark,
+          flags: sourceNote.flags,
+          name,
+          text: movedText,
+        });
+        try {
+          await agentClient.deleteNote(agentPort, token, sourceBookmark, name);
+        } catch (deleteError) {
+          const sourceNotes = await agentClient.listNotes(agentPort, token, sourceBookmark);
+          if (sourceNotes.notes.some((sourceListNote) => sourceListNote.name === name)) {
+            throw deleteError;
+          }
+        }
+        return movedNote;
+      }
+    },
+    onSuccess: async (response, variables) => {
+      applyMovedNoteToCache(queryClient, token, agentPort, variables.sourceBookmark, response);
+      pendingSelectedNoteNameRef.current = response.name;
+      setSelectedNoteName(null);
+      setSelectedBookmark(response.bookmark);
+      setEditorText("");
+      await invalidateNotebookQueries(queryClient);
+    },
+    onError: (error) => {
+      setNoteNotice({
+        message: error instanceof Error ? error.message : "Unable to move the note.",
+        status: "error",
+      });
+    },
+    onSettled: () => {
+      setDraggedNoteName(null);
+      setDragOverBookmarkName(null);
+    },
+  });
+
   const notes = notesQuery.data?.notes ?? [];
   const hasUnsavedChanges = editorText !== (noteQuery.data?.text ?? "");
   const bookmarkModalNameTrimmed = bookmarkModalName.trim();
-  const bookmarkCreateDisabled = companionUnavailable || createBookmarkMutation.isPending;
-  const bookmarkRenameDisabled = companionUnavailable || !selectedBookmark || renameBookmarkMutation.isPending;
-  const bookmarkDeleteDisabled = companionUnavailable || !selectedBookmark || deleteBookmarkMutation.isPending;
+  const bookmarkCreateDisabled =
+    companionUnavailable || createBookmarkMutation.isPending || moveNoteMutation.isPending;
+  const bookmarkRenameDisabled =
+    companionUnavailable || !selectedBookmark || renameBookmarkMutation.isPending || moveNoteMutation.isPending;
+  const bookmarkDeleteDisabled =
+    companionUnavailable || !selectedBookmark || deleteBookmarkMutation.isPending || moveNoteMutation.isPending;
   const isBookmarkModalSaving =
     bookmarkModal.mode === "create" ? createBookmarkMutation.isPending : renameBookmarkMutation.isPending;
   const noteActionDisabled =
@@ -311,7 +500,8 @@ export function NotebookBrowsePanel() {
     !selectedBookmark ||
     createNoteMutation.isPending ||
     updateNoteMutation.isPending ||
-    deleteNoteMutation.isPending;
+    deleteNoteMutation.isPending ||
+    moveNoteMutation.isPending;
 
   function openCreateBookmarkModal(): void {
     setBookmarkModal({
@@ -384,6 +574,46 @@ export function NotebookBrowsePanel() {
 
     setNoteNotice(null);
     deleteNoteMutation.mutate();
+  }
+
+  function handleNoteDragStart(event: DragEvent<HTMLButtonElement>, noteName: string): void {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", noteName);
+    setDraggedNoteName(noteName);
+    setDragOverBookmarkName(null);
+  }
+
+  function handleNoteDragEnd(): void {
+    setDraggedNoteName(null);
+    setDragOverBookmarkName(null);
+  }
+
+  function handleBookmarkDragOver(event: DragEvent<HTMLButtonElement>, bookmarkName: string): void {
+    if (!selectedBookmark || !draggedNoteName || selectedBookmark === bookmarkName || moveNoteMutation.isPending) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    if (dragOverBookmarkName !== bookmarkName) {
+      setDragOverBookmarkName(bookmarkName);
+    }
+  }
+
+  function handleBookmarkDrop(event: DragEvent<HTMLButtonElement>, bookmarkName: string): void {
+    event.preventDefault();
+    if (!selectedBookmark || !draggedNoteName || selectedBookmark === bookmarkName || moveNoteMutation.isPending) {
+      setDragOverBookmarkName(null);
+      return;
+    }
+
+    setNoteNotice(null);
+    moveNoteMutation.mutate({
+      name: draggedNoteName,
+      sourceBookmark: selectedBookmark,
+      targetBookmark: bookmarkName,
+      text: draggedNoteName === selectedNoteName && hasUnsavedChanges ? editorText : undefined,
+    });
   }
 
   if (preflightQuery.isLoading) {
@@ -516,19 +746,36 @@ export function NotebookBrowsePanel() {
 
                 {contentsQuery.data?.bookmarks.length ? (
                   <Stack gap="xs">
-                    {contentsQuery.data.bookmarks.map((bookmark) => (
-                      <Button
-                        fullWidth
-                        key={bookmark.name}
-                        onClick={() => setSelectedBookmark(bookmark.name)}
-                        variant={selectedBookmark === bookmark.name ? "filled" : "light"}
-                      >
-                        <Group justify="space-between" w="100%" wrap="nowrap">
-                          <span>{bookmark.name}</span>
-                          <span>{bookmark.noteCount}</span>
-                        </Group>
-                      </Button>
-                    ))}
+                    {contentsQuery.data.bookmarks.map((bookmark) => {
+                      const isDropTarget =
+                        draggedNoteName !== null &&
+                        dragOverBookmarkName === bookmark.name &&
+                        selectedBookmark !== bookmark.name;
+
+                      return (
+                        <Button
+                          fullWidth
+                          key={bookmark.name}
+                          onClick={() => setSelectedBookmark(bookmark.name)}
+                          onDragOver={(event) => handleBookmarkDragOver(event, bookmark.name)}
+                          onDrop={(event) => handleBookmarkDrop(event, bookmark.name)}
+                          style={
+                            isDropTarget
+                              ? {
+                                  outline: "2px dashed var(--mantine-color-blue-5)",
+                                  outlineOffset: 2,
+                                }
+                              : undefined
+                          }
+                          variant={selectedBookmark === bookmark.name ? "filled" : "light"}
+                        >
+                          <Group justify="space-between" w="100%" wrap="nowrap">
+                            <span>{bookmark.name}</span>
+                            <span>{bookmark.noteCount}</span>
+                          </Group>
+                        </Button>
+                      );
+                    })}
                   </Stack>
                 ) : (
                   <Paper p="lg" radius="md" withBorder>
@@ -586,10 +833,17 @@ export function NotebookBrowsePanel() {
 
                     return (
                       <Button
+                        draggable={!moveNoteMutation.isPending}
                         fullWidth
                         key={note.name}
                         onClick={() => setSelectedNoteName(note.name)}
-                        style={{ height: "auto", paddingBlock: "0.75rem" }}
+                        onDragEnd={handleNoteDragEnd}
+                        onDragStart={(event) => handleNoteDragStart(event, note.name)}
+                        style={{
+                          cursor: moveNoteMutation.isPending ? "default" : "grab",
+                          height: "auto",
+                          paddingBlock: "0.75rem",
+                        }}
                         styles={{
                           inner: {
                             alignItems: "flex-start",
@@ -622,7 +876,7 @@ export function NotebookBrowsePanel() {
             <NotebookNoteEditor
               bookmark={selectedBookmark}
               deleteButtonLabel={NOTEBOOK_BROWSE_COPY.NOTE_DELETE}
-              deleteDisabled={!selectedNoteName || deleteNoteMutation.isPending}
+              deleteDisabled={!selectedNoteName || deleteNoteMutation.isPending || moveNoteMutation.isPending}
               emptyBody={NOTEBOOK_BROWSE_COPY.EDITOR_EMPTY_BODY}
               emptyTitle={NOTEBOOK_BROWSE_COPY.EDITOR_EMPTY_TITLE}
               error={noteQuery.error}
@@ -640,7 +894,8 @@ export function NotebookBrowsePanel() {
                 !selectedNoteName ||
                 !hasUnsavedChanges ||
                 updateNoteMutation.isPending ||
-                deleteNoteMutation.isPending
+                deleteNoteMutation.isPending ||
+                moveNoteMutation.isPending
               }
               text={editorText}
             />

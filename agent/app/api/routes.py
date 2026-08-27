@@ -145,6 +145,7 @@ from app.services.notebook import (
     delete_note,
     list_bookmarks,
     list_notes,
+    move_note,
     read_note,
     rename_bookmark,
     search,
@@ -488,18 +489,24 @@ async def put_notebook_note(
     request_body: NotebookNoteUpdateRequest,
     _: NotebookWriteAuth,
     settings: SettingsDep,
+    bookmark: str = Query(...),
 ) -> NotebookNoteReadResponse:
-    if request_body.text is None and request_body.flags is None:
+    is_move_request = bookmark != request_body.bookmark
+    if not is_move_request and request_body.text is None and request_body.flags is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No note changes requested.",
         )
     try:
+        bookmark_name = bookmark
+        if is_move_request:
+            move_note(settings, bookmark, request_body.bookmark, name)
+            bookmark_name = request_body.bookmark
         if request_body.text is not None:
-            write_note(settings, request_body.bookmark, name, request_body.text)
+            write_note(settings, bookmark_name, name, request_body.text)
         if request_body.flags is not None:
-            set_flags(settings, request_body.bookmark, name, request_body.flags)
-        return read_note(settings, request_body.bookmark, name)
+            set_flags(settings, bookmark_name, name, request_body.flags)
+        return read_note(settings, bookmark_name, name)
     except NotebookRootMissingError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -510,7 +517,7 @@ async def put_notebook_note(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         ) from exc
-    except NotebookPathValidationError as exc:
+    except (NotebookConflictError, NotebookPathValidationError) as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),

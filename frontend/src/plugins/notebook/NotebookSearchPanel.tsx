@@ -117,7 +117,7 @@ export function NotebookSearchPanel() {
         throw new Error("Select a note first.");
       }
 
-      return agentClient.updateNote(agentPort, token, selectedMatch.name, {
+      return agentClient.updateNote(agentPort, token, selectedMatch.bookmark, selectedMatch.name, {
         bookmark: selectedMatch.bookmark,
         text,
       });
