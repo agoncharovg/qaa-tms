@@ -158,6 +158,7 @@ export interface AgentSettings {
   staging_kubeconfig: string;
   staging_kubeconfig_url: string;
   notebook_root: string;
+  notebook_backup_enabled: boolean;
   kubeconfig_active_path: string;
   staging_kubeconfig_max_age_hours: number;
   kubectl_bin: string;
@@ -181,6 +182,7 @@ export interface AgentSettingsUpdate {
   staging_kubeconfig?: string;
   staging_kubeconfig_url?: string;
   notebook_root?: string;
+  notebook_backup_enabled?: boolean;
   kubeconfig_active_path?: string;
   staging_kubeconfig_max_age_hours?: number;
   kubectl_bin?: string;

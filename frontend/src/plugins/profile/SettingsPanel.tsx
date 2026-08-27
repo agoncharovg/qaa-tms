@@ -8,6 +8,7 @@ import {
   PasswordInput,
   SimpleGrid,
   Stack,
+  Switch,
   Text,
   TextInput,
   Title,
@@ -54,6 +55,9 @@ const SettingsPanelCopy = {
   QAA_GENERATOR_TOKEN_LABEL: "Personal token",
   NOTEBOOK_DESCRIPTION:
     "Your personal notebook stays in local files under this folder. The companion reads and writes them on this machine only, and they never leave this machine.",
+  NOTEBOOK_BACKUP_DESCRIPTION:
+    "Once a day the companion archives your notebook to a sibling folder (...-backups); the newest 14 archives are kept.",
+  NOTEBOOK_BACKUP_LABEL: "Daily automatic backup",
   NOTEBOOK_ROOT_LABEL: "Notebook folder path",
   NOTEBOOK_SAVE: "Save Notebook settings",
   NOTEBOOK_TITLE: "Notebook",
@@ -100,6 +104,7 @@ type AgentFormState = {
   jenkinsUrl: string;
   jenkinsUsername: string;
   kubeconfig: string;
+  notebookBackupEnabled: boolean;
   notebookRoot: string;
   stagingKubeconfig: string;
   stagingKubeconfigUrl: string;
@@ -118,6 +123,7 @@ function buildAgentFormState(settings: AgentSettings): AgentFormState {
     jenkinsUrl: settings.jenkins_url,
     jenkinsUsername: settings.jenkins_username,
     kubeconfig: settings.kubeconfig,
+    notebookBackupEnabled: settings.notebook_backup_enabled,
     notebookRoot: settings.notebook_root,
     stagingKubeconfig: settings.staging_kubeconfig,
     stagingKubeconfigUrl: settings.staging_kubeconfig_url,
@@ -398,6 +404,7 @@ function SettingsPanelAgentSettings({
 
     setNotebookNotice(null);
     notebookUpdateMutation.mutate({
+      notebook_backup_enabled: agentForm.notebookBackupEnabled,
       notebook_root: agentForm.notebookRoot,
     });
   }
@@ -540,6 +547,14 @@ function SettingsPanelAgentSettings({
           <NoticeAlert notice={notebookNotice} successTitle={SettingsPanelCopy.UPDATE_SUCCESS} />
           {agentForm ? (
             <Stack gap="md">
+              <Switch
+                checked={agentForm.notebookBackupEnabled}
+                description={SettingsPanelCopy.NOTEBOOK_BACKUP_DESCRIPTION}
+                label={SettingsPanelCopy.NOTEBOOK_BACKUP_LABEL}
+                onChange={(event) =>
+                  setAgentField("notebookBackupEnabled", event.currentTarget.checked)
+                }
+              />
               <TextInput
                 label={SettingsPanelCopy.NOTEBOOK_ROOT_LABEL}
                 onChange={(event) => setAgentField("notebookRoot", event.currentTarget.value)}

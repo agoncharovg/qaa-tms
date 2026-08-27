@@ -102,6 +102,25 @@ function buildAgentUrl(port: number, path: string): string {
   return `http://${AGENT_HOST}:${port}${path}`;
 }
 
+function formatAgentErrorDetail(detail: unknown): string {
+  if (typeof detail === "string" && detail.trim()) {
+    return detail;
+  }
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) =>
+        item && typeof item === "object" && "msg" in item
+          ? String((item as { msg: unknown }).msg)
+          : String(item)
+      )
+      .filter((message) => message && message !== "[object Object]");
+    if (messages.length > 0) {
+      return messages.join("; ");
+    }
+  }
+  return "Agent request failed.";
+}
+
 function createAgentHeaders(token?: string, extraHeaders?: HeadersInit): Headers {
   const headers = new Headers(extraHeaders);
   headers.set(HttpHeader.ACCEPT, MediaType.JSON);
@@ -128,8 +147,8 @@ async function readAgentJson<T>(
   });
 
   if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
-    throw new AgentRequestError(payload?.detail ?? "Agent request failed.", response.status);
+    const payload = (await response.json().catch(() => null)) as { detail?: unknown } | null;
+    throw new AgentRequestError(formatAgentErrorDetail(payload?.detail), response.status);
   }
 
   return (await response.json()) as T;

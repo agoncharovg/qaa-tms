@@ -74,3 +74,13 @@ def test_jenkins_root_groups_reject_missing_label_or_path(
 
     with pytest.raises(ValueError, match="AGENT_JENKINS_ROOT_GROUPS entries must include"):
         Settings(_env_file=None)
+
+
+def test_notebook_backup_enabled_loads_from_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(EnvKey.NOTEBOOK_BACKUP_ENABLED.value, "False")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.notebook_backup_enabled is False

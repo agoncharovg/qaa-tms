@@ -77,6 +77,7 @@ class AgentSettingsRead(BaseModel):
     stagings_repo: str | None
     staging_kubeconfig: str
     notebook_root: str
+    notebook_backup_enabled: bool
     staging_kubeconfig_url: str
     kubeconfig_active_path: str
     staging_kubeconfig_max_age_hours: int
@@ -104,6 +105,7 @@ class AgentSettingsUpdate(BaseModel):
     stagings_repo: str | None = None
     staging_kubeconfig: str | None = None
     notebook_root: str | None = None
+    notebook_backup_enabled: bool | None = None
     staging_kubeconfig_url: str | None = None
     kubeconfig_active_path: str | None = None
     staging_kubeconfig_max_age_hours: int | None = None
@@ -128,6 +130,7 @@ def to_agent_settings_read(settings: Settings) -> AgentSettingsRead:
         stagings_repo=settings.stagings_repo,
         staging_kubeconfig=settings.staging_kubeconfig,
         notebook_root=settings.notebook_root,
+        notebook_backup_enabled=settings.notebook_backup_enabled,
         staging_kubeconfig_url=settings.staging_kubeconfig_url,
         kubeconfig_active_path=settings.kubeconfig_active_path,
         staging_kubeconfig_max_age_hours=settings.staging_kubeconfig_max_age_hours,

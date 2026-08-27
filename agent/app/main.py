@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import cast
@@ -17,6 +19,7 @@ from app.api.routes import router
 from app.core.config import Settings, get_settings
 from app.core.constants import DEFAULT_BACKEND_TIMEOUT_SECONDS, HeaderName, HeaderValue
 from app.services.jobs import JobManager
+from app.services.notebook_backup import run_backup_loop
 
 
 async def allow_private_network_preflight(
@@ -83,7 +86,14 @@ def create_app(
                 settings=resolved_settings,
                 backend_client=backend_client,
             )
-            yield
+            app.state.notebook_backup_task = asyncio.create_task(run_backup_loop(app))
+            try:
+                yield
+            finally:
+                task = app.state.notebook_backup_task
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
 
     app = FastAPI(title="QAA-TMS Agent", lifespan=lifespan)
     app.add_middleware(
