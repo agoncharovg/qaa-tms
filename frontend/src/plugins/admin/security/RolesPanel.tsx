@@ -4,8 +4,6 @@ import {
   Badge,
   Box,
   Button,
-  Checkbox,
-  Divider,
   Group,
   Loader,
   Modal,
@@ -23,10 +21,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { backendClient } from "@/api/backendClient";
 import type { SecurityRole } from "@/api/types";
 import { QueryKey } from "@/constants";
-import {
-  buildPermissionDomains,
-  type PermissionDomain,
-} from "@/plugins/admin/security/permissionCatalog";
+import { CreateRoleModal } from "@/plugins/admin/security/CreateRoleModal";
+import { PermissionChecklist } from "@/plugins/admin/security/PermissionChecklist";
+import { buildPermissionDomains } from "@/plugins/admin/security/permissionCatalog";
 import { useAuthStore } from "@/store/authStore";
 
 type EditState = {
@@ -40,49 +37,11 @@ function formatError(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-function PermissionChecklist({
-  domains,
-  selected,
-  disabled = false,
-  onToggle,
-}: {
-  domains: PermissionDomain[];
-  selected: Set<string>;
-  disabled?: boolean;
-  onToggle: (key: string) => void;
-}) {
-  return (
-    <Stack gap="md">
-      {domains.map((domain) => (
-        <Box key={domain.key}>
-          <Divider label={domain.label} labelPosition="left" mb="xs" />
-          <Stack gap={4}>
-            {domain.permissions.map((permission) => (
-              <Checkbox
-                key={permission.key}
-                label={permission.key}
-                checked={selected.has(permission.key)}
-                disabled={disabled}
-                onChange={() => onToggle(permission.key)}
-                size="sm"
-              />
-            ))}
-          </Stack>
-        </Box>
-      ))}
-    </Stack>
-  );
-}
-
 export function RolesPanel() {
   const queryClient = useQueryClient();
   const token = useAuthStore((state) => state.token);
 
   const [createOpened, setCreateOpened] = useState(false);
-  const [createName, setCreateName] = useState("");
-  const [createDesc, setCreateDesc] = useState("");
-  const [createPerms, setCreatePerms] = useState<Set<string>>(new Set());
-
   const [editState, setEditState] = useState<EditState | null>(null);
   const [deletingRole, setDeletingRole] = useState<SecurityRole | null>(null);
 
@@ -96,18 +55,6 @@ export function RolesPanel() {
     queryKey: [QueryKey.SECURITY_PERMISSIONS, token],
     queryFn: ({ signal }) => backendClient.listSecurityPermissions(token ?? "", signal),
     enabled: Boolean(token),
-  });
-
-  const createMutation = useMutation({
-    mutationFn: () =>
-      backendClient.createSecurityRole(token ?? "", createName, createDesc, [...createPerms]),
-    onSuccess: async () => {
-      setCreateOpened(false);
-      setCreateName("");
-      setCreateDesc("");
-      setCreatePerms(new Set());
-      await queryClient.invalidateQueries({ queryKey: [QueryKey.SECURITY_ROLES] });
-    },
   });
 
   const editMutation = useMutation({
@@ -140,18 +87,6 @@ export function RolesPanel() {
       displayName: role.display_name,
       description: role.description ?? "",
       permissions: new Set(role.permissions),
-    });
-  }
-
-  function toggleCreatePerm(key: string) {
-    setCreatePerms((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
     });
   }
 
@@ -190,13 +125,7 @@ export function RolesPanel() {
         <Button
           size="sm"
           leftSection={<IconPlus size={15} />}
-          onClick={() => {
-            createMutation.reset();
-            setCreateName("");
-            setCreateDesc("");
-            setCreatePerms(new Set());
-            setCreateOpened(true);
-          }}
+          onClick={() => setCreateOpened(true)}
         >
           Create role
         </Button>
@@ -261,46 +190,7 @@ export function RolesPanel() {
       </Table>
       {roles.length === 0 && <Text c="dimmed">No roles found.</Text>}
 
-      <Modal
-        opened={createOpened}
-        onClose={() => setCreateOpened(false)}
-        title="Create role"
-        centered
-        size="md"
-        transitionProps={{ duration: 0 }}
-      >
-        <Stack>
-          {createMutation.isError && (
-            <Alert color="red" icon={<IconAlertCircle size={16} />} title="Create failed">
-              {formatError(createMutation.error, "Unable to create role.")}
-            </Alert>
-          )}
-          <TextInput
-            label="Display name"
-            value={createName}
-            onChange={(e) => setCreateName(e.currentTarget.value)}
-          />
-          <Textarea
-            label="Description"
-            value={createDesc}
-            onChange={(e) => setCreateDesc(e.currentTarget.value)}
-            minRows={2}
-          />
-          <ScrollArea h={360}>
-            <PermissionChecklist
-              domains={permissionDomains}
-              selected={createPerms}
-              onToggle={toggleCreatePerm}
-            />
-          </ScrollArea>
-          <Group justify="flex-end">
-            <Button variant="default" onClick={() => setCreateOpened(false)}>Cancel</Button>
-            <Button loading={createMutation.isPending} onClick={() => createMutation.mutate()}>
-              Create role
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
+      <CreateRoleModal opened={createOpened} onClose={() => setCreateOpened(false)} />
 
       <Modal
         opened={Boolean(editState)}

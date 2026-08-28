@@ -30,6 +30,8 @@ import type {
   UserUpdateRequest,
 } from "@/api/types";
 import { QueryKey } from "@/constants";
+import { CreateGroupModal } from "@/plugins/admin/security/CreateGroupModal";
+import { CreateRoleModal } from "@/plugins/admin/security/CreateRoleModal";
 import {
   buildPermissionDomains,
   buildPermissionShortLabels,
@@ -263,6 +265,9 @@ export function UsersMatrix() {
   const setCurrentUser = useAuthStore((state) => state.setCurrentUser);
 
   const [createOpened, setCreateOpened] = useState(false);
+  const [createRoleOpen, setCreateRoleOpen] = useState(false);
+  const [createGroupOpen, setCreateGroupOpen] = useState(false);
+  const [inlineTarget, setInlineTarget] = useState<"create" | "edit">("create");
   const [createForm, setCreateForm] = useState<CreateFormState>(CREATE_INITIAL);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editForm, setEditForm] = useState<EditFormState | null>(null);
@@ -525,10 +530,38 @@ export function UsersMatrix() {
             description="Leave blank for an empty-password account."
             value={createForm.password}
             onChange={(e) => setCreateForm((state) => ({ ...state, password: e.currentTarget.value }))} />
-          <Select label="Role" data={roleSelectData} value={createForm.roleId}
-            onChange={(value) => setCreateForm((state) => ({ ...state, roleId: value ?? "" }))} />
-          <Select label="Group" data={groupSelectData} value={createForm.groupId}
-            onChange={(value) => setCreateForm((state) => ({ ...state, groupId: value ?? "" }))} />
+          <Stack gap={4}>
+            <Select label="Role" data={roleSelectData} value={createForm.roleId}
+              onChange={(value) => setCreateForm((state) => ({ ...state, roleId: value ?? "" }))} />
+            <Button
+              variant="subtle"
+              size="compact-xs"
+              justify="flex-start"
+              leftSection={<IconPlus size={12} />}
+              onClick={() => {
+                setInlineTarget("create");
+                setCreateRoleOpen(true);
+              }}
+            >
+              + New role
+            </Button>
+          </Stack>
+          <Stack gap={4}>
+            <Select label="Group" data={groupSelectData} value={createForm.groupId}
+              onChange={(value) => setCreateForm((state) => ({ ...state, groupId: value ?? "" }))} />
+            <Button
+              variant="subtle"
+              size="compact-xs"
+              justify="flex-start"
+              leftSection={<IconPlus size={12} />}
+              onClick={() => {
+                setInlineTarget("create");
+                setCreateGroupOpen(true);
+              }}
+            >
+              + New group
+            </Button>
+          </Stack>
           <Checkbox label="Admin access" checked={createForm.isAdmin}
             onChange={(e) => setCreateForm((state) => ({ ...state, isAdmin: e.currentTarget.checked }))} />
           <Checkbox label="Auto-login" checked={createForm.autoLogin}
@@ -550,10 +583,38 @@ export function UsersMatrix() {
           <TextInput label="Username" readOnly value={editingUser?.username ?? ""} />
           <TextInput label="Display name" value={editForm?.displayName ?? ""}
             onChange={(e) => setEditForm((state) => state ? { ...state, displayName: e.currentTarget.value } : state)} />
-          <Select label="Role" data={roleSelectData} value={editForm?.roleId ?? ""}
-            onChange={(value) => setEditForm((state) => state ? { ...state, roleId: value ?? "" } : state)} />
-          <Select label="Group" data={groupSelectData} value={editForm?.groupId ?? ""}
-            onChange={(value) => setEditForm((state) => state ? { ...state, groupId: value ?? "" } : state)} />
+          <Stack gap={4}>
+            <Select label="Role" data={roleSelectData} value={editForm?.roleId ?? ""}
+              onChange={(value) => setEditForm((state) => state ? { ...state, roleId: value ?? "" } : state)} />
+            <Button
+              variant="subtle"
+              size="compact-xs"
+              justify="flex-start"
+              leftSection={<IconPlus size={12} />}
+              onClick={() => {
+                setInlineTarget("edit");
+                setCreateRoleOpen(true);
+              }}
+            >
+              + New role
+            </Button>
+          </Stack>
+          <Stack gap={4}>
+            <Select label="Group" data={groupSelectData} value={editForm?.groupId ?? ""}
+              onChange={(value) => setEditForm((state) => state ? { ...state, groupId: value ?? "" } : state)} />
+            <Button
+              variant="subtle"
+              size="compact-xs"
+              justify="flex-start"
+              leftSection={<IconPlus size={12} />}
+              onClick={() => {
+                setInlineTarget("edit");
+                setCreateGroupOpen(true);
+              }}
+            >
+              + New group
+            </Button>
+          </Stack>
           <Checkbox label="Admin access"
             checked={editForm?.isAdmin ?? false}
             disabled={editingUser?.id === currentUser?.id}
@@ -597,6 +658,31 @@ export function UsersMatrix() {
           </Group>
         </Stack>
       </Modal>
+
+      <CreateRoleModal
+        opened={createRoleOpen}
+        onClose={() => setCreateRoleOpen(false)}
+        onCreated={(role) => {
+          const id = String(role.id);
+          if (inlineTarget === "edit") {
+            setEditForm((state) => (state ? { ...state, roleId: id } : state));
+            return;
+          }
+          setCreateForm((state) => ({ ...state, roleId: id }));
+        }}
+      />
+      <CreateGroupModal
+        opened={createGroupOpen}
+        onClose={() => setCreateGroupOpen(false)}
+        onCreated={(group) => {
+          const id = String(group.id);
+          if (inlineTarget === "edit") {
+            setEditForm((state) => (state ? { ...state, groupId: id } : state));
+            return;
+          }
+          setCreateForm((state) => ({ ...state, groupId: id }));
+        }}
+      />
     </Stack>
   );
 }

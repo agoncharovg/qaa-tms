@@ -2,9 +2,7 @@ import { useState } from "react";
 import {
   Alert,
   Badge,
-  Box,
   Button,
-  Checkbox,
   Divider,
   Group,
   Loader,
@@ -24,10 +22,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { backendClient } from "@/api/backendClient";
 import type { SecurityGroup, SecurityRole } from "@/api/types";
 import { QueryKey } from "@/constants";
-import {
-  buildPermissionDomains,
-  type PermissionDomain,
-} from "@/plugins/admin/security/permissionCatalog";
+import { CreateGroupModal } from "@/plugins/admin/security/CreateGroupModal";
+import { PermissionChecklist } from "@/plugins/admin/security/PermissionChecklist";
+import { buildPermissionDomains } from "@/plugins/admin/security/permissionCatalog";
 import { useAuthStore } from "@/store/authStore";
 
 type UserOption = { id: number; username: string; display_name: string };
@@ -41,63 +38,15 @@ type EditState = {
   roleIds: string[];
 };
 
-type CreateState = {
-  displayName: string;
-  description: string;
-  permissions: Set<string>;
-  memberIds: string[];
-  roleIds: string[];
-};
-
 function formatError(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
-}
-
-function PermissionChecklist({
-  directPermissions,
-  disabled = false,
-  domains,
-  inheritedPermissions,
-  onToggle,
-}: {
-  directPermissions: Set<string>;
-  disabled?: boolean;
-  domains: PermissionDomain[];
-  inheritedPermissions: Set<string>;
-  onToggle: (key: string) => void;
-}) {
-  return (
-    <Stack gap="md">
-      {domains.map((domain) => (
-        <Box key={domain.key}>
-          <Divider label={domain.label} labelPosition="left" mb="xs" />
-          <Stack gap={4}>
-            {domain.permissions.map((permission) => {
-              const isInherited = inheritedPermissions.has(permission.key);
-              return (
-                <Checkbox
-                  key={permission.key}
-                  label={permission.key}
-                  description={isInherited ? "Inherited from selected roles" : undefined}
-                  checked={isInherited || directPermissions.has(permission.key)}
-                  disabled={disabled || isInherited}
-                  onChange={() => onToggle(permission.key)}
-                  size="sm"
-                />
-              );
-            })}
-          </Stack>
-        </Box>
-      ))}
-    </Stack>
-  );
 }
 
 export function GroupsPanel() {
   const queryClient = useQueryClient();
   const token = useAuthStore((state) => state.token);
 
-  const [createState, setCreateState] = useState<CreateState | null>(null);
+  const [createOpened, setCreateOpened] = useState(false);
   const [editState, setEditState] = useState<EditState | null>(null);
   const [deletingGroup, setDeletingGroup] = useState<SecurityGroup | null>(null);
 
@@ -123,26 +72,6 @@ export function GroupsPanel() {
     queryKey: [QueryKey.SECURITY_PERMISSIONS, token],
     queryFn: ({ signal }) => backendClient.listSecurityPermissions(token ?? "", signal),
     enabled: Boolean(token),
-  });
-
-  const createMutation = useMutation({
-    mutationFn: async () => {
-      if (!createState) throw new Error("No create state");
-      const group = await backendClient.createSecurityGroup(
-        token ?? "",
-        createState.displayName,
-        createState.description,
-      );
-      await Promise.all([
-        backendClient.updateGroupPermissions(token ?? "", group.id, [...createState.permissions]),
-        backendClient.updateGroupMembers(token ?? "", group.id, createState.memberIds.map(Number)),
-        backendClient.updateGroupRoles(token ?? "", group.id, createState.roleIds.map(Number)),
-      ]);
-    },
-    onSuccess: async () => {
-      setCreateState(null);
-      await queryClient.invalidateQueries({ queryKey: [QueryKey.SECURITY_GROUPS] });
-    },
   });
 
   const editMutation = useMutation({
@@ -186,17 +115,6 @@ export function GroupsPanel() {
     return permissions;
   }
 
-  function openCreate() {
-    createMutation.reset();
-    setCreateState({
-      displayName: "",
-      description: "",
-      permissions: new Set(),
-      memberIds: [],
-      roleIds: [],
-    });
-  }
-
   function openEdit(group: SecurityGroup) {
     editMutation.reset();
     setEditState({
@@ -206,21 +124,6 @@ export function GroupsPanel() {
       permissions: new Set(group.permissions),
       memberIds: group.members.map((member) => String(member.id)),
       roleIds: group.role_ids.map(String),
-    });
-  }
-
-  function toggleCreatePermission(key: string) {
-    setCreateState((state) => {
-      if (!state) {
-        return state;
-      }
-      const next = new Set(state.permissions);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return { ...state, permissions: next };
     });
   }
 
@@ -270,14 +173,13 @@ export function GroupsPanel() {
     value: String(role.id),
     label: role.display_name,
   }));
-  const createInheritedPermissions = createState ? getRolePermissions(createState.roleIds) : new Set<string>();
   const editInheritedPermissions = editState ? getRolePermissions(editState.roleIds) : new Set<string>();
 
   return (
     <Stack gap="md">
       <Group justify="space-between" align="center">
         <Title order={4}>Groups</Title>
-        <Button size="sm" leftSection={<IconPlus size={15} />} onClick={openCreate}>
+        <Button size="sm" leftSection={<IconPlus size={15} />} onClick={() => setCreateOpened(true)}>
           Create group
         </Button>
       </Group>
@@ -336,75 +238,7 @@ export function GroupsPanel() {
       </Table>
       {groups.length === 0 && <Text c="dimmed">No groups found.</Text>}
 
-      <Modal
-        opened={Boolean(createState)}
-        onClose={() => setCreateState(null)}
-        title="Create group"
-        centered
-        size="md"
-        transitionProps={{ duration: 0 }}
-      >
-        {createState && (
-          <Stack>
-            {createMutation.isError && (
-              <Alert color="red" icon={<IconAlertCircle size={16} />} title="Create failed">
-                {formatError(createMutation.error, "Unable to create group.")}
-              </Alert>
-            )}
-            <TextInput
-              label="Display name"
-              value={createState.displayName}
-              onChange={(e) =>
-                setCreateState((state) => state && { ...state, displayName: e.currentTarget.value })
-              }
-            />
-            <Textarea
-              label="Description"
-              value={createState.description}
-              onChange={(e) =>
-                setCreateState((state) => state && { ...state, description: e.currentTarget.value })
-              }
-              minRows={2}
-            />
-            <Divider label="Members" labelPosition="left" />
-            <MultiSelect
-              data={userOptions}
-              value={createState.memberIds}
-              onChange={(values) =>
-                setCreateState((state) => state && { ...state, memberIds: values })
-              }
-              placeholder="Add members…"
-              searchable
-              size="sm"
-            />
-            <Divider label="Roles" labelPosition="left" />
-            <MultiSelect
-              data={roleOptions}
-              value={createState.roleIds}
-              onChange={(values) =>
-                setCreateState((state) => state && { ...state, roleIds: values })
-              }
-              placeholder="Assign roles…"
-              searchable
-              size="sm"
-            />
-            <ScrollArea h={320}>
-              <PermissionChecklist
-                directPermissions={createState.permissions}
-                domains={permissionDomains}
-                inheritedPermissions={createInheritedPermissions}
-                onToggle={toggleCreatePermission}
-              />
-            </ScrollArea>
-            <Group justify="flex-end">
-              <Button variant="default" onClick={() => setCreateState(null)}>Cancel</Button>
-              <Button loading={createMutation.isPending} onClick={() => createMutation.mutate()}>
-                Create group
-              </Button>
-            </Group>
-          </Stack>
-        )}
-      </Modal>
+      <CreateGroupModal opened={createOpened} onClose={() => setCreateOpened(false)} />
 
       <Modal
         opened={Boolean(editState)}
@@ -463,10 +297,10 @@ export function GroupsPanel() {
             />
             <ScrollArea h={320}>
               <PermissionChecklist
-                directPermissions={editState.permissions}
+                selected={editState.permissions}
                 disabled={editState.group.system}
                 domains={permissionDomains}
-                inheritedPermissions={editInheritedPermissions}
+                inherited={editInheritedPermissions}
                 onToggle={toggleEditPermission}
               />
             </ScrollArea>
