@@ -735,5 +735,153 @@ describe("NotebookBrowsePanel", () => {
       expect(payload?.flags.remindAt).toBe("2026-09-05T09:30");
       expect(payload?.flags).not.toHaveProperty("remindDismissedAt");
     });
+
+    it("marks bookmarks that contain a reminder", async () => {
+      agentClientMock.getNotebookReminders.mockResolvedValue({
+        reminders: [
+          {
+            bookmark: BOOKMARK,
+            name: NOTE_NAME,
+            previewLines: ["x"],
+            remindAt: "2026-09-01T18:00",
+          },
+        ],
+      });
+      agentClientMock.getNotebookTree.mockResolvedValue({
+        bookmarks: [
+          {
+            children: [],
+            flags: {},
+            name: BOOKMARK,
+            noteCount: 1,
+          },
+        ],
+      });
+      agentClientMock.listNotes.mockResolvedValue({
+        bookmark: BOOKMARK,
+        notes: [
+          {
+            flags: { remindAt: "2026-09-01T18:00" },
+            name: NOTE_NAME,
+            previewLines: [NOTE_NAME],
+          },
+        ],
+      });
+      agentClientMock.readNote.mockResolvedValue({
+        bookmark: BOOKMARK,
+        flags: { remindAt: "2026-09-01T18:00" },
+        name: NOTE_NAME,
+        previewLines: [NOTE_NAME],
+        text: NOTE_NAME,
+      });
+
+      renderWithProviders(<NotebookBrowsePanel />);
+
+      expect(await screen.findByLabelText("Contains a reminder")).toBeInTheDocument();
+    });
+
+    it("filters notes by reminder and hides the filter when none exist", async () => {
+      const user = userEvent.setup();
+      const PLAIN_NOTE_NAME = "plain-note";
+
+      agentClientMock.getNotebookReminders.mockResolvedValue({
+        reminders: [
+          {
+            bookmark: BOOKMARK,
+            name: NOTE_NAME,
+            previewLines: [NOTE_NAME],
+            remindAt: "2026-09-01T18:00",
+          },
+        ],
+      });
+      agentClientMock.getNotebookTree.mockResolvedValue({
+        bookmarks: [
+          {
+            children: [],
+            flags: {},
+            name: BOOKMARK,
+            noteCount: 2,
+          },
+        ],
+      });
+      agentClientMock.listNotes.mockResolvedValue({
+        bookmark: BOOKMARK,
+        notes: [
+          {
+            flags: { remindAt: "2026-09-01T18:00" },
+            name: NOTE_NAME,
+            previewLines: [NOTE_NAME],
+          },
+          {
+            flags: {},
+            name: PLAIN_NOTE_NAME,
+            previewLines: [PLAIN_NOTE_NAME],
+          },
+        ],
+      });
+      agentClientMock.readNote.mockResolvedValue({
+        bookmark: BOOKMARK,
+        flags: { remindAt: "2026-09-01T18:00" },
+        name: NOTE_NAME,
+        previewLines: [NOTE_NAME],
+        text: NOTE_NAME,
+      });
+
+      renderWithProviders(<NotebookBrowsePanel />);
+
+      const btn = await screen.findByRole("button", { name: "Show only notes with reminders" });
+      expect((await screen.findAllByText(NOTE_NAME)).length).toBeGreaterThan(0);
+      expect(await screen.findByText(PLAIN_NOTE_NAME)).toBeInTheDocument();
+
+      await user.click(btn);
+
+      expect((await screen.findAllByText(NOTE_NAME)).length).toBeGreaterThan(0);
+      await waitFor(() => {
+        expect(screen.queryByText(PLAIN_NOTE_NAME)).not.toBeInTheDocument();
+      });
+
+      await user.click(await screen.findByRole("button", { name: "Show all notes" }));
+
+      expect((await screen.findAllByText(NOTE_NAME)).length).toBeGreaterThan(0);
+      expect(await screen.findByText(PLAIN_NOTE_NAME)).toBeInTheDocument();
+    });
+
+    it("hides the reminder filter for a bookmark without reminders", async () => {
+      const PLAIN_NOTE_NAME = "plain-note";
+
+      agentClientMock.getNotebookReminders.mockResolvedValue({ reminders: [] });
+      agentClientMock.getNotebookTree.mockResolvedValue({
+        bookmarks: [
+          {
+            children: [],
+            flags: {},
+            name: BOOKMARK,
+            noteCount: 1,
+          },
+        ],
+      });
+      agentClientMock.listNotes.mockResolvedValue({
+        bookmark: BOOKMARK,
+        notes: [
+          {
+            flags: {},
+            name: PLAIN_NOTE_NAME,
+            previewLines: [PLAIN_NOTE_NAME],
+          },
+        ],
+      });
+      agentClientMock.readNote.mockResolvedValue({
+        bookmark: BOOKMARK,
+        flags: {},
+        name: PLAIN_NOTE_NAME,
+        previewLines: [PLAIN_NOTE_NAME],
+        text: PLAIN_NOTE_NAME,
+      });
+
+      renderWithProviders(<NotebookBrowsePanel />);
+
+      await screen.findByText(PLAIN_NOTE_NAME);
+      expect(screen.queryByRole("button", { name: "Show only notes with reminders" })).not.toBeInTheDocument();
+    });
   });
 });

@@ -15,6 +15,8 @@ import {
 import {
   IconBell,
   IconBellRinging,
+  IconFilter,
+  IconFilterFilled,
   IconNote,
   IconPencil,
   IconPlus,
@@ -67,6 +69,7 @@ const NOTEBOOK_BROWSE_COPY = {
   BOOKMARK_MODAL_CANCEL: "Cancel",
   BOOKMARK_MODAL_CREATE_TITLE: "Create bookmark",
   BOOKMARK_MODAL_LABEL: "Bookmark name",
+  BOOKMARK_REMINDER_HINT: "Contains a reminder",
   BOOKMARK_RENAME: "Rename bookmark",
   BOOKMARK_MODAL_RENAME_TITLE: "Rename bookmark",
   BOOKMARK_MODAL_SAVE: "Save",
@@ -80,6 +83,8 @@ const NOTEBOOK_BROWSE_COPY = {
   NOTE_CREATE: "New note",
   NOTE_DELETE: "Delete note",
   NOTE_DELETE_CONFIRM: "Delete this note?",
+  NOTE_FILTER_ALL: "Show all notes",
+  NOTE_FILTER_REMINDERS: "Show only notes with reminders",
   NOTE_REMINDER_CLEAR: "Clear reminder",
   NOTE_REMINDER_LABEL: "Reminder",
   NOTE_REMINDER_SET: "Set reminder",
@@ -235,6 +240,7 @@ export function NotebookBrowsePanel() {
   const [selectedBookmark, setSelectedBookmark] = useState<string | null>(null);
   const [selectedNoteName, setSelectedNoteName] = useState<string | null>(null);
   const [editorText, setEditorText] = useState("");
+  const [remindersFilter, setRemindersFilter] = useState(false);
   const [reminderDraft, setReminderDraft] = useState("");
   const [reminderOpen, setReminderOpen] = useState(false);
   const [draggedNoteName, setDraggedNoteName] = useState<string | null>(null);
@@ -285,6 +291,7 @@ export function NotebookBrowsePanel() {
   useEffect(() => {
     setSelectedNoteName(pendingSelectedNoteNameRef.current);
     setEditorText("");
+    setRemindersFilter(false);
     pendingSelectedNoteNameRef.current = null;
   }, [selectedBookmark]);
   useEffect(() => {
@@ -689,6 +696,10 @@ export function NotebookBrowsePanel() {
     moveNoteMutation.isPending;
 
   const dueReminders = remindersQuery.dueReminders;
+  const bookmarksWithReminders = new Set(remindersQuery.reminders.map((reminder) => reminder.bookmark));
+  const bookmarkHasReminders = notes.some((note) => hasActiveReminder(note.flags));
+  const displayedNotes =
+    remindersFilter && bookmarkHasReminders ? notes.filter((note) => hasActiveReminder(note.flags)) : notes;
   const reminderActionDisabled =
     companionUnavailable ||
     !selectedBookmark ||
@@ -1153,7 +1164,18 @@ export function NotebookBrowsePanel() {
                             variant={selectedBookmark === bookmark.name ? "filled" : "light"}
                           >
                             <Group justify="space-between" w="100%" wrap="nowrap">
-                              <span>{bookmark.name}</span>
+                              <Group gap={6} wrap="nowrap">
+                                <span>{bookmark.name}</span>
+                                {bookmarksWithReminders.has(bookmark.name) ? (
+                                  <Tooltip label={NOTEBOOK_BROWSE_COPY.BOOKMARK_REMINDER_HINT}>
+                                    <IconBell
+                                      aria-label={NOTEBOOK_BROWSE_COPY.BOOKMARK_REMINDER_HINT}
+                                      color="var(--mantine-color-yellow-6)"
+                                      size={14}
+                                    />
+                                  </Tooltip>
+                                ) : null}
+                              </Group>
                               <span>{bookmark.noteCount}</span>
                             </Group>
                           </Button>
@@ -1186,7 +1208,7 @@ export function NotebookBrowsePanel() {
           <Grid.Col span={{ base: 12, lg: 2, md: 3 }}>
             <NotebookSurface title="Notes">
               <NotebookNoticeAlert notice={noteNotice} />
-              <Group gap="xs">
+              <Group gap="xs" justify="space-between" wrap="nowrap">
                 <Tooltip label={NOTEBOOK_BROWSE_COPY.NOTE_CREATE}>
                   <ActionIcon
                     aria-label={NOTEBOOK_BROWSE_COPY.NOTE_CREATE}
@@ -1198,6 +1220,29 @@ export function NotebookBrowsePanel() {
                     <IconNote size={18} />
                   </ActionIcon>
                 </Tooltip>
+                {bookmarkHasReminders ? (
+                  <Tooltip
+                    label={
+                      remindersFilter
+                        ? NOTEBOOK_BROWSE_COPY.NOTE_FILTER_ALL
+                        : NOTEBOOK_BROWSE_COPY.NOTE_FILTER_REMINDERS
+                    }
+                  >
+                    <ActionIcon
+                      aria-label={
+                        remindersFilter
+                          ? NOTEBOOK_BROWSE_COPY.NOTE_FILTER_ALL
+                          : NOTEBOOK_BROWSE_COPY.NOTE_FILTER_REMINDERS
+                      }
+                      color={remindersFilter ? "yellow" : "gray"}
+                      onClick={() => setRemindersFilter((value) => !value)}
+                      size="lg"
+                      variant={remindersFilter ? "filled" : "light"}
+                    >
+                      {remindersFilter ? <IconFilterFilled size={18} /> : <IconFilter size={18} />}
+                    </ActionIcon>
+                  </Tooltip>
+                ) : null}
               </Group>
 
               {!selectedBookmark ? (
@@ -1223,7 +1268,7 @@ export function NotebookBrowsePanel() {
                 </Paper>
               ) : (
                 <Stack gap="xs">
-                  {notes.map((note) => {
+                  {displayedNotes.map((note) => {
                     const isSelected = selectedNoteName === note.name;
                     const noteHasReminder = hasActiveReminder(note.flags);
                     const noteReminder = getReminderFlagValue(note.flags);
