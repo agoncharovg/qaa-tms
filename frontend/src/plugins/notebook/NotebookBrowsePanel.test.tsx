@@ -34,6 +34,7 @@ vi.mock("@/api/agentClient", async () => {
 import { AgentRequestError } from "@/api/agentClient";
 import { PluginId } from "@/constants";
 import { NotebookBrowsePanel } from "@/plugins/notebook/NotebookBrowsePanel";
+import { clearNotebookNoteDrafts } from "@/plugins/notebook/notebookDrafts";
 import { renderWithProviders } from "@/test/render";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
 
@@ -45,6 +46,7 @@ const NOTE_NAME = "2026-08-25-14-30-05" as const;
 describe("NotebookBrowsePanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearNotebookNoteDrafts();
     agentClientMock.getNotebookReminders.mockResolvedValue({ reminders: [] });
     localStorage.clear();
     resetAuthStoreState();
@@ -171,6 +173,117 @@ describe("NotebookBrowsePanel", () => {
         bookmark: BOOKMARK,
         text: "Updated line",
       });
+    });
+  });
+
+  it("keeps an unsaved draft when switching between notes", async () => {
+    const user = userEvent.setup();
+    const SECOND_NOTE_NAME = "2026-08-25-15-45-10";
+
+    agentClientMock.getNotebookTree.mockResolvedValue({
+      bookmarks: [
+        {
+          children: [],
+          flags: {},
+          name: BOOKMARK,
+          noteCount: 2,
+        },
+      ],
+    });
+    agentClientMock.listNotes.mockResolvedValue({
+      bookmark: BOOKMARK,
+      notes: [
+        {
+          flags: {},
+          name: NOTE_NAME,
+          previewLines: ["First line"],
+        },
+        {
+          flags: {},
+          name: SECOND_NOTE_NAME,
+          previewLines: ["Second line"],
+        },
+      ],
+    });
+    agentClientMock.readNote.mockImplementation((_port, _token, _bookmark, noteName) => {
+      if (noteName === SECOND_NOTE_NAME) {
+        return {
+          bookmark: BOOKMARK,
+          flags: {},
+          name: SECOND_NOTE_NAME,
+          previewLines: ["Second line"],
+          text: "Second line",
+        };
+      }
+
+      return {
+        bookmark: BOOKMARK,
+        flags: {},
+        name: NOTE_NAME,
+        previewLines: ["First line"],
+        text: "First line",
+      };
+    });
+
+    renderWithProviders(<NotebookBrowsePanel />);
+
+    const textarea = await screen.findByLabelText("Notebook note body");
+    await user.type(textarea, "\nUnsaved draft");
+    expect(textarea).toHaveValue("First line\nUnsaved draft");
+
+    await user.click(screen.getByRole("button", { name: /Second line/i }));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Notebook note body")).toHaveValue("Second line");
+    });
+
+    await user.click(screen.getByRole("button", { name: /First line/i }));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Notebook note body")).toHaveValue("First line\nUnsaved draft");
+    });
+  });
+
+  it("keeps an unsaved draft after the notebook panel remounts", async () => {
+    const user = userEvent.setup();
+
+    agentClientMock.getNotebookTree.mockResolvedValue({
+      bookmarks: [
+        {
+          children: [],
+          flags: {},
+          name: BOOKMARK,
+          noteCount: 1,
+        },
+      ],
+    });
+    agentClientMock.listNotes.mockResolvedValue({
+      bookmark: BOOKMARK,
+      notes: [
+        {
+          flags: {},
+          name: NOTE_NAME,
+          previewLines: ["First line"],
+        },
+      ],
+    });
+    agentClientMock.readNote.mockResolvedValue({
+      bookmark: BOOKMARK,
+      flags: {},
+      name: NOTE_NAME,
+      previewLines: ["First line"],
+      text: "First line",
+    });
+
+    const firstRender = renderWithProviders(<NotebookBrowsePanel />);
+    const textarea = await screen.findByLabelText("Notebook note body");
+    await user.type(textarea, "\nUnsaved draft");
+    expect(textarea).toHaveValue("First line\nUnsaved draft");
+
+    firstRender.unmount();
+
+    renderWithProviders(<NotebookBrowsePanel />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Notebook note body")).toHaveValue("First line\nUnsaved draft");
     });
   });
 
@@ -734,6 +847,66 @@ describe("NotebookBrowsePanel", () => {
         | undefined;
       expect(payload?.flags.remindAt).toBe("2026-09-05T09:30");
       expect(payload?.flags).not.toHaveProperty("remindDismissedAt");
+    });
+
+    it("keeps an unsaved draft after updating a reminder", async () => {
+      const user = userEvent.setup();
+      let currentFlags: Record<string, unknown> = {};
+
+      agentClientMock.getNotebookTree.mockResolvedValue({
+        bookmarks: [
+          {
+            children: [],
+            flags: {},
+            name: BOOKMARK,
+            noteCount: 1,
+          },
+        ],
+      });
+      agentClientMock.listNotes.mockResolvedValue({
+        bookmark: BOOKMARK,
+        notes: [
+          {
+            flags: currentFlags,
+            name: NOTE_NAME,
+            previewLines: ["Saved body"],
+          },
+        ],
+      });
+      agentClientMock.readNote.mockImplementation(() => ({
+        bookmark: BOOKMARK,
+        flags: currentFlags,
+        name: NOTE_NAME,
+        previewLines: ["Saved body"],
+        text: "Saved body",
+      }));
+      agentClientMock.updateNote.mockImplementation(
+        (_port, _token, _bookmark, _noteName, payload: { flags?: Record<string, unknown> }) => {
+          currentFlags = payload.flags ?? {};
+          return {
+            bookmark: BOOKMARK,
+            flags: currentFlags,
+            name: NOTE_NAME,
+            previewLines: ["Saved body"],
+            text: "Saved body",
+          };
+        }
+      );
+
+      renderWithProviders(<NotebookBrowsePanel />);
+
+      const textarea = await screen.findByLabelText("Notebook note body");
+      await user.type(textarea, "\nUnsaved draft");
+      expect(textarea).toHaveValue("Saved body\nUnsaved draft");
+
+      await user.click(screen.getByRole("button", { name: "Set reminder" }));
+
+      await waitFor(() => {
+        expect(agentClientMock.updateNote).toHaveBeenCalledTimes(1);
+      });
+      await waitFor(() => {
+        expect(screen.getByLabelText("Notebook note body")).toHaveValue("Saved body\nUnsaved draft");
+      });
     });
 
     it("marks bookmarks that contain a reminder", async () => {

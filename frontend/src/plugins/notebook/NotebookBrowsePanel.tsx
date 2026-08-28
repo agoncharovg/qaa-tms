@@ -50,6 +50,13 @@ import {
   useNotebookAgent,
 } from "@/plugins/notebook/notebookShared";
 import {
+  clearNotebookNoteDraft,
+  clearNotebookNoteDraftsForBookmark,
+  getNotebookNoteDraft,
+  renameNotebookNoteDraftBookmark,
+  setNotebookNoteDraft,
+} from "@/plugins/notebook/notebookDrafts";
+import {
   clearReminderFlags,
   defaultReminderValue,
   dismissReminderFlags,
@@ -319,10 +326,26 @@ export function NotebookBrowsePanel() {
 
   useEffect(() => {
     if (noteQuery.data) {
-      setEditorText(noteQuery.data.text);
+      const draft = getNotebookNoteDraft({
+        bookmark: noteQuery.data.bookmark,
+        noteName: noteQuery.data.name,
+        token,
+      });
+      if (draft === undefined) {
+        setEditorText(noteQuery.data.text);
+      } else if (draft === noteQuery.data.text) {
+        clearNotebookNoteDraft({
+          bookmark: noteQuery.data.bookmark,
+          noteName: noteQuery.data.name,
+          token,
+        });
+        setEditorText(noteQuery.data.text);
+      } else {
+        setEditorText(draft);
+      }
       setReminderDraft(getReminderFlagValue(noteQuery.data.flags) ?? "");
     }
-  }, [noteQuery.data]);
+  }, [noteQuery.data, token]);
 
   const createBookmarkMutation = useMutation({
     mutationFn: async (name: string) => {
@@ -358,6 +381,9 @@ export function NotebookBrowsePanel() {
       return agentClient.renameBookmark(agentPort, token, selectedBookmark, name);
     },
     onSuccess: async (_response, name) => {
+      if (selectedBookmark) {
+        renameNotebookNoteDraftBookmark(token, selectedBookmark, name);
+      }
       setBookmarkModal({
         mode: "rename",
         open: false,
@@ -383,6 +409,9 @@ export function NotebookBrowsePanel() {
       return agentClient.deleteBookmark(agentPort, token, selectedBookmark);
     },
     onSuccess: async (response) => {
+      if (selectedBookmark) {
+        clearNotebookNoteDraftsForBookmark(token, selectedBookmark);
+      }
       setSelectedBookmark(response.bookmarks[0]?.name ?? null);
       setSelectedNoteName(null);
       await invalidateNotebookQueries(queryClient);
@@ -407,6 +436,11 @@ export function NotebookBrowsePanel() {
       });
     },
     onSuccess: async (response) => {
+      clearNotebookNoteDraft({
+        bookmark: response.bookmark,
+        noteName: response.name,
+        token,
+      });
       setSelectedNoteName(response.name);
       setEditorText(response.text);
       await invalidateNotebookQueries(queryClient);
@@ -431,6 +465,11 @@ export function NotebookBrowsePanel() {
       });
     },
     onSuccess: async (response) => {
+      clearNotebookNoteDraft({
+        bookmark: response.bookmark,
+        noteName: response.name,
+        token,
+      });
       setEditorText(response.text);
       await invalidateNotebookQueries(queryClient);
     },
@@ -531,6 +570,11 @@ export function NotebookBrowsePanel() {
       return await agentClient.deleteNote(agentPort, token, selectedBookmark, selectedNoteName);
     },
     onSuccess: async (response) => {
+      clearNotebookNoteDraft({
+        bookmark: selectedBookmark,
+        noteName: selectedNoteName,
+        token,
+      });
       setSelectedNoteName(response.notes[0]?.name ?? null);
       setEditorText("");
       await invalidateNotebookQueries(queryClient);
@@ -608,6 +652,16 @@ export function NotebookBrowsePanel() {
       }
     },
     onSuccess: async (response, variables) => {
+      clearNotebookNoteDraft({
+        bookmark: variables.sourceBookmark,
+        noteName: variables.name,
+        token,
+      });
+      clearNotebookNoteDraft({
+        bookmark: response.bookmark,
+        noteName: response.name,
+        token,
+      });
       applyMovedNoteToCache(queryClient, token, agentPort, variables.sourceBookmark, response);
       pendingSelectedNoteNameRef.current = response.name;
       setSelectedNoteName(null);
@@ -781,6 +835,30 @@ export function NotebookBrowsePanel() {
     deleteNoteMutation.mutate();
   }
 
+  function handleEditorTextChange(value: string): void {
+    setEditorText(value);
+    if (!selectedBookmark || !selectedNoteName) {
+      return;
+    }
+
+    const currentIdentity = {
+      bookmark: selectedBookmark,
+      noteName: selectedNoteName,
+      token,
+    };
+    if (
+      noteQuery.data &&
+      noteQuery.data.bookmark === selectedBookmark &&
+      noteQuery.data.name === selectedNoteName &&
+      value === noteQuery.data.text
+    ) {
+      clearNotebookNoteDraft(currentIdentity);
+      return;
+    }
+
+    setNotebookNoteDraft(currentIdentity, value);
+  }
+
   function openNote(bookmark: string, noteName: string): void {
     setNoteNotice(null);
     if (bookmark === selectedBookmark) {
@@ -886,7 +964,11 @@ export function NotebookBrowsePanel() {
       name: draggedNoteName,
       sourceBookmark: selectedBookmark,
       targetBookmark: bookmarkName,
-      text: draggedNoteName === selectedNoteName && hasUnsavedChanges ? editorText : undefined,
+      text: getNotebookNoteDraft({
+        bookmark: selectedBookmark,
+        noteName: draggedNoteName,
+        token,
+      }),
     });
   }
 
@@ -1341,7 +1423,7 @@ export function NotebookBrowsePanel() {
               onDelete={handleDeleteNote}
               onRetry={() => void noteQuery.refetch()}
               onSave={handleSaveNote}
-              onTextChange={setEditorText}
+              onTextChange={handleEditorTextChange}
               reminderControl={
                 selectedNoteName ? (
                   <>
