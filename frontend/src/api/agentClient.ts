@@ -8,6 +8,7 @@ import {
   buildAgentNotebookNotePath,
   buildAgentNotebookNotesPath,
   buildAgentNotebookSearchPath,
+  buildAgentJenkinsAllureSkipCandidatesPath,
   buildAgentJenkinsBuildsPath,
   buildAgentJenkinsFolderPath,
   buildAgentJenkinsScopePath,
@@ -44,6 +45,8 @@ import type {
   DestroyRequest,
   E2eRunRequest,
   E2eSuitesResponse,
+  JenkinsAllureSkipCandidatesRequest,
+  JenkinsAllureSkipCandidatesResponse,
   JenkinsBuildsResponse,
   JenkinsFolderResponse,
   JenkinsFreezeRequest,
@@ -306,6 +309,24 @@ export function getJenkinsBuilds(
   );
 }
 
+export function getAllureSkipCandidates(
+  port: number,
+  token: string,
+  body: JenkinsAllureSkipCandidatesRequest,
+  signal?: AbortSignal
+): Promise<JenkinsAllureSkipCandidatesResponse> {
+  return readAgentJson<JenkinsAllureSkipCandidatesResponse>(
+    port,
+    buildAgentJenkinsAllureSkipCandidatesPath(),
+    createJsonBody({
+      product: body.product,
+      report_urls: body.reportUrls,
+    }),
+    token,
+    signal
+  );
+}
+
 export function getJenkinsFolder(
   port: number,
   token: string,
@@ -532,6 +553,7 @@ export const agentClient = {
   },
 
   freezeJenkinsFolder,
+  getAllureSkipCandidates,
   getJenkinsBuilds,
   getJenkinsFolder,
   getJenkinsScope,

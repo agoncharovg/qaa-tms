@@ -412,6 +412,7 @@ export const AgentPath = {
   JENKINS_TREE: "/jenkins/tree",
   JENKINS_BUILDS: "/jenkins/builds",
   JENKINS_FOLDER: "/jenkins/folder",
+  JENKINS_ALLURE_SKIP_CANDIDATES: "/jenkins/allure/skip-candidates",
   JENKINS_FREEZE: "/jenkins/freeze",
   JENKINS_RESUME: "/jenkins/resume",
   JENKINS_RESUME_RUN: "/jenkins/resume-run",
@@ -514,6 +515,10 @@ export function buildAgentJenkinsFolderPath(path: string): string {
   });
   return `${AgentPath.JENKINS_FOLDER}?${params.toString()}`;
 }
+export function buildAgentJenkinsAllureSkipCandidatesPath(): string {
+  return AgentPath.JENKINS_ALLURE_SKIP_CANDIDATES;
+}
+
 
 export function buildAgentNotebookNotesPath(bookmark: string): string {
   const params = new URLSearchParams({

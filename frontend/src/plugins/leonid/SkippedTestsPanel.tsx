@@ -3,11 +3,13 @@ import {
   Alert,
   Badge,
   Button,
+  Checkbox,
   Group,
   Loader,
   Modal,
   Pagination,
   Paper,
+  SegmentedControl,
   Select,
   Stack,
   Table,
@@ -19,8 +21,14 @@ import {
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { agentClient, discoverAgent } from "@/api/agentClient";
 import { backendClient } from "@/api/backendClient";
-import type { LeonidSkippedSuite, LeonidSkippedTest } from "@/api/types";
+import type {
+  JenkinsAllureSkipCandidate,
+  JenkinsAllureSkipCandidatesError,
+  LeonidSkippedSuite,
+  LeonidSkippedTest,
+} from "@/api/types";
 import { PRODUCT_OPTIONS, QueryKey } from "@/constants";
 import { useAuthStore } from "@/store/authStore";
 
@@ -28,14 +36,22 @@ const PAGE_SIZE = 20;
 const MAX_SKIP_DAYS = 7;
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
+type CreateInputMode = "manual" | "allure";
+type StatusFilter = "all" | "active" | "finished";
+
+interface ImportedCandidate extends JenkinsAllureSkipCandidate {
+  checked: boolean;
+}
+
 interface CreateFormState {
   reason: string;
   product: string;
   expiresAt: string;
   tests: string;
+  inputMode: CreateInputMode;
+  reportUrls: string[];
+  importedCandidates: ImportedCandidate[];
 }
-
-type StatusFilter = "all" | "active" | "finished";
 
 const STATUS_OPTIONS: { label: string; value: StatusFilter }[] = [
   { label: "All", value: "all" },
@@ -102,6 +118,26 @@ function parseTestsInput(value: string): LeonidSkippedTest[] {
   return tests;
 }
 
+function mergeTests(
+  manualTests: LeonidSkippedTest[],
+  importedCandidates: ImportedCandidate[]
+): LeonidSkippedTest[] {
+  const merged = new Map<string, LeonidSkippedTest>();
+
+  for (const test of manualTests) {
+    merged.set(test.full_name, test);
+  }
+
+  for (const candidate of importedCandidates) {
+    if (!candidate.checked) {
+      continue;
+    }
+    merged.set(candidate.full_name, { full_name: candidate.full_name });
+  }
+
+  return [...merged.values()];
+}
+
 function isFinishedSuite(suite: LeonidSkippedSuite): boolean {
   return suite.status === "expired" || suite.status === "cancelled";
 }
@@ -142,12 +178,24 @@ function getStatusLabel(suite: LeonidSkippedSuite): string {
   return "Active";
 }
 
+function isProductMismatch(expectedProduct: string, candidateProduct: string | null): boolean {
+  const normalizedExpected = expectedProduct.trim();
+  if (!normalizedExpected) {
+    return false;
+  }
+
+  return candidateProduct !== normalizedExpected;
+}
+
 function createEmptyForm(now: Date): CreateFormState {
   return {
     reason: "",
     product: "",
     expiresAt: createDefaultExpiry(now),
     tests: "",
+    inputMode: "manual",
+    reportUrls: [""],
+    importedCandidates: [],
   };
 }
 
@@ -161,6 +209,9 @@ export function SkippedTestsPanel() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<LeonidSkippedSuite | null>(null);
   const [createForm, setCreateForm] = useState<CreateFormState>(() => createEmptyForm(normalizeNow(new Date())));
+  const [allureAgentPort, setAllureAgentPort] = useState<number | null>(null);
+  const [allureLoadErrors, setAllureLoadErrors] = useState<JenkinsAllureSkipCandidatesError[]>([]);
+  const [allureLoadMessage, setAllureLoadMessage] = useState<string | null>(null);
 
   const suitesQuery = useQuery({
     queryFn: ({ signal }) => backendClient.listLeonidSkippedSuites(token, signal),
@@ -181,6 +232,8 @@ export function SkippedTestsPanel() {
       await invalidateSuites();
       const now = normalizeNow(new Date());
       setCreateForm(createEmptyForm(now));
+      setAllureLoadErrors([]);
+      setAllureLoadMessage(null);
       setCreateModalOpen(false);
     },
   });
@@ -193,24 +246,77 @@ export function SkippedTestsPanel() {
     },
   });
 
+  const loadAllureMutation = useMutation({
+    mutationFn: async () => {
+      const reportUrls = createForm.reportUrls.map((url) => url.trim()).filter((url) => url.length > 0);
+      if (reportUrls.length === 0) {
+        throw new Error("Enter at least one Allure report URL.");
+      }
+
+      let port = allureAgentPort;
+      if (port === null) {
+        const discovery = await discoverAgent();
+        if (!discovery) {
+          throw new Error("The local agent is unavailable. Use manual test entry instead.");
+        }
+        port = discovery.port;
+        setAllureAgentPort(discovery.port);
+      }
+
+      return agentClient.getAllureSkipCandidates(port, token, {
+        product: createForm.product.trim() || null,
+        reportUrls,
+      });
+    },
+    onMutate: () => {
+      setAllureLoadErrors([]);
+      setAllureLoadMessage(null);
+    },
+    onSuccess: (response) => {
+      setCreateForm((current) => ({
+        ...current,
+        importedCandidates: response.candidates.map((candidate) => ({ ...candidate, checked: true })),
+      }));
+      setAllureLoadErrors(response.errors);
+      setAllureLoadMessage(
+        response.candidates.length === 0 ? "No tests were found in the selected reports." : null
+      );
+    },
+    onError: (error) => {
+      setCreateForm((current) => ({
+        ...current,
+        importedCandidates: [],
+      }));
+      setAllureLoadErrors([]);
+      setAllureLoadMessage(formatError(error, "Unable to load Allure tests."));
+    },
+  });
+
   const now = normalizeNow(new Date());
   const maxExpiryDate = new Date(now.getTime() + MAX_SKIP_DAYS * DAY_IN_MS);
-  const parsedTests = parseTestsInput(createForm.tests);
+  const parsedManualTests = parseTestsInput(createForm.tests);
+  const mergedTests = mergeTests(
+    parsedManualTests,
+    createForm.inputMode === "allure" ? createForm.importedCandidates : []
+  );
+  const selectedImportedCount = createForm.importedCandidates.filter((candidate) => candidate.checked).length;
   const expiryDate = parseDate(createForm.expiresAt);
   const expiryTooEarly = expiryDate === null || expiryDate.getTime() <= now.getTime();
   const expiryTooLate = expiryDate !== null && expiryDate.getTime() > maxExpiryDate.getTime();
-  const createFormError =
-    createForm.tests.trim().length > 0 && parsedTests.length === 0
-      ? "Enter at least one test full name."
-      : expiryTooEarly
-        ? "Expiry must be in the future."
-        : expiryTooLate
-          ? "Expiry cannot be more than 7 days ahead."
-          : null;
+  const createFormError = expiryTooEarly
+    ? "Expiry must be in the future."
+    : expiryTooLate
+      ? "Expiry cannot be more than 7 days ahead."
+      : createForm.inputMode === "allure" &&
+          createForm.importedCandidates.length > 0 &&
+          selectedImportedCount === 0 &&
+          parsedManualTests.length === 0
+        ? "Select at least one imported test or add one manually."
+        : null;
   const createFormValid =
     createForm.reason.trim().length > 0 &&
     createForm.product.trim().length > 0 &&
-    parsedTests.length > 0 &&
+    mergedTests.length > 0 &&
     !expiryTooEarly &&
     !expiryTooLate;
 
@@ -262,7 +368,45 @@ export function SkippedTestsPanel() {
 
   function openCreateModal(): void {
     setCreateForm(createEmptyForm(normalizeNow(new Date())));
+    setAllureLoadErrors([]);
+    setAllureLoadMessage(null);
+    loadAllureMutation.reset();
     setCreateModalOpen(true);
+  }
+
+  function updateReportUrl(index: number, value: string): void {
+    setCreateForm((current) => ({
+      ...current,
+      reportUrls: current.reportUrls.map((reportUrl, reportIndex) =>
+        reportIndex === index ? value : reportUrl
+      ),
+    }));
+  }
+
+  function addReportUrl(): void {
+    setCreateForm((current) => ({
+      ...current,
+      reportUrls: [...current.reportUrls, ""],
+    }));
+  }
+
+  function removeReportUrl(index: number): void {
+    setCreateForm((current) => ({
+      ...current,
+      reportUrls:
+        current.reportUrls.length > 1
+          ? current.reportUrls.filter((_, reportIndex) => reportIndex !== index)
+          : [""],
+    }));
+  }
+
+  function toggleImportedCandidate(fullName: string, checked: boolean): void {
+    setCreateForm((current) => ({
+      ...current,
+      importedCandidates: current.importedCandidates.map((candidate) =>
+        candidate.full_name === fullName ? { ...candidate, checked } : candidate
+      ),
+    }));
   }
 
   function submitCreate(): void {
@@ -274,7 +418,7 @@ export function SkippedTestsPanel() {
       reason: createForm.reason.trim(),
       product: createForm.product.trim(),
       expires_at: expiryDate.toISOString(),
-      tests: parsedTests,
+      tests: mergedTests,
     });
   }
 
@@ -480,9 +624,167 @@ export function SkippedTestsPanel() {
             type="datetime-local"
             value={createForm.expiresAt}
           />
+          <Stack gap={4}>
+            <Text fw={500} size="sm">
+              Populate tests
+            </Text>
+            <SegmentedControl
+              data={[
+                { label: "Manual", value: "manual" },
+                { label: "From Allure", value: "allure" },
+              ]}
+              fullWidth
+              onChange={(value) =>
+                setCreateForm((current) => ({
+                  ...current,
+                  inputMode: value as CreateInputMode,
+                }))
+              }
+              value={createForm.inputMode}
+            />
+          </Stack>
+
+          {createForm.inputMode === "allure" ? (
+            <Stack gap="sm">
+              <Text c="dimmed" size="sm">
+                Load one or more published Allure reports, then uncheck unrelated flaky tests before saving.
+              </Text>
+              {createForm.reportUrls.map((reportUrl, index) => (
+                <Group align="end" key={`${index}-${createForm.reportUrls.length}`}>
+                  <TextInput
+                    aria-label={`Report URL ${index + 1}`}
+                    label={index === 0 ? "Report URLs" : undefined}
+                    onChange={(event) => updateReportUrl(index, event.target.value)}
+                    placeholder="https://jenkins.../42/allure/"
+                    style={{ flex: 1 }}
+                    value={reportUrl}
+                  />
+                  <Button onClick={addReportUrl} size="xs" variant="default">
+                    Add URL
+                  </Button>
+                  <Button
+                    disabled={createForm.reportUrls.length === 1}
+                    onClick={() => removeReportUrl(index)}
+                    size="xs"
+                    variant="default"
+                  >
+                    Remove
+                  </Button>
+                </Group>
+              ))}
+              <Group justify="space-between">
+                <Text c="dimmed" size="sm">
+                  Loaded {selectedImportedCount} of {createForm.importedCandidates.length} imported tests.
+                </Text>
+                <Button
+                  disabled={createForm.reportUrls.every((url) => url.trim().length === 0)}
+                  loading={loadAllureMutation.isPending}
+                  onClick={() => loadAllureMutation.mutate()}
+                  size="xs"
+                  variant="light"
+                >
+                  Load tests
+                </Button>
+              </Group>
+
+              {loadAllureMutation.isPending ? (
+                <Group>
+                  <Loader size="sm" />
+                  <Text c="dimmed" size="sm">
+                    Loading tests from Allure.
+                  </Text>
+                </Group>
+              ) : null}
+
+              {loadAllureMutation.isError && allureLoadMessage ? (
+                <Alert color="red" title="Allure import failed">
+                  {allureLoadMessage}
+                </Alert>
+              ) : null}
+
+              {!loadAllureMutation.isError && allureLoadErrors.length > 0 ? (
+                <Alert color="yellow" title="Some reports could not be imported">
+                  <Stack gap={4}>
+                    {allureLoadErrors.map((error) => (
+                      <Text key={`${error.report_url}-${error.message}`} size="sm">
+                        {error.report_url}: {error.message}
+                      </Text>
+                    ))}
+                  </Stack>
+                </Alert>
+              ) : null}
+
+              {!loadAllureMutation.isError && allureLoadMessage ? (
+                <Text c="dimmed" size="sm">
+                  {allureLoadMessage}
+                </Text>
+              ) : null}
+
+              {createForm.importedCandidates.length > 0 ? (
+                <Table highlightOnHover striped withTableBorder>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Use</Table.Th>
+                      <Table.Th>Test</Table.Th>
+                      <Table.Th>Product</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {createForm.importedCandidates.map((candidate) => {
+                      const mismatch = isProductMismatch(createForm.product, candidate.product);
+                      return (
+                        <Table.Tr
+                          data-product-mismatch={mismatch ? "true" : "false"}
+                          key={candidate.full_name}
+                          style={{
+                            backgroundColor: mismatch ? "rgba(250, 82, 82, 0.08)" : undefined,
+                          }}
+                        >
+                          <Table.Td>
+                            <Checkbox
+                              aria-label={`Include test ${candidate.full_name}`}
+                              checked={candidate.checked}
+                              onChange={(event) =>
+                                toggleImportedCandidate(candidate.full_name, event.currentTarget.checked)
+                              }
+                            />
+                          </Table.Td>
+                          <Table.Td>
+                            <Stack gap={2}>
+                              <Text size="sm">{candidate.full_name}</Text>
+                              <Text c="dimmed" size="xs">
+                                {candidate.name}
+                              </Text>
+                            </Stack>
+                          </Table.Td>
+                          <Table.Td>
+                            <Group gap="xs">
+                              <Badge color={mismatch ? "red" : "gray"} variant="light">
+                                {candidate.product ?? "Unknown"}
+                              </Badge>
+                              {mismatch ? (
+                                <Badge color="yellow" variant="light">
+                                  Mismatch
+                                </Badge>
+                              ) : null}
+                            </Group>
+                          </Table.Td>
+                        </Table.Tr>
+                      );
+                    })}
+                  </Table.Tbody>
+                </Table>
+              ) : null}
+            </Stack>
+          ) : null}
+
           <Textarea
-            description="One test full name per line."
-            label="Tests"
+            description={
+              createForm.inputMode === "allure"
+                ? "Optional. These full names will be merged with the checked imported tests."
+                : "One test full name per line."
+            }
+            label={createForm.inputMode === "allure" ? "Manual additions" : "Tests"}
             minRows={6}
             onChange={(event) => setCreateForm((current) => ({ ...current, tests: event.target.value }))}
             placeholder={"tests.api.test_example#test_case\nother.module#test_case"}
@@ -493,17 +795,22 @@ export function SkippedTestsPanel() {
               {createFormError}
             </Alert>
           ) : null}
-          <Group justify="flex-end">
-            <Button onClick={() => setCreateModalOpen(false)} variant="default">
-              Cancel
-            </Button>
-            <Button
-              disabled={!createFormValid}
-              loading={createMutation.isPending}
-              onClick={submitCreate}
-            >
-              Save
-            </Button>
+          <Group justify="space-between">
+            <Text c="dimmed" size="sm">
+              {mergedTests.length} unique tests will be saved.
+            </Text>
+            <Group>
+              <Button onClick={() => setCreateModalOpen(false)} variant="default">
+                Cancel
+              </Button>
+              <Button
+                disabled={!createFormValid}
+                loading={createMutation.isPending}
+                onClick={submitCreate}
+              >
+                Save
+              </Button>
+            </Group>
           </Group>
         </Stack>
       </Modal>
@@ -532,3 +839,4 @@ export function SkippedTestsPanel() {
     </Stack>
   );
 }
+

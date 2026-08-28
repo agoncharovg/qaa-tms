@@ -50,6 +50,8 @@ from app.schemas import (
     E2eRunRequest,
     E2eSuite,
     E2eSuitesResponse,
+    JenkinsAllureSkipCandidatesRequest,
+    JenkinsAllureSkipCandidatesResponse,
     JenkinsBuildsResponse,
     JenkinsFolderResponse,
     JenkinsFreezeRequest,
@@ -96,9 +98,11 @@ from app.schemas import (
 )
 from app.services.e2e import list_e2e_suites
 from app.services.jenkins import (
+    JenkinsAllureReportError,
     JenkinsNotConfiguredError,
     JenkinsPathOutOfScopeError,
     JenkinsUnreachableError,
+    fetch_allure_skip_candidates,
     fetch_builds,
     fetch_folder,
     fetch_tree,
@@ -716,6 +720,38 @@ async def get_jenkins_folder(
             detail=str(exc),
         ) from exc
     return JenkinsFolderResponse(roots=roots)
+
+
+@router.post(
+    AgentPath.JENKINS_ALLURE_SKIP_CANDIDATES.value,
+    response_model=JenkinsAllureSkipCandidatesResponse,
+)
+async def post_jenkins_allure_skip_candidates(
+    request_body: JenkinsAllureSkipCandidatesRequest,
+    _: JenkinsReadAuth,
+    settings: SettingsDep,
+) -> JenkinsAllureSkipCandidatesResponse:
+    try:
+        return await fetch_allure_skip_candidates(
+            settings,
+            request_body.report_urls,
+            product=request_body.product,
+        )
+    except JenkinsNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except (JenkinsAllureReportError, JenkinsPathOutOfScopeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except JenkinsUnreachableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
 
 
 @router.post(AgentPath.JENKINS_FREEZE.value, response_model=JenkinsFreezeResponse)

@@ -720,6 +720,43 @@ class JenkinsBuildsResponse(BaseModel):
     builds: list[JenkinsBuild] = Field(default_factory=list)
 
 
+class JenkinsAllureSkipCandidate(BaseModel):
+    """Candidate test imported from one or more Allure reports."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: str
+    name: str
+    product: str | None = None
+
+
+class JenkinsAllureSkipCandidatesError(BaseModel):
+    """Per-report import error returned alongside partial Allure results."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    report_url: str
+    message: str
+
+
+class JenkinsAllureSkipCandidatesRequest(BaseModel):
+    """`/jenkins/allure/skip-candidates` request body."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    report_urls: list[str] = Field(min_length=1)
+    product: str | None = None
+
+
+class JenkinsAllureSkipCandidatesResponse(BaseModel):
+    """`/jenkins/allure/skip-candidates` response body."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    candidates: list[JenkinsAllureSkipCandidate] = Field(default_factory=list)
+    errors: list[JenkinsAllureSkipCandidatesError] = Field(default_factory=list)
+
+
 class JenkinsFreezeSnapshotItem(BaseModel):
     """Per-pipeline state captured at freeze time."""
 

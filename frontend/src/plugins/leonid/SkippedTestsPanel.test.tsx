@@ -8,7 +8,17 @@ const backendClientMock = vi.hoisted(() => ({
   listLeonidSkippedSuites: vi.fn(),
 }));
 
+const agentClientMock = vi.hoisted(() => ({
+  getAllureSkipCandidates: vi.fn(),
+}));
+
+const discoverAgentMock = vi.hoisted(() => vi.fn());
+
 vi.mock("@/api/backendClient", () => ({ backendClient: backendClientMock }));
+vi.mock("@/api/agentClient", () => ({
+  agentClient: agentClientMock,
+  discoverAgent: discoverAgentMock,
+}));
 
 import { SkippedTestsPanel } from "@/plugins/leonid/SkippedTestsPanel";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
@@ -16,6 +26,8 @@ import { renderWithProviders } from "@/test/render";
 
 const TOKEN = "test-token";
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const AGENT_PORT = 47600;
+const REPORT_URL = "https://jenkins.p.gc.onl/job/.QAA/job/E2E/job/PREPROD/job/Smoke/42/allure/";
 
 function toLocalDateTimeInputValue(date: Date): string {
   const year = date.getFullYear();
@@ -77,6 +89,37 @@ describe("SkippedTestsPanel", () => {
     ]);
     backendClientMock.createLeonidSkippedSuite.mockResolvedValue({});
     backendClientMock.cancelLeonidSkippedSuite.mockResolvedValue({});
+    discoverAgentMock.mockResolvedValue({
+      agent: {
+        app: "qaa-tms-agent",
+        os: "linux",
+        selfUpdateSupported: true,
+        stagingsInstalled: false,
+        stagingsSha: null,
+        version: "0.2.0",
+      },
+      port: AGENT_PORT,
+    });
+    agentClientMock.getAllureSkipCandidates.mockResolvedValue({
+      candidates: [
+        {
+          full_name: "tests.billing.test_payments#test_retry",
+          name: "test_retry",
+          product: "Billing",
+        },
+        {
+          full_name: "tests.iam.test_auth#test_cross_product",
+          name: "test_cross_product",
+          product: "IAM",
+        },
+      ],
+      errors: [
+        {
+          report_url: REPORT_URL,
+          message: "Report does not expose Allure suites.json.",
+        },
+      ],
+    });
   });
 
   it("renders suites with status metadata and expiring-soon highlight", async () => {
@@ -136,43 +179,99 @@ describe("SkippedTestsPanel", () => {
     expect(screen.getByRole("button", { name: "Add skipped suite" })).toBeInTheDocument();
   });
 
-  it(
-    "creates a skipped suite with parsed tests and without author field",
-    async () => {
-      const user = userEvent.setup();
-      renderWithProviders(<SkippedTestsPanel />);
-      await screen.findByText("owner@example.com");
+  it("creates a skipped suite with parsed tests and without author field", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<SkippedTestsPanel />);
+    await screen.findByText("owner@example.com");
 
-      await user.click(screen.getByRole("button", { name: "Add skipped suite" }));
-      const dialog = await screen.findByRole("dialog");
-      await user.type(within(dialog).getByLabelText("Reason"), "Temporary skip");
-      await user.click(within(dialog).getByLabelText("Product"));
-      await user.click(await screen.findByRole("option", { name: "Billing" }));
-      await user.clear(within(dialog).getByLabelText("Tests"));
-      await user.type(
-        within(dialog).getByLabelText("Tests"),
-        "tests.billing.test_payments#test_retry\n\n tests.billing.test_payments#test_refund \n tests.billing.test_payments#test_retry"
-      );
-      await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    await user.click(screen.getByRole("button", { name: "Add skipped suite" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText("Reason"), "Temporary skip");
+    await user.click(within(dialog).getByLabelText("Product"));
+    await user.click(await screen.findByRole("option", { name: "Billing" }));
+    await user.clear(within(dialog).getByLabelText("Tests"));
+    await user.type(
+      within(dialog).getByLabelText("Tests"),
+      "tests.billing.test_payments#test_retry\n\n tests.billing.test_payments#test_refund \n tests.billing.test_payments#test_retry"
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
 
-      expect(backendClientMock.createLeonidSkippedSuite).toHaveBeenCalledTimes(1);
-      expect(backendClientMock.createLeonidSkippedSuite).toHaveBeenCalledWith(
-        TOKEN,
-        expect.objectContaining({
-          reason: "Temporary skip",
-          product: "Billing",
-          tests: [
-            { full_name: "tests.billing.test_payments#test_retry" },
-            { full_name: "tests.billing.test_payments#test_refund" },
-          ],
-        })
-      );
-      expect(backendClientMock.createLeonidSkippedSuite.mock.calls[0][1]).not.toHaveProperty(
-        "author"
-      );
-    },
-    10_000
-  );
+    expect(backendClientMock.createLeonidSkippedSuite).toHaveBeenCalledTimes(1);
+    expect(backendClientMock.createLeonidSkippedSuite).toHaveBeenCalledWith(
+      TOKEN,
+      expect.objectContaining({
+        reason: "Temporary skip",
+        product: "Billing",
+        tests: [
+          { full_name: "tests.billing.test_payments#test_retry" },
+          { full_name: "tests.billing.test_payments#test_refund" },
+        ],
+      })
+    );
+    expect(backendClientMock.createLeonidSkippedSuite.mock.calls[0][1]).not.toHaveProperty("author");
+  }, 10_000);
+
+  it("loads imported Allure candidates, flags mismatches, and saves only checked tests plus manual ones", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<SkippedTestsPanel />);
+    await screen.findByText("owner@example.com");
+
+    await user.click(screen.getByRole("button", { name: "Add skipped suite" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText("Reason"), "Imported skip");
+    await user.click(within(dialog).getByLabelText("Product"));
+    await user.click(await screen.findByRole("option", { name: "Billing" }));
+    await user.click(within(dialog).getByText("From Allure"));
+    await user.type(within(dialog).getByLabelText("Report URL 1"), REPORT_URL);
+    await user.click(within(dialog).getByRole("button", { name: "Load tests" }));
+
+    expect(discoverAgentMock).toHaveBeenCalledTimes(1);
+    expect(agentClientMock.getAllureSkipCandidates).toHaveBeenCalledWith(
+      AGENT_PORT,
+      TOKEN,
+      {
+        product: "Billing",
+        reportUrls: [REPORT_URL],
+      }
+    );
+
+    expect(await within(dialog).findByText("tests.billing.test_payments#test_retry")).toBeInTheDocument();
+    const importedCheckbox = within(dialog).getByRole("checkbox", {
+      name: "Include test tests.billing.test_payments#test_retry",
+    });
+    expect(importedCheckbox).toBeChecked();
+
+    const mismatchRow = within(dialog)
+      .getByText("tests.iam.test_auth#test_cross_product")
+      .closest("tr") as HTMLElement;
+    expect(mismatchRow).toHaveAttribute("data-product-mismatch", "true");
+    expect(within(mismatchRow).getByText("Mismatch")).toBeInTheDocument();
+    await user.click(
+      within(dialog).getByRole("checkbox", {
+        name: "Include test tests.iam.test_auth#test_cross_product",
+      })
+    );
+
+    expect(await within(dialog).findByText("Some reports could not be imported")).toBeInTheDocument();
+    expect(within(dialog).getByText(`${REPORT_URL}: Report does not expose Allure suites.json.`)).toBeInTheDocument();
+
+    await user.type(
+      within(dialog).getByLabelText("Manual additions"),
+      "tests.billing.test_payments#test_retry\ntests.billing.test_payments#test_manual"
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(backendClientMock.createLeonidSkippedSuite).toHaveBeenCalledWith(
+      TOKEN,
+      expect.objectContaining({
+        reason: "Imported skip",
+        product: "Billing",
+        tests: [
+          { full_name: "tests.billing.test_payments#test_retry" },
+          { full_name: "tests.billing.test_payments#test_manual" },
+        ],
+      })
+    );
+  });
 
   it("blocks creation when expiry exceeds the 7 day limit", async () => {
     const user = userEvent.setup();
@@ -208,3 +307,4 @@ describe("SkippedTestsPanel", () => {
     expect(backendClientMock.cancelLeonidSkippedSuite).toHaveBeenCalledWith(TOKEN, 3);
   });
 });
+

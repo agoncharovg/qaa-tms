@@ -34,8 +34,17 @@ from app.core.constants import (
     JenkinsResumeResult,
     JenkinsResumeRunStatus,
     JenkinsStatus,
+    Product,
 )
-from app.schemas import JenkinsBuild, JenkinsFreezeSnapshotItem, JenkinsNode, JenkinsResumeOutcome
+from app.schemas import (
+    JenkinsAllureSkipCandidate,
+    JenkinsAllureSkipCandidatesError,
+    JenkinsAllureSkipCandidatesResponse,
+    JenkinsBuild,
+    JenkinsFreezeSnapshotItem,
+    JenkinsNode,
+    JenkinsResumeOutcome,
+)
 from app.services.backend import get_jenkins_resume_run, put_jenkins_resume_progress
 
 logger = logging.getLogger(__name__)
@@ -86,6 +95,17 @@ LAST_BUILD_PARAMS_TREE = "actions[parameters[name,value]]"
 ACTIONS_KEY = "actions"
 PARAMETERS_KEY = "parameters"
 VALUE_KEY = "value"
+ALLURE_PATH_SEGMENT = JenkinsApiPath.ALLURE_SUFFIX.value.strip(PATH_SEPARATOR)
+ALLURE_INDEX_NAME = "index.html"
+ALLURE_SUITES_PATH = "data/suites.json"
+ALLURE_TEST_CASES_DIR = "data/test-cases"
+ALLURE_FULL_NAME_KEY = "fullName"
+ALLURE_LABELS_KEY = "labels"
+ALLURE_UID_KEY = "uid"
+ALLURE_CHILDREN_KEY = "children"
+ALLURE_PRODUCT_LABEL_NAME = "product"
+ALLURE_TAG_LABEL_NAME = "tag"
+ALLURE_PRODUCT_TAG_PREFIX = "product_"
 JOB_PATH_PREFIX = "job/"
 FULLNAME_SEPARATOR = "/"
 SCHEDULED_NAME_HINT = "scheduled"
@@ -204,6 +224,11 @@ class JenkinsUnreachableError(RuntimeError):
 
 class JenkinsPathOutOfScopeError(ValueError):
     """Raised when a requested job path escapes the allowed Jenkins subtree."""
+
+
+class JenkinsAllureReportError(ValueError):
+    """Raised when an Allure report cannot be normalized, fetched, or parsed."""
+
 
 
 def require_configured(settings: Settings) -> None:
@@ -396,6 +421,64 @@ def validate_job_path(settings: Settings, path: str) -> str:
         raise JenkinsPathOutOfScopeError(ErrorMessage.JENKINS_PATH_OUT_OF_SCOPE.value)
 
     return normalized_path
+
+async def fetch_allure_skip_candidates(
+    settings: Settings,
+    report_urls: list[str],
+    *,
+    product: str | None = None,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> JenkinsAllureSkipCandidatesResponse:
+    """Fetch and deduplicate candidate tests from one or more published Allure reports."""
+
+    require_configured(settings)
+    _ = product
+    candidates_by_full_name: dict[str, JenkinsAllureSkipCandidate] = {}
+    errors: list[JenkinsAllureSkipCandidatesError] = []
+
+    for report_url in report_urls:
+        normalized_report_url = report_url.strip()
+        try:
+            normalized_report_url = _normalize_allure_report_url(settings, report_url)
+            report_candidates = await _fetch_allure_skip_candidates_for_report(
+                settings,
+                normalized_report_url,
+                transport=transport,
+            )
+        except (JenkinsAllureReportError, JenkinsPathOutOfScopeError) as exc:
+            errors.append(
+                JenkinsAllureSkipCandidatesError(
+                    report_url=normalized_report_url,
+                    message=str(exc),
+                )
+            )
+            continue
+
+        for candidate in report_candidates:
+            existing = candidates_by_full_name.get(candidate.full_name)
+            if existing is None:
+                candidates_by_full_name[candidate.full_name] = candidate
+                continue
+            if existing.product is None and candidate.product is not None:
+                candidates_by_full_name[candidate.full_name] = existing.model_copy(
+                    update={"product": candidate.product}
+                )
+
+    if not candidates_by_full_name:
+        if errors:
+            details = "; ".join(
+                f"{error.report_url}: {error.message}" for error in errors
+            )
+            raise JenkinsAllureReportError(
+                f"Failed to load Allure skip candidates. {details}"
+            )
+        raise JenkinsAllureReportError("Allure reports did not return any test candidates.")
+
+    return JenkinsAllureSkipCandidatesResponse(
+        candidates=list(candidates_by_full_name.values()),
+        errors=errors,
+    )
+
 
 
 async def fetch_tree(
@@ -993,6 +1076,204 @@ async def run_resume_campaign(
             # Pause only between pipelines, not after the last one.
             if next_item is not None:
                 await asyncio.sleep(settings.jenkins_resume_pause_seconds)
+
+
+
+def _normalize_allure_report_url(settings: Settings, report_url: str) -> str:
+    raw_report_url = report_url.strip()
+    if not raw_report_url:
+        raise JenkinsAllureReportError("Report URL cannot be empty.")
+
+    parsed = urlsplit(raw_report_url)
+    configured_base = urlsplit(settings.jenkins_url)
+    if parsed.scheme or parsed.netloc:
+        if parsed.scheme != configured_base.scheme or parsed.netloc != configured_base.netloc:
+            raise JenkinsPathOutOfScopeError(ErrorMessage.JENKINS_PATH_OUT_OF_SCOPE.value)
+        normalized_path = parsed.path.strip(PATH_SEPARATOR)
+    else:
+        normalized_path = raw_report_url.strip(PATH_SEPARATOR)
+
+    if (
+        not normalized_path
+        or parsed.query
+        or parsed.fragment
+        or URL_SCHEME_SEPARATOR in normalized_path
+        or any(part == ".." for part in normalized_path.split(PATH_SEPARATOR))
+    ):
+        raise JenkinsAllureReportError("Report URL is invalid.")
+
+    segments = [segment for segment in normalized_path.split(PATH_SEPARATOR) if segment]
+    if segments and segments[-1] == ALLURE_INDEX_NAME:
+        segments = segments[:-1]
+    if ALLURE_PATH_SEGMENT in segments:
+        allure_index = segments.index(ALLURE_PATH_SEGMENT)
+        segments = segments[: allure_index + 1]
+    else:
+        segments.append(ALLURE_PATH_SEGMENT)
+
+    report_path = validate_job_path(settings, PATH_SEPARATOR.join(segments))
+    return f"{settings.jenkins_url.rstrip(PATH_SEPARATOR)}/{report_path.rstrip(PATH_SEPARATOR)}/"
+
+
+async def _fetch_allure_skip_candidates_for_report(
+    settings: Settings,
+    report_url: str,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> list[JenkinsAllureSkipCandidate]:
+    suites_payload = await _fetch_allure_json(
+        settings,
+        f"{report_url}{ALLURE_SUITES_PATH}",
+        not_found_message="Report does not expose Allure suites.json.",
+        parse_message="Allure suites.json returned invalid JSON.",
+        transport=transport,
+    )
+    suite_tests = _collect_allure_leaf_tests(suites_payload)
+    candidates = await asyncio.gather(
+        *(
+            _parse_allure_test_case(
+                settings,
+                report_url,
+                uid,
+                name,
+                transport=transport,
+            )
+            for uid, name in suite_tests
+        )
+    )
+    return list(candidates)
+
+
+async def _fetch_allure_json(
+    settings: Settings,
+    url: str,
+    *,
+    not_found_message: str,
+    parse_message: str,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> Any:
+    try:
+        async with _jenkins_client(settings, transport=transport) as client:
+            response = await client.get(
+                url,
+                headers={HeaderName.ACCEPT.value: HeaderValue.APPLICATION_JSON.value},
+            )
+            response.raise_for_status()
+            return response.json() if response.content else {}
+    except httpx.TimeoutException as exc:
+        logger.warning("Jenkins request timed out: url=%s", url)
+        raise JenkinsUnreachableError(ErrorMessage.JENKINS_UNREACHABLE.value) from exc
+    except httpx.HTTPStatusError as exc:
+        logger.warning(
+            "Allure report request failed: status=%s url=%s",
+            exc.response.status_code,
+            exc.request.url,
+        )
+        if exc.response.status_code == httpx.codes.NOT_FOUND:
+            raise JenkinsAllureReportError(not_found_message) from exc
+        raise JenkinsAllureReportError(
+            f"Allure report request failed with status {exc.response.status_code}."
+        ) from exc
+    except httpx.HTTPError as exc:
+        logger.warning("Jenkins request failed: url=%s error=%s", url, exc)
+        raise JenkinsUnreachableError(ErrorMessage.JENKINS_UNREACHABLE.value) from exc
+    except ValueError as exc:
+        logger.warning("Allure report returned invalid JSON: url=%s", url)
+        raise JenkinsAllureReportError(parse_message) from exc
+
+
+def _collect_allure_leaf_tests(payload: Any) -> list[tuple[str, str | None]]:
+    tests: list[tuple[str, str | None]] = []
+    seen_uids: set[str] = set()
+    _walk_allure_nodes(payload, tests, seen_uids)
+    if not tests:
+        raise JenkinsAllureReportError("Allure suites.json does not contain any test cases.")
+    return tests
+
+
+def _walk_allure_nodes(
+    payload: Any,
+    tests: list[tuple[str, str | None]],
+    seen_uids: set[str],
+) -> None:
+    if isinstance(payload, list):
+        for item in payload:
+            _walk_allure_nodes(item, tests, seen_uids)
+        return
+    if not isinstance(payload, Mapping):
+        return
+
+    children = _read_object_list(payload, ALLURE_CHILDREN_KEY)
+    uid = _read_optional_string(payload, ALLURE_UID_KEY)
+    name = _read_optional_string(payload, NAME_KEY)
+    if children:
+        for child in children:
+            _walk_allure_nodes(child, tests, seen_uids)
+        return
+    if uid and uid not in seen_uids:
+        seen_uids.add(uid)
+        tests.append((uid, name))
+        return
+
+    for value in payload.values():
+        if isinstance(value, (list, dict)):
+            _walk_allure_nodes(value, tests, seen_uids)
+
+
+async def _parse_allure_test_case(
+    settings: Settings,
+    report_url: str,
+    uid: str,
+    name: str | None,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> JenkinsAllureSkipCandidate:
+    payload = await _fetch_allure_json(
+        settings,
+        f"{report_url}{ALLURE_TEST_CASES_DIR}/{uid}.json",
+        not_found_message=f"Allure report is missing test case details for uid {uid}.",
+        parse_message=f"Allure test case {uid} returned invalid JSON.",
+        transport=transport,
+    )
+    if not isinstance(payload, Mapping):
+        raise JenkinsAllureReportError(f"Allure test case {uid} is invalid.")
+
+    full_name = _read_optional_string(payload, ALLURE_FULL_NAME_KEY)
+    if not full_name:
+        raise JenkinsAllureReportError(f"Allure test case {uid} is missing fullName.")
+
+    return JenkinsAllureSkipCandidate(
+        full_name=full_name,
+        name=name or _read_optional_string(payload, NAME_KEY) or full_name,
+        product=_extract_allure_product(payload),
+    )
+
+
+def _extract_allure_product(payload: Mapping[str, Any]) -> str | None:
+    for label in _read_object_list(payload, ALLURE_LABELS_KEY):
+        label_name = (_read_optional_string(label, NAME_KEY) or "").casefold()
+        label_value = _read_optional_string(label, VALUE_KEY)
+        if not label_value:
+            continue
+        if label_name == ALLURE_PRODUCT_LABEL_NAME:
+            return _normalize_allure_product_name(label_value)
+        if (
+            label_name == ALLURE_TAG_LABEL_NAME
+            and label_value.startswith(ALLURE_PRODUCT_TAG_PREFIX)
+        ):
+            return _normalize_allure_product_name(
+                label_value.removeprefix(ALLURE_PRODUCT_TAG_PREFIX)
+            )
+    return None
+
+
+def _normalize_allure_product_name(value: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        return value
+
+    known_products = {product.value.casefold(): product.value for product in Product}
+    return known_products.get(normalized.casefold(), normalized)
 
 
 def _extract_script_json_list(body: str) -> list[dict[str, Any]]:

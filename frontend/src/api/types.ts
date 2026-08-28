@@ -191,6 +191,27 @@ export interface AgentSettingsUpdate {
   kubectl_request_timeout?: string;
 }
 
+export interface JenkinsAllureSkipCandidatesRequest {
+  reportUrls: string[];
+  product: string | null;
+}
+
+export interface JenkinsAllureSkipCandidate {
+  full_name: string;
+  name: string;
+  product: string | null;
+}
+
+export interface JenkinsAllureSkipCandidatesError {
+  report_url: string;
+  message: string;
+}
+
+export interface JenkinsAllureSkipCandidatesResponse {
+  candidates: JenkinsAllureSkipCandidate[];
+  errors: JenkinsAllureSkipCandidatesError[];
+}
+
 export interface NotebookBookmarkNode {
   name: string;
   noteCount: number;

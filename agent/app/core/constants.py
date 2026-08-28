@@ -19,6 +19,7 @@ class AgentPath(StrEnum):
     JENKINS_TREE = "/jenkins/tree"
     JENKINS_BUILDS = "/jenkins/builds"
     JENKINS_FOLDER = "/jenkins/folder"
+    JENKINS_ALLURE_SKIP_CANDIDATES = "/jenkins/allure/skip-candidates"
     JENKINS_FREEZE = "/jenkins/freeze"
     JENKINS_RESUME = "/jenkins/resume"
     JENKINS_RESUME_RUN = "/jenkins/resume-run"

@@ -21,14 +21,16 @@ from app.core.constants import (
     JenkinsStatus,
 )
 from app.main import create_app
-from app.schemas import JenkinsFreezeSnapshotItem
+from app.schemas import JenkinsAllureSkipCandidatesResponse, JenkinsFreezeSnapshotItem
 from app.services.jenkins import (
     RESUME_SCRIPT_TEMPLATE,
+    JenkinsAllureReportError,
     JenkinsPathOutOfScopeError,
     JenkinsUnreachableError,
     _map_build,
     _map_node,
     derive_status,
+    fetch_allure_skip_candidates,
     fetch_builds,
     fetch_folder,
     fetch_scheduled_paths,
@@ -338,6 +340,39 @@ def build_fe_tree_payload() -> dict[str, Any]:
                 "url": f"{JENKINS_BASE_URL}/{PROD_FE_PATH}/",
             },
         ]
+    }
+
+
+
+def build_allure_suites_payload(*uids: str) -> dict[str, Any]:
+    return {
+        "children": [
+            {
+                "children": [
+                    {"name": f"test-{index}", "status": "passed", "uid": uid}
+                    for index, uid in enumerate(uids, start=1)
+                ],
+                "name": "Suite",
+            }
+        ],
+        "name": "Root",
+        "uid": "suite-root",
+    }
+
+
+def build_allure_test_case_payload(
+    full_name: str,
+    *,
+    name: str,
+    product_label: str | None,
+) -> dict[str, Any]:
+    labels = []
+    if product_label is not None:
+        labels.append({"name": "tag", "value": product_label})
+    return {
+        "fullName": full_name,
+        "labels": labels,
+        "name": name,
     }
 
 
@@ -897,6 +932,206 @@ def test_validate_job_path_accepts_only_allowed_root_scope() -> None:
         match=ErrorMessage.JENKINS_PATH_OUT_OF_SCOPE.value,
     ):
         validate_job_path(settings, f"{PIPELINE_PATH}/../escape")
+
+
+
+async def test_fetch_allure_skip_candidates_collects_full_names_and_dedupes() -> None:
+    settings = build_settings()
+    requests: list[tuple[str, str | None]] = []
+    report_one = f"{JENKINS_BASE_URL}/{PIPELINE_PATH}/42/allure/"
+    report_two = f"{JENKINS_BASE_URL}/{PIPELINE_PATH}/43/allure/index.html"
+
+    response = await fetch_allure_skip_candidates(
+        settings,
+        [report_one, report_two],
+        product="Billing",
+        transport=build_transport(
+            {
+                f"{PIPELINE_PATH}/42/allure/data/suites.json": build_allure_suites_payload(
+                    "billing-1",
+                    "shared-1",
+                ),
+                (
+                    f"{PIPELINE_PATH}/42/allure/data/test-cases/billing-1.json"
+                ): build_allure_test_case_payload(
+                    "tests.billing.test_payments#test_retry",
+                    name="test_retry",
+                    product_label="product_billing",
+                ),
+                (
+                    f"{PIPELINE_PATH}/42/allure/data/test-cases/shared-1.json"
+                ): build_allure_test_case_payload(
+                    "tests.shared.test_api#test_shared",
+                    name="test_shared",
+                    product_label=None,
+                ),
+                (
+                    f"{PIPELINE_PATH}/43/allure/data/suites.json"
+                ): build_allure_suites_payload("shared-2"),
+                (
+                    f"{PIPELINE_PATH}/43/allure/data/test-cases/shared-2.json"
+                ): build_allure_test_case_payload(
+                    "tests.shared.test_api#test_shared",
+                    name="test_shared_again",
+                    product_label="product_iam",
+                ),
+            },
+            requests,
+        ),
+    )
+
+    assert [candidate.full_name for candidate in response.candidates] == [
+        "tests.billing.test_payments#test_retry",
+        "tests.shared.test_api#test_shared",
+    ]
+    assert response.candidates[0].product == "Billing"
+    assert response.candidates[1].product == "IAM"
+    assert response.errors == []
+    assert any(
+        request[0] == f"{JENKINS_BASE_URL}/{PIPELINE_PATH}/43/allure/data/suites.json"
+        for request in requests
+    )
+
+
+async def test_fetch_allure_skip_candidates_returns_partial_errors() -> None:
+    settings = build_settings()
+    response = await fetch_allure_skip_candidates(
+        settings,
+        [
+            f"{JENKINS_BASE_URL}/{PIPELINE_PATH}/42/allure/",
+            f"{JENKINS_BASE_URL}/{PIPELINE_PATH}/404/allure/",
+        ],
+        transport=build_transport(
+            {
+                (
+                    f"{PIPELINE_PATH}/42/allure/data/suites.json"
+                ): build_allure_suites_payload("billing-1"),
+                (
+                    f"{PIPELINE_PATH}/42/allure/data/test-cases/billing-1.json"
+                ): build_allure_test_case_payload(
+                    "tests.billing.test_payments#test_retry",
+                    name="test_retry",
+                    product_label="product_billing",
+                ),
+            },
+            [],
+        ),
+    )
+
+    assert [candidate.full_name for candidate in response.candidates] == [
+        "tests.billing.test_payments#test_retry"
+    ]
+    assert [error.model_dump() for error in response.errors] == [
+        {
+            "message": "Report does not expose Allure suites.json.",
+            "report_url": f"{JENKINS_BASE_URL}/{PIPELINE_PATH}/404/allure/",
+        }
+    ]
+
+
+
+async def test_jenkins_allure_skip_candidates_route_returns_candidates(
+    backend_recorder: BackendRecorder,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configured_app = create_app(
+        build_settings(),
+        backend_transport=backend_recorder.build_transport(),
+    )
+
+    async def fake_fetch(
+        settings: Settings,
+        report_urls: list[str],
+        *,
+        product: str | None = None,
+    ) -> JenkinsAllureSkipCandidatesResponse:
+        assert settings.jenkins_url == JENKINS_BASE_URL
+        assert report_urls == [f"{JENKINS_BASE_URL}/{PIPELINE_PATH}/42/allure/"]
+        assert product == "Billing"
+        return JenkinsAllureSkipCandidatesResponse(
+            candidates=[
+                {
+                    "full_name": "tests.billing.test_payments#test_retry",
+                    "name": "test_retry",
+                    "product": "Billing",
+                }
+            ],
+            errors=[
+                {
+                    "report_url": f"{JENKINS_BASE_URL}/{PIPELINE_PATH}/43/allure/",
+                    "message": "Report does not expose Allure suites.json.",
+                }
+            ],
+        )
+
+    monkeypatch.setattr(api_routes, "fetch_allure_skip_candidates", fake_fetch)
+    async with configured_app.router.lifespan_context(configured_app):
+        transport = httpx.ASGITransport(app=configured_app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            response = await client.post(
+                "/jenkins/allure/skip-candidates",
+                headers=auth_headers,
+                json={
+                    "product": "Billing",
+                    "report_urls": [f"{JENKINS_BASE_URL}/{PIPELINE_PATH}/42/allure/"],
+                },
+            )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "candidates": [
+            {
+                "full_name": "tests.billing.test_payments#test_retry",
+                "name": "test_retry",
+                "product": "Billing",
+            }
+        ],
+        "errors": [
+            {
+                "report_url": f"{JENKINS_BASE_URL}/{PIPELINE_PATH}/43/allure/",
+                "message": "Report does not expose Allure suites.json.",
+            }
+        ],
+    }
+
+
+async def test_jenkins_allure_skip_candidates_route_maps_report_errors_to_400(
+    backend_recorder: BackendRecorder,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configured_app = create_app(
+        build_settings(),
+        backend_transport=backend_recorder.build_transport(),
+    )
+
+    async def raise_report_error(
+        settings: Settings,
+        report_urls: list[str],
+        *,
+        product: str | None = None,
+    ) -> JenkinsAllureSkipCandidatesResponse:
+        _ = settings
+        _ = report_urls
+        _ = product
+        raise JenkinsAllureReportError("Report does not expose Allure suites.json.")
+
+    monkeypatch.setattr(api_routes, "fetch_allure_skip_candidates", raise_report_error)
+    async with configured_app.router.lifespan_context(configured_app):
+        transport = httpx.ASGITransport(app=configured_app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            response = await client.post(
+                "/jenkins/allure/skip-candidates",
+                headers=auth_headers,
+                json={
+                    "product": "Billing",
+                    "report_urls": [f"{JENKINS_BASE_URL}/{PIPELINE_PATH}/42/allure/"],
+                },
+            )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Report does not expose Allure suites.json."
 
 
 async def test_fetch_tree_raises_unreachable_on_http_failure() -> None:
