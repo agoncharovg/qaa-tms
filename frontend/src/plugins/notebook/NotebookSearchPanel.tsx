@@ -59,6 +59,7 @@ async function invalidateNotebookQueries(queryClient: ReturnType<typeof useQuery
     queryClient.invalidateQueries({ queryKey: [QueryKey.NOTEBOOK_NOTES] }),
     queryClient.invalidateQueries({ queryKey: [QueryKey.NOTEBOOK_NOTE] }),
     queryClient.invalidateQueries({ queryKey: [QueryKey.NOTEBOOK_SEARCH] }),
+    queryClient.invalidateQueries({ queryKey: [QueryKey.NOTEBOOK_REMINDERS] }),
   ]);
 }
 

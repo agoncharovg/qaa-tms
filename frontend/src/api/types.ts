@@ -221,6 +221,17 @@ export interface NotebookNoteReadResponse {
   flags: Record<string, unknown>;
 }
 
+export interface NotebookReminder {
+  bookmark: string;
+  name: string;
+  remindAt: string;
+  previewLines: string[];
+}
+
+export interface NotebookRemindersResponse {
+  reminders: NotebookReminder[];
+}
+
 export interface NotebookSearchMatch {
   bookmark: string;
   name: string;

@@ -76,6 +76,7 @@ import type {
   NotebookContentsResponse,
   NotebookNoteReadResponse,
   NotebookNotesResponse,
+  NotebookRemindersResponse,
   NotebookSearchResponse,
   PreflightItem,
   SyncRequest,
@@ -543,6 +544,20 @@ export const agentClient = {
     return readAgentJson<NotebookContentsResponse>(
       port,
       AgentPath.NOTEBOOK_CONTENTS,
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
+  getNotebookReminders(
+    port: number,
+    token: string,
+    signal?: AbortSignal
+  ): Promise<NotebookRemindersResponse> {
+    return readAgentJson<NotebookRemindersResponse>(
+      port,
+      AgentPath.NOTEBOOK_REMINDERS,
       { method: HttpMethod.GET },
       token,
       signal

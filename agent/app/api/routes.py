@@ -82,11 +82,13 @@ from app.schemas import (
     NotebookBookmarkUpdateRequest,
     NotebookContentsResponse,
     NotebookContentsWriteRequest,
-    NotebookReorderRequest,
     NotebookNoteCreateRequest,
     NotebookNoteReadResponse,
     NotebookNotesResponse,
     NotebookNoteUpdateRequest,
+    NotebookReminder,
+    NotebookRemindersResponse,
+    NotebookReorderRequest,
     NotebookSearchResponse,
     PreflightItem,
     SyncRequest,
@@ -144,6 +146,7 @@ from app.services.notebook import (
     create_bookmark,
     delete_bookmark,
     delete_note,
+    list_active_reminders,
     list_bookmarks,
     list_notes,
     move_note,
@@ -581,6 +584,21 @@ async def get_notebook_search(
 ) -> NotebookSearchResponse:
     try:
         return search(settings, query)
+    except NotebookRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+
+@router.get(AgentPath.NOTEBOOK_REMINDERS.value, response_model=NotebookRemindersResponse)
+async def get_notebook_reminders(
+    _: NotebookReadAuth,
+    settings: SettingsDep,
+) -> NotebookRemindersResponse:
+    try:
+        reminders: list[NotebookReminder] = list_active_reminders(settings)
+        return NotebookRemindersResponse(reminders=reminders)
     except NotebookRootMissingError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

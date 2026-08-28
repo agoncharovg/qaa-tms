@@ -227,6 +227,23 @@ class NotebookNotesResponse(BaseModel):
     notes: list[NotebookNoteSummary] = Field(default_factory=list)
 
 
+class NotebookReminder(BaseModel):
+    """Active notebook reminder row."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    bookmark: str
+    name: str
+    remind_at: str = Field(alias="remindAt")
+    preview_lines: list[str] = Field(default_factory=list, alias="previewLines")
+
+
+class NotebookRemindersResponse(BaseModel):
+    """Notebook reminder list response."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    reminders: list[NotebookReminder] = Field(default_factory=list)
+
+
 class NotebookNoteReadResponse(BaseModel):
     """Full notebook note payload."""
 

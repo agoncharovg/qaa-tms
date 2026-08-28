@@ -17,6 +17,7 @@ from app.schemas import (
     NotebookNoteReadResponse,
     NotebookNotesResponse,
     NotebookNoteSummary,
+    NotebookReminder,
     NotebookSearchMatch,
     NotebookSearchResponse,
 )
@@ -94,6 +95,14 @@ def list_notes(settings: Settings, bookmark: str) -> NotebookNotesResponse:
         for note_path in _note_paths(bookmark_path)
     ]
     return NotebookNotesResponse(bookmark=bookmark_name, notes=notes)
+
+
+def list_active_reminders(settings: Settings) -> list[NotebookReminder]:
+    root = _resolve_root(settings)
+    contents = _read_contents_from_root(root)
+    reminders: list[NotebookReminder] = []
+    _collect_active_reminders(root, contents, reminders)
+    return reminders
 
 
 def read_note(settings: Settings, bookmark: str, name: str) -> NotebookNoteReadResponse:
@@ -438,6 +447,33 @@ def _collect_ordered_names(
         seen_names.add(name)
         ordered.append(name)
         _collect_ordered_names(node.get("children", []), existing, seen_names, ordered)
+
+
+def _collect_active_reminders(
+    root: Path,
+    contents: NotebookContentsTree,
+    reminders: list[NotebookReminder],
+) -> None:
+    for node in contents:
+        bookmark_name = node["name"]
+        for note_name, flags in node.get("notes", {}).items():
+            raw_remind_at = flags.get("remindAt")
+            if not isinstance(raw_remind_at, str) or not raw_remind_at.strip():
+                continue
+            if "remindDismissedAt" in flags:
+                continue
+            note_path = _bookmark_path(root, bookmark_name) / note_name
+            if not note_path.is_file():
+                continue
+            reminders.append(
+                NotebookReminder(
+                    bookmark=bookmark_name,
+                    name=note_name,
+                    remind_at=raw_remind_at,
+                    preview_lines=_preview_lines(_read_text(note_path)),
+                )
+            )
+        _collect_active_reminders(root, node.get("children", []), reminders)
 
 
 def _count_notes(bookmark_path: Path) -> int:

@@ -17,6 +17,7 @@ from app.services.notebook import (
     delete_note,
     list_bookmarks,
     list_notes,
+    list_active_reminders,
     move_note,
     read_note,
     reorder_bookmarks,
@@ -259,3 +260,38 @@ def test_malformed_contents_is_treated_as_empty(tmp_path: Path) -> None:
     tree = list_bookmarks(build_settings(root))
 
     assert [bookmark.name for bookmark in tree.bookmarks] == ["alpha"]
+def test_list_active_reminders_filters_and_recurses(tmp_path: Path) -> None:
+    root = tmp_path / "notebook"
+    settings = build_settings(root)
+    create_bookmark(settings, "alpha")
+    create_bookmark(settings, "beta")
+    due_note = write_note(settings, "alpha", "due-note", "due body")
+    future_note = write_note(settings, "alpha", "future-note", "future body")
+    dismissed_note = write_note(settings, "alpha", "dismissed-note", "dismissed body")
+    no_reminder_note = write_note(settings, "alpha", "plain-note", "plain body")
+    malformed_number_note = write_note(settings, "alpha", "bad-number", "bad number")
+    malformed_empty_note = write_note(settings, "alpha", "bad-empty", "bad empty")
+    nested_note = write_note(settings, "beta", "nested-note", "nested body")
+    set_flags(settings, "alpha", due_note, {"remindAt": "2026-08-01T09:00"})
+    set_flags(settings, "alpha", future_note, {"remindAt": "2026-12-01T18:30"})
+    set_flags(
+        settings,
+        "alpha",
+        dismissed_note,
+        {"remindAt": "2026-08-02T09:00", "remindDismissedAt": "2026-08-02T09:05"},
+    )
+    set_flags(settings, "alpha", no_reminder_note, {"important": True})
+    set_flags(settings, "alpha", malformed_number_note, {"remindAt": 42})
+    set_flags(settings, "alpha", malformed_empty_note, {"remindAt": ""})
+    set_flags(settings, "beta", nested_note, {"remindAt": "2026-10-04T07:45"})
+    contents = read_contents_json(root)
+    contents[1]["children"] = [{"name": "beta"}]
+    (root / "__contents__").write_text(json.dumps(contents), encoding="utf-8")
+    reminders = list_active_reminders(settings)
+    assert [(reminder.bookmark, reminder.name, reminder.remind_at) for reminder in reminders] == [
+        ("alpha", "due-note", "2026-08-01T09:00"),
+        ("alpha", "future-note", "2026-12-01T18:30"),
+        ("beta", "nested-note", "2026-10-04T07:45"),
+    ]
+    assert reminders[0].preview_lines == ["due body"]
+    assert reminders[2].preview_lines == ["nested body"]

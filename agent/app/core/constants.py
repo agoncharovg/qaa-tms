@@ -14,6 +14,7 @@ class AgentPath(StrEnum):
     NOTEBOOK_BOOKMARK = "/notebook/bookmark"
     NOTEBOOK_NOTE = "/notebook/note"
     NOTEBOOK_SEARCH = "/notebook/search"
+    NOTEBOOK_REMINDERS = "/notebook/reminders"
     JENKINS_SCOPE = "/jenkins/scope"
     JENKINS_TREE = "/jenkins/tree"
     JENKINS_BUILDS = "/jenkins/builds"

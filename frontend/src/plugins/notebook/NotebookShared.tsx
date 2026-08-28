@@ -164,6 +164,7 @@ export function NotebookNoteEditor({
   onRetry,
   onSave,
   onTextChange,
+  reminderControl,
   saveDisabled,
   text,
 }: {
@@ -183,6 +184,7 @@ export function NotebookNoteEditor({
   onRetry: () => void;
   onSave: () => void;
   onTextChange: (value: string) => void;
+  reminderControl?: ReactNode;
   saveDisabled: boolean;
   text: string;
 }) {
@@ -217,9 +219,10 @@ export function NotebookNoteEditor({
         onChange={(event) => onTextChange(event.currentTarget.value)}
         value={text}
       />
-      <Group justify="space-between">
-        {hasUnsavedChanges ? <Text c="yellow" size="sm">Unsaved changes.</Text> : null}
-        <Group style={{ marginLeft: "auto" }}>
+      <Group align="center" justify="space-between" wrap="wrap">
+        <Group align="center" gap="xs">{reminderControl ?? null}</Group>
+        <Group align="center" gap="sm">
+          {hasUnsavedChanges ? <Text c="yellow" size="sm">Unsaved changes.</Text> : null}
           <Button
             color="red"
             disabled={deleteDisabled}

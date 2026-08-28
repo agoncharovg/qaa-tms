@@ -1,10 +1,12 @@
 import {
   ActionIcon,
   AppShell,
+  Badge,
   Box,
   Button,
   Divider,
   Group,
+  Indicator,
   Menu,
   Modal,
   Stack,
@@ -13,6 +15,7 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
+import { notifications } from "@mantine/notifications";
 import {
   IconChevronDown,
   IconChevronLeft,
@@ -22,7 +25,7 @@ import {
   IconSun,
   IconUserCircle,
 } from "@tabler/icons-react";
-import { useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { usePalette } from "@/app/theme/usePalette";
@@ -38,6 +41,7 @@ import {
 } from "@/plugins/registry";
 import { useAuthStore } from "@/store/authStore";
 import { activatePluginWorkspaceTab, useUiStore } from "@/store/uiStore";
+import { formatReminder, useNotebookReminders } from "@/plugins/notebook/reminders";
 
 interface SidebarProps {
   activePluginId: PluginIdType;
@@ -123,6 +127,31 @@ export function Sidebar({ activePluginId }: SidebarProps) {
   const plugins = sortPluginsByLabel(primaryVisiblePlugins(currentUser, enabledOptionalIds));
   const accountPlugins = accountVisiblePlugins(currentUser, enabledOptionalIds);
   const profilePlugin = pluginById(PluginId.PROFILE);
+  const hasVisibleNotebook = plugins.some((plugin) => plugin.id === PluginId.NOTEBOOK);
+  const notebookReminders = useNotebookReminders(hasVisibleNotebook);
+  const shownReminderKeysRef = useRef(new Set<string>());
+  const dueReminderCount = notebookReminders.dueReminders.length;
+
+  useEffect(() => {
+    if (!hasVisibleNotebook) {
+      shownReminderKeysRef.current.clear();
+      return;
+    }
+
+    const visibleKeys = new Set<string>();
+    for (const reminder of notebookReminders.dueReminders) {
+      const reminderKey = [reminder.bookmark, reminder.name, reminder.remindAt].join("::");
+      visibleKeys.add(reminderKey);
+      if (!shownReminderKeysRef.current.has(reminderKey)) {
+        notifications.show({
+          autoClose: false,
+          message: reminder.bookmark + " • " + formatReminder(reminder.remindAt) + ". Откройте Notebook, чтобы закрыть.",
+          title: reminder.name,
+        });
+      }
+    }
+    shownReminderKeysRef.current = visibleKeys;
+  }, [hasVisibleNotebook, notebookReminders.dueReminders]);
 
   function openProfile(): void {
     if (!profilePlugin || !accountPlugins.some((plugin) => plugin.id === profilePlugin.id)) {
@@ -213,6 +242,7 @@ export function Sidebar({ activePluginId }: SidebarProps) {
             const isActivePlugin = activePluginId === plugin.id;
             const pluginTabs = sortTabsByTitle(visibleTabs(plugin, currentUser));
             const pluginState = tabsByPlugin[plugin.id];
+            const notebookBadgeCount = plugin.id === PluginId.NOTEBOOK ? dueReminderCount : 0;
             const item = (
               <UnstyledButton
                 aria-current={isActivePlugin ? "page" : undefined}
@@ -224,12 +254,13 @@ export function Sidebar({ activePluginId }: SidebarProps) {
                 }}
                 style={buildItemButtonStyle(isActivePlugin, sidebarCollapsed, palette)}
               >
-                <Icon size={18} />
+                {notebookBadgeCount > 0 ? <Indicator color="red" label={notebookBadgeCount} size={16}><Icon size={18} /></Indicator> : <Icon size={18} />}
                 {!sidebarCollapsed ? (
                   <>
                     <Text c="inherit" fw={isActivePlugin ? 600 : 500}>
                       {plugin.label}
                     </Text>
+                    {notebookBadgeCount > 0 ? <Badge color="red" size="sm" variant="filled">{notebookBadgeCount}</Badge> : null}
                     <Box ml="auto">
                       <IconChevronDown
                         size={16}

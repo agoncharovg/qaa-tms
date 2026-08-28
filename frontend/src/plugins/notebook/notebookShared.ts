@@ -9,10 +9,10 @@ export type NotebookNotice = {
   status: "error" | "success";
 };
 
-export function useNotebookAgent() {
+export function useNotebookAgent(enabled = true) {
   const token = useAuthStore((state) => state.token);
   const preflightQuery = useQuery({
-    enabled: Boolean(token),
+    enabled: enabled && Boolean(token),
     queryFn: ({ signal }) => getPreflight(token ?? "", signal),
     queryKey: [QueryKey.AGENT_PREFLIGHT, token],
     refetchOnWindowFocus: false,

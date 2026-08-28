@@ -6,6 +6,7 @@ const agentClientMock = vi.hoisted(() => ({
   createBookmark: vi.fn(),
   deleteBookmark: vi.fn(),
   deleteNote: vi.fn(),
+  getNotebookReminders: vi.fn(),
   getNotebookTree: vi.fn(),
   listNotes: vi.fn(),
   readNote: vi.fn(),
@@ -44,6 +45,7 @@ const NOTE_NAME = "2026-08-25-14-30-05" as const;
 describe("NotebookBrowsePanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    agentClientMock.getNotebookReminders.mockResolvedValue({ reminders: [] });
     localStorage.clear();
     resetAuthStoreState();
 
@@ -504,6 +506,234 @@ describe("NotebookBrowsePanel", () => {
 
     await waitFor(() => {
       expect(screen.queryByLabelText("Bookmark name")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("reminders", () => {
+    it("renders due reminders in the banner", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-09-02T10:00:00"));
+
+      try {
+        agentClientMock.getNotebookReminders.mockResolvedValue({
+          reminders: [
+            {
+              bookmark: BOOKMARK,
+              name: NOTE_NAME,
+              previewLines: ["Remember the release"],
+              remindAt: "2026-09-01T18:00",
+            },
+          ],
+        });
+        agentClientMock.getNotebookTree.mockResolvedValue({
+          bookmarks: [
+            {
+              children: [],
+              flags: {},
+              name: BOOKMARK,
+              noteCount: 1,
+            },
+          ],
+        });
+        agentClientMock.listNotes.mockResolvedValue({
+          bookmark: BOOKMARK,
+          notes: [
+            {
+              flags: {},
+              name: NOTE_NAME,
+              previewLines: ["Remember the release"],
+            },
+          ],
+        });
+        agentClientMock.readNote.mockResolvedValue({
+          bookmark: BOOKMARK,
+          flags: {},
+          name: NOTE_NAME,
+          previewLines: ["Remember the release"],
+          text: "Remember the release",
+        });
+
+        renderWithProviders(<NotebookBrowsePanel />);
+        vi.useRealTimers();
+
+        const reminderTitle = await screen.findByText("Active reminders");
+        expect(reminderTitle).toBeInTheDocument();
+        expect(await screen.findByText(NOTE_NAME)).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("dismisses a due reminder through updateNote while keeping remindAt", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-09-02T10:00:00"));
+
+      try {
+        const SELECTED_NOTE_NAME = "2026-08-25-09-00-00";
+
+        agentClientMock.getNotebookReminders.mockResolvedValue({
+          reminders: [
+            {
+              bookmark: BOOKMARK,
+              name: NOTE_NAME,
+              previewLines: ["Remember the release"],
+              remindAt: "2026-09-01T18:00",
+            },
+          ],
+        });
+        agentClientMock.getNotebookTree.mockResolvedValue({
+          bookmarks: [
+            {
+              children: [],
+              flags: {},
+              name: BOOKMARK,
+              noteCount: 2,
+            },
+          ],
+        });
+        agentClientMock.listNotes.mockResolvedValue({
+          bookmark: BOOKMARK,
+          notes: [
+            {
+              flags: {},
+              name: SELECTED_NOTE_NAME,
+              previewLines: ["Selected note"],
+            },
+            {
+              flags: { remindAt: "2026-09-01T18:00" },
+              name: NOTE_NAME,
+              previewLines: ["Remember the release"],
+            },
+          ],
+        });
+        agentClientMock.readNote.mockImplementation((_port, _token, _bookmark, noteName) => {
+          if (noteName === NOTE_NAME) {
+            return {
+              bookmark: BOOKMARK,
+              flags: { remindAt: "2026-09-01T18:00" },
+              name: NOTE_NAME,
+              previewLines: ["Remember the release"],
+              text: "body",
+            };
+          }
+
+          return {
+            bookmark: BOOKMARK,
+            flags: {},
+            name: SELECTED_NOTE_NAME,
+            previewLines: ["Selected note"],
+            text: "Selected note",
+          };
+        });
+        agentClientMock.updateNote.mockResolvedValue({
+          bookmark: BOOKMARK,
+          flags: {
+            remindAt: "2026-09-01T18:00",
+            remindDismissedAt: "2026-09-02T10:00",
+          },
+          name: NOTE_NAME,
+          previewLines: ["Remember the release"],
+          text: "body",
+        });
+
+        renderWithProviders(<NotebookBrowsePanel />);
+        vi.useRealTimers();
+        const user = userEvent.setup();
+
+        await screen.findByText("Active reminders");
+        await user.click(await screen.findByRole("button", { name: "Dismiss" }));
+
+        await waitFor(() => {
+          expect(agentClientMock.updateNote).toHaveBeenCalled();
+        });
+
+        const payload = agentClientMock.updateNote.mock.calls.at(-1)?.at(-1) as
+          | { flags: { remindAt?: string; remindDismissedAt?: string } }
+          | undefined;
+        expect(payload?.flags).toHaveProperty("remindDismissedAt");
+        expect(payload?.flags.remindAt).toBe("2026-09-01T18:00");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("re-arms a reminder from the picker by setting remindAt and clearing dismissed state", async () => {
+      const user = userEvent.setup();
+      const SECOND_NOTE_NAME = "2026-08-25-15-45-10";
+
+      agentClientMock.getNotebookTree.mockResolvedValue({
+        bookmarks: [
+          {
+            children: [],
+            flags: {},
+            name: BOOKMARK,
+            noteCount: 2,
+          },
+        ],
+      });
+      agentClientMock.listNotes.mockResolvedValue({
+        bookmark: BOOKMARK,
+        notes: [
+          {
+            flags: {},
+            name: SECOND_NOTE_NAME,
+            previewLines: ["Other preview"],
+          },
+          {
+            flags: {},
+            name: NOTE_NAME,
+            previewLines: ["Reminder target"],
+          },
+        ],
+      });
+      agentClientMock.readNote.mockImplementation((_port, _token, _bookmark, noteName) => {
+        if (noteName === NOTE_NAME) {
+          return {
+            bookmark: BOOKMARK,
+            flags: { remindDismissedAt: "2026-08-01T00:00" },
+            name: NOTE_NAME,
+            previewLines: ["Reminder target"],
+            text: "Reminder target",
+          };
+        }
+
+        return {
+          bookmark: BOOKMARK,
+          flags: {},
+          name: SECOND_NOTE_NAME,
+          previewLines: ["Other preview"],
+          text: "Other preview",
+        };
+      });
+      agentClientMock.updateNote.mockImplementation(
+        (_port, _token, _bookmark, _noteName, payload: { flags?: Record<string, unknown> }) => ({
+          bookmark: BOOKMARK,
+          flags: payload.flags ?? {},
+          name: NOTE_NAME,
+          previewLines: ["Reminder target"],
+          text: "Reminder target",
+        })
+      );
+
+      renderWithProviders(<NotebookBrowsePanel />);
+
+      await screen.findByRole("button", { name: /Other preview/i });
+      await user.click(screen.getByRole("button", { name: /Reminder target/i }));
+
+      await user.click(await screen.findByRole("button", { name: "Set reminder" }));
+
+      const input = await screen.findByLabelText("Reminder");
+      fireEvent.change(input, { target: { value: "2026-09-05T09:30" } });
+
+      await waitFor(() => {
+        expect(agentClientMock.updateNote).toHaveBeenCalledTimes(2);
+      });
+
+      const payload = agentClientMock.updateNote.mock.calls.at(-1)?.at(-1) as
+        | { flags: { remindAt?: string; remindDismissedAt?: string } }
+        | undefined;
+      expect(payload?.flags.remindAt).toBe("2026-09-05T09:30");
+      expect(payload?.flags).not.toHaveProperty("remindDismissedAt");
     });
   });
 });

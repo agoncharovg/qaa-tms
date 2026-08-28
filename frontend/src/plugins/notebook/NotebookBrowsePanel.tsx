@@ -12,7 +12,15 @@ import {
   Tooltip,
   Title,
 } from "@mantine/core";
-import { IconNote, IconPencil, IconPlus, IconRotateClockwise, IconTrash } from "@tabler/icons-react";
+import {
+  IconBell,
+  IconBellRinging,
+  IconNote,
+  IconPencil,
+  IconPlus,
+  IconRotateClockwise,
+  IconTrash,
+} from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AgentRequestError, agentClient } from "@/api/agentClient";
@@ -20,6 +28,8 @@ import type {
   NotebookBookmarkNode,
   NotebookContentsResponse,
   NotebookNoteReadResponse,
+  NotebookReminder,
+  NotebookRemindersResponse,
   NotebookNotesResponse,
 } from "@/api/types";
 import { QueryKey } from "@/constants";
@@ -37,6 +47,17 @@ import {
   type NotebookNotice,
   useNotebookAgent,
 } from "@/plugins/notebook/notebookShared";
+import {
+  clearReminderFlags,
+  defaultReminderValue,
+  dismissReminderFlags,
+  formatReminder,
+  formatReminderValue,
+  getReminderFlagValue,
+  hasActiveReminder,
+  setReminderFlags,
+  useNotebookReminders,
+} from "@/plugins/notebook/reminders";
 
 const NOTEBOOK_BROWSE_COPY = {
   BOOKMARK_CREATE: "Create bookmark",
@@ -59,6 +80,12 @@ const NOTEBOOK_BROWSE_COPY = {
   NOTE_CREATE: "New note",
   NOTE_DELETE: "Delete note",
   NOTE_DELETE_CONFIRM: "Delete this note?",
+  NOTE_REMINDER_CLEAR: "Clear reminder",
+  NOTE_REMINDER_LABEL: "Reminder",
+  NOTE_REMINDER_SET: "Set reminder",
+  REMINDER_DISMISS: "Dismiss",
+  REMINDER_EMPTY: "Empty note.",
+  REMINDER_TITLE: "Active reminders",
   NOTE_EMPTY: "No notes were returned for the selected bookmark.",
   NOTE_LOAD_ERROR: "Notes failed",
   NOTE_LOAD_FALLBACK: "Unable to load notes for the selected bookmark.",
@@ -71,12 +98,24 @@ type BookmarkModalState = {
   open: boolean;
 };
 
+
 function findBookmark(bookmarks: NotebookBookmarkNode[], bookmarkName: string | null): NotebookBookmarkNode | null {
   if (!bookmarkName) {
     return null;
   }
 
-  return bookmarks.find((bookmark) => bookmark.name === bookmarkName) ?? null;
+  for (const bookmark of bookmarks) {
+    if (bookmark.name === bookmarkName) {
+      return bookmark;
+    }
+
+    const childMatch = findBookmark(bookmark.children, bookmarkName);
+    if (childMatch) {
+      return childMatch;
+    }
+  }
+
+  return null;
 }
 
 async function invalidateNotebookQueries(queryClient: ReturnType<typeof useQueryClient>): Promise<void> {
@@ -85,6 +124,7 @@ async function invalidateNotebookQueries(queryClient: ReturnType<typeof useQuery
     queryClient.invalidateQueries({ queryKey: [QueryKey.NOTEBOOK_NOTES] }),
     queryClient.invalidateQueries({ queryKey: [QueryKey.NOTEBOOK_NOTE] }),
     queryClient.invalidateQueries({ queryKey: [QueryKey.NOTEBOOK_SEARCH] }),
+    queryClient.invalidateQueries({ queryKey: [QueryKey.NOTEBOOK_REMINDERS] }),
   ]);
 }
 
@@ -184,6 +224,7 @@ function applyMovedNoteToCache(
 export function NotebookBrowsePanel() {
   const queryClient = useQueryClient();
   const { agentPort, companionUnavailable, preflightQuery, probedPorts, token } = useNotebookAgent();
+  const remindersQuery = useNotebookReminders();
   const [bookmarkNotice, setBookmarkNotice] = useState<NotebookNotice | null>(null);
   const [noteNotice, setNoteNotice] = useState<NotebookNotice | null>(null);
   const [bookmarkModal, setBookmarkModal] = useState<BookmarkModalState>({
@@ -194,6 +235,8 @@ export function NotebookBrowsePanel() {
   const [selectedBookmark, setSelectedBookmark] = useState<string | null>(null);
   const [selectedNoteName, setSelectedNoteName] = useState<string | null>(null);
   const [editorText, setEditorText] = useState("");
+  const [reminderDraft, setReminderDraft] = useState("");
+  const [reminderOpen, setReminderOpen] = useState(false);
   const [draggedNoteName, setDraggedNoteName] = useState<string | null>(null);
   const [dragOverBookmarkName, setDragOverBookmarkName] = useState<string | null>(null);
   const [draggedBookmarkName, setDraggedBookmarkName] = useState<string | null>(null);
@@ -234,7 +277,7 @@ export function NotebookBrowsePanel() {
       return;
     }
 
-    if (!bookmarks.some((bookmark) => bookmark.name === selectedBookmark)) {
+    if (!findBookmark(bookmarks, selectedBookmark)) {
       setSelectedBookmark(bookmarks[0]?.name ?? null);
     }
   }, [contentsQuery.data?.bookmarks, selectedBookmark]);
@@ -244,6 +287,16 @@ export function NotebookBrowsePanel() {
     setEditorText("");
     pendingSelectedNoteNameRef.current = null;
   }, [selectedBookmark]);
+  useEffect(() => {
+    setReminderDraft("");
+  }, [selectedNoteName]);
+  useEffect(() => {
+    // Initialise the toggle from the loaded note's real flags (keyed on note
+    // identity, not selectedNoteName, so it runs once the new note's data lands
+    // and does NOT collapse the open field on a same-note save-refetch).
+    setReminderOpen(hasActiveReminder(noteQuery.data?.flags));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noteQuery.data?.bookmark, noteQuery.data?.name]);
 
   useEffect(() => {
     const notes = notesQuery.data?.notes ?? [];
@@ -260,6 +313,7 @@ export function NotebookBrowsePanel() {
   useEffect(() => {
     if (noteQuery.data) {
       setEditorText(noteQuery.data.text);
+      setReminderDraft(getReminderFlagValue(noteQuery.data.flags) ?? "");
     }
   }, [noteQuery.data]);
 
@@ -378,6 +432,86 @@ export function NotebookBrowsePanel() {
         message: error instanceof Error ? error.message : "Unable to save the note.",
         status: "error",
       });
+    },
+  });
+
+  const updateReminderMutation = useMutation({
+    mutationFn: async (flags: Record<string, unknown>) => {
+      if (!token || agentPort === null || !selectedBookmark || !selectedNoteName) {
+        throw new Error("Select a note first.");
+      }
+
+      return agentClient.updateNote(agentPort, token, selectedBookmark, selectedNoteName, {
+        bookmark: selectedBookmark,
+        flags,
+      });
+    },
+    onSuccess: async (response) => {
+      setReminderDraft(getReminderFlagValue(response.flags) ?? "");
+      await invalidateNotebookQueries(queryClient);
+    },
+    onError: (error) => {
+      setNoteNotice({
+        message: error instanceof Error ? error.message : "Unable to update the reminder.",
+        status: "error",
+      });
+    },
+  });
+
+  const dismissReminderMutation = useMutation({
+    mutationFn: async (reminder: NotebookReminder) => {
+      if (!token || agentPort === null) {
+        throw new Error("Authentication is required.");
+      }
+
+      const sourceNote =
+        reminder.bookmark === selectedBookmark && reminder.name === selectedNoteName && noteQuery.data
+          ? noteQuery.data
+          : await agentClient.readNote(agentPort, token, reminder.bookmark, reminder.name);
+
+      return agentClient.updateNote(agentPort, token, reminder.bookmark, reminder.name, {
+        bookmark: reminder.bookmark,
+        flags: dismissReminderFlags(sourceNote.flags, formatReminderValue(new Date())),
+      });
+    },
+    onMutate: async (reminder) => {
+      await queryClient.cancelQueries({ queryKey: [QueryKey.NOTEBOOK_REMINDERS, token, agentPort] });
+      const previous = queryClient.getQueryData<NotebookRemindersResponse>([
+        QueryKey.NOTEBOOK_REMINDERS,
+        token,
+        agentPort,
+      ]);
+      queryClient.setQueryData<NotebookRemindersResponse | undefined>(
+        [QueryKey.NOTEBOOK_REMINDERS, token, agentPort],
+        (current) =>
+          current
+            ? {
+                ...current,
+                reminders: current.reminders.filter(
+                  (item) => item.bookmark !== reminder.bookmark || item.name !== reminder.name
+                ),
+              }
+            : current
+      );
+      return { previous };
+    },
+    onSuccess: async (response) => {
+      if (response.bookmark === selectedBookmark && response.name === selectedNoteName) {
+        setReminderDraft(getReminderFlagValue(response.flags) ?? "");
+      }
+      await invalidateNotebookQueries(queryClient);
+    },
+    onError: (error, _reminder, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData([QueryKey.NOTEBOOK_REMINDERS, token, agentPort], context.previous);
+      }
+      setNoteNotice({
+        message: error instanceof Error ? error.message : "Unable to dismiss the reminder.",
+        status: "error",
+      });
+    },
+    onSettled: async () => {
+      await invalidateNotebookQueries(queryClient);
     },
   });
 
@@ -554,6 +688,15 @@ export function NotebookBrowsePanel() {
     deleteNoteMutation.isPending ||
     moveNoteMutation.isPending;
 
+  const dueReminders = remindersQuery.dueReminders;
+  const reminderActionDisabled =
+    companionUnavailable ||
+    !selectedBookmark ||
+    !selectedNoteName ||
+    updateReminderMutation.isPending ||
+    deleteNoteMutation.isPending ||
+    moveNoteMutation.isPending;
+
   function openCreateBookmarkModal(): void {
     setBookmarkModal({
       mode: "create",
@@ -625,6 +768,62 @@ export function NotebookBrowsePanel() {
 
     setNoteNotice(null);
     deleteNoteMutation.mutate();
+  }
+
+  function openNote(bookmark: string, noteName: string): void {
+    setNoteNotice(null);
+    if (bookmark === selectedBookmark) {
+      setSelectedNoteName(noteName);
+      return;
+    }
+
+    pendingSelectedNoteNameRef.current = noteName;
+    setSelectedNoteName(null);
+    setSelectedBookmark(bookmark);
+    setEditorText("");
+  }
+
+  function handleClearReminder(): void {
+    if (!noteQuery.data) {
+      return;
+    }
+
+    setNoteNotice(null);
+    setReminderDraft("");
+    updateReminderMutation.mutate(clearReminderFlags(noteQuery.data.flags));
+  }
+
+  function handleToggleReminder(): void {
+    if (!noteQuery.data) {
+      return;
+    }
+
+    setNoteNotice(null);
+    if (reminderOpen) {
+      setReminderOpen(false);
+      handleClearReminder();
+      return;
+    }
+
+    const value = reminderDraft.trim() || defaultReminderValue();
+    setReminderDraft(value);
+    setReminderOpen(true);
+    updateReminderMutation.mutate(setReminderFlags(noteQuery.data.flags, value));
+  }
+
+  function handleReminderInputChange(value: string): void {
+    setReminderDraft(value);
+    if (!noteQuery.data || value.trim().length === 0) {
+      return;
+    }
+
+    setNoteNotice(null);
+    updateReminderMutation.mutate(setReminderFlags(noteQuery.data.flags, value.trim()));
+  }
+
+  function handleDismissReminder(reminder: NotebookReminder): void {
+    setNoteNotice(null);
+    dismissReminderMutation.mutate(reminder);
   }
 
   function handleNoteDragStart(event: DragEvent<HTMLButtonElement>, noteName: string): void {
@@ -813,6 +1012,45 @@ export function NotebookBrowsePanel() {
         </Button>
       </Group>
 
+      {dueReminders.length > 0 ? (
+        <NotebookSurface title={NOTEBOOK_BROWSE_COPY.REMINDER_TITLE}>
+          <Stack gap="sm">
+            {dueReminders.map((reminder) => (
+              <Group
+                align="flex-start"
+                justify="space-between"
+                key={reminder.bookmark + "::" + reminder.name + "::" + reminder.remindAt}
+                wrap="nowrap"
+              >
+                <Button
+                  fullWidth
+                  justify="flex-start"
+                  onClick={() => openNote(reminder.bookmark, reminder.name)}
+                  style={{ height: "auto", paddingBlock: "0.75rem" }}
+                  styles={{ label: { whiteSpace: "normal", width: "100%" } }}
+                  variant="light"
+                >
+                  <Stack gap={4} w="100%">
+                    <Text fw={600}>{reminder.name}</Text>
+                    <Text c="dimmed" size="sm">
+                      {reminder.bookmark}
+                    </Text>
+                    <Text c="dimmed" size="sm">
+                      {formatReminder(reminder.remindAt)}
+                    </Text>
+                    <Text size="sm">
+                      {reminder.previewLines[0] ?? NOTEBOOK_BROWSE_COPY.REMINDER_EMPTY}
+                    </Text>
+                  </Stack>
+                </Button>
+                <Button onClick={() => handleDismissReminder(reminder)} variant="light">
+                  {NOTEBOOK_BROWSE_COPY.REMINDER_DISMISS}
+                </Button>
+              </Group>
+            ))}
+          </Stack>
+        </NotebookSurface>
+      ) : null}
       {companionUnavailable ? (
         <NotebookCompanionUnavailableAlert
           onRetry={() => void preflightQuery.refetch()}
@@ -987,6 +1225,8 @@ export function NotebookBrowsePanel() {
                 <Stack gap="xs">
                   {notes.map((note) => {
                     const isSelected = selectedNoteName === note.name;
+                    const noteHasReminder = hasActiveReminder(note.flags);
+                    const noteReminder = getReminderFlagValue(note.flags);
 
                     return (
                       <Button
@@ -1019,6 +1259,16 @@ export function NotebookBrowsePanel() {
                           ta="left"
                           style={{ whiteSpace: "pre-wrap", width: "100%" }}
                         >
+                          {noteHasReminder && noteReminder ? (
+                            <>
+                              <IconBell
+                                size={12}
+                                style={{ display: "inline-block", marginRight: 4, verticalAlign: "text-bottom" }}
+                              />
+                              {formatReminder(noteReminder)}
+                              {"\n"}
+                            </>
+                          ) : null}
                           {buildPreviewText(note.previewLines)}
                         </Text>
                       </Button>
@@ -1047,6 +1297,44 @@ export function NotebookBrowsePanel() {
               onRetry={() => void noteQuery.refetch()}
               onSave={handleSaveNote}
               onTextChange={setEditorText}
+              reminderControl={
+                selectedNoteName ? (
+                  <>
+                    <Tooltip
+                      label={
+                        reminderOpen
+                          ? NOTEBOOK_BROWSE_COPY.NOTE_REMINDER_CLEAR
+                          : NOTEBOOK_BROWSE_COPY.NOTE_REMINDER_SET
+                      }
+                    >
+                      <ActionIcon
+                        aria-label={
+                          reminderOpen
+                            ? NOTEBOOK_BROWSE_COPY.NOTE_REMINDER_CLEAR
+                            : NOTEBOOK_BROWSE_COPY.NOTE_REMINDER_SET
+                        }
+                        color={reminderOpen ? "yellow" : "gray"}
+                        disabled={reminderActionDisabled}
+                        loading={updateReminderMutation.isPending}
+                        onClick={handleToggleReminder}
+                        variant={reminderOpen ? "filled" : "subtle"}
+                      >
+                        {reminderOpen ? <IconBellRinging size={18} /> : <IconBell size={18} />}
+                      </ActionIcon>
+                    </Tooltip>
+                    {reminderOpen ? (
+                      <TextInput
+                        aria-label={NOTEBOOK_BROWSE_COPY.NOTE_REMINDER_LABEL}
+                        onChange={(event) => handleReminderInputChange(event.currentTarget.value)}
+                        size="xs"
+                        type="datetime-local"
+                        value={reminderDraft}
+                        w={210}
+                      />
+                    ) : null}
+                  </>
+                ) : null
+              }
               saveDisabled={
                 !selectedNoteName ||
                 !hasUnsavedChanges ||
