@@ -140,6 +140,41 @@ describe("SmokePanel", () => {
     expect(screen.getByRole("radio", { name: "5m" })).toBeInTheDocument();
   });
 
+  it("splits SMOKE pipelines into backend and frontend sections", async () => {
+    backendClientMock.getJenkinsFolderCache.mockResolvedValue(
+      buildFolderCache([
+        pipelineNode("API Smoke", [build(1)], "passed"),
+        pipelineNode("UI Checkout Smoke", [build(2)], "passed"),
+        pipelineNode("Billing Smoke", [build(3)], "passed"),
+      ])
+    );
+
+    renderWithProviders(<SmokePanel />);
+
+    await waitFor(() => {
+      expect(screen.getByText("API Smoke")).toBeInTheDocument();
+    });
+
+    const backendHeading = screen.getByText("Backend");
+    const frontendHeading = screen.getByText("Frontend");
+    const apiRow = screen.getByText("API Smoke");
+    const billingRow = screen.getByText("Billing Smoke");
+    const uiRow = screen.getByText("UI Checkout Smoke");
+
+    expect(
+      backendHeading.compareDocumentPosition(frontendHeading) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      apiRow.compareDocumentPosition(frontendHeading) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      billingRow.compareDocumentPosition(frontendHeading) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      frontendHeading.compareDocumentPosition(uiRow) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
   it("warms the shared cache through the companion when the backend cache is cold", async () => {
     const liveFolderResolvers: Array<(value: { roots: JenkinsNode[] }) => void> = [];
     let cacheState = buildFolderCache([], { refreshLease: "lease-1", stale: true });

@@ -28,14 +28,18 @@ import {
   computeSmokeAxisTicks,
   computeSmokeRows,
   computeSmokeWindow,
+  type SmokeAxisTick,
+  type SmokeRow,
 } from "@/plugins/statistics/smokeTimeline";
 import { useSmokeFolder } from "@/plugins/statistics/useSmokeFolder";
 
 const SmokePanelCopy = {
+  BACKEND: "Backend",
   COMPANION_REQUIRED: "Cache is warming up. Start the companion app to populate SMOKE.",
   ERROR_BODY: "The shared Jenkins cache could not read the SMOKE folder. Retry shortly.",
   ERROR_TITLE: "Could not load the SMOKE folder",
   EMPTY: "No pipelines found in this folder.",
+  FRONTEND: "Frontend",
   LOADING: "Loading SMOKE pipelines…",
   OPEN_JENKINS: "Open in Jenkins",
   REFRESH: "Refresh now",
@@ -68,6 +72,46 @@ function formatAxisTick(timestampMs: number): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function isFrontendRow(row: SmokeRow): boolean {
+  return row.pipeline.name.includes("UI ");
+}
+
+function SmokeTimelineAxis({
+  axisTicks,
+  faintColor,
+}: {
+  axisTicks: SmokeAxisTick[];
+  faintColor: string;
+}) {
+  return (
+    <Box style={{ alignItems: "center", display: "flex", gap: 12, width: "100%" }}>
+      <Box style={{ flex: "0 0 auto", width: SmokeTimelineRowValue.LABEL_WIDTH_PX }} />
+      <Box style={{ flex: "1 1 auto", height: 16, position: "relative" }}>
+        {axisTicks.map((tick) => (
+          <Text
+            c={faintColor}
+            key={tick.timestamp}
+            size="10px"
+            style={{
+              left: `${String(tick.leftPct)}%`,
+              position: "absolute",
+              transform:
+                tick.leftPct >= 100
+                  ? "translateX(-100%)"
+                  : tick.leftPct <= 0
+                    ? "translateX(0)"
+                    : "translateX(-50%)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {formatAxisTick(tick.timestamp)}
+          </Text>
+        ))}
+      </Box>
+    </Box>
+  );
 }
 
 export function SmokePanel({
@@ -103,6 +147,14 @@ export function SmokePanel({
     () => computeSmokeAxisTicks(window, SmokePanelValue.AXIS_TICKS),
     [window]
   );
+  const backendRows = useMemo(
+    () => rows.filter((row) => !isFrontendRow(row)),
+    [rows]
+  );
+  const frontendRows = useMemo(
+    () => rows.filter(isFrontendRow),
+    [rows]
+  );
   const counts = useMemo(
     () =>
       roots.reduce(
@@ -129,6 +181,10 @@ export function SmokePanel({
     isColdCache && agentPort === null && !companionQuery.isLoading
       ? SmokePanelCopy.COMPANION_REQUIRED
       : SmokePanelCopy.EMPTY;
+  const sections = [
+    { key: "backend", rows: backendRows, title: SmokePanelCopy.BACKEND },
+    { key: "frontend", rows: frontendRows, title: SmokePanelCopy.FRONTEND },
+  ].filter((section) => section.rows.length > 0);
 
   function openInBrowser(url: string): void {
     if (url) {
@@ -246,36 +302,18 @@ export function SmokePanel({
       ) : null}
 
       {rows.length > 0 ? (
-        <Stack gap={8}>
-          {rows.map((row) => (
-            <SmokeTimelineRow key={row.pipeline.path} onOpenBuild={openInBrowser} row={row} />
-          ))}
-
-          <Box style={{ alignItems: "center", display: "flex", gap: 12, width: "100%" }}>
-            <Box style={{ flex: "0 0 auto", width: SmokeTimelineRowValue.LABEL_WIDTH_PX }} />
-            <Box style={{ flex: "1 1 auto", height: 16, position: "relative" }}>
-              {axisTicks.map((tick) => (
-                <Text
-                  c={palette.faint}
-                  key={tick.timestamp}
-                  size="10px"
-                  style={{
-                    left: `${String(tick.leftPct)}%`,
-                    position: "absolute",
-                    transform:
-                      tick.leftPct >= 100
-                        ? "translateX(-100%)"
-                        : tick.leftPct <= 0
-                          ? "translateX(0)"
-                          : "translateX(-50%)",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {formatAxisTick(tick.timestamp)}
-                </Text>
+        <Stack gap="md">
+          {sections.map((section) => (
+            <Stack gap={8} key={section.key}>
+              <Text c={palette.inkSoft} fw={600} size="sm">
+                {section.title}
+              </Text>
+              {section.rows.map((row) => (
+                <SmokeTimelineRow key={row.pipeline.path} onOpenBuild={openInBrowser} row={row} />
               ))}
-            </Box>
-          </Box>
+              <SmokeTimelineAxis axisTicks={axisTicks} faintColor={palette.faint} />
+            </Stack>
+          ))}
         </Stack>
       ) : null}
     </Stack>
