@@ -17,6 +17,8 @@ import {
   buildBackendLeonidObjectValuesPath,
   buildBackendLeonidObjectValueTogglePath,
   buildBackendLeonidPipelineParamsPath,
+  buildBackendLeonidSkippedSuiteCancelPath,
+  buildBackendLeonidSkippedSuitesPath,
   buildBackendLeonidSharedResourceLimitsPath,
   buildBackendLeonidSharedResourceLimitTypesPath,
   buildBackendLeonidSharedResourcesPath,
@@ -110,6 +112,8 @@ import type {
   LeonidObjectValueInput,
   LeonidPipelineParam,
   LeonidPipelineParamInput,
+  LeonidSkippedSuite,
+  LeonidSkippedSuiteInput,
   LeonidSharedResource,
   LeonidSharedResourceInput,
   LeonidSharedResourceLimit,
@@ -1006,6 +1010,41 @@ listLeonidSharedResources(token: string, signal?: AbortSignal): Promise<LeonidSh
   return request<LeonidSharedResource[]>(
     buildBackendLeonidSharedResourcesPath(),
     { method: HttpMethod.GET },
+    token,
+    signal
+  );
+},
+
+listLeonidSkippedSuites(token: string, signal?: AbortSignal): Promise<LeonidSkippedSuite[]> {
+  return request<LeonidSkippedSuite[]>(
+    buildBackendLeonidSkippedSuitesPath(),
+    { method: HttpMethod.GET },
+    token,
+    signal
+  );
+},
+
+createLeonidSkippedSuite(
+  token: string,
+  payload: LeonidSkippedSuiteInput,
+  signal?: AbortSignal
+): Promise<LeonidSkippedSuite> {
+  return request<LeonidSkippedSuite>(
+    buildBackendLeonidSkippedSuitesPath(),
+    { body: JSON.stringify(payload), method: HttpMethod.POST },
+    token,
+    signal
+  );
+},
+
+cancelLeonidSkippedSuite(
+  token: string,
+  suiteId: number,
+  signal?: AbortSignal
+): Promise<LeonidSkippedSuite> {
+  return request<LeonidSkippedSuite>(
+    buildBackendLeonidSkippedSuiteCancelPath(suiteId),
+    { method: HttpMethod.POST },
     token,
     signal
   );

@@ -452,6 +452,30 @@ export interface LeonidSharedResource {
   enabled: boolean;
 }
 
+export interface LeonidSkippedTest {
+  full_name: string;
+}
+
+export interface LeonidSkippedSuite {
+  id: number;
+  author: string;
+  reason: string;
+  product: string;
+  created_at: string;
+  expires_at: string;
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  status: "active" | "expired" | "cancelled";
+  tests: LeonidSkippedTest[];
+}
+
+export interface LeonidSkippedSuiteInput {
+  reason: string;
+  product: string;
+  expires_at: string;
+  tests: LeonidSkippedTest[];
+}
+
 export interface LeonidSharedResourceInput {
   resource_limit: number;
   value: string;

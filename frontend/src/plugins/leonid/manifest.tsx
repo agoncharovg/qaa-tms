@@ -33,6 +33,12 @@ const leonidPlugin = definePlugin({
       element: <LeonidSection mode={ViewKey.LEONID_SHARED_RESOURCES} />,
     },
     {
+      id: TabId.LEONID_SKIPPED_TESTS,
+      title: TabTitle[TabId.LEONID_SKIPPED_TESTS],
+      viewKey: ViewKey.LEONID_SKIPPED_TESTS,
+      element: <LeonidSection mode={ViewKey.LEONID_SKIPPED_TESTS} />,
+    },
+    {
       id: TabId.LEONID_OBJECTS,
       title: TabTitle[TabId.LEONID_OBJECTS],
       viewKey: ViewKey.LEONID_OBJECTS,

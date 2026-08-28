@@ -34,6 +34,8 @@ from app.schemas.leonid import (
     LeonidSharedResourcePatch,
     LeonidSharedResourceResponse,
     LeonidSharedResourceUpdate,
+    LeonidSkippedSuiteCreate,
+    LeonidSkippedSuiteResponse,
 )
 from app.services.leonid_client import LeonidClient
 
@@ -208,6 +210,57 @@ def register_writable_resource(resource: WritableResourceDef) -> None:
         name=f"toggle_{resource.item_name}",
         response_model=resource.response_model,
     )
+
+
+@router.get(RoutePath.SKIPPED_SUITES.value, response_model=list[LeonidSkippedSuiteResponse])
+async def list_skipped_suites(
+    _: LeonidReadUser,
+    client: LeonidClientDep,
+) -> list[LeonidSkippedSuiteResponse]:
+    payload = await client.list_skipped_suites()
+    return [LeonidSkippedSuiteResponse(**item) for item in payload]
+
+
+@router.get(
+    f"{RoutePath.SKIPPED_SUITES.value}/{{item_id}}",
+    response_model=LeonidSkippedSuiteResponse,
+)
+async def get_skipped_suite(
+    item_id: int,
+    _: LeonidReadUser,
+    client: LeonidClientDep,
+) -> LeonidSkippedSuiteResponse:
+    payload = await client.get_skipped_suite(item_id)
+    return LeonidSkippedSuiteResponse(**payload)
+
+
+@router.post(
+    RoutePath.SKIPPED_SUITES.value,
+    response_model=LeonidSkippedSuiteResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_skipped_suite(
+    user: LeonidWriteUser,
+    client: LeonidClientDep,
+    payload: Annotated[Any, Body()],
+) -> LeonidSkippedSuiteResponse:
+    body = parse_request_model(payload, LeonidSkippedSuiteCreate)
+    body["author"] = user.username
+    response_payload = await client.create_skipped_suite(body)
+    return LeonidSkippedSuiteResponse(**response_payload)
+
+
+@router.post(
+    f"{RoutePath.SKIPPED_SUITES.value}/{{item_id}}{RoutePath.CANCEL.value}",
+    response_model=LeonidSkippedSuiteResponse,
+)
+async def cancel_skipped_suite(
+    item_id: int,
+    user: LeonidWriteUser,
+    client: LeonidClientDep,
+) -> LeonidSkippedSuiteResponse:
+    payload = await client.cancel_skipped_suite(item_id, {"cancelled_by": user.username})
+    return LeonidSkippedSuiteResponse(**payload)
 
 
 RESOURCES: tuple[ReadOnlyResourceDef | WritableResourceDef, ...] = (

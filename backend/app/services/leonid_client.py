@@ -13,6 +13,7 @@ from app.core.constants import ErrorMessage, HttpHeader, MediaType
 LEONID_LIMIT_TYPE_PATH = "/api/shared_resource_limit_types/"
 LEONID_LIMIT_PATH = "/api/shared_resource_limits/"
 LEONID_RESOURCE_PATH = "/api/shared_resources/"
+LEONID_SKIPPED_SUITE_PATH = "/api/skipped_suites/"
 LEONID_OBJECT_DEFINITION_PATH = "/api/object_definitions/"
 LEONID_OBJECT_VALUE_PATH = "/api/object_values/"
 LEONID_PIPELINE_PARAM_PATH = "/api/pipeline_params/"
@@ -204,6 +205,23 @@ class LeonidClient:
 
     async def toggle_shared_resource(self, resource_id: int) -> dict[str, Any]:
         return await self._toggle_item(LEONID_RESOURCE_PATH, resource_id)
+
+    async def list_skipped_suites(self) -> list[dict[str, Any]]:
+        return await self._list_collection(LEONID_SKIPPED_SUITE_PATH)
+
+    async def get_skipped_suite(self, suite_id: int) -> dict[str, Any]:
+        return await self._retrieve_item(LEONID_SKIPPED_SUITE_PATH, suite_id)
+
+    async def create_skipped_suite(self, body: dict[str, Any]) -> dict[str, Any]:
+        return await self._create_item(LEONID_SKIPPED_SUITE_PATH, body)
+
+    async def cancel_skipped_suite(self, suite_id: int, body: dict[str, Any]) -> dict[str, Any]:
+        payload = await self._send_json(
+            "POST",
+            f"{LEONID_SKIPPED_SUITE_PATH}{suite_id}/cancel/",
+            json_body=body,
+        )
+        return payload if isinstance(payload, dict) else {}
 
     async def list_object_definitions(self) -> list[dict[str, Any]]:
         return await self._list_collection(LEONID_OBJECT_DEFINITION_PATH)

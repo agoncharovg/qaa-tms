@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class LeonidSharedResourceLimitTypeResponse(BaseModel):
@@ -76,6 +76,48 @@ class LeonidSharedResourceResponse(BaseModel):
     value: str
     count: int
     enabled: bool
+
+
+class LeonidSkippedTest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: str = Field(min_length=1)
+
+
+class LeonidSkippedTestResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    full_name: str
+
+
+class LeonidSkippedSuiteCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1)
+    product: str = Field(min_length=1)
+    expires_at: str = Field(min_length=1)
+    tests: list[LeonidSkippedTest]
+
+    @model_validator(mode="after")
+    def validate_tests(self) -> LeonidSkippedSuiteCreate:
+        if not self.tests:
+            raise ValueError("At least one test is required.")
+        return self
+
+
+class LeonidSkippedSuiteResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: int
+    author: str
+    reason: str
+    product: str
+    created_at: str
+    expires_at: str
+    cancelled_at: str | None = None
+    cancelled_by: str | None = None
+    status: str
+    tests: list[LeonidSkippedTestResponse]
 
 
 class LeonidObjectDefinitionCreate(BaseModel):

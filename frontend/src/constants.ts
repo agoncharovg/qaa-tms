@@ -88,6 +88,7 @@ export const BackendPath = {
   LEONID_SHARED_RESOURCE_LIMIT_TYPES: "/api/v1/leonid/shared_resource_limit_types",
   LEONID_SHARED_RESOURCE_LIMITS: "/api/v1/leonid/shared_resource_limits",
   LEONID_SHARED_RESOURCES: "/api/v1/leonid/shared_resources",
+  LEONID_SKIPPED_SUITES: "/api/v1/leonid/skipped_suites",
   LEONID_OBJECT_DEFINITIONS: "/api/v1/leonid/object_definitions",
   LEONID_OBJECT_VALUES: "/api/v1/leonid/object_values",
   LEONID_PIPELINE_PARAMS: "/api/v1/leonid/pipeline_params",
@@ -281,6 +282,18 @@ export function buildBackendLeonidSharedResourcesPath(resourceId?: number): stri
 
 export function buildBackendLeonidSharedResourceTogglePath(resourceId: number): string {
   return `${buildBackendLeonidSharedResourcesPath(resourceId)}/toggle_enabled`;
+}
+
+export function buildBackendLeonidSkippedSuitesPath(suiteId?: number): string {
+  if (typeof suiteId === "number") {
+    return `${BackendPath.LEONID_SKIPPED_SUITES}/${encodeURIComponent(String(suiteId))}`;
+  }
+
+  return BackendPath.LEONID_SKIPPED_SUITES;
+}
+
+export function buildBackendLeonidSkippedSuiteCancelPath(suiteId: number): string {
+  return `${buildBackendLeonidSkippedSuitesPath(suiteId)}/cancel`;
 }
 
 export function buildBackendLeonidObjectDefinitionsPath(definitionId?: number): string {
@@ -812,6 +825,7 @@ export const ViewKey = {
   JENKINS_TREE: "jenkins-tree",
   JENKINS_BOARD: "jenkins-board",
   LEONID_SHARED_RESOURCES: "leonid-shared-resources",
+  LEONID_SKIPPED_TESTS: "leonid-skipped-tests",
   LEONID_OBJECTS: "leonid-objects",
   LEONID_PIPELINE_CONFIGS: "leonid-pipeline-configs",
   NOTEBOOK_BROWSE: "notebook-browse",
@@ -844,6 +858,7 @@ export const TabId = {
   JENKINS_TREE: "tab-jenkins-tree",
   JENKINS_BOARD: "tab-jenkins-board",
   LEONID_SHARED_RESOURCES: "tab-leonid-shared-resources",
+  LEONID_SKIPPED_TESTS: "tab-leonid-skipped-tests",
   LEONID_OBJECTS: "tab-leonid-objects",
   LEONID_PIPELINE_CONFIGS: "tab-leonid-pipeline-configs",
   NOTEBOOK_BROWSE: "tab-notebook-browse",
@@ -875,6 +890,7 @@ export const TabTitle: Record<TabId, string> = {
   [TabId.JENKINS_TREE]: "Tree",
   [TabId.JENKINS_BOARD]: "Pinned",
   [TabId.LEONID_SHARED_RESOURCES]: "Shared resources",
+  [TabId.LEONID_SKIPPED_TESTS]: "Skipped tests",
   [TabId.LEONID_OBJECTS]: "Objects",
   [TabId.LEONID_PIPELINE_CONFIGS]: "Pipeline configs",
   [TabId.NOTEBOOK_BROWSE]: "Notes",
@@ -938,6 +954,7 @@ export const QueryKey = {
   LEONID_SHARED_RESOURCE_LIMIT_TYPES: "leonid-shared-resource-limit-types",
   LEONID_SHARED_RESOURCE_LIMITS: "leonid-shared-resource-limits",
   LEONID_SHARED_RESOURCES: "leonid-shared-resources",
+  LEONID_SKIPPED_SUITES: "leonid-skipped-suites",
   LEONID_OBJECT_DEFINITIONS: "leonid-object-definitions",
   LEONID_OBJECT_VALUES: "leonid-object-values",
   NOTIFICATOR_CHOICES: "notificator-choices",
