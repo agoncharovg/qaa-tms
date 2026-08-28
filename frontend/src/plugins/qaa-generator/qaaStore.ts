@@ -30,9 +30,12 @@ export const useQaaGeneratorStore = create<QaaGeneratorState>()((set) => ({
   },
 
   startRun(runId) {
-    set({
-      liveRun: createQaaLiveRunState(runId),
-    });
+    set((state) => ({
+      liveRun:
+        state.liveRun?.runId === runId
+          ? state.liveRun
+          : createQaaLiveRunState(runId),
+    }));
   },
 }));
 
