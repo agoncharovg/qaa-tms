@@ -3,9 +3,13 @@ set -euo pipefail
 
 BACKEND_URL="${QAA_TMS_BACKEND_URL:-}"
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/qaa-tms-agent"
-CONSENT_FILE="${CONFIG_DIR}/consent"
-LOG_DIR="${CONFIG_DIR}/logs"
+QAA_TMS_HOME="${QAA_TMS_HOME:-$HOME/.qaa-tms}"
+INSTALL_DIR="${QAA_TMS_HOME}/agent"
+LOG_DIR="${QAA_TMS_HOME}/logs"
+CONSENT_FILE="${QAA_TMS_HOME}/consent"
+ENV_PATH="${QAA_TMS_HOME}/.env"
+BIN_DIR="${HOME}/.local/bin"
+BIN_LINK="${BIN_DIR}/qaa-tms-agent"
 SYSTEMD_USER_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 SYSTEMD_UNIT_PATH="${SYSTEMD_USER_DIR}/qaa-tms-agent.service"
 LAUNCHD_DIR="$HOME/Library/LaunchAgents"
@@ -85,7 +89,7 @@ PY
 }
 
 render_template() {
-  python3 - "$1" "$2" "$3" "$4" <<'PY'
+  python3 - "$1" "$2" "$3" "$4" "$5" <<'PY'
 from __future__ import annotations
 
 import sys
@@ -95,15 +99,17 @@ template_path = Path(sys.argv[1])
 output_path = Path(sys.argv[2])
 install_dir = sys.argv[3]
 log_dir = sys.argv[4]
+qaa_home = sys.argv[5]
 content = template_path.read_text(encoding="utf-8")
 content = content.replace("__INSTALL_DIR__", install_dir).replace("__LOG_DIR__", log_dir)
+content = content.replace("__QAA_TMS_HOME__", qaa_home)
 output_path.parent.mkdir(parents=True, exist_ok=True)
 output_path.write_text(content, encoding="utf-8")
 PY
 }
 
 ensure_consent() {
-  mkdir -p "${CONFIG_DIR}"
+  mkdir -p "${QAA_TMS_HOME}"
   if [ -f "${CONSENT_FILE}" ]; then
     return
   fi
@@ -144,7 +150,8 @@ install_systemd_unit() {
     "${SCRIPT_DIR}/deploy/qaa-tms-agent.service.tmpl" \
     "${SYSTEMD_UNIT_PATH}" \
     "${SCRIPT_DIR}" \
-    "${LOG_DIR}"
+    "${LOG_DIR}" \
+    "${QAA_TMS_HOME}"
   systemctl --user daemon-reload
   systemctl --user enable --now qaa-tms-agent.service
   printf '%s\n' "To keep the service running without an active login session, run: loginctl enable-linger ${USER}"
@@ -156,7 +163,8 @@ install_launchd_unit() {
     "${SCRIPT_DIR}/deploy/onl.gc.qaa-tms-agent.plist.tmpl" \
     "${LAUNCHD_PLIST_PATH}" \
     "${SCRIPT_DIR}" \
-    "${LOG_DIR}"
+    "${LOG_DIR}" \
+    "${QAA_TMS_HOME}"
   launchctl bootout "gui/$(id -u)" "${LAUNCHD_PLIST_PATH}" >/dev/null 2>&1 || true
   launchctl bootstrap "gui/$(id -u)" "${LAUNCHD_PLIST_PATH}"
   launchctl kickstart -k "gui/$(id -u)/onl.gc.qaa-tms-agent"
@@ -165,14 +173,24 @@ install_launchd_unit() {
 main() {
   require_python
   ensure_consent
+  if [ "${SCRIPT_DIR}" != "${INSTALL_DIR}" ]; then
+    mkdir -p "${INSTALL_DIR}"
+    (cd "${SCRIPT_DIR}" && tar --exclude=.venv --exclude=.git -cf - .) | (cd "${INSTALL_DIR}" && tar -xf -)
+    rm -rf "${INSTALL_DIR}/.venv"
+    SCRIPT_DIR="${INSTALL_DIR}"
+    printf '%s\n' "Installed agent files were copied to ${INSTALL_DIR}. You can delete the original download directory manually."
+  fi
   mkdir -p "${LOG_DIR}"
   chmod +x "${SCRIPT_DIR}/install.sh" "${SCRIPT_DIR}/run.sh" "${SCRIPT_DIR}/update.sh"
   bootstrap_venv
 
   backend_origin="$(normalize_origin "${BACKEND_URL}")"
-  env_path="${SCRIPT_DIR}/.env"
+  mkdir -p "${QAA_TMS_HOME}"
+  env_path="${ENV_PATH}"
   write_env_value "${env_path}" "AGENT_BACKEND_URL" "${backend_origin}"
   write_env_value "${env_path}" "AGENT_CORS_ORIGINS" "${backend_origin}"
+  mkdir -p "${BIN_DIR}"
+  ln -sf "${INSTALL_DIR}/run.sh" "${BIN_LINK}"
 
   case "$(uname -s)" in
     Darwin)
@@ -192,6 +210,9 @@ main() {
     printf '%s\n' "View logs with: tail -f ${LOG_DIR}/stdout.log"
   else
     printf '%s\n' "View logs with: journalctl --user -u qaa-tms-agent.service -f"
+  fi
+  if [[ ":$PATH:" != *":${BIN_DIR}:"* ]]; then
+    printf '%s\n' "Add ${BIN_DIR} to PATH so qaa-tms-agent is directly runnable."
   fi
 }
 

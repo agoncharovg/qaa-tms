@@ -6,7 +6,6 @@ from pathlib import Path
 import pytest
 
 from app.core.config import Settings
-from app.core.constants import EnvKey
 from app.services import notebook as notebook_service
 from app.services.notebook import (
     NotebookConflictError,
@@ -15,30 +14,36 @@ from app.services.notebook import (
     create_bookmark,
     delete_bookmark,
     delete_note,
+    list_active_reminders,
     list_bookmarks,
     list_notes,
-    list_active_reminders,
     move_note,
     read_note,
-    reorder_bookmarks,
     rename_bookmark,
+    reorder_bookmarks,
     search,
     set_flags,
     write_note,
 )
 
 
-def build_settings(root: Path) -> Settings:
-    return Settings(_env_file=None, **{EnvKey.NOTEBOOK_ROOT.value: str(root)})
+def build_settings(monkeypatch: pytest.MonkeyPatch, home: Path) -> Settings:
+    monkeypatch.setenv("QAA_TMS_HOME", str(home))
+    return Settings(_env_file=None)
 
 
 def read_contents_json(root: Path) -> object:
     return json.loads((root / "__contents__").read_text(encoding="utf-8"))
 
 
-def test_bookmark_and_note_crud(tmp_path: Path) -> None:
+def test_bookmark_and_note_crud(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     root = tmp_path / "notebook"
-    settings = build_settings(root)
+    settings = build_settings(monkeypatch, tmp_path)
+
+    assert settings.notebook_root == str(root)
 
     create_bookmark(settings, "alpha")
     note_name = write_note(settings, "alpha", None, "line1\nline2\nline3\nline4")
@@ -68,8 +73,7 @@ def test_write_note_generates_collision_suffix(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    root = tmp_path / "notebook"
-    settings = build_settings(root)
+    settings = build_settings(monkeypatch, tmp_path)
     create_bookmark(settings, "alpha")
     monkeypatch.setattr(
         notebook_service,
@@ -86,9 +90,12 @@ def test_write_note_generates_collision_suffix(
     assert third == "2026-08-25-14-30-05-2"
 
 
-def test_sparse_flags_overlay_set_and_clear(tmp_path: Path) -> None:
+def test_sparse_flags_overlay_set_and_clear(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     root = tmp_path / "notebook"
-    settings = build_settings(root)
+    settings = build_settings(monkeypatch, tmp_path)
     create_bookmark(settings, "alpha")
     note_name = write_note(settings, "alpha", None, "body")
 
@@ -107,9 +114,12 @@ def test_sparse_flags_overlay_set_and_clear(tmp_path: Path) -> None:
     assert "notes" not in stored[0]
 
 
-def test_move_note_between_bookmarks_preserves_text_and_flags(tmp_path: Path) -> None:
+def test_move_note_between_bookmarks_preserves_text_and_flags(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     root = tmp_path / "notebook"
-    settings = build_settings(root)
+    settings = build_settings(monkeypatch, tmp_path)
     create_bookmark(settings, "alpha")
     create_bookmark(settings, "beta")
     note_name = write_note(settings, "alpha", None, "line1\nline2")
@@ -129,9 +139,11 @@ def test_move_note_between_bookmarks_preserves_text_and_flags(tmp_path: Path) ->
     assert beta["notes"][note_name] == {"important": True}
 
 
-def test_move_note_rejects_target_name_conflict(tmp_path: Path) -> None:
-    root = tmp_path / "notebook"
-    settings = build_settings(root)
+def test_move_note_rejects_target_name_conflict(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = build_settings(monkeypatch, tmp_path)
     create_bookmark(settings, "alpha")
     create_bookmark(settings, "beta")
     note_name = write_note(settings, "alpha", None, "source")
@@ -141,9 +153,12 @@ def test_move_note_rejects_target_name_conflict(tmp_path: Path) -> None:
         move_note(settings, "alpha", "beta", note_name)
 
 
-def test_reorder_bookmarks_preserves_flags_and_notes(tmp_path: Path) -> None:
+def test_reorder_bookmarks_preserves_flags_and_notes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     root = tmp_path / "notebook"
-    settings = build_settings(root)
+    settings = build_settings(monkeypatch, tmp_path)
     create_bookmark(settings, "alpha")
     create_bookmark(settings, "beta")
     create_bookmark(settings, "gamma")
@@ -154,17 +169,19 @@ def test_reorder_bookmarks_preserves_flags_and_notes(tmp_path: Path) -> None:
     reorder_bookmarks(settings, ["gamma", "alpha", "beta"])
 
     tree = list_bookmarks(settings)
-    assert [b.name for b in tree.bookmarks] == ["gamma", "alpha", "beta"]
+    assert [bookmark.name for bookmark in tree.bookmarks] == ["gamma", "alpha", "beta"]
 
     stored = read_contents_json(root)
-    alpha_node = next(n for n in stored if n["name"] == "alpha")
+    alpha_node = next(node for node in stored if node["name"] == "alpha")
     assert alpha_node["flags"] == {"star": True}
     assert alpha_node["notes"][note_name] == {"important": True}
 
 
-def test_reorder_bookmarks_appends_unlisted(tmp_path: Path) -> None:
-    root = tmp_path / "notebook"
-    settings = build_settings(root)
+def test_reorder_bookmarks_appends_unlisted(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = build_settings(monkeypatch, tmp_path)
     create_bookmark(settings, "alpha")
     create_bookmark(settings, "beta")
     create_bookmark(settings, "gamma")
@@ -172,10 +189,13 @@ def test_reorder_bookmarks_appends_unlisted(tmp_path: Path) -> None:
     reorder_bookmarks(settings, ["gamma"])
 
     tree = list_bookmarks(settings)
-    assert [b.name for b in tree.bookmarks] == ["gamma", "alpha", "beta"]
+    assert [bookmark.name for bookmark in tree.bookmarks] == ["gamma", "alpha", "beta"]
 
 
-def test_self_heal_uses_filesystem_truth(tmp_path: Path) -> None:
+def test_self_heal_uses_filesystem_truth(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     root = tmp_path / "notebook"
     root.mkdir()
     (root / "alpha").mkdir()
@@ -185,14 +205,16 @@ def test_self_heal_uses_filesystem_truth(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    tree = list_bookmarks(build_settings(root))
+    tree = list_bookmarks(build_settings(monkeypatch, tmp_path))
 
     assert [bookmark.name for bookmark in tree.bookmarks] == ["alpha", "beta"]
 
 
-def test_search_returns_matching_notes(tmp_path: Path) -> None:
-    root = tmp_path / "notebook"
-    settings = build_settings(root)
+def test_search_returns_matching_notes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = build_settings(monkeypatch, tmp_path)
     create_bookmark(settings, "alpha")
     create_bookmark(settings, "beta")
     first = write_note(settings, "alpha", None, "Needle\nfirst\nsecond")
@@ -208,36 +230,37 @@ def test_search_returns_matching_notes(tmp_path: Path) -> None:
     assert result.matches[0].preview_lines == ["Needle", "first", "second"]
 
 
-@pytest.mark.parametrize(
-    "bookmark_name",
-    ["..", "nested/name", "nested\\name", "/tmp/evil"],
-)
+@pytest.mark.parametrize("bookmark_name", ["..", "nested/name", "nested\\name", "/tmp/evil"])
 def test_bookmark_path_traversal_is_rejected(
     bookmark_name: str,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    settings = build_settings(tmp_path / "notebook")
+    settings = build_settings(monkeypatch, tmp_path)
 
     with pytest.raises(NotebookPathValidationError):
         create_bookmark(settings, bookmark_name)
 
 
-@pytest.mark.parametrize(
-    "note_name",
-    ["..", "nested/name", "nested\\name", "/tmp/evil"],
-)
-def test_note_path_traversal_is_rejected(note_name: str, tmp_path: Path) -> None:
-    root = tmp_path / "notebook"
-    settings = build_settings(root)
+@pytest.mark.parametrize("note_name", ["..", "nested/name", "nested\\name", "/tmp/evil"])
+def test_note_path_traversal_is_rejected(
+    note_name: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = build_settings(monkeypatch, tmp_path)
     create_bookmark(settings, "alpha")
 
     with pytest.raises(NotebookPathValidationError):
         write_note(settings, "alpha", note_name, "body")
 
 
-def test_missing_root_raises_until_first_write(tmp_path: Path) -> None:
+def test_missing_root_raises_until_first_write(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     root = tmp_path / "notebook"
-    settings = build_settings(root)
+    settings = build_settings(monkeypatch, tmp_path)
 
     with pytest.raises(NotebookRootMissingError):
         list_bookmarks(settings)
@@ -251,18 +274,26 @@ def test_missing_root_raises_until_first_write(tmp_path: Path) -> None:
     assert [bookmark.name for bookmark in list_bookmarks(settings).bookmarks] == ["alpha"]
 
 
-def test_malformed_contents_is_treated_as_empty(tmp_path: Path) -> None:
+def test_malformed_contents_is_treated_as_empty(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     root = tmp_path / "notebook"
     root.mkdir()
     (root / "alpha").mkdir()
     (root / "__contents__").write_text("{not-json", encoding="utf-8")
 
-    tree = list_bookmarks(build_settings(root))
+    tree = list_bookmarks(build_settings(monkeypatch, tmp_path))
 
     assert [bookmark.name for bookmark in tree.bookmarks] == ["alpha"]
-def test_list_active_reminders_filters_and_recurses(tmp_path: Path) -> None:
+
+
+def test_list_active_reminders_filters_and_recurses(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     root = tmp_path / "notebook"
-    settings = build_settings(root)
+    settings = build_settings(monkeypatch, tmp_path)
     create_bookmark(settings, "alpha")
     create_bookmark(settings, "beta")
     due_note = write_note(settings, "alpha", "due-note", "due body")
@@ -287,7 +318,9 @@ def test_list_active_reminders_filters_and_recurses(tmp_path: Path) -> None:
     contents = read_contents_json(root)
     contents[1]["children"] = [{"name": "beta"}]
     (root / "__contents__").write_text(json.dumps(contents), encoding="utf-8")
+
     reminders = list_active_reminders(settings)
+
     assert [(reminder.bookmark, reminder.name, reminder.remind_at) for reminder in reminders] == [
         ("alpha", "due-note", "2026-08-01T09:00"),
         ("alpha", "future-note", "2026-12-01T18:30"),

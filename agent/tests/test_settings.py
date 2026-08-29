@@ -26,7 +26,6 @@ def write_agent_env(path: Path) -> None:
                 "AGENT_STAGING_BIN=/usr/local/bin/staging",
                 "AGENT_STAGINGS_REPO=/tmp/stagings",
                 "STAGING_KUBECONFIG=~/.kube/ai-staging.yaml",
-                "AGENT_NOTEBOOK_ROOT=~/qaa-notebook",
                 "AGENT_STAGING_KUBECONFIG_URL=https://kubeconf.example/config",
                 "AGENT_KUBECONFIG_ACTIVE_PATH=~/.kube/config",
                 "AGENT_STAGING_KUBECONFIG_MAX_AGE_HOURS=48",
@@ -74,11 +73,12 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
     ]
     assert body["jenkins_root_folders"] == ["PREPROD", "PROD"]
     assert body["jenkins_history_limit"] == 8
-    assert body["notebook_backup_enabled"] is True
     assert "jenkins_token" not in body
     assert "qaa_generator_token" not in body
     assert "host" not in body
     assert "backend_url" not in body
+    assert "notebook_root" not in body
+    assert "notebook_backup_enabled" not in body
 
     put_response = await client.put(
         "/settings",
@@ -100,8 +100,6 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
             "staging_bin": "/opt/staging",
             "stagings_repo": "/work/stagings",
             "staging_kubeconfig": "~/.kube/updated.yaml",
-            "notebook_root": "/tmp/notebook",
-            "notebook_backup_enabled": False,
             "staging_kubeconfig_url": "https://updated.example/config",
             "kubeconfig_active_path": "~/.kube/active.yaml",
             "staging_kubeconfig_max_age_hours": 72,
@@ -124,8 +122,6 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
     assert updated["jenkins_root_folders"] == ["UPDATED", "MORE"]
     assert updated["jenkins_history_limit"] == 10
     assert updated["staging_bin"] == "/opt/staging"
-    assert updated["notebook_root"] == "/tmp/notebook"
-    assert updated["notebook_backup_enabled"] is False
     assert updated["kubectl_request_timeout"] == "20s"
 
     runtime_settings = client._transport.app.state.settings
@@ -139,8 +135,6 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
     ]
     assert runtime_settings.jenkins_root_folders == ["UPDATED", "MORE"]
     assert runtime_settings.jenkins_history_limit == 10
-    assert runtime_settings.notebook_root == "/tmp/notebook"
-    assert runtime_settings.notebook_backup_enabled is False
     assert (
         client._transport.app.state.job_manager._settings.jenkins_url == "https://updated.jenkins"
     )
@@ -148,7 +142,7 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
     refreshed_response = await client.get("/settings", headers=auth_headers)
 
     assert refreshed_response.status_code == 200
-    assert refreshed_response.json()["notebook_backup_enabled"] is False
+    assert "notebook_backup_enabled" not in refreshed_response.json()
 
     serialized_env = env_path.read_text(encoding="utf-8")
     assert "AGENT_JENKINS_TOKEN=\n" in serialized_env
@@ -159,5 +153,3 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
     )
     assert "AGENT_JENKINS_ROOT_FOLDERS=UPDATED,MORE\n" in serialized_env
     assert "AGENT_JENKINS_HISTORY_LIMIT=10\n" in serialized_env
-    assert "AGENT_NOTEBOOK_ROOT=/tmp/notebook\n" in serialized_env
-    assert "AGENT_NOTEBOOK_BACKUP_ENABLED=False\n" in serialized_env

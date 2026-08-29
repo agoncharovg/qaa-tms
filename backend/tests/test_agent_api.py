@@ -13,6 +13,7 @@ from app.db.session import create_engine_and_session_maker
 from app.main import create_app
 
 DOWNLOAD_PATH = "/api/v1/agent/download"
+INSTALL_SCRIPT_PATH = "/api/v1/agent/install.sh"
 MANIFEST_PATH = "/api/v1/agent/manifest"
 
 
@@ -83,6 +84,21 @@ def test_agent_manifest_returns_bundle_metadata(tmp_path: Path) -> None:
     assert download_response.headers["content-type"] == "application/gzip"
     assert download_response.headers["cache-control"] == "no-store"
     assert download_response.content == tarball_bytes
+
+
+def test_agent_install_script_returns_bootstrap_script(tmp_path: Path) -> None:
+    agent_dist_dir = tmp_path / "missing-dist"
+
+    with build_client(tmp_path, agent_dist_dir) as client:
+        response = client.get(INSTALL_SCRIPT_PATH)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/x-shellscript")
+    assert response.headers["cache-control"] == "no-store"
+    assert response.text.startswith("#!/usr/bin/env bash")
+    assert "http://testserver" in response.text
+    assert "/api/v1/agent/manifest" in response.text
+    assert "install.sh --backend-url" in response.text
 
 
 def test_agent_manifest_returns_503_when_bundle_is_missing(tmp_path: Path) -> None:

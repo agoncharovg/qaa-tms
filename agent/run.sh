@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 PYTHON_BIN="${SCRIPT_DIR}/.venv/bin/python"
+export QAA_TMS_HOME="${QAA_TMS_HOME:-$HOME/.qaa-tms}"
 export QAA_TMS_AGENT_SERVICE_MANAGED=1
 
 if ! "${SCRIPT_DIR}/update.sh" --if-newer; then

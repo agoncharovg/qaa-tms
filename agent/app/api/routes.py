@@ -218,8 +218,6 @@ AGENT_SETTINGS_ENV_KEY_BY_FIELD = {
     "kubectl_request_timeout": EnvKey.KUBECTL_REQUEST_TIMEOUT,
     "staging_bin": EnvKey.STAGING_BIN,
     "staging_kubeconfig": StagingEnvKey.KUBECONFIG,
-    "notebook_root": EnvKey.NOTEBOOK_ROOT,
-    "notebook_backup_enabled": EnvKey.NOTEBOOK_BACKUP_ENABLED,
     "staging_kubeconfig_max_age_hours": EnvKey.STAGING_KUBECONFIG_MAX_AGE_HOURS,
     "staging_kubeconfig_url": EnvKey.STAGING_KUBECONFIG_URL,
     "stagings_repo": EnvKey.STAGINGS_REPO,

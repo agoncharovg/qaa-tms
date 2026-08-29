@@ -4,6 +4,7 @@ After=network-online.target
 
 [Service]
 Type=simple
+Environment=QAA_TMS_HOME=__QAA_TMS_HOME__
 WorkingDirectory=__INSTALL_DIR__
 ExecStart=__INSTALL_DIR__/run.sh
 Restart=always

@@ -57,8 +57,6 @@ const agentSettingsResponse = {
   staging_bin: "/usr/local/bin/staging",
   stagings_repo: "/work/stagings",
   staging_kubeconfig: "~/.kube/ai-staging.yaml",
-  notebook_root: "~/qaa-notebook",
-  notebook_backup_enabled: true,
   staging_kubeconfig_url: "https://kubeconf.example/config",
   kubeconfig_active_path: "~/.kube/config",
   staging_kubeconfig_max_age_hours: 48,
@@ -231,49 +229,6 @@ describe("SettingsPanel", () => {
     await waitFor(() => {
       expect(agentClientMock.updateSettings).toHaveBeenCalledWith(47600, "token-123", {
         kubeconfig: "/tmp/kubeconfig",
-      });
-    });
-  });
-
-  it("renders the notebook backup switch and saves it with notebook settings", async () => {
-    const user = userEvent.setup();
-
-    useAuthStore.setState({
-      currentUser: createCurrentUser([PluginId.NOTEBOOK]),
-      token: "token-123",
-    });
-    agentClientMock.discoverAgent.mockResolvedValue({
-      agent: {
-        app: "qaa-tms-agent",
-        os: "linux",
-        stagingsInstalled: true,
-        stagingsSha: "abc123",
-        version: "0.1.0",
-      },
-      port: 47600,
-    });
-    agentClientMock.getSettings.mockResolvedValue(agentSettingsResponse);
-    agentClientMock.updateSettings.mockResolvedValue({
-      ...agentSettingsResponse,
-      notebook_backup_enabled: false,
-    });
-
-    renderWithProviders(<SettingsPanel />);
-
-    const backupLabel = await screen.findByText("Daily automatic backup");
-    const backupSwitch = backupLabel.closest("label")?.querySelector("input");
-    expect(backupSwitch).not.toBeNull();
-    expect(backupSwitch).toBeChecked();
-
-    await user.click(backupLabel);
-    await user.clear(screen.getByLabelText("Notebook folder path"));
-    await user.type(screen.getByLabelText("Notebook folder path"), "/tmp/notebook");
-    await user.click(screen.getByRole("button", { name: "Save Notebook settings" }));
-
-    await waitFor(() => {
-      expect(agentClientMock.updateSettings).toHaveBeenCalledWith(47600, "token-123", {
-        notebook_backup_enabled: false,
-        notebook_root: "/tmp/notebook",
       });
     });
   });

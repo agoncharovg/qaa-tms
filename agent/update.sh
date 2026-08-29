@@ -106,7 +106,8 @@ def restart_service() -> None:
 
 
 def main() -> int:
-    env_path = INSTALL_DIR / ENV_FILE_NAME
+    home = Path(os.environ.get("QAA_TMS_HOME") or INSTALL_DIR.parent)
+    env_path = home / ENV_FILE_NAME
     backend_url = read_env_value(env_path, BACKEND_URL_KEY).rstrip("/")
     if not backend_url:
         raise RuntimeError("AGENT_BACKEND_URL is not configured in .env.")
@@ -143,9 +144,6 @@ def main() -> int:
         if not payload_root.is_dir():
             raise RuntimeError("The downloaded archive does not contain the agent/ root.")
         shutil.copytree(payload_root, next_dir)
-
-    if env_path.is_file():
-        shutil.copy2(env_path, next_dir / ENV_FILE_NAME)
 
     try:
         INSTALL_DIR.rename(backup_dir)

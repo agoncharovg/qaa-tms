@@ -66,6 +66,8 @@ describe("CompanionGate", () => {
 
     expect(await screen.findByText("not-installed")).toBeInTheDocument();
     expect(await screen.findByText("Companion is not installed")).toBeInTheDocument();
+    expect(screen.getByText(/curl -fsSL .*\/api\/v1\/agent\/install\.sh \| bash/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy command" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Download" })).toHaveAttribute(
       "href",
       "/api/v1/agent/download"

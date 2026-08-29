@@ -62,8 +62,6 @@ def latest_backup_date(settings: Settings) -> date | None:
 
 
 def should_backup(settings: Settings, now: datetime) -> bool:
-    if not settings.notebook_backup_enabled:
-        return False
     return latest_backup_date(settings) != now.date()
 
 
@@ -128,7 +126,7 @@ async def run_backup_loop(app: FastAPI) -> None:
         try:
             settings = app.state.settings
             now = datetime.now()
-            if settings.notebook_backup_enabled and should_backup(settings, now):
+            if should_backup(settings, now):
                 if first_tick or now.hour >= NOTEBOOK_BACKUP_HOUR:
                     create_backup(settings, now)
         except Exception:

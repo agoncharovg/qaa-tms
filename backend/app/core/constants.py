@@ -77,6 +77,7 @@ class RoutePath(StrEnum):
     NOTIFICATOR = "/notificator"
     MANIFEST = "/manifest"
     DOWNLOAD = "/download"
+    INSTALL_SCRIPT = "/install.sh"
     AUTH = "/auth"
     LOGIN = "/login"
     SECURITY = "/security"
@@ -200,6 +201,7 @@ class HttpMethod(StrEnum):
 class MediaType(StrEnum):
     GZIP = "application/gzip"
     JSON = "application/json"
+    SHELL = "text/x-shellscript; charset=utf-8"
     TEXT_EVENT_STREAM = "text/event-stream"
 
 

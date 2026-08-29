@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
+from app.core import env_file
 from app.core.config import Settings
 from app.core.constants import EnvKey
 
@@ -76,11 +79,39 @@ def test_jenkins_root_groups_reject_missing_label_or_path(
         Settings(_env_file=None)
 
 
-def test_notebook_backup_enabled_loads_from_env(
+def test_notebook_root_defaults_to_hidden_home_dir(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv(EnvKey.NOTEBOOK_BACKUP_ENABLED.value, "False")
+    monkeypatch.delenv("QAA_TMS_HOME", raising=False)
 
     settings = Settings(_env_file=None)
 
-    assert settings.notebook_backup_enabled is False
+    assert settings.notebook_root == str(Path("~/.qaa-tms/notebook").expanduser())
+
+
+def test_notebook_root_tracks_qaa_tms_home_override(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("QAA_TMS_HOME", str(tmp_path))
+
+    settings = Settings(_env_file=None)
+
+    assert settings.notebook_root == str(tmp_path / "notebook")
+
+
+def test_resolve_agent_env_file_prefers_qaa_tms_home_override(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("QAA_TMS_HOME", str(tmp_path))
+
+    assert env_file.resolve_agent_env_file() == tmp_path / ".env"
+
+
+def test_resolve_agent_env_file_falls_back_to_repo_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("QAA_TMS_HOME", raising=False)
+
+    assert env_file.resolve_agent_env_file() == env_file.AGENT_PACKAGE_ROOT / ".env"

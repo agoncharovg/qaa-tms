@@ -78,6 +78,7 @@ export type StorageKey = (typeof StorageKey)[keyof typeof StorageKey];
 export const BackendPath = {
   AGENT_MANIFEST: "/api/v1/agent/manifest",
   AGENT_DOWNLOAD: "/api/v1/agent/download",
+  AGENT_INSTALL_SCRIPT: "/api/v1/agent/install.sh",
   AUTH_LOGIN: "/api/v1/auth/login",
   JENKINS_SCOPE: "/api/v1/jenkins/scope",
   JENKINS_TREE: "/api/v1/jenkins/tree",

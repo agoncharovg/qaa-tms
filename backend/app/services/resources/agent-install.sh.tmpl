@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BACKEND_ORIGIN="__BACKEND_ORIGIN__"
+
+require_command() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "Missing required command: $1" >&2
+    exit 1
+  fi
+}
+
+require_command curl
+require_command tar
+require_command python3
+
+manifest=$(curl -fsSL "${BACKEND_ORIGIN}/api/v1/agent/manifest")
+download_url=$(
+  printf '%s' "$manifest" | python3 -c 'import json, sys; manifest = json.load(sys.stdin); print(manifest["downloadUrl"])'
+)
+expected_sha256=$(
+  printf '%s' "$manifest" | python3 -c 'import json, sys; manifest = json.load(sys.stdin); print(manifest["sha256"])'
+)
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+archive_path="$tmp/agent.tar.gz"
+curl -fsSL "${BACKEND_ORIGIN}${download_url}" -o "$archive_path"
+
+actual_sha256=$(
+  python3 -c 'import hashlib, pathlib, sys; print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())' "$archive_path"
+)
+
+if [ "$actual_sha256" != "$expected_sha256" ]; then
+  echo "Downloaded companion archive failed sha256 verification." >&2
+  echo "Expected: $expected_sha256" >&2
+  echo "Actual:   $actual_sha256" >&2
+  exit 1
+fi
+
+tar -xzf "$archive_path" -C "$tmp"
+
+if [ ! -t 0 ] && [ ! -e /dev/tty ]; then
+  echo "The companion installer needs an interactive terminal." >&2
+  exit 1
+fi
+
+# Delegate to the bundled install.sh --backend-url installer with terminal input.
+chmod +x "$tmp/agent/install.sh"
+"$tmp/agent/install.sh" --backend-url "${BACKEND_ORIGIN}" < /dev/tty
+
+echo "Companion installed. Reload the portal."

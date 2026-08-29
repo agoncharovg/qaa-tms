@@ -23,6 +23,7 @@ from app.services.agent_bundle import (
     AgentBundleUnavailableError,
     get_agent_bundle,
 )
+from app.services.agent_install_script import render_install_script
 
 router = APIRouter(prefix=RoutePath.AGENT.value, tags=[ApiTag.SYSTEM.value])
 
@@ -49,6 +50,17 @@ async def get_agent_manifest(request: Request, response: Response) -> AgentManif
         download_url=f"{ApiPrefix.V1.value}{RoutePath.AGENT.value}{RoutePath.DOWNLOAD.value}",
         sha256=bundle.sha256,
         os=None,
+    )
+
+
+@router.get(RoutePath.INSTALL_SCRIPT.value)
+async def get_agent_install_script(request: Request) -> Response:
+    origin = str(request.base_url).rstrip("/")
+    script = render_install_script(origin)
+    return Response(
+        content=script,
+        media_type=MediaType.SHELL.value,
+        headers={HttpHeader.CACHE_CONTROL.value: CacheControl.NO_STORE.value},
     )
 
 

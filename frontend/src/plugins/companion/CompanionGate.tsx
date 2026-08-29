@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Alert, Button, Code, Group, Loader, Stack, Text } from "@mantine/core";
+import { Alert, Button, Code, CopyButton, Group, Loader, Stack, Text } from "@mantine/core";
 import {
   IconAlertCircle,
   IconDownload,
@@ -9,14 +9,16 @@ import {
 } from "@tabler/icons-react";
 
 import type { AgentManifest, AgentPingResponse } from "@/api/types";
-import { CompanionStatusKind } from "@/constants";
+import { BackendPath, CompanionStatusKind } from "@/constants";
 import { useCompanionStatus } from "@/plugins/companion/useCompanionStatus";
 
 const CompanionGateCopy = {
+  COPIED: "Copied",
+  COPY_COMMAND: "Copy command",
   ERROR_TITLE: "Companion status failed",
   INSTALL_COMMAND_PREFIX: "Install command:",
   NOT_INSTALLED_BODY:
-    "Download the companion source tarball, extract it locally, then run the installer from the extracted agent directory.",
+    "Run this command in a terminal to install the companion, then reload this page. Download remains available if you need the tarball directly.",
   NOT_INSTALLED_TITLE: "Companion is not installed",
   UPDATE_AVAILABLE_BODY:
     "A newer companion build is available from this portal. You can keep working while the update is applied.",
@@ -29,7 +31,7 @@ const CompanionGateCopy = {
 } as const;
 
 function buildInstallCommand(): string {
-  return `tar -xzf qaa-tms-agent-src.tar.gz && cd agent && ./install.sh --backend-url ${window.location.origin}`;
+  return `curl -fsSL ${window.location.origin}${BackendPath.AGENT_INSTALL_SCRIPT} | bash`;
 }
 
 function renderChildren(
@@ -100,7 +102,18 @@ export function CompanionGate({
           <Text c="dimmed" size="sm">
             {CompanionGateCopy.INSTALL_COMMAND_PREFIX}
           </Text>
-          <Code block>{buildInstallCommand()}</Code>
+          <Group align="flex-start" gap="xs" wrap="nowrap">
+            <Code block style={{ flex: 1 }}>
+              {buildInstallCommand()}
+            </Code>
+            <CopyButton value={buildInstallCommand()}>
+              {({ copied, copy }) => (
+                <Button variant="light" onClick={copy}>
+                  {copied ? CompanionGateCopy.COPIED : CompanionGateCopy.COPY_COMMAND}
+                </Button>
+              )}
+            </CopyButton>
+          </Group>
         </Stack>
       </Alert>
     );
