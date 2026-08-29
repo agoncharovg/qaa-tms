@@ -1,4 +1,4 @@
-import { type CSSProperties, type DragEvent, useEffect, useRef, useState } from "react";
+import { type CSSProperties, type DragEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
 import {
   ActionIcon,
   Box,
@@ -140,8 +140,9 @@ function buildBookmarkRowStyle(active: boolean, palette: Palette): CSSProperties
     borderRadius: "10px",
     color: active ? palette.accent : palette.inkSoft,
     display: "flex",
-    gap: "10px",
-    justifyContent: "space-between",
+    gap: "8px",
+    justifyContent: "flex-start",
+    minWidth: 0,
     padding: "8px 12px",
     transition: "background-color 150ms ease, color 150ms ease",
     width: "100%",
@@ -1051,6 +1052,15 @@ export function NotebookBrowsePanel() {
     });
   }
 
+  function handleBookmarkRowKeyDown(event: KeyboardEvent<HTMLDivElement>, bookmarkName: string): void {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    event.preventDefault();
+    handleBookmarkRowClick(bookmarkName);
+  }
+
   function handleNoteDragStart(event: DragEvent<HTMLButtonElement>, noteName: string): void {
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", noteName);
@@ -1063,7 +1073,7 @@ export function NotebookBrowsePanel() {
     setDragOverBookmarkName(null);
   }
 
-  function handleBookmarkDragOver(event: DragEvent<HTMLButtonElement>, bookmarkName: string): void {
+  function handleBookmarkDragOver(event: DragEvent<HTMLElement>, bookmarkName: string): void {
     if (draggedBookmarkName !== null) {
       handleBookmarkReorderDragOver(
         event,
@@ -1083,7 +1093,7 @@ export function NotebookBrowsePanel() {
     }
   }
 
-  function handleBookmarkDrop(event: DragEvent<HTMLButtonElement>, bookmarkName: string): void {
+  function handleBookmarkDrop(event: DragEvent<HTMLElement>, bookmarkName: string): void {
     if (draggedBookmarkName !== null) {
       handleBookmarkReorderDrop(event);
       return;
@@ -1108,7 +1118,7 @@ export function NotebookBrowsePanel() {
     });
   }
 
-  function handleBookmarkReorderDragStart(event: DragEvent<HTMLButtonElement>, bookmarkName: string): void {
+  function handleBookmarkReorderDragStart(event: DragEvent<HTMLElement>, bookmarkName: string): void {
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("application/x-bookmark-reorder", bookmarkName);
     setDraggedBookmarkName(bookmarkName);
@@ -1120,7 +1130,7 @@ export function NotebookBrowsePanel() {
     setBookmarkDropIndex(null);
   }
 
-  function handleBookmarkReorderDragOver(event: DragEvent<HTMLButtonElement>, bookmarkIndex: number): void {
+  function handleBookmarkReorderDragOver(event: DragEvent<HTMLElement>, bookmarkIndex: number): void {
     if (draggedBookmarkName === null || bookmarkIndex < 0) {
       return;
     }
@@ -1135,7 +1145,7 @@ export function NotebookBrowsePanel() {
     }
   }
 
-  function handleBookmarkReorderDrop(event: DragEvent<HTMLButtonElement>): void {
+  function handleBookmarkReorderDrop(event: DragEvent<HTMLElement>): void {
     event.preventDefault();
 
     if (draggedBookmarkName === null || bookmarkDropIndex === null || reorderBookmarksMutation.isPending) {
@@ -1403,7 +1413,28 @@ export function NotebookBrowsePanel() {
                               }}
                             />
                           ) : null}
-                          <Group align="center" gap="xs" wrap="nowrap">
+                          <Box
+                            aria-current={selectedBookmark === bookmark.name ? "page" : undefined}
+                            draggable={bookmarkDraggable}
+                            onClick={() => handleBookmarkRowClick(bookmark.name)}
+                            onDragEnd={handleBookmarkReorderDragEnd}
+                            onDragOver={(event) => handleBookmarkDragOver(event, bookmark.name)}
+                            onDragStart={(event) => handleBookmarkReorderDragStart(event, bookmark.name)}
+                            onDrop={(event) => handleBookmarkDrop(event, bookmark.name)}
+                            onKeyDown={(event) => handleBookmarkRowKeyDown(event, bookmark.name)}
+                            role="button"
+                            style={{
+                              ...buildBookmarkRowStyle(selectedBookmark === bookmark.name, palette),
+                              cursor: bookmarkDraggable ? "grab" : "default",
+                              ...(isDropTarget
+                                ? {
+                                    outline: "2px dashed var(--mantine-color-blue-5)",
+                                    outlineOffset: 2,
+                                  }
+                                : {}),
+                            }}
+                            tabIndex={0}
+                          >
                             <ActionIcon
                               aria-label={isExpanded ? `Collapse ${bookmark.name}` : `Expand ${bookmark.name}`}
                               onClick={(event) => {
@@ -1416,26 +1447,8 @@ export function NotebookBrowsePanel() {
                             >
                               {isExpanded ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
                             </ActionIcon>
-                            <UnstyledButton
-                              aria-current={selectedBookmark === bookmark.name ? "page" : undefined}
-                              draggable={bookmarkDraggable}
-                              onClick={() => handleBookmarkRowClick(bookmark.name)}
-                              onDragEnd={handleBookmarkReorderDragEnd}
-                              onDragOver={(event) => handleBookmarkDragOver(event, bookmark.name)}
-                              onDragStart={(event) => handleBookmarkReorderDragStart(event, bookmark.name)}
-                              onDrop={(event) => handleBookmarkDrop(event, bookmark.name)}
-                              style={{
-                                ...buildBookmarkRowStyle(selectedBookmark === bookmark.name, palette),
-                                cursor: bookmarkDraggable ? "grab" : "default",
-                                ...(isDropTarget
-                                  ? {
-                                      outline: "2px dashed var(--mantine-color-blue-5)",
-                                      outlineOffset: 2,
-                                    }
-                                  : {}),
-                              }}
-                            >
-                              <Group gap={8} style={{ minWidth: 0 }} wrap="nowrap">
+                            <Group gap={8} style={{ flex: 1, minWidth: 0 }} wrap="nowrap">
+                              <Group gap={8} style={{ flex: 1, minWidth: 0 }} wrap="nowrap">
                                 <IconFolder size={16} style={{ flexShrink: 0 }} />
                                 <Text c="inherit" fw={selectedBookmark === bookmark.name ? 600 : 500} truncate>
                                   {bookmark.name}
@@ -1451,11 +1464,11 @@ export function NotebookBrowsePanel() {
                                   </Tooltip>
                                 ) : null}
                               </Group>
-                              <Text c="inherit" size="sm">
+                              <Text c="inherit" ml="auto" size="sm">
                                 {bookmark.noteCount}
                               </Text>
-                            </UnstyledButton>
-                          </Group>
+                            </Group>
+                          </Box>
 
                           <Collapse in={isExpanded}>
                             <Box ml="md" mt="xs" pl="md" style={{ borderLeft: `1px solid ${palette.line}` }}>
