@@ -286,6 +286,8 @@ class PermissionKey(StrEnum):
     LEONID_WRITE = "leonid.write"
     NOTEBOOK_READ = "notebook.read"
     NOTEBOOK_WRITE = "notebook.write"
+    REQUESTS_READ = "requests.read"
+    REQUESTS_WRITE = "requests.write"
 
 
 class SettingsSurface(StrEnum):

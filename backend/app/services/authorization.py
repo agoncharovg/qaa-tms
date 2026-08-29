@@ -81,6 +81,8 @@ ROLE_SEEDS: tuple[RoleSeed, ...] = (
             PermissionKey.LEONID_WRITE,
             PermissionKey.NOTEBOOK_READ,
             PermissionKey.NOTEBOOK_WRITE,
+            PermissionKey.REQUESTS_READ,
+            PermissionKey.REQUESTS_WRITE,
         ),
     ),
     RoleSeed(
@@ -109,6 +111,8 @@ ROLE_SEEDS: tuple[RoleSeed, ...] = (
             PermissionKey.QAA_RUN,
             PermissionKey.NOTEBOOK_READ,
             PermissionKey.NOTEBOOK_WRITE,
+            PermissionKey.REQUESTS_READ,
+            PermissionKey.REQUESTS_WRITE,
         ),
     ),
     RoleSeed(

@@ -1,0 +1,813 @@
+from __future__ import annotations
+
+import base64
+import json
+import stat
+import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import httpx
+import pytest
+
+from app.core.config import Settings
+from app.core.constants import AgentPath, BackendPath
+from app.main import create_app
+from app.schemas import (
+    ApiKeyPermanentCredentialCreate,
+    ApiKeyPermanentCredentialCreateConfig,
+    BearerCredentialCreate,
+    BearerCredentialCreateConfig,
+    BearerCredentialUpdate,
+    BearerCredentialUpdateConfig,
+    ClientAdminCredentialCreate,
+    ClientAdminCredentialCreateConfig,
+    ClientAdminCredentialUpdate,
+    LoginPasswordCredentialCreate,
+    LoginPasswordCredentialCreateConfig,
+    RequestBody,
+    RequestDocumentInput,
+    RequestExecuteResponse,
+    RequestHeaderField,
+    RequestHeaderValue,
+    RequestQueryParam,
+    RequestSummary,
+)
+from app.services import requests_exec
+from app.services.requests_exec import (
+    RequestsCredentialResolutionError,
+    clear_history,
+    delete_history_entry,
+    execute,
+    list_history,
+    resolve_authorization,
+)
+from app.services.requests_store import (
+    RequestsPathValidationError,
+    create_credential,
+    create_folder,
+    delete_folder,
+    delete_item,
+    get_credential_raw,
+    list_credentials,
+    list_items,
+    list_tree,
+    move_item,
+    read_item,
+    reorder,
+    update_credential,
+    update_item,
+    write_item,
+)
+
+AUTH_HEADERS = {"Authorization": "Bearer valid-token", "X-QAA-TMS": "1"}
+
+
+def build_settings(monkeypatch: pytest.MonkeyPatch, home: Path) -> Settings:
+    monkeypatch.setenv("QAA_TMS_HOME", str(home))
+    return Settings(_env_file=None)
+
+
+def make_request_document(
+    *,
+    method: str = "GET",
+    url: str = "https://example.test/resource",
+    headers: list[RequestHeaderField] | None = None,
+    query_params: list[RequestQueryParam] | None = None,
+    body: RequestBody | None = None,
+    credential_id: str | None = None,
+) -> RequestDocumentInput:
+    return RequestDocumentInput(
+        method=method,
+        url=url,
+        headers=headers or [],
+        query_params=query_params or [],
+        body=body or RequestBody(),
+        credential_id=credential_id,
+    )
+
+
+def make_jwt(exp: int) -> str:
+    header = base64.urlsafe_b64encode(b'{"alg":"none","typ":"JWT"}').decode("utf-8").rstrip("=")
+    payload = (
+        base64.urlsafe_b64encode(json.dumps({"exp": exp}).encode("utf-8"))
+        .decode("utf-8")
+        .rstrip("=")
+    )
+    return f"{header}.{payload}.signature"
+
+
+def make_app_state() -> SimpleNamespace:
+    return SimpleNamespace(state=SimpleNamespace(requests_token_cache={}))
+
+
+def build_backend_transport(denied_permissions: set[str]) -> httpx.MockTransport:
+    def handler(request: httpx.Request) -> httpx.Response:
+        auth = request.headers.get("Authorization")
+        if request.url.path == BackendPath.ME.value:
+            if auth == "Bearer valid-token":
+                return httpx.Response(200, json={"id": 1, "username": "tester"})
+            return httpx.Response(401, json={"detail": "Unauthorized"})
+        if request.url.path == BackendPath.AUTHZ_CHECK.value:
+            if auth != "Bearer valid-token":
+                return httpx.Response(401, json={"detail": "Unauthorized"})
+            payload = json.loads(request.content.decode("utf-8"))
+            checks = payload.get("checks") if isinstance(payload, dict) else []
+            results = []
+            for check in checks if isinstance(checks, list) else []:
+                if not isinstance(check, dict):
+                    continue
+                permission = check.get("permission")
+                results.append(
+                    {
+                        "permission": permission,
+                        "allowed": isinstance(permission, str)
+                        and permission not in denied_permissions,
+                    }
+                )
+            return httpx.Response(200, json={"results": results})
+        return httpx.Response(404, json={"detail": "Not found"})
+
+    return httpx.MockTransport(handler)
+
+
+@asynccontextmanager
+async def route_client(
+    fake_staging_repo: dict[str, Path],
+    denied_permissions: set[str],
+) -> AsyncIterator[httpx.AsyncClient]:
+    settings = Settings(
+        AGENT_HOST="127.0.0.1",
+        AGENT_PORT=47600,
+        AGENT_BACKEND_URL="http://backend.test",
+        AGENT_CORS_ORIGINS="http://localhost:3000,http://127.0.0.1:3000",
+        AGENT_STAGING_BIN=str(fake_staging_repo["staging_bin"]),
+        AGENT_STAGINGS_REPO=str(fake_staging_repo["repo_root"]),
+    )
+    application = create_app(
+        settings, backend_transport=build_backend_transport(denied_permissions)
+    )
+    async with application.router.lifespan_context(application):
+        transport = httpx.ASGITransport(app=application)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            yield client
+
+
+class FakeAsyncClient:
+    def __init__(self, responder: Any, calls: list[dict[str, Any]], **_: Any) -> None:
+        self._responder = responder
+        self._calls = calls
+
+    async def __aenter__(self) -> FakeAsyncClient:
+        return self
+
+    async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
+        return None
+
+    async def get(self, url: str, **kwargs: Any) -> httpx.Response:
+        return await self.request("GET", url, **kwargs)
+
+    async def post(self, url: str, **kwargs: Any) -> httpx.Response:
+        return await self.request("POST", url, **kwargs)
+
+    async def request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+        self._calls.append({"method": method, "url": url, "kwargs": kwargs})
+        result = self._responder(method, url, kwargs)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+
+def patch_async_client(
+    monkeypatch: pytest.MonkeyPatch,
+    responder: Any,
+) -> list[dict[str, Any]]:
+    calls: list[dict[str, Any]] = []
+
+    def factory(**kwargs: Any) -> FakeAsyncClient:
+        return FakeAsyncClient(responder, calls, **kwargs)
+
+    monkeypatch.setattr(requests_exec.httpx, "AsyncClient", factory)
+    return calls
+
+
+def make_response(
+    method: str,
+    url: str,
+    *,
+    headers: dict[str, str] | None = None,
+    json_body: dict[str, Any] | None = None,
+    text: str = "",
+    status_code: int = 200,
+) -> httpx.Response:
+    request = httpx.Request(method, url)
+    if json_body is not None:
+        return httpx.Response(status_code, json=json_body, headers=headers, request=request)
+    return httpx.Response(status_code, text=text, headers=headers, request=request)
+
+
+def test_requests_paths_follow_qaa_tms_home(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = build_settings(monkeypatch, tmp_path)
+
+    assert settings.requests_root == str(tmp_path / "requests")
+    assert settings.requests_collections_root == str(tmp_path / "requests" / "collections")
+    assert settings.requests_credentials_path == str(tmp_path / "requests" / "credentials.json")
+    assert settings.requests_history_path == str(tmp_path / "requests" / "history.jsonl")
+
+
+def test_requests_collection_and_item_crud(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = build_settings(monkeypatch, tmp_path)
+    create_folder(settings, "alpha")
+    create_folder(settings, "beta")
+    create_folder(settings, "gamma")
+    monkeypatch.setattr(
+        "app.services.requests_store._current_item_base_name", lambda: "2026-08-25-14-30-05"
+    )
+
+    first = write_item(settings, "alpha", None, make_request_document(url="https://svc.test/one"))
+    second = write_item(settings, "alpha", None, make_request_document(url="https://svc.test/two"))
+    explicit = write_item(
+        settings, "alpha", "clients", make_request_document(url="https://svc.test/clients")
+    )
+
+    assert first.name == "2026-08-25-14-30-05"
+    assert second.name == "2026-08-25-14-30-05-1"
+    assert explicit.name == "clients"
+
+    items = list_items(settings, "alpha")
+    assert {item.name for item in items.items} == {first.name, second.name, explicit.name}
+
+    updated = update_item(
+        settings,
+        "alpha",
+        explicit.name,
+        make_request_document(method="POST", url="https://svc.test/clients/update"),
+    )
+    assert updated.method == "POST"
+    assert updated.url == "https://svc.test/clients/update"
+
+    move_item(settings, "alpha", "beta", explicit.name)
+    moved = read_item(settings, "beta", explicit.name)
+    assert moved.method == "POST"
+
+    reorder(settings, ["gamma", "alpha"])
+    tree = list_tree(settings)
+    assert [folder.name for folder in tree.folders] == ["gamma", "alpha", "beta"]
+
+    contents = json.loads(
+        (tmp_path / "requests" / "collections" / "__contents__").read_text(encoding="utf-8")
+    )
+    assert contents[0]["name"] == "gamma"
+
+    delete_item(settings, "beta", explicit.name)
+    delete_folder(settings, "gamma")
+    assert [folder.name for folder in list_tree(settings).folders] == ["alpha", "beta"]
+
+
+@pytest.mark.parametrize("folder_name", ["..", "nested/name", "nested\\name", "/tmp/evil"])
+def test_requests_folder_path_traversal_is_rejected(
+    folder_name: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = build_settings(monkeypatch, tmp_path)
+
+    with pytest.raises(RequestsPathValidationError):
+        create_folder(settings, folder_name)
+
+
+@pytest.mark.parametrize("item_name", ["..", "nested/name", "nested\\name", "/tmp/evil"])
+def test_requests_item_path_traversal_is_rejected(
+    item_name: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = build_settings(monkeypatch, tmp_path)
+    create_folder(settings, "alpha")
+
+    with pytest.raises(RequestsPathValidationError):
+        write_item(settings, "alpha", item_name, make_request_document())
+
+
+def test_credentials_crud_strips_secrets_and_keeps_file_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = build_settings(monkeypatch, tmp_path)
+    bearer = create_credential(
+        settings,
+        BearerCredentialCreate(
+            name="raw bearer", type="bearer", config=BearerCredentialCreateConfig(token="raw-token")
+        ),
+    )
+    create_credential(
+        settings,
+        ApiKeyPermanentCredentialCreate(
+            name="perm",
+            type="api_key_permanent",
+            config=ApiKeyPermanentCredentialCreateConfig(
+                permanent_token="permanent",
+                verify_url="https://iam.test/auth/verify",
+                scheme="APIKey",
+            ),
+        ),
+    )
+    create_credential(
+        settings,
+        LoginPasswordCredentialCreate(
+            name="login",
+            type="login_password",
+            config=LoginPasswordCredentialCreateConfig(
+                login_url="https://iam.test/login",
+                username="user",
+                password="secret",
+                referer="https://iam.test",
+            ),
+        ),
+    )
+    create_credential(
+        settings,
+        ClientAdminCredentialCreate(
+            name="client",
+            type="client_admin",
+            config=ClientAdminCredentialCreateConfig(
+                admin_credential_id=bearer.id,
+                admin_token_url="https://iam.test/token/{client_id}",
+                client_id=42,
+                issue_by_current_user=True,
+            ),
+        ),
+    )
+
+    public_credentials = [
+        credential.model_dump(mode="python") for credential in list_credentials(settings)
+    ]
+    assert len(public_credentials) == 4
+    assert all("token" not in credential["config"] for credential in public_credentials)
+    assert all("password" not in credential["config"] for credential in public_credentials)
+    assert any(credential["config"].get("has_token") is True for credential in public_credentials)
+    assert any(
+        credential["config"].get("has_permanent_token") is True for credential in public_credentials
+    )
+    assert any(
+        credential["config"].get("has_password") is True for credential in public_credentials
+    )
+
+    updated_name_only = update_credential(
+        settings,
+        bearer.id,
+        BearerCredentialUpdate(
+            name="renamed",
+            type="bearer",
+            config=BearerCredentialUpdateConfig(),
+        ),
+    )
+    assert updated_name_only.name == "renamed"
+    assert get_credential_raw(settings, bearer.id)["config"]["token"] == "raw-token"
+
+    update_credential(
+        settings,
+        bearer.id,
+        BearerCredentialUpdate(
+            type="bearer",
+            config=BearerCredentialUpdateConfig(token="new-token"),
+        ),
+    )
+    assert get_credential_raw(settings, bearer.id)["config"]["token"] == "new-token"
+
+    mode = stat.S_IMODE(Path(settings.requests_credentials_path).stat().st_mode)
+    assert mode == 0o600
+
+
+@pytest.mark.asyncio
+async def test_resolve_authorization_flows_and_cache(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = build_settings(monkeypatch, tmp_path)
+    now = int(time.time())
+    verify_token = make_jwt(now + 3600)
+    login_token = make_jwt(now + 3600)
+    client_token = make_jwt(now + 3600)
+    near_exp_token = make_jwt(now + 10)
+
+    admin = create_credential(
+        settings,
+        BearerCredentialCreate(
+            name="admin", type="bearer", config=BearerCredentialCreateConfig(token="admin-token")
+        ),
+    )
+    api_key = create_credential(
+        settings,
+        ApiKeyPermanentCredentialCreate(
+            name="perm",
+            type="api_key_permanent",
+            config=ApiKeyPermanentCredentialCreateConfig(
+                permanent_token="perm-token",
+                verify_url="https://iam.test/verify",
+                scheme="APIKey",
+            ),
+        ),
+    )
+    near_exp = create_credential(
+        settings,
+        ApiKeyPermanentCredentialCreate(
+            name="near",
+            type="api_key_permanent",
+            config=ApiKeyPermanentCredentialCreateConfig(
+                permanent_token="near-token",
+                verify_url="https://iam.test/near",
+                scheme="APIKey",
+            ),
+        ),
+    )
+    login = create_credential(
+        settings,
+        LoginPasswordCredentialCreate(
+            name="login",
+            type="login_password",
+            config=LoginPasswordCredentialCreateConfig(
+                login_url="https://iam.test/login",
+                username="user",
+                password="secret",
+                referer="https://iam.test",
+            ),
+        ),
+    )
+    client_admin = create_credential(
+        settings,
+        ClientAdminCredentialCreate(
+            name="client",
+            type="client_admin",
+            config=ClientAdminCredentialCreateConfig(
+                admin_credential_id=admin.id,
+                admin_token_url="https://iam.test/admin/{client_id}",
+                client_id=77,
+                issue_by_current_user=True,
+            ),
+        ),
+    )
+
+    def responder(method: str, url: str, kwargs: dict[str, Any]) -> httpx.Response:
+        if method == "GET" and url == "https://iam.test/verify":
+            assert kwargs["headers"]["Authorization"] == "APIKey perm-token"
+            return make_response(method, url, headers={"authorization": f"Bearer {verify_token}"})
+        if method == "GET" and url == "https://iam.test/near":
+            return make_response(method, url, headers={"authorization": f"Bearer {near_exp_token}"})
+        if method == "POST" and url == "https://iam.test/login":
+            assert kwargs["headers"]["Referer"] == "https://iam.test"
+            return make_response(method, url, json_body={"access": login_token})
+        if method == "GET" and url == "https://iam.test/admin/77":
+            assert kwargs["headers"]["Authorization"] == "Bearer admin-token"
+            assert kwargs["params"]["issue_by_current_user"] == "true"
+            return make_response(method, url, json_body={"access": client_token})
+        raise AssertionError(f"Unexpected request: {method} {url}")
+
+    calls = patch_async_client(monkeypatch, responder)
+    app = make_app_state()
+
+    first = await resolve_authorization(app, settings, api_key.id)
+    second = await resolve_authorization(app, settings, api_key.id)
+    forced = await resolve_authorization(app, settings, api_key.id, force=True)
+    login_auth = await resolve_authorization(app, settings, login.id)
+    client_auth = await resolve_authorization(app, settings, client_admin.id)
+    near_first = await resolve_authorization(app, settings, near_exp.id)
+    near_second = await resolve_authorization(app, settings, near_exp.id)
+
+    assert first == second == forced == f"Bearer {verify_token}"
+    assert login_auth == f"Bearer {login_token}"
+    assert client_auth == f"Bearer {client_token}"
+    assert near_first == near_second == f"Bearer {near_exp_token}"
+    assert sum(1 for call in calls if call["url"] == "https://iam.test/verify") == 2
+    assert sum(1 for call in calls if call["url"] == "https://iam.test/near") == 2
+
+
+@pytest.mark.asyncio
+async def test_resolve_authorization_reports_missing_admin_and_cycle(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = build_settings(monkeypatch, tmp_path)
+    missing_admin = create_credential(
+        settings,
+        ClientAdminCredentialCreate(
+            name="missing",
+            type="client_admin",
+            config=ClientAdminCredentialCreateConfig(
+                admin_credential_id="missing-id",
+                admin_token_url="https://iam.test/admin/{client_id}",
+                client_id=1,
+                issue_by_current_user=True,
+            ),
+        ),
+    )
+    first = create_credential(
+        settings,
+        ClientAdminCredentialCreate(
+            name="first",
+            type="client_admin",
+            config=ClientAdminCredentialCreateConfig(
+                admin_credential_id="placeholder",
+                admin_token_url="https://iam.test/admin/{client_id}",
+                client_id=2,
+                issue_by_current_user=True,
+            ),
+        ),
+    )
+    second = create_credential(
+        settings,
+        ClientAdminCredentialCreate(
+            name="second",
+            type="client_admin",
+            config=ClientAdminCredentialCreateConfig(
+                admin_credential_id=first.id,
+                admin_token_url="https://iam.test/admin/{client_id}",
+                client_id=3,
+                issue_by_current_user=True,
+            ),
+        ),
+    )
+    update_credential(
+        settings,
+        first.id,
+        ClientAdminCredentialUpdate.model_validate(
+            {
+                "type": "client_admin",
+                "config": {"admin_credential_id": second.id},
+            }
+        ),
+    )
+    patch_async_client(monkeypatch, lambda method, url, kwargs: make_response(method, url))
+    app = make_app_state()
+
+    with pytest.raises(RequestsCredentialResolutionError, match="Admin credential not found"):
+        await resolve_authorization(app, settings, missing_admin.id)
+
+    with pytest.raises(RequestsCredentialResolutionError, match="cycle"):
+        await resolve_authorization(app, settings, first.id)
+
+
+@pytest.mark.asyncio
+async def test_execute_injects_headers_redacts_history_and_handles_network_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = build_settings(monkeypatch, tmp_path)
+    credential = create_credential(
+        settings,
+        BearerCredentialCreate(
+            name="bearer", type="bearer", config=BearerCredentialCreateConfig(token="secret-token")
+        ),
+    )
+
+    def responder(method: str, url: str, kwargs: dict[str, Any]) -> httpx.Response | Exception:
+        if url == "https://svc.test/fail":
+            return httpx.ReadTimeout("timeout", request=httpx.Request(method, url))
+        return make_response(
+            method,
+            url,
+            headers={"Content-Type": "application/json"},
+            text='{"ok": true}',
+        )
+
+    calls = patch_async_client(monkeypatch, responder)
+    app = make_app_state()
+
+    result = await execute(
+        app,
+        settings,
+        make_request_document(
+            method="POST",
+            url="https://svc.test/ok",
+            headers=[
+                RequestHeaderField(name="Accept", value="application/json", enabled=True),
+                RequestHeaderField(name="Authorization", value="manual-secret", enabled=False),
+                RequestHeaderField(name="X-Ignored", value="ignored", enabled=False),
+            ],
+            query_params=[
+                RequestQueryParam(name="active", value="1", enabled=True),
+                RequestQueryParam(name="ignored", value="0", enabled=False),
+            ],
+            body=RequestBody(mode="json", content='{"hello": true}'),
+            credential_id=credential.id,
+        ),
+    )
+    manual = await execute(
+        app,
+        settings,
+        make_request_document(
+            method="GET",
+            url="https://svc.test/manual",
+            headers=[RequestHeaderField(name="Authorization", value="Bearer manual", enabled=True)],
+            credential_id=credential.id,
+        ),
+    )
+    failed = await execute(
+        app,
+        settings,
+        make_request_document(method="GET", url="https://svc.test/fail"),
+    )
+
+    sent_headers = dict(calls[0]["kwargs"]["headers"])
+    assert sent_headers["Authorization"] == "Bearer secret-token"
+    assert sent_headers["Content-Type"] == "application/json"
+    assert "X-Request-ID" in sent_headers
+    result_auth = next(
+        header for header in result.request_summary.headers if header.name == "Authorization"
+    )
+    assert result_auth.value == "***"
+    assert result.request_summary.query_params == [RequestHeaderValue(name="active", value="1")]
+
+    manual_headers = dict(calls[1]["kwargs"]["headers"])
+    assert manual_headers["Authorization"] == "Bearer manual"
+    assert manual.request_summary.headers[0].value == "***"
+
+    assert failed.status_code is None
+    assert failed.error is not None
+
+    history = list_history(settings)
+    assert len(history.entries) == 3
+    assert history.entries[0].request_summary.url == "https://svc.test/fail"
+    assert all(
+        header.value == "***"
+        for entry in history.entries
+        for header in entry.request_summary.headers
+        if header.name == "Authorization"
+    )
+
+
+def test_history_is_capped_and_can_delete_and_clear(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = build_settings(monkeypatch, tmp_path)
+    monkeypatch.setattr(requests_exec, "REQUESTS_HISTORY_LIMIT", 3)
+
+    for index in range(5):
+        requests_exec._append_history(
+            settings,
+            RequestExecuteResponse(
+                status_code=200,
+                reason_phrase="OK",
+                elapsed_ms=index,
+                size_bytes=index,
+                headers=[],
+                body_text="",
+                truncated=False,
+                error=None,
+                request_summary=RequestSummary(
+                    method="GET",
+                    url=f"https://svc.test/{index}",
+                    headers=[],
+                    query_params=[],
+                ),
+            ),
+        )
+
+    history = list_history(settings)
+    assert [entry.request_summary.url for entry in history.entries] == [
+        "https://svc.test/4",
+        "https://svc.test/3",
+        "https://svc.test/2",
+    ]
+
+    delete_history_entry(settings, history.entries[1].id)
+    assert len(list_history(settings).entries) == 2
+
+    clear_history(settings)
+    assert list_history(settings).entries == []
+
+
+READ_ROUTE_CASES = [
+    ("get", AgentPath.REQUESTS_COLLECTIONS.value, {}),
+    ("get", AgentPath.REQUESTS_ITEM.value, {"params": {"folder": "alpha"}}),
+    ("get", f"{AgentPath.REQUESTS_ITEM.value}/item", {"params": {"folder": "alpha"}}),
+    ("get", AgentPath.REQUESTS_CREDENTIALS.value, {}),
+    ("get", f"{AgentPath.REQUESTS_CREDENTIALS.value}/cred", {}),
+    ("get", AgentPath.REQUESTS_HISTORY.value, {}),
+]
+
+WRITE_ROUTE_CASES = [
+    (
+        "put",
+        AgentPath.REQUESTS_COLLECTIONS.value,
+        {"json": {"folders": [{"name": "alpha", "children": [], "flags": {}, "items": {}}]}},
+    ),
+    ("patch", AgentPath.REQUESTS_COLLECTIONS.value, {"json": {"folders": ["alpha"]}}),
+    ("post", AgentPath.REQUESTS_FOLDER.value, {"json": {"name": "alpha", "flags": {}}}),
+    ("put", AgentPath.REQUESTS_FOLDER.value, {"json": {"folder": "alpha", "name": "beta"}}),
+    ("delete", AgentPath.REQUESTS_FOLDER.value, {"params": {"folder": "alpha"}}),
+    (
+        "post",
+        AgentPath.REQUESTS_ITEM.value,
+        {
+            "json": {
+                "folder": "alpha",
+                "method": "GET",
+                "url": "https://svc.test",
+                "headers": [],
+                "query_params": [],
+                "body": {"mode": "none", "content": ""},
+                "credential_id": None,
+            }
+        },
+    ),
+    (
+        "put",
+        f"{AgentPath.REQUESTS_ITEM.value}/item",
+        {
+            "params": {"folder": "alpha"},
+            "json": {"folder": "alpha", "url": "https://svc.test/updated"},
+        },
+    ),
+    ("delete", f"{AgentPath.REQUESTS_ITEM.value}/item", {"params": {"folder": "alpha"}}),
+    (
+        "post",
+        AgentPath.REQUESTS_CREDENTIALS.value,
+        {"json": {"name": "cred", "type": "bearer", "config": {"token": "secret"}}},
+    ),
+    (
+        "put",
+        f"{AgentPath.REQUESTS_CREDENTIALS.value}/cred",
+        {"json": {"type": "bearer", "config": {"token": "updated"}}},
+    ),
+    ("delete", f"{AgentPath.REQUESTS_CREDENTIALS.value}/cred", {}),
+    (
+        "post",
+        AgentPath.REQUESTS_CREDENTIAL_RESOLVE.value,
+        {"json": {"credential_id": "cred", "force": False}},
+    ),
+    (
+        "post",
+        AgentPath.REQUESTS_EXECUTE.value,
+        {
+            "json": {
+                "method": "GET",
+                "url": "https://svc.test",
+                "headers": [],
+                "query_params": [],
+                "body": {"mode": "none", "content": ""},
+                "credential_id": None,
+            }
+        },
+    ),
+    ("delete", AgentPath.REQUESTS_HISTORY.value, {}),
+    ("delete", f"{AgentPath.REQUESTS_HISTORY.value}/entry", {}),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("method", "path", "kwargs"), READ_ROUTE_CASES)
+async def test_requests_read_routes_require_auth_and_permission(
+    fake_staging_repo: dict[str, Path],
+    method: str,
+    path: str,
+    kwargs: dict[str, Any],
+) -> None:
+    async with route_client(fake_staging_repo, denied_permissions=set()) as client:
+        response = await getattr(client, method)(path, **kwargs)
+        assert response.status_code == 401
+
+    async with route_client(fake_staging_repo, denied_permissions={"requests.read"}) as client:
+        response = await getattr(client, method)(path, headers=AUTH_HEADERS, **kwargs)
+        assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("method", "path", "kwargs"), WRITE_ROUTE_CASES)
+async def test_requests_write_routes_require_auth_and_permission(
+    fake_staging_repo: dict[str, Path],
+    method: str,
+    path: str,
+    kwargs: dict[str, Any],
+) -> None:
+    async with route_client(fake_staging_repo, denied_permissions=set()) as client:
+        response = await getattr(client, method)(path, **kwargs)
+        assert response.status_code == 401
+
+    async with route_client(fake_staging_repo, denied_permissions={"requests.write"}) as client:
+        response = await getattr(client, method)(path, headers=AUTH_HEADERS, **kwargs)
+        assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_requests_credentials_unknown_type_returns_400(
+    fake_staging_repo: dict[str, Path],
+) -> None:
+    async with route_client(fake_staging_repo, denied_permissions=set()) as client:
+        response = await client.post(
+            AgentPath.REQUESTS_CREDENTIALS.value,
+            headers=AUTH_HEADERS,
+            json={"name": "bad", "type": "unknown", "config": {}},
+        )
+
+    assert response.status_code == 400

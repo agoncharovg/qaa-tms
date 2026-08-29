@@ -33,6 +33,10 @@ from app.core.constants import (
     GROUP_LABEL_SEPARATOR,
     GROUP_LIST_SEPARATOR,
     NOTEBOOK_DIR_NAME,
+    REQUESTS_COLLECTIONS_DIR_NAME,
+    REQUESTS_CREDENTIALS_FILE_NAME,
+    REQUESTS_DIR_NAME,
+    REQUESTS_HISTORY_FILE_NAME,
     EnvKey,
     StagingEnvKey,
 )
@@ -239,6 +243,22 @@ class Settings(BaseSettings):
     @property
     def notebook_root(self) -> str:
         return str(env_file.user_data_home() / NOTEBOOK_DIR_NAME)
+
+    @property
+    def requests_root(self) -> str:
+        return str(env_file.user_data_home() / REQUESTS_DIR_NAME)
+
+    @property
+    def requests_collections_root(self) -> str:
+        return str(env_file.user_data_home() / REQUESTS_DIR_NAME / REQUESTS_COLLECTIONS_DIR_NAME)
+
+    @property
+    def requests_credentials_path(self) -> str:
+        return str(env_file.user_data_home() / REQUESTS_DIR_NAME / REQUESTS_CREDENTIALS_FILE_NAME)
+
+    @property
+    def requests_history_path(self) -> str:
+        return str(env_file.user_data_home() / REQUESTS_DIR_NAME / REQUESTS_HISTORY_FILE_NAME)
 
     @classmethod
     def _normalize_jenkins_job_path(cls, value: Any) -> str:
