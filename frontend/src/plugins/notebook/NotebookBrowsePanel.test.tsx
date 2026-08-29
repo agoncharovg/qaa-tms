@@ -32,6 +32,7 @@ vi.mock("@/api/agentClient", async () => {
 });
 
 import { AgentRequestError } from "@/api/agentClient";
+import type { NotebookNoteReadResponse, NotebookNotesResponse } from "@/api/types";
 import { PluginId } from "@/constants";
 import { NotebookBrowsePanel } from "@/plugins/notebook/NotebookBrowsePanel";
 import { clearNotebookNoteDrafts } from "@/plugins/notebook/notebookDrafts";
@@ -42,6 +43,14 @@ const TOKEN = "token-123" as const;
 const PORT = 47600 as const;
 const BOOKMARK = "Research" as const;
 const NOTE_NAME = "2026-08-25-14-30-05" as const;
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function bookmarkButtonName(name: string): RegExp {
+  return new RegExp(`^${escapeRegex(name)}\\s*\\d+$`);
+}
 
 describe("NotebookBrowsePanel", () => {
   beforeEach(() => {
@@ -146,7 +155,7 @@ describe("NotebookBrowsePanel", () => {
 
     renderWithProviders(<NotebookBrowsePanel />);
 
-    expect(await screen.findByRole("button", { name: /Research/i })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: bookmarkButtonName(BOOKMARK) })).toBeInTheDocument();
     expect(await screen.findByText(NOTE_NAME)).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: /Other preview/i })).toBeInTheDocument();
 
@@ -173,6 +182,202 @@ describe("NotebookBrowsePanel", () => {
         bookmark: BOOKMARK,
         text: "Updated line",
       });
+    });
+  });
+
+  it("renders bookmark rows as a tree and loads notes lazily when a bookmark is expanded", async () => {
+    const OPS_NOTE_NAME = "2026-08-26-08-00-00";
+
+    agentClientMock.getNotebookTree.mockResolvedValue({
+      bookmarks: [
+        {
+          children: [],
+          flags: {},
+          name: BOOKMARK,
+          noteCount: 1,
+        },
+        {
+          children: [],
+          flags: {},
+          name: "Ops",
+          noteCount: 1,
+        },
+      ],
+    });
+    agentClientMock.listNotes.mockImplementation((_port: number, _token: string, bookmark: string): NotebookNotesResponse => {
+      if (bookmark === "Ops") {
+        return {
+          bookmark,
+          notes: [
+            {
+              flags: {},
+              name: OPS_NOTE_NAME,
+              previewLines: ["Ops note"],
+            },
+          ],
+        };
+      }
+
+      return {
+        bookmark,
+        notes: [
+          {
+            flags: {},
+            name: NOTE_NAME,
+            previewLines: ["Research note"],
+          },
+        ],
+      };
+    });
+    agentClientMock.readNote.mockImplementation(
+      (_port: number, _token: string, bookmark: string, noteName: string): NotebookNoteReadResponse => ({
+      bookmark,
+      flags: {},
+      name: noteName,
+      previewLines: [bookmark === "Ops" ? "Ops note" : "Research note"],
+      text: bookmark === "Ops" ? "Ops note" : "Research note",
+      })
+    );
+
+    renderWithProviders(<NotebookBrowsePanel />);
+
+    expect(await screen.findByRole("button", { name: bookmarkButtonName(BOOKMARK) })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Research note/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Ops note/i })).not.toBeInTheDocument();
+    expect(agentClientMock.listNotes).toHaveBeenCalledTimes(1);
+    expect(agentClientMock.listNotes).toHaveBeenCalledWith(PORT, TOKEN, BOOKMARK, expect.anything());
+
+    await userEvent.click(screen.getByRole("button", { name: "Expand Ops" }));
+
+    await waitFor(() => {
+      expect(agentClientMock.listNotes).toHaveBeenCalledWith(PORT, TOKEN, "Ops", expect.anything());
+    });
+    expect(await screen.findByRole("button", { name: /Ops note/i })).toBeInTheDocument();
+  });
+
+  it("selecting a bookmark auto-selects its first note", async () => {
+    const OPS_FIRST_NOTE = "2026-08-26-08-00-00";
+    const OPS_SECOND_NOTE = "2026-08-26-09-00-00";
+
+    agentClientMock.getNotebookTree.mockResolvedValue({
+      bookmarks: [
+        {
+          children: [],
+          flags: {},
+          name: BOOKMARK,
+          noteCount: 1,
+        },
+        {
+          children: [],
+          flags: {},
+          name: "Ops",
+          noteCount: 2,
+        },
+      ],
+    });
+    agentClientMock.listNotes.mockImplementation((_port: number, _token: string, bookmark: string): NotebookNotesResponse => {
+      if (bookmark === "Ops") {
+        return {
+          bookmark,
+          notes: [
+            {
+              flags: {},
+              name: OPS_FIRST_NOTE,
+              previewLines: ["Ops first"],
+            },
+            {
+              flags: {},
+              name: OPS_SECOND_NOTE,
+              previewLines: ["Ops second"],
+            },
+          ],
+        };
+      }
+
+      return {
+        bookmark,
+        notes: [
+          {
+            flags: {},
+            name: NOTE_NAME,
+            previewLines: ["Research note"],
+          },
+        ],
+      };
+    });
+    agentClientMock.readNote.mockImplementation(
+      (_port: number, _token: string, bookmark: string, noteName: string): NotebookNoteReadResponse => ({
+      bookmark,
+      flags: {},
+      name: noteName,
+      previewLines: [noteName === OPS_FIRST_NOTE ? "Ops first" : noteName === OPS_SECOND_NOTE ? "Ops second" : "Research note"],
+      text: noteName === OPS_FIRST_NOTE ? "Ops first" : noteName === OPS_SECOND_NOTE ? "Ops second" : "Research note",
+      })
+    );
+
+    renderWithProviders(<NotebookBrowsePanel />);
+
+    await screen.findByLabelText("Notebook note body");
+    await userEvent.click(screen.getByRole("button", { name: bookmarkButtonName("Ops") }));
+
+    await waitFor(() => {
+      expect(agentClientMock.readNote).toHaveBeenCalledWith(PORT, TOKEN, "Ops", OPS_FIRST_NOTE, expect.anything());
+    });
+    await waitFor(() => {
+      expect(screen.getByLabelText("Notebook note body")).toHaveValue("Ops first");
+    });
+  });
+
+  it("clears the editor when selecting a bookmark that has no notes", async () => {
+    agentClientMock.getNotebookTree.mockResolvedValue({
+      bookmarks: [
+        {
+          children: [],
+          flags: {},
+          name: BOOKMARK,
+          noteCount: 1,
+        },
+        {
+          children: [],
+          flags: {},
+          name: "Empty",
+          noteCount: 0,
+        },
+      ],
+    });
+    agentClientMock.listNotes.mockImplementation((_port: number, _token: string, bookmark: string): NotebookNotesResponse => {
+      if (bookmark === "Empty") {
+        return { bookmark, notes: [] };
+      }
+
+      return {
+        bookmark,
+        notes: [
+          {
+            flags: {},
+            name: NOTE_NAME,
+            previewLines: ["Research note"],
+          },
+        ],
+      };
+    });
+    agentClientMock.readNote.mockResolvedValue({
+      bookmark: BOOKMARK,
+      flags: {},
+      name: NOTE_NAME,
+      previewLines: ["Research note"],
+      text: "Research note",
+    });
+
+    renderWithProviders(<NotebookBrowsePanel />);
+
+    const textarea = await screen.findByLabelText("Notebook note body");
+    expect(textarea).toHaveValue("Research note");
+
+    await userEvent.click(screen.getByRole("button", { name: "Expand Empty" }));
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Notebook note body")).not.toBeInTheDocument();
     });
   });
 
@@ -350,7 +555,7 @@ describe("NotebookBrowsePanel", () => {
     renderWithProviders(<NotebookBrowsePanel />);
 
     const noteButton = await screen.findByRole("button", { name: /Drag me/i });
-    const targetBookmarkButton = await screen.findByRole("button", { name: /Ops/i });
+    const targetBookmarkButton = await screen.findByRole("button", { name: bookmarkButtonName("Ops") });
     const dataTransfer = {
       dropEffect: "none",
       effectAllowed: "all",
@@ -389,8 +594,8 @@ describe("NotebookBrowsePanel", () => {
 
     renderWithProviders(<NotebookBrowsePanel />);
 
-    const gammaButton = await screen.findByRole("button", { name: /Gamma/i });
-    const alphaButton = await screen.findByRole("button", { name: /Alpha/i });
+    const gammaButton = await screen.findByRole("button", { name: bookmarkButtonName("Gamma") });
+    const alphaButton = await screen.findByRole("button", { name: bookmarkButtonName("Alpha") });
     vi.spyOn(alphaButton, "getBoundingClientRect").mockReturnValue({
       bottom: 40,
       height: 40,
@@ -495,7 +700,7 @@ describe("NotebookBrowsePanel", () => {
     renderWithProviders(<NotebookBrowsePanel />);
 
     const noteButton = await screen.findByRole("button", { name: /Drag me/i });
-    const targetBookmarkButton = await screen.findByRole("button", { name: /Ops/i });
+    const targetBookmarkButton = await screen.findByRole("button", { name: bookmarkButtonName("Ops") });
     const dataTransfer = {
       dropEffect: "none",
       effectAllowed: "all",
@@ -516,9 +721,8 @@ describe("NotebookBrowsePanel", () => {
       });
     });
 
-    await user.click(screen.getByRole("button", { name: /^Research\s*0$/i }));
-    expect(screen.queryByRole("button", { name: /Drag me/i })).not.toBeInTheDocument();
-    expect(screen.getByText("No notes were returned for the selected bookmark.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: bookmarkButtonName(BOOKMARK) }));
+    expect(screen.getByText("No notes")).toBeInTheDocument();
   });
 
   it("deletes the selected note and shows the empty state", async () => {
@@ -576,7 +780,7 @@ describe("NotebookBrowsePanel", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("No notes were returned for the selected bookmark.")).toBeInTheDocument();
+      expect(screen.getByText("No notes")).toBeInTheDocument();
     });
   });
 
@@ -605,7 +809,7 @@ describe("NotebookBrowsePanel", () => {
 
     renderWithProviders(<NotebookBrowsePanel />);
 
-    await screen.findByRole("button", { name: /Research/i });
+    await screen.findByRole("button", { name: bookmarkButtonName(BOOKMARK) });
 
     await user.click(screen.getByRole("button", { name: "Create bookmark" }));
 
@@ -909,7 +1113,7 @@ describe("NotebookBrowsePanel", () => {
       });
     });
 
-    it("marks bookmarks that contain a reminder", async () => {
+    it("marks bookmarks and note leaves that contain a reminder", async () => {
       agentClientMock.getNotebookReminders.mockResolvedValue({
         reminders: [
           {
@@ -948,9 +1152,10 @@ describe("NotebookBrowsePanel", () => {
         text: NOTE_NAME,
       });
 
-      renderWithProviders(<NotebookBrowsePanel />);
+      const { container } = renderWithProviders(<NotebookBrowsePanel />);
 
-      expect(await screen.findByLabelText("Contains a reminder")).toBeInTheDocument();
+      await screen.findByText(NOTE_NAME);
+      expect(container.querySelectorAll('[aria-label="Contains a reminder"]').length).toBeGreaterThanOrEqual(2);
     });
 
     it("filters notes by reminder and hides the filter when none exist", async () => {
