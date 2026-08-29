@@ -1,9 +1,12 @@
-import { type DragEvent, useEffect, useRef, useState } from "react";
+import { type CSSProperties, type DragEvent, useEffect, useRef, useState } from "react";
 import {
   ActionIcon,
+  Box,
   Button,
+  Collapse,
   Grid,
   Group,
+  Loader,
   Modal,
   Paper,
   Stack,
@@ -11,20 +14,26 @@ import {
   TextInput,
   Tooltip,
   Title,
+  UnstyledButton,
 } from "@mantine/core";
 import {
   IconBell,
   IconBellRinging,
+  IconChevronDown,
+  IconChevronRight,
   IconFilter,
   IconFilterFilled,
+  IconFolder,
   IconNote,
   IconPencil,
   IconPlus,
   IconRotateClockwise,
   IconTrash,
 } from "@tabler/icons-react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { usePalette } from "@/app/theme/usePalette";
+import type { Palette } from "@/app/theme/tokens";
 import { AgentRequestError, agentClient } from "@/api/agentClient";
 import type {
   NotebookBookmarkNode,
@@ -92,9 +101,11 @@ const NOTEBOOK_BROWSE_COPY = {
   NOTE_DELETE_CONFIRM: "Delete this note?",
   NOTE_FILTER_ALL: "Show all notes",
   NOTE_FILTER_REMINDERS: "Show only notes with reminders",
+  NOTE_LEAF_EMPTY: "No notes",
   NOTE_REMINDER_CLEAR: "Clear reminder",
   NOTE_REMINDER_LABEL: "Reminder",
   NOTE_REMINDER_SET: "Set reminder",
+  NOTE_FOLDER_LOADING: "Loading notes",
   REMINDER_DISMISS: "Dismiss",
   REMINDER_EMPTY: "Empty note.",
   REMINDER_TITLE: "Active reminders",
@@ -110,24 +121,50 @@ type BookmarkModalState = {
   open: boolean;
 };
 
+type BookmarkNotesState = {
+  error: unknown;
+  isError: boolean;
+  isLoading: boolean;
+  notes: NotebookNotesResponse["notes"];
+  refetch: () => Promise<unknown>;
+};
+
+// Mirror the main sidebar nav rows (see app/layout/Sidebar.tsx): a neutral "chip"
+// highlight for the parent (bookmark) rows and a soft accent tint for the child
+// (note) rows, so the tree reads like the primary navigation menu.
+function buildBookmarkRowStyle(active: boolean, palette: Palette): CSSProperties {
+  return {
+    alignItems: "center",
+    backgroundColor: active ? palette.chip : "transparent",
+    border: "1px solid transparent",
+    borderRadius: "10px",
+    color: active ? palette.accent : palette.inkSoft,
+    display: "flex",
+    gap: "10px",
+    justifyContent: "space-between",
+    padding: "8px 12px",
+    transition: "background-color 150ms ease, color 150ms ease",
+    width: "100%",
+  };
+}
+
+function buildNoteRowStyle(active: boolean, palette: Palette): CSSProperties {
+  return {
+    alignItems: "center",
+    backgroundColor: active ? palette.accentSoft : "transparent",
+    border: "1px solid transparent",
+    borderRadius: "8px",
+    color: active ? palette.accent : palette.inkSoft,
+    display: "flex",
+    justifyContent: "space-between",
+    padding: "6px 10px",
+    transition: "background-color 150ms ease, color 150ms ease",
+    width: "100%",
+  };
+}
 
 function findBookmark(bookmarks: NotebookBookmarkNode[], bookmarkName: string | null): NotebookBookmarkNode | null {
-  if (!bookmarkName) {
-    return null;
-  }
-
-  for (const bookmark of bookmarks) {
-    if (bookmark.name === bookmarkName) {
-      return bookmark;
-    }
-
-    const childMatch = findBookmark(bookmark.children, bookmarkName);
-    if (childMatch) {
-      return childMatch;
-    }
-  }
-
-  return null;
+  return bookmarks.find((bookmark) => bookmark.name === bookmarkName) ?? null;
 }
 
 async function invalidateNotebookQueries(queryClient: ReturnType<typeof useQueryClient>): Promise<void> {
@@ -142,6 +179,11 @@ async function invalidateNotebookQueries(queryClient: ReturnType<typeof useQuery
 
 function buildPreviewLines(text: string): string[] {
   return text.split(/\r?\n/).slice(0, 3);
+}
+
+function buildNotePreviewLine(previewLines: string[], fallback: string): string {
+  const firstNonEmptyLine = previewLines.find((line) => line.trim().length > 0);
+  return firstNonEmptyLine?.trim() || fallback;
 }
 
 function buildNoteSummary(note: NotebookNoteReadResponse) {
@@ -234,6 +276,7 @@ function applyMovedNoteToCache(
 }
 
 export function NotebookBrowsePanel() {
+  const palette = usePalette();
   const queryClient = useQueryClient();
   const { agentPort, companionUnavailable, preflightQuery, probedPorts, token } = useNotebookAgent();
   const remindersQuery = useNotebookReminders();
@@ -254,6 +297,7 @@ export function NotebookBrowsePanel() {
   const [dragOverBookmarkName, setDragOverBookmarkName] = useState<string | null>(null);
   const [draggedBookmarkName, setDraggedBookmarkName] = useState<string | null>(null);
   const [bookmarkDropIndex, setBookmarkDropIndex] = useState<number | null>(null);
+  const [expandedBookmarks, setExpandedBookmarks] = useState<Set<string>>(() => new Set());
   const pendingSelectedNoteNameRef = useRef<string | null>(null);
 
   const contentsQuery = useQuery({
@@ -264,15 +308,36 @@ export function NotebookBrowsePanel() {
     retry: false,
   });
 
-  const selectedBookmarkNode = findBookmark(contentsQuery.data?.bookmarks ?? [], selectedBookmark);
-
-  const notesQuery = useQuery({
-    enabled: Boolean(token && agentPort !== null && selectedBookmark),
-    queryFn: ({ signal }) => agentClient.listNotes(agentPort ?? 0, token ?? "", selectedBookmark ?? "", signal),
-    queryKey: [QueryKey.NOTEBOOK_NOTES, token, agentPort, selectedBookmark],
-    refetchOnWindowFocus: false,
-    retry: false,
+  const bookmarks = contentsQuery.data?.bookmarks ?? [];
+  const selectedBookmarkNode = findBookmark(bookmarks, selectedBookmark);
+  const expandedBookmarkNames = bookmarks
+    .filter((bookmark) => expandedBookmarks.has(bookmark.name))
+    .map((bookmark) => bookmark.name);
+  const bookmarkNotesQueries = useQueries({
+    queries: expandedBookmarkNames.map((bookmarkName) => ({
+      enabled: Boolean(token && agentPort !== null),
+      queryFn: ({ signal }) => agentClient.listNotes(agentPort ?? 0, token ?? "", bookmarkName, signal),
+      queryKey: [QueryKey.NOTEBOOK_NOTES, token, agentPort, bookmarkName],
+      refetchOnWindowFocus: false,
+      retry: false,
+    })),
   });
+  const bookmarkNotesByName = new Map<string, BookmarkNotesState>(
+    expandedBookmarkNames.map((bookmarkName, index) => {
+      const query = bookmarkNotesQueries[index];
+      return [
+        bookmarkName,
+        {
+          error: query.error,
+          isError: query.isError,
+          isLoading: query.isLoading,
+          notes: query.data?.notes ?? [],
+          refetch: async () => query.refetch(),
+        },
+      ];
+    })
+  );
+  const selectedBookmarkNotesState = selectedBookmark ? bookmarkNotesByName.get(selectedBookmark) ?? null : null;
 
   const noteQuery = useQuery({
     enabled: Boolean(token && agentPort !== null && selectedBookmark && selectedNoteName),
@@ -284,26 +349,60 @@ export function NotebookBrowsePanel() {
   });
 
   useEffect(() => {
-    const bookmarks = contentsQuery.data?.bookmarks ?? [];
-    if (bookmarks.length === 0) {
+    const currentBookmarks = contentsQuery.data?.bookmarks ?? [];
+    if (currentBookmarks.length === 0) {
       setSelectedBookmark(null);
       return;
     }
 
-    if (!findBookmark(bookmarks, selectedBookmark)) {
-      setSelectedBookmark(bookmarks[0]?.name ?? null);
+    if (!findBookmark(currentBookmarks, selectedBookmark)) {
+      setSelectedBookmark(currentBookmarks[0]?.name ?? null);
     }
   }, [contentsQuery.data?.bookmarks, selectedBookmark]);
 
   useEffect(() => {
+    if (!selectedBookmark) {
+      return;
+    }
+
+    setExpandedBookmarks((current) => {
+      if (current.has(selectedBookmark)) {
+        return current;
+      }
+
+      const next = new Set(current);
+      next.add(selectedBookmark);
+      return next;
+    });
+  }, [selectedBookmark]);
+
+  useEffect(() => {
+    const currentBookmarks = contentsQuery.data?.bookmarks ?? [];
+    const bookmarkNames = new Set(currentBookmarks.map((bookmark) => bookmark.name));
+    setExpandedBookmarks((current) => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const name of current) {
+        if (bookmarkNames.has(name)) {
+          next.add(name);
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [contentsQuery.data?.bookmarks]);
+
+  useEffect(() => {
     setSelectedNoteName(pendingSelectedNoteNameRef.current);
     setEditorText("");
-    setRemindersFilter(false);
     pendingSelectedNoteNameRef.current = null;
   }, [selectedBookmark]);
+
   useEffect(() => {
     setReminderDraft("");
   }, [selectedNoteName]);
+
   useEffect(() => {
     // Initialise the toggle from the loaded note's real flags (keyed on note
     // identity, not selectedNoteName, so it runs once the new note's data lands
@@ -313,7 +412,15 @@ export function NotebookBrowsePanel() {
   }, [noteQuery.data?.bookmark, noteQuery.data?.name]);
 
   useEffect(() => {
-    const notes = notesQuery.data?.notes ?? [];
+    if (!selectedBookmark || !selectedBookmarkNotesState) {
+      return;
+    }
+
+    if (selectedBookmarkNotesState.isLoading || selectedBookmarkNotesState.isError) {
+      return;
+    }
+
+    const notes = selectedBookmarkNotesState.notes;
     if (notes.length === 0) {
       setSelectedNoteName(null);
       return;
@@ -322,7 +429,14 @@ export function NotebookBrowsePanel() {
     if (!notes.some((note) => note.name === selectedNoteName)) {
       setSelectedNoteName(notes[0]?.name ?? null);
     }
-  }, [notesQuery.data?.notes, selectedNoteName]);
+  }, [
+    selectedBookmark,
+    selectedBookmarkNotesState,
+    selectedBookmarkNotesState?.isError,
+    selectedBookmarkNotesState?.isLoading,
+    selectedBookmarkNotesState?.notes,
+    selectedNoteName,
+  ]);
 
   useEffect(() => {
     if (noteQuery.data) {
@@ -730,7 +844,6 @@ export function NotebookBrowsePanel() {
     },
   });
 
-  const notes = notesQuery.data?.notes ?? [];
   const hasUnsavedChanges = editorText !== (noteQuery.data?.text ?? "");
   const bookmarkModalNameTrimmed = bookmarkModalName.trim();
   const bookmarkCreateDisabled =
@@ -751,9 +864,7 @@ export function NotebookBrowsePanel() {
 
   const dueReminders = remindersQuery.dueReminders;
   const bookmarksWithReminders = new Set(remindersQuery.reminders.map((reminder) => reminder.bookmark));
-  const bookmarkHasReminders = notes.some((note) => hasActiveReminder(note.flags));
-  const displayedNotes =
-    remindersFilter && bookmarkHasReminders ? notes.filter((note) => hasActiveReminder(note.flags)) : notes;
+  const hasAnyReminders = remindersQuery.reminders.length > 0;
   const reminderActionDisabled =
     companionUnavailable ||
     !selectedBookmark ||
@@ -915,6 +1026,31 @@ export function NotebookBrowsePanel() {
     dismissReminderMutation.mutate(reminder);
   }
 
+  function toggleBookmarkExpanded(bookmarkName: string): void {
+    setExpandedBookmarks((current) => {
+      const next = new Set(current);
+      if (next.has(bookmarkName)) {
+        next.delete(bookmarkName);
+      } else {
+        next.add(bookmarkName);
+      }
+      return next;
+    });
+  }
+
+  function handleBookmarkRowClick(bookmarkName: string): void {
+    setSelectedBookmark(bookmarkName);
+    setExpandedBookmarks((current) => {
+      if (current.has(bookmarkName)) {
+        return current;
+      }
+
+      const next = new Set(current);
+      next.add(bookmarkName);
+      return next;
+    });
+  }
+
   function handleNoteDragStart(event: DragEvent<HTMLButtonElement>, noteName: string): void {
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", noteName);
@@ -931,7 +1067,7 @@ export function NotebookBrowsePanel() {
     if (draggedBookmarkName !== null) {
       handleBookmarkReorderDragOver(
         event,
-        (contentsQuery.data?.bookmarks ?? []).findIndex((bookmark) => bookmark.name === bookmarkName)
+        bookmarks.findIndex((bookmark) => bookmark.name === bookmarkName)
       );
       return;
     }
@@ -1002,7 +1138,6 @@ export function NotebookBrowsePanel() {
   function handleBookmarkReorderDrop(event: DragEvent<HTMLButtonElement>): void {
     event.preventDefault();
 
-    const bookmarks = contentsQuery.data?.bookmarks ?? [];
     if (draggedBookmarkName === null || bookmarkDropIndex === null || reorderBookmarksMutation.isPending) {
       setDraggedBookmarkName(null);
       setBookmarkDropIndex(null);
@@ -1159,12 +1294,11 @@ export function NotebookBrowsePanel() {
           title={NOTEBOOK_BROWSE_COPY.CONTENTS_ERROR}
         />
       ) : (
-        <Grid>
-          <Grid.Col span={{ base: 12, lg: 2, md: 3 }}>
-            <NotebookSurface title="Bookmarks">
-              <NotebookNoticeAlert notice={bookmarkNotice} />
+        <Grid columns={15}>
+          <Grid.Col span={{ base: 15, md: 5, lg: 4 }}>
+            <NotebookSurface>
               <Stack gap="md">
-                <Group gap="xs">
+                <Group gap="xs" wrap="wrap">
                   <Tooltip label={NOTEBOOK_BROWSE_COPY.BOOKMARK_CREATE}>
                     <ActionIcon
                       aria-label={NOTEBOOK_BROWSE_COPY.BOOKMARK_CREATE}
@@ -1199,11 +1333,54 @@ export function NotebookBrowsePanel() {
                       <IconTrash size={18} />
                     </ActionIcon>
                   </Tooltip>
+                  <Tooltip label={NOTEBOOK_BROWSE_COPY.NOTE_CREATE}>
+                    <ActionIcon
+                      aria-label={NOTEBOOK_BROWSE_COPY.NOTE_CREATE}
+                      disabled={noteActionDisabled}
+                      onClick={handleCreateNote}
+                      size="lg"
+                      variant="light"
+                    >
+                      <IconNote size={18} />
+                    </ActionIcon>
+                  </Tooltip>
+                  {hasAnyReminders ? (
+                    <Tooltip
+                      label={
+                        remindersFilter
+                          ? NOTEBOOK_BROWSE_COPY.NOTE_FILTER_ALL
+                          : NOTEBOOK_BROWSE_COPY.NOTE_FILTER_REMINDERS
+                      }
+                    >
+                      <ActionIcon
+                        aria-label={
+                          remindersFilter
+                            ? NOTEBOOK_BROWSE_COPY.NOTE_FILTER_ALL
+                            : NOTEBOOK_BROWSE_COPY.NOTE_FILTER_REMINDERS
+                        }
+                        color={remindersFilter ? "yellow" : "gray"}
+                        onClick={() => setRemindersFilter((value) => !value)}
+                        size="lg"
+                        variant={remindersFilter ? "filled" : "light"}
+                      >
+                        {remindersFilter ? <IconFilterFilled size={18} /> : <IconFilter size={18} />}
+                      </ActionIcon>
+                    </Tooltip>
+                  ) : null}
                 </Group>
 
-                {contentsQuery.data?.bookmarks.length ? (
+                <NotebookNoticeAlert notice={bookmarkNotice} />
+                <NotebookNoticeAlert notice={noteNotice} />
+
+                {bookmarks.length > 0 ? (
                   <Stack gap="xs">
-                    {contentsQuery.data.bookmarks.map((bookmark, index, bookmarks) => {
+                    {bookmarks.map((bookmark, index) => {
+                      const isExpanded = expandedBookmarks.has(bookmark.name);
+                      const notesState = bookmarkNotesByName.get(bookmark.name);
+                      const visibleNotes =
+                        remindersFilter && notesState
+                          ? notesState.notes.filter((note) => hasActiveReminder(note.flags))
+                          : (notesState?.notes ?? []);
                       const isDropTarget =
                         draggedNoteName !== null &&
                         dragOverBookmarkName === bookmark.name &&
@@ -1226,41 +1403,134 @@ export function NotebookBrowsePanel() {
                               }}
                             />
                           ) : null}
-                          <Button
-                            draggable={bookmarkDraggable}
-                            fullWidth
-                            onClick={() => setSelectedBookmark(bookmark.name)}
-                            onDragEnd={handleBookmarkReorderDragEnd}
-                            onDragOver={(event) => handleBookmarkDragOver(event, bookmark.name)}
-                            onDragStart={(event) => handleBookmarkReorderDragStart(event, bookmark.name)}
-                            onDrop={(event) => handleBookmarkDrop(event, bookmark.name)}
-                            style={{
-                              ...(isDropTarget
-                                ? {
-                                    outline: "2px dashed var(--mantine-color-blue-5)",
-                                    outlineOffset: 2,
-                                  }
-                                : {}),
-                              cursor: bookmarkDraggable ? "grab" : "default",
-                            }}
-                            variant={selectedBookmark === bookmark.name ? "filled" : "light"}
-                          >
-                            <Group justify="space-between" w="100%" wrap="nowrap">
-                              <Group gap={6} wrap="nowrap">
-                                <span>{bookmark.name}</span>
+                          <Group align="center" gap="xs" wrap="nowrap">
+                            <ActionIcon
+                              aria-label={isExpanded ? `Collapse ${bookmark.name}` : `Expand ${bookmark.name}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setSelectedBookmark(bookmark.name);
+                                toggleBookmarkExpanded(bookmark.name);
+                              }}
+                              size="md"
+                              variant="subtle"
+                            >
+                              {isExpanded ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
+                            </ActionIcon>
+                            <UnstyledButton
+                              aria-current={selectedBookmark === bookmark.name ? "page" : undefined}
+                              draggable={bookmarkDraggable}
+                              onClick={() => handleBookmarkRowClick(bookmark.name)}
+                              onDragEnd={handleBookmarkReorderDragEnd}
+                              onDragOver={(event) => handleBookmarkDragOver(event, bookmark.name)}
+                              onDragStart={(event) => handleBookmarkReorderDragStart(event, bookmark.name)}
+                              onDrop={(event) => handleBookmarkDrop(event, bookmark.name)}
+                              style={{
+                                ...buildBookmarkRowStyle(selectedBookmark === bookmark.name, palette),
+                                cursor: bookmarkDraggable ? "grab" : "default",
+                                ...(isDropTarget
+                                  ? {
+                                      outline: "2px dashed var(--mantine-color-blue-5)",
+                                      outlineOffset: 2,
+                                    }
+                                  : {}),
+                              }}
+                            >
+                              <Group gap={8} style={{ minWidth: 0 }} wrap="nowrap">
+                                <IconFolder size={16} style={{ flexShrink: 0 }} />
+                                <Text c="inherit" fw={selectedBookmark === bookmark.name ? 600 : 500} truncate>
+                                  {bookmark.name}
+                                </Text>
                                 {bookmarksWithReminders.has(bookmark.name) ? (
                                   <Tooltip label={NOTEBOOK_BROWSE_COPY.BOOKMARK_REMINDER_HINT}>
                                     <IconBell
                                       aria-label={NOTEBOOK_BROWSE_COPY.BOOKMARK_REMINDER_HINT}
                                       color="var(--mantine-color-yellow-6)"
                                       size={14}
+                                      style={{ flexShrink: 0 }}
                                     />
                                   </Tooltip>
                                 ) : null}
                               </Group>
-                              <span>{bookmark.noteCount}</span>
-                            </Group>
-                          </Button>
+                              <Text c="inherit" size="sm">
+                                {bookmark.noteCount}
+                              </Text>
+                            </UnstyledButton>
+                          </Group>
+
+                          <Collapse in={isExpanded}>
+                            <Box ml="md" mt="xs" pl="md" style={{ borderLeft: `1px solid ${palette.line}` }}>
+                              <Stack gap={6}>
+                                {notesState?.isLoading ? (
+                                  <Group c="dimmed" gap="xs" wrap="nowrap">
+                                    <Loader size="xs" />
+                                    <Text size="sm">{NOTEBOOK_BROWSE_COPY.NOTE_FOLDER_LOADING}</Text>
+                                  </Group>
+                                ) : null}
+                                {notesState?.isError ? (
+                                  <NotebookErrorAlert
+                                    error={notesState.error}
+                                    fallback={NOTEBOOK_BROWSE_COPY.NOTE_LOAD_FALLBACK}
+                                    onRetry={() => void notesState.refetch()}
+                                    title={NOTEBOOK_BROWSE_COPY.NOTE_LOAD_ERROR}
+                                  />
+                                ) : null}
+                                {!notesState?.isLoading && !notesState?.isError && visibleNotes.length === 0 ? (
+                                  <Text c="dimmed" size="sm">
+                                    {NOTEBOOK_BROWSE_COPY.NOTE_LEAF_EMPTY}
+                                  </Text>
+                                ) : null}
+                                {!notesState?.isLoading && !notesState?.isError
+                                  ? visibleNotes.map((note) => {
+                                      const previewLine = buildNotePreviewLine(note.previewLines, note.name);
+                                      const isSelected =
+                                        selectedBookmark === bookmark.name && selectedNoteName === note.name;
+
+                                      return (
+                                        <Tooltip key={note.name} label={buildPreviewText(note.previewLines)} multiline>
+                                          <UnstyledButton
+                                            aria-current={isSelected ? "page" : undefined}
+                                            draggable={!moveNoteMutation.isPending}
+                                            onClick={() => openNote(bookmark.name, note.name)}
+                                            onDragEnd={handleNoteDragEnd}
+                                            onDragStart={(event) => handleNoteDragStart(event, note.name)}
+                                            style={{
+                                              ...buildNoteRowStyle(isSelected, palette),
+                                              cursor: moveNoteMutation.isPending ? "default" : "grab",
+                                            }}
+                                          >
+                                            <Group gap="xs" style={{ minWidth: 0 }} wrap="nowrap">
+                                              <Box
+                                                aria-hidden="true"
+                                                h={6}
+                                                style={{
+                                                  backgroundColor: isSelected ? palette.accent : palette.faint,
+                                                  borderRadius: "999px",
+                                                  flexShrink: 0,
+                                                }}
+                                                w={6}
+                                              />
+                                              <Text c="inherit" size="sm" truncate>
+                                                {previewLine}
+                                              </Text>
+                                            </Group>
+                                            {hasActiveReminder(note.flags) ? (
+                                              <span aria-label={NOTEBOOK_BROWSE_COPY.BOOKMARK_REMINDER_HINT}>
+                                                <IconBell
+                                                  color="var(--mantine-color-yellow-6)"
+                                                  size={14}
+                                                  style={{ flexShrink: 0 }}
+                                                />
+                                              </span>
+                                            ) : null}
+                                          </UnstyledButton>
+                                        </Tooltip>
+                                      );
+                                    })
+                                  : null}
+                              </Stack>
+                            </Box>
+                          </Collapse>
+
                           {bookmarkDropIndex === bookmarks.length &&
                           index === bookmarks.length - 1 &&
                           draggedBookmarkName !== null ? (
@@ -1287,126 +1557,7 @@ export function NotebookBrowsePanel() {
             </NotebookSurface>
           </Grid.Col>
 
-          <Grid.Col span={{ base: 12, lg: 2, md: 3 }}>
-            <NotebookSurface title="Notes">
-              <NotebookNoticeAlert notice={noteNotice} />
-              <Group gap="xs" justify="space-between" wrap="nowrap">
-                <Tooltip label={NOTEBOOK_BROWSE_COPY.NOTE_CREATE}>
-                  <ActionIcon
-                    aria-label={NOTEBOOK_BROWSE_COPY.NOTE_CREATE}
-                    disabled={noteActionDisabled}
-                    onClick={handleCreateNote}
-                    size="lg"
-                    variant="light"
-                  >
-                    <IconNote size={18} />
-                  </ActionIcon>
-                </Tooltip>
-                {bookmarkHasReminders ? (
-                  <Tooltip
-                    label={
-                      remindersFilter
-                        ? NOTEBOOK_BROWSE_COPY.NOTE_FILTER_ALL
-                        : NOTEBOOK_BROWSE_COPY.NOTE_FILTER_REMINDERS
-                    }
-                  >
-                    <ActionIcon
-                      aria-label={
-                        remindersFilter
-                          ? NOTEBOOK_BROWSE_COPY.NOTE_FILTER_ALL
-                          : NOTEBOOK_BROWSE_COPY.NOTE_FILTER_REMINDERS
-                      }
-                      color={remindersFilter ? "yellow" : "gray"}
-                      onClick={() => setRemindersFilter((value) => !value)}
-                      size="lg"
-                      variant={remindersFilter ? "filled" : "light"}
-                    >
-                      {remindersFilter ? <IconFilterFilled size={18} /> : <IconFilter size={18} />}
-                    </ActionIcon>
-                  </Tooltip>
-                ) : null}
-              </Group>
-
-              {!selectedBookmark ? (
-                <Paper p="lg" radius="md" withBorder>
-                  <Text c="dimmed" ta="center">
-                    {NOTEBOOK_BROWSE_COPY.SELECT_BOOKMARK_PROMPT}
-                  </Text>
-                </Paper>
-              ) : notesQuery.isLoading ? (
-                <NotebookLoadingState message="Loading notes from the companion app." />
-              ) : notesQuery.isError ? (
-                <NotebookErrorAlert
-                  error={notesQuery.error}
-                  fallback={NOTEBOOK_BROWSE_COPY.NOTE_LOAD_FALLBACK}
-                  onRetry={() => void notesQuery.refetch()}
-                  title={NOTEBOOK_BROWSE_COPY.NOTE_LOAD_ERROR}
-                />
-              ) : notes.length === 0 ? (
-                <Paper p="lg" radius="md" withBorder>
-                  <Text c="dimmed" ta="center">
-                    {NOTEBOOK_BROWSE_COPY.NOTE_EMPTY}
-                  </Text>
-                </Paper>
-              ) : (
-                <Stack gap="xs">
-                  {displayedNotes.map((note) => {
-                    const isSelected = selectedNoteName === note.name;
-                    const noteHasReminder = hasActiveReminder(note.flags);
-                    const noteReminder = getReminderFlagValue(note.flags);
-
-                    return (
-                      <Button
-                        draggable={!moveNoteMutation.isPending}
-                        fullWidth
-                        key={note.name}
-                        onClick={() => setSelectedNoteName(note.name)}
-                        onDragEnd={handleNoteDragEnd}
-                        onDragStart={(event) => handleNoteDragStart(event, note.name)}
-                        style={{
-                          cursor: moveNoteMutation.isPending ? "default" : "grab",
-                          height: "auto",
-                          paddingBlock: "0.75rem",
-                        }}
-                        styles={{
-                          inner: {
-                            alignItems: "flex-start",
-                            justifyContent: "flex-start",
-                          },
-                          label: {
-                            whiteSpace: "normal",
-                            width: "100%",
-                          },
-                        }}
-                        variant={isSelected ? "filled" : "light"}
-                      >
-                        <Text
-                          c={isSelected ? undefined : "dimmed"}
-                          size="sm"
-                          ta="left"
-                          style={{ whiteSpace: "pre-wrap", width: "100%" }}
-                        >
-                          {noteHasReminder && noteReminder ? (
-                            <>
-                              <IconBell
-                                size={12}
-                                style={{ display: "inline-block", marginRight: 4, verticalAlign: "text-bottom" }}
-                              />
-                              {formatReminder(noteReminder)}
-                              {"\n"}
-                            </>
-                          ) : null}
-                          {buildPreviewText(note.previewLines)}
-                        </Text>
-                      </Button>
-                    );
-                  })}
-                </Stack>
-              )}
-            </NotebookSurface>
-          </Grid.Col>
-
-          <Grid.Col span={{ base: 12, lg: 8, md: 6 }}>
+          <Grid.Col span={{ base: 15, md: 10, lg: 11 }}>
             <NotebookNoteEditor
               bookmark={selectedBookmark}
               deleteButtonLabel={NOTEBOOK_BROWSE_COPY.NOTE_DELETE}
