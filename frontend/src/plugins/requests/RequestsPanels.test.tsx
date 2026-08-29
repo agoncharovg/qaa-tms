@@ -43,9 +43,12 @@ vi.mock("@/api/agentClient", async () => {
   };
 });
 
+import { AgentRequestError } from "@/api/agentClient";
+import type { RequestsItemInput } from "@/api/types";
 import { PluginId } from "@/constants";
 import { CredentialsPanel } from "@/plugins/requests/CredentialsPanel";
 import { RequestsBuilderPanel } from "@/plugins/requests/RequestsBuilderPanel";
+import { IAM_SEED } from "@/plugins/requests/requestsSeeds";
 import { RequestsHistoryPanel } from "@/plugins/requests/RequestsHistoryPanel";
 import { clearRequestsDrafts } from "@/plugins/requests/requestsDrafts";
 import { renderWithProviders } from "@/test/render";
@@ -245,6 +248,12 @@ describe("Requests plugin panels", () => {
       .mockResolvedValueOnce({ error: null, expiresAt: "2026-08-30T00:00:00Z", ok: true })
       .mockResolvedValueOnce({ error: "Denied", expiresAt: null, ok: false });
     vi.spyOn(window, "confirm").mockReturnValue(true);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: vi.fn().mockResolvedValue(undefined),
+      },
+    });
   });
 
   it("renders the tree, loads a request into the editor, and calls create save delete methods", async () => {
@@ -298,6 +307,66 @@ describe("Requests plugin panels", () => {
     });
   }, 10_000);
 
+  it("renders curl import and copy actions", async () => {
+    renderWithProviders(<RequestsBuilderPanel />);
+
+    await screen.findByLabelText("Request URL");
+    expect(screen.getByRole("button", { name: "Import from curl" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy as curl" })).toBeInTheDocument();
+  });
+
+  it("imports the IAM preset and reports a summary while skipping conflicts", async () => {
+    const user = userEvent.setup();
+    const expectedRequests = IAM_SEED.reduce((total, folder) => total + folder.requests.length, 0);
+    let folderCallCount = 0;
+    let requestCallCount = 0;
+
+    agentClientMock.createFolder.mockImplementation(() => {
+      folderCallCount += 1;
+      if (folderCallCount === 1) {
+        throw new AgentRequestError("Folder already exists", 409);
+      }
+      return { folders: [] };
+    });
+
+    agentClientMock.createRequestItem.mockImplementation((
+      _port: number,
+      _token: string,
+      payload: RequestsItemInput
+    ) => {
+      requestCallCount += 1;
+      if (requestCallCount === 1) {
+        throw new AgentRequestError("Item already exists", 409);
+      }
+      return {
+        body: payload.body,
+        createdAt: "2026-08-29T10:00:00Z",
+        credentialId: payload.credentialId,
+        folder: payload.folder,
+        headers: payload.headers,
+        method: payload.method,
+        name: payload.name ?? "Created request",
+        queryParams: payload.queryParams,
+        updatedAt: "2026-08-29T10:00:00Z",
+        url: payload.url,
+      };
+    });
+
+    renderWithProviders(<RequestsBuilderPanel />);
+    await screen.findByText(REQUEST_NAME);
+    await user.click(screen.getByRole("button", { name: "Import IAM preset" }));
+
+    const summary = `Imported ${expectedRequests - 1} requests in ${IAM_SEED.length} folders, skipped 2 existing`;
+    expect(await screen.findByText(summary)).toBeInTheDocument();
+    expect(agentClientMock.createFolder).toHaveBeenCalledTimes(IAM_SEED.length);
+    expect(agentClientMock.createRequestItem).toHaveBeenCalledTimes(expectedRequests);
+    expect(agentClientMock.createFolder).toHaveBeenCalledWith(PORT, TOKEN, { name: IAM_SEED[0]?.name ?? "" });
+    expect(agentClientMock.createRequestItem).toHaveBeenCalledWith(
+      PORT,
+      TOKEN,
+      expect.objectContaining({ folder: IAM_SEED[0]?.name, name: IAM_SEED[0]?.requests[0]?.name })
+    );
+  });
   it("executes the current editor state and renders both success and error responses", async () => {
     const user = userEvent.setup();
     renderWithProviders(<RequestsBuilderPanel />);

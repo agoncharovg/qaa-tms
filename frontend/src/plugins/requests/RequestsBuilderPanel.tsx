@@ -17,6 +17,7 @@ import {
   Textarea,
   UnstyledButton,
 } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import {
   IconChevronDown,
   IconChevronRight,
@@ -28,7 +29,7 @@ import {
 } from "@tabler/icons-react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { agentClient } from "@/api/agentClient";
+import { AgentRequestError, agentClient } from "@/api/agentClient";
 import type {
   RequestsExecuteResponse,
   RequestsFolderNode,
@@ -57,6 +58,8 @@ import {
   setRequestsDraft,
   type RequestsEditorDraft,
 } from "@/plugins/requests/requestsDrafts";
+import { buildCurl, parseCurl } from "@/plugins/requests/requestsCurl";
+import { IAM_SEED } from "@/plugins/requests/requestsSeeds";
 import { getErrorMessage, type RequestsNotice, useRequestsAgent } from "@/plugins/requests/requestsShared";
 import { useAuthStore } from "@/store/authStore";
 
@@ -98,6 +101,11 @@ const HTTP_METHOD_OPTIONS = Object.values(HttpMethod).map((value) => ({
 type FolderModalState = {
   mode: "create" | "rename";
   open: boolean;
+};
+
+type CurlImportModalState = {
+  open: boolean;
+  value: string;
 };
 
 type FolderItemsState = {
@@ -247,6 +255,9 @@ async function invalidateRequestsQueries(queryClient: ReturnType<typeof useQuery
   ]);
 }
 
+function isConflictError(error: unknown): boolean {
+  return error instanceof AgentRequestError && error.status === 409;
+}
 function KeyValueTable<T extends RequestsHeaderField | RequestsQueryParam>({
   addLabel,
   rows,
@@ -416,6 +427,7 @@ export function RequestsBuilderPanel() {
   const [notice, setNotice] = useState<RequestsNotice | null>(null);
   const [folderModal, setFolderModal] = useState<FolderModalState>({ mode: "create", open: false });
   const [folderName, setFolderName] = useState("");
+  const [curlImportModal, setCurlImportModal] = useState<CurlImportModalState>({ open: false, value: "" });
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [selectedRequestName, setSelectedRequestName] = useState<string | null>(null);
   const [isComposingNewRequest, setIsComposingNewRequest] = useState(false);
@@ -757,6 +769,67 @@ export function RequestsBuilderPanel() {
     },
   });
 
+  const importPresetMutation = useMutation({
+    mutationFn: async () => {
+      if (!token || agentPort === null) {
+        throw new Error("Authentication is required.");
+      }
+
+      let importedRequests = 0;
+      let skipped = 0;
+
+      for (const folder of IAM_SEED) {
+        try {
+          await agentClient.createFolder(agentPort, token, { name: folder.name });
+        } catch (error) {
+          if (isConflictError(error)) {
+            skipped += 1;
+          } else {
+            throw error;
+          }
+        }
+
+        for (const request of folder.requests) {
+          try {
+            await agentClient.createRequestItem(agentPort, token, {
+              body: request.body,
+              credentialId: null,
+              folder: folder.name,
+              headers: request.headers,
+              method: request.method,
+              name: request.name,
+              queryParams: request.queryParams,
+              url: request.url,
+            });
+            importedRequests += 1;
+          } catch (error) {
+            if (isConflictError(error)) {
+              skipped += 1;
+            } else {
+              throw error;
+            }
+          }
+        }
+      }
+
+      return { importedRequests, skipped };
+    },
+    onError: (error) => {
+      setNotice({ message: getErrorMessage(error, "Unable to import the IAM preset."), status: "error" });
+    },
+    onSuccess: async ({ importedRequests, skipped }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [QueryKey.REQUESTS_COLLECTIONS] }),
+        queryClient.invalidateQueries({ queryKey: [QueryKey.REQUESTS_ITEMS] }),
+      ]);
+      notifications.show({
+        color: "green",
+        message: `Imported ${importedRequests} requests in ${IAM_SEED.length} folders, skipped ${skipped} existing`,
+        title: "IAM preset imported",
+      });
+    },
+  });
+
   if (preflightQuery.isLoading) {
     return <RequestsLoadingState message="Checking the local companion app before loading Requests." />;
   }
@@ -802,6 +875,11 @@ export function RequestsBuilderPanel() {
     value: credential.id,
   }));
 
+  const selectedCredentialName =
+    editor.credentialId
+      ? (credentialsQuery.data?.credentials.find((credential) => credential.id === editor.credentialId)?.name ??
+          editor.credentialId)
+      : null;
   return (
     <Stack gap="md">
       <RequestsNoticeAlert notice={notice} />
@@ -816,6 +894,14 @@ export function RequestsBuilderPanel() {
               <Group wrap="wrap">
                 <Button leftSection={<IconPlus size={16} />} onClick={() => { setFolderModal({ mode: "create", open: true }); setFolderName(""); }} size="xs" variant="light">
                   Create folder
+                </Button>
+                <Button
+                  loading={importPresetMutation.isPending}
+                  onClick={() => void importPresetMutation.mutateAsync()}
+                  size="xs"
+                  variant="light"
+                >
+                  Import IAM preset
                 </Button>
                 <Button
                   disabled={!selectedFolder}
@@ -961,23 +1047,55 @@ export function RequestsBuilderPanel() {
                         value={editor.folder}
                       />
                     </Group>
-                    <Group align="flex-end" grow>
+                    <Group align="flex-end" wrap="wrap">
                       <TextInput
                         aria-label="Request URL"
                         label="URL"
                         onChange={(event) => setEditor((current) => ({ ...current, url: event.currentTarget.value }))}
                         placeholder="https://service.example/api"
+                        style={{ flex: 1 }}
                         value={editor.url}
                       />
-                      {canWrite ? (
+                      <Group gap="sm">
+                        {canWrite ? (
+                          <Button onClick={() => setCurlImportModal({ open: true, value: "" })} variant="default">
+                            Import from curl
+                          </Button>
+                        ) : null}
                         <Button
-                          leftSection={<IconSend size={16} />}
-                          loading={executeMutation.isPending}
-                          onClick={() => void executeMutation.mutateAsync()}
+                          onClick={() => {
+                            void (async () => {
+                              try {
+                                if (!navigator.clipboard) {
+                                  throw new Error("Clipboard is unavailable.");
+                                }
+                                await navigator.clipboard.writeText(
+                                  buildCurl({ ...editor, credentialName: selectedCredentialName })
+                                );
+                                notifications.show({
+                                  color: "green",
+                                  message: "curl copied to your clipboard.",
+                                  title: "Copied as curl",
+                                });
+                              } catch (error) {
+                                setNotice({ message: getErrorMessage(error, "Unable to copy curl."), status: "error" });
+                              }
+                            })();
+                          }}
+                          variant="default"
                         >
-                          Send
+                          Copy as curl
                         </Button>
-                      ) : null}
+                        {canWrite ? (
+                          <Button
+                            leftSection={<IconSend size={16} />}
+                            loading={executeMutation.isPending}
+                            onClick={() => void executeMutation.mutateAsync()}
+                          >
+                            Send
+                          </Button>
+                        ) : null}
+                      </Group>
                     </Group>
                     <SegmentedControl
                       data={[
@@ -1189,6 +1307,50 @@ export function RequestsBuilderPanel() {
               onClick={() => void saveFolderMutation.mutateAsync({ mode: folderModal.mode, name: folderName.trim() })}
             >
               Save
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+      <Modal
+        closeOnClickOutside={false}
+        onClose={() => setCurlImportModal({ open: false, value: "" })}
+        opened={curlImportModal.open}
+        title="Import from curl"
+      >
+        <Stack>
+          <Textarea
+            label="curl command"
+            autosize
+            minRows={10}
+            onChange={(event) => setCurlImportModal((current) => ({ ...current, value: event.currentTarget.value }))}
+            value={curlImportModal.value}
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setCurlImportModal({ open: false, value: "" })}>
+              Cancel
+            </Button>
+            <Button
+              disabled={curlImportModal.value.trim().length === 0}
+              onClick={() => {
+                const parsed = parseCurl(curlImportModal.value);
+                setEditor((current) => ({
+                  ...current,
+                  body: parsed.body,
+                  headers: ensureHeaderRows(parsed.headers),
+                  method: parsed.method,
+                  queryParams: ensureQueryRows(parsed.queryParams),
+                  url: parsed.url,
+                }));
+                setExecuteResponse(null);
+                setCurlImportModal({ open: false, value: "" });
+                notifications.show({
+                  color: parsed.url ? "green" : "yellow",
+                  message: parsed.url ? "curl imported into the request editor." : "curl imported, but no URL was detected.",
+                  title: parsed.url ? "curl imported" : "curl imported with warnings",
+                });
+              }}
+            >
+              Import
             </Button>
           </Group>
         </Stack>
