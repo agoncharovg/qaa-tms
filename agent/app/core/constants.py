@@ -38,6 +38,7 @@ class AgentPath(StrEnum):
     LOGS = "/logs"
     DESCRIBE = "/describe"
     DELETE = "/delete"
+    EXEC = "/exec"
     DEPLOY_RECIPE = "/deploy-recipe"
     DEPLOY = "/deploy"
     DESTROY = "/destroy"
@@ -87,6 +88,7 @@ class OperationType(StrEnum):
     SETUP = "setup"
     KUBE_USE_CONTEXT = "kube_use_context"
     KUBE_DELETE_POD = "kube_delete_pod"
+    KUBE_EXEC = "kube_exec"
     KUBECONFIG_REFRESH = "kubeconfig_refresh"
 
 
@@ -140,6 +142,7 @@ class EnvKey(StrEnum):
     KUBECTL_BIN = "AGENT_KUBECTL_BIN"
     KUBECONFIG = "AGENT_KUBECONFIG"
     KUBECTL_REQUEST_TIMEOUT = "AGENT_KUBECTL_REQUEST_TIMEOUT"
+    KUBE_EXEC_TIMEOUT_SECONDS = "AGENT_KUBE_EXEC_TIMEOUT_SECONDS"
     QAA_GENERATOR_TOKEN = "AGENT_QAA_GENERATOR_TOKEN"
     STAGING_KUBECONFIG_URL = "AGENT_STAGING_KUBECONFIG_URL"
     KUBECONFIG_ACTIVE_PATH = "AGENT_KUBECONFIG_ACTIVE_PATH"
@@ -212,6 +215,7 @@ class PermissionKey(StrEnum):
     KUBER_READ = "kuber.read"
     KUBER_USE_CONTEXT = "kuber.use_context"
     KUBER_DELETE_POD = "kuber.delete_pod"
+    KUBER_EXEC = "kuber.exec"
     QAA_READ = "qaa.read"
     QAA_RUN = "qaa.run"
     QAA_ADMIN = "qaa.admin"
@@ -276,6 +280,7 @@ class StagingCommand(StrEnum):
 
 class KubectlCommand(StrEnum):
     CONFIG = "config"
+    EXEC = "exec"
     GET = "get"
     DESCRIBE = "describe"
     LOGS = "logs"
@@ -380,6 +385,7 @@ class ErrorMessage(StrEnum):
     JENKINS_PATH_OUT_OF_SCOPE = "Requested job path is outside the allowed Jenkins scope."
     KUBECTL_NOT_INSTALLED = "kubectl is not installed."
     INVALID_KUBE_NAME = "Invalid Kubernetes resource name."
+    INVALID_KUBE_EXEC_COMMAND = "Invalid Kubernetes exec command."
     KUBECONFIG_DOWNLOAD_FAILED = (
         "Failed to download the staging kubeconfig. Connect Full VPN and retry."
     )
@@ -454,6 +460,11 @@ DEFAULT_STAGING_BINARY_NAME = "staging"
 DEFAULT_KUBECTL_BIN = "kubectl"
 DEFAULT_KUBECTL_REQUEST_TIMEOUT = "10s"
 DEFAULT_KUBE_LOG_TAIL = 200
+DEFAULT_KUBE_EXEC_TIMEOUT_SECONDS = 300
+MAX_KUBE_EXEC_COMMAND_LENGTH = 16384
+KUBE_EXEC_SHELL = "sh"
+KUBE_EXEC_SHELL_FLAG = "-c"
+KUBECTL_ARG_SEPARATOR = "--"
 NOTEBOOK_BACKUP_HOUR = 9
 NOTEBOOK_BACKUP_RETENTION = 14
 NOTEBOOK_BACKUP_POLL_SECONDS = 3600

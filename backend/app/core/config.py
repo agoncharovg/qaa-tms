@@ -47,10 +47,16 @@ def coerce_async_database_url(value: str) -> str:
         return value
 
     url = url.set(drivername="postgresql+asyncpg")
+    host = url.host or ""
+    if host == "localhost":
+        url = url.set(host="127.0.0.1")
+        host = "127.0.0.1"
     query = dict(url.query)
     sslmode = query.pop("sslmode", None)
     if sslmode is not None and "ssl" not in query:
-        query["ssl"] = "false" if sslmode == "disable" else "true"
+        query["ssl"] = sslmode
+    elif "ssl" not in query and host in {"127.0.0.1", "::1"}:
+        query["ssl"] = "disable"
     url = url.set(query=query)
     return url.render_as_string(hide_password=False)
 

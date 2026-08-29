@@ -437,6 +437,7 @@ export const AgentPath = {
   LOGS: "/logs",
   DESCRIBE: "/describe",
   DELETE: "/delete",
+  EXEC: "/exec",
   DEPLOY_RECIPE: "/deploy-recipe",
   DEPLOY: "/deploy",
   DESTROY: "/destroy",
@@ -602,6 +603,10 @@ export function buildAgentKubePodDeletePath(pod: string): string {
   return `${AgentPath.KUBE_PODS}/${encodeURIComponent(pod)}${AgentPath.DELETE}`;
 }
 
+export function buildAgentKubePodExecPath(pod: string): string {
+  return `${AgentPath.KUBE_PODS}/${encodeURIComponent(pod)}${AgentPath.EXEC}`;
+}
+
 export function buildAgentKubeTopPath(context: string | null | undefined, namespace: string): string {
   const params = new URLSearchParams({
     namespace,
@@ -672,6 +677,7 @@ export const OperationType = {
   SETUP: "setup",
   KUBE_USE_CONTEXT: "kube_use_context",
   KUBE_DELETE_POD: "kube_delete_pod",
+  KUBE_EXEC: "kube_exec",
   KUBECONFIG_REFRESH: "kubeconfig_refresh",
   QAA_GENERATE: "qaa_generate",
 } as const;
@@ -687,6 +693,7 @@ export const OperationTypeLabel: Record<OperationType, string> = {
   [OperationType.SETUP]: "Setup",
   [OperationType.KUBE_USE_CONTEXT]: "Set context",
   [OperationType.KUBE_DELETE_POD]: "Delete pod",
+  [OperationType.KUBE_EXEC]: "Exec in pod",
   [OperationType.KUBECONFIG_REFRESH]: "Kubeconfig refresh",
   [OperationType.QAA_GENERATE]: "QAA generate",
 };

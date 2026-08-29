@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
 import os
@@ -21,16 +22,23 @@ import httpx
 from app.core.config import Settings
 from app.core.constants import (
     DEFAULT_KUBE_LOG_TAIL,
+    KUBE_EXEC_SHELL,
+    KUBE_EXEC_SHELL_FLAG,
+    KUBECTL_ARG_SEPARATOR,
+    MAX_KUBE_EXEC_COMMAND_LENGTH,
     ErrorMessage,
+    JobEventType,
+    JobStatus,
     KubectlCommand,
     KubectlFlag,
     KubectlOutput,
     OperationStatus,
     OperationType,
+    SseEvent,
 )
 from app.services.backend import build_operation_payload, push_operation
 from app.services.command import PlainTextCommandResult, run_plain_text_command
-from app.services.sse import stream_process_log_frames
+from app.services.sse import encode_sse, stream_process_log_frames
 
 
 class KubectlNotInstalledError(RuntimeError):
@@ -105,6 +113,10 @@ JSON_RESTART_COUNT_KEY = "restartCount"
 JSON_NODE_NAME_KEY = "nodeName"
 JSON_CREATION_TIMESTAMP_KEY = "creationTimestamp"
 KUBE_NAME_PATTERN: Pattern[str] = re.compile(r"^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$")
+KUBE_EXEC_AUDIT_OUTPUT_LIMIT = 64 * 1024
+KUBE_EXEC_ABORT_EXIT_CODE = 130
+KUBE_EXEC_TIMEOUT_EXIT_CODE = 124
+KUBE_EXEC_FALLBACK_EXIT_CODE = 1
 
 
 def resolve_kubectl_bin(settings: Settings) -> str:
@@ -302,6 +314,30 @@ def build_pod_logs_argv(
     _append_value_flag(argv, KubectlFlag.TAIL, str(tail))
     if previous:
         argv.append(KubectlFlag.PREVIOUS.value)
+    return argv
+
+
+def build_exec_argv(
+    settings: Settings,
+    namespace: str,
+    pod: str,
+    container: str | None,
+    command: str,
+    context: str | None = None,
+) -> list[str]:
+    """Build argv for `kubectl exec <pod> -- sh -c <command>`."""
+
+    validated_command = _validate_exec_command(command)
+    argv = [
+        resolve_kubectl_bin(settings),
+        KubectlCommand.EXEC.value,
+        validate_kube_name(pod),
+    ]
+    _append_context(argv, context)
+    _append_namespace(argv, namespace)
+    if container:
+        _append_value_flag(argv, KubectlFlag.CONTAINER, validate_kube_name(container))
+    argv.extend([KUBECTL_ARG_SEPARATOR, KUBE_EXEC_SHELL, KUBE_EXEC_SHELL_FLAG, validated_command])
     return argv
 
 
@@ -521,6 +557,123 @@ def stream_pod_logs(
     env = build_kube_env(settings)
 
     return stream_process_log_frames(argv, None, env=env, is_disconnected=is_disconnected)
+
+
+async def stream_pod_exec(
+    settings: Settings,
+    context: str | None,
+    namespace: str,
+    pod: str,
+    container: str | None,
+    command: str,
+    *,
+    is_disconnected: Callable[[], Awaitable[bool]],
+    on_complete: Callable[[str, int], Awaitable[None]] | None = None,
+) -> AsyncIterator[str]:
+    """Stream `kubectl exec` output in the shared SSE frame format."""
+
+    argv = build_exec_argv(settings, namespace, pod, container, command, context)
+    env = build_kube_env(settings)
+    deadline = (
+        asyncio.get_running_loop().time() + settings.kube_exec_timeout_seconds
+        if settings.kube_exec_timeout_seconds > 0
+        else None
+    )
+    stream = stream_process_log_frames(argv, None, env=env, is_disconnected=is_disconnected)
+    captured_output = ""
+    exit_code: int | None = None
+
+    try:
+        while True:
+            try:
+                frame = await _read_next_stream_frame(stream, deadline)
+            except StopAsyncIteration:
+                break
+            except TimeoutError:
+                exit_code = KUBE_EXEC_TIMEOUT_EXIT_CODE
+                yield _encode_terminal_frame(JobStatus.FAILED, exit_code)
+                break
+
+            event_name, payload = _decode_sse_frame(frame)
+            if event_name == SseEvent.LOG.value:
+                line = payload.get("line")
+                if isinstance(line, str):
+                    captured_output = _append_bounded_output(captured_output, f"{line}\n")
+            elif event_name == SseEvent.TERMINAL.value:
+                payload_exit_code = payload.get("exitCode")
+                exit_code = (
+                    payload_exit_code
+                    if isinstance(payload_exit_code, int)
+                    else KUBE_EXEC_FALLBACK_EXIT_CODE
+                )
+
+            yield frame
+
+        if exit_code is None:
+            if await is_disconnected():
+                exit_code = KUBE_EXEC_ABORT_EXIT_CODE
+            else:
+                exit_code = KUBE_EXEC_FALLBACK_EXIT_CODE
+                yield _encode_terminal_frame(JobStatus.FAILED, exit_code)
+    except asyncio.CancelledError:
+        if exit_code is None:
+            exit_code = KUBE_EXEC_ABORT_EXIT_CODE
+        raise
+    finally:
+        if on_complete is not None:
+            await on_complete(
+                captured_output,
+                exit_code if exit_code is not None else KUBE_EXEC_FALLBACK_EXIT_CODE,
+            )
+
+
+def _validate_exec_command(command: str) -> str:
+    if not command.strip() or len(command) > MAX_KUBE_EXEC_COMMAND_LENGTH:
+        raise ValueError(ErrorMessage.INVALID_KUBE_EXEC_COMMAND.value)
+    return command
+
+
+def _append_bounded_output(captured_output: str, chunk: str) -> str:
+    next_output = f"{captured_output}{chunk}"
+    if len(next_output) <= KUBE_EXEC_AUDIT_OUTPUT_LIMIT:
+        return next_output
+    return next_output[-KUBE_EXEC_AUDIT_OUTPUT_LIMIT:]
+
+
+def _decode_sse_frame(frame: str) -> tuple[str | None, dict[str, Any]]:
+    event_name: str | None = None
+    payload: dict[str, Any] = {}
+    for line in frame.splitlines():
+        if line.startswith("event: "):
+            event_name = line.removeprefix("event: ")
+            continue
+        if not line.startswith("data: "):
+            continue
+        try:
+            data = json.loads(line.removeprefix("data: "))
+        except json.JSONDecodeError:
+            return event_name, {}
+        if isinstance(data, dict):
+            payload = data
+    return event_name, payload
+
+
+def _encode_terminal_frame(status: JobStatus, exit_code: int) -> str:
+    return encode_sse(
+        SseEvent.TERMINAL,
+        {
+            "type": JobEventType.TERMINAL.value,
+            "status": status.value,
+            "exitCode": exit_code,
+        },
+    )
+
+
+async def _read_next_stream_frame(stream: AsyncIterator[str], deadline: float | None) -> str:
+    if deadline is None:
+        return await anext(stream)
+    remaining = max(0.0, deadline - asyncio.get_running_loop().time())
+    return await asyncio.wait_for(anext(stream), timeout=remaining)
 
 
 async def push_kube_operation(

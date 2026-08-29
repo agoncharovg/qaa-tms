@@ -23,6 +23,7 @@ from app.core.constants import (
     DEFAULT_JENKINS_STUCK_MIN_IDLE_HOURS,
     DEFAULT_JENKINS_TREE_DEPTH,
     DEFAULT_JENKINS_URL,
+    DEFAULT_KUBE_EXEC_TIMEOUT_SECONDS,
     DEFAULT_KUBECONFIG_ACTIVE_PATH,
     DEFAULT_KUBECTL_BIN,
     DEFAULT_KUBECTL_REQUEST_TIMEOUT,
@@ -125,6 +126,11 @@ class Settings(BaseSettings):
     kubectl_request_timeout: str = Field(
         default=DEFAULT_KUBECTL_REQUEST_TIMEOUT,
         alias=EnvKey.KUBECTL_REQUEST_TIMEOUT.value,
+    )
+    kube_exec_timeout_seconds: int = Field(
+        default=DEFAULT_KUBE_EXEC_TIMEOUT_SECONDS,
+        alias=EnvKey.KUBE_EXEC_TIMEOUT_SECONDS.value,
+        ge=0,
     )
 
     @field_validator("kubeconfig", mode="before")

@@ -429,6 +429,17 @@ class KubeDeletePodRequest(BaseModel):
     namespace: str = Field(min_length=1)
 
 
+class KubeExecRequest(BaseModel):
+    """Kube pod exec request."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    namespace: str = Field(min_length=1)
+    context: str | None = None
+    container: str | None = None
+    command: str = Field(min_length=1)
+
+
 class E2eSuite(BaseModel):
     """Named suite from the static product registry."""
 

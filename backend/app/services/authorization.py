@@ -104,6 +104,7 @@ ROLE_SEEDS: tuple[RoleSeed, ...] = (
             PermissionKey.KUBER_READ,
             PermissionKey.KUBER_USE_CONTEXT,
             PermissionKey.KUBER_DELETE_POD,
+            PermissionKey.KUBER_EXEC,
             PermissionKey.QAA_READ,
             PermissionKey.QAA_RUN,
             PermissionKey.NOTEBOOK_READ,

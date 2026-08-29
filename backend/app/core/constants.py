@@ -25,6 +25,7 @@ class OperationType(StrEnum):
     SETUP = "setup"
     KUBE_USE_CONTEXT = "kube_use_context"
     KUBE_DELETE_POD = "kube_delete_pod"
+    KUBE_EXEC = "kube_exec"
     KUBECONFIG_REFRESH = "kubeconfig_refresh"
     QAA_GENERATE = "qaa_generate"
 
@@ -275,6 +276,7 @@ class PermissionKey(StrEnum):
     KUBER_READ = "kuber.read"
     KUBER_USE_CONTEXT = "kuber.use_context"
     KUBER_DELETE_POD = "kuber.delete_pod"
+    KUBER_EXEC = "kuber.exec"
     QAA_READ = "qaa.read"
     QAA_RUN = "qaa.run"
     QAA_ADMIN = "qaa.admin"

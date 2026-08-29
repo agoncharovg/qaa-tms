@@ -12,6 +12,8 @@ from app.core.constants import OperationStatus, OperationType, Product
 
 
 class OperationRecipe(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     product: Product | None = None
     services: list[str] = Field(default_factory=list)
     images: dict[str, str] = Field(default_factory=dict)

@@ -69,6 +69,7 @@ from app.schemas import (
     KubeconfigStatus,
     KubeContextsResponse,
     KubeDeletePodRequest,
+    KubeExecRequest,
     KubeNamespace,
     KubeNamespacesResponse,
     KubePod,
@@ -96,6 +97,7 @@ from app.schemas import (
     SyncRequest,
     to_agent_settings_read,
 )
+from app.services.command import PlainTextCommandResult
 from app.services.e2e import list_e2e_suites
 from app.services.jenkins import (
     JenkinsAllureReportError,
@@ -115,12 +117,14 @@ from app.services.jenkins import (
 from app.services.jobs import JobManager, JobNotFoundError
 from app.services.kube import (
     KubectlNotInstalledError,
+    build_exec_argv,
     delete_pod,
     describe_pod,
     list_contexts,
     list_namespaces_kube,
     list_pods,
     push_kube_operation,
+    stream_pod_exec,
     stream_pod_logs,
     top_pods,
     use_context,
@@ -184,6 +188,7 @@ KuberUseContextAuth = Annotated[
 KuberDeletePodAuth = Annotated[
     AuthContext, Depends(require_permission(PermissionKey.KUBER_DELETE_POD))
 ]
+KuberExecAuth = Annotated[AuthContext, Depends(require_permission(PermissionKey.KUBER_EXEC))]
 StagingsReadAuth = Annotated[AuthContext, Depends(require_permission(PermissionKey.STAGINGS_READ))]
 StagingsDeployAuth = Annotated[
     AuthContext, Depends(require_permission(PermissionKey.STAGINGS_DEPLOY))
@@ -1382,6 +1387,62 @@ async def get_kube_pod_logs(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
+    return _build_sse_response(stream)
+
+
+@router.post(f"{AgentPath.KUBE_PODS.value}/{{pod}}{AgentPath.EXEC.value}")
+async def post_kube_pod_exec(
+    pod: str,
+    request_body: KubeExecRequest,
+    request: Request,
+    auth: KuberExecAuth,
+    settings: SettingsDep,
+) -> StreamingResponse:
+    try:
+        build_exec_argv(
+            settings,
+            request_body.namespace,
+            pod,
+            request_body.container,
+            request_body.command,
+            request_body.context,
+        )
+    except KubectlNotInstalledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    async def on_complete(captured: str, exit_code: int) -> None:
+        await push_kube_operation(
+            request.app.state.backend_client,
+            auth.token,
+            op_type=OperationType.KUBE_EXEC,
+            ns=request_body.namespace,
+            recipe={
+                "pod": pod,
+                "container": request_body.container,
+                "context": request_body.context,
+                "command": request_body.command,
+            },
+            result=PlainTextCommandResult(raw=captured, exit_code=exit_code),
+        )
+
+    stream = stream_pod_exec(
+        settings,
+        request_body.context,
+        request_body.namespace,
+        pod,
+        request_body.container,
+        request_body.command,
+        is_disconnected=request.is_disconnected,
+        on_complete=on_complete,
+    )
     return _build_sse_response(stream)
 
 

@@ -608,6 +608,13 @@ export interface KubeDeletePodRequest {
   namespace: string;
 }
 
+export interface KubeExecRequest {
+  namespace: string;
+  context?: string | null;
+  container?: string | null;
+  command: string;
+}
+
 export interface E2eSuite {
   name: string;
   marks: string;

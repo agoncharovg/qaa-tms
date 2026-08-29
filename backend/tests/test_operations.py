@@ -127,3 +127,34 @@ def test_non_admin_operation_list_isolated_to_own_records(client: TestClient) ->
     admin_items = admin_list.json()["items"]
     assert len(admin_items) == 1
     assert admin_items[0]["user_id"] == admin_user_id
+
+
+def test_operation_create_accepts_kube_exec_with_extra_recipe_fields(client: TestClient) -> None:
+    token, _ = login(client, DevUsername.TEST.value, DevPassword.EMPTY.value)
+    response = client.post(
+        "/api/v1/operations",
+        headers=auth_header(token),
+        json={
+            "type": OperationType.KUBE_EXEC.value,
+            "ns": "qa-demo",
+            "recipe": {
+                "command": "echo hello",
+                "container": "api",
+                "context": "team/dev",
+                "flags": {},
+                "images": {},
+                "pod": "iam-api-123",
+                "services": [],
+                "suites": [],
+            },
+            "status": OperationStatus.FAILED.value,
+            "exit_code": 7,
+            "log": "exec: echo hello\n",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["type"] == OperationType.KUBE_EXEC.value
+    assert body["recipe"]["pod"] == "iam-api-123"
+    assert body["recipe"]["command"] == "echo hello"
+    assert body["exit_code"] == 7

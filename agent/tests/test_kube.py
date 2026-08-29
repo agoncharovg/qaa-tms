@@ -12,8 +12,14 @@ import pytest_asyncio
 from conftest import BackendRecorder, parse_sse_events
 
 from app.core.config import Settings
+from app.core.constants import (
+    KUBE_EXEC_SHELL,
+    KUBE_EXEC_SHELL_FLAG,
+    KUBECTL_ARG_SEPARATOR,
+    MAX_KUBE_EXEC_COMMAND_LENGTH,
+)
 from app.main import create_app
-from app.services.kube import build_kube_env
+from app.services.kube import build_exec_argv, build_kube_env
 
 KUBE_CONTEXT = "team/dev"
 KUBE_NAMESPACE = "qa-demo"
@@ -147,6 +153,11 @@ def fake_kubectl(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, P
                     print("line one", flush=True)
                     print("line two", flush=True)
                     return 0
+                if args[:1] == ["exec"]:
+                    command = args[-1]
+                    print(f"exec: {{command}}", flush=True)
+                    print("exec done", flush=True)
+                    return 7 if "exit 7" in command else 0
                 if args[:2] == ["delete", "pod"]:
                     print(f'pod "{{args[2]}}" deleted')
                     return 0
@@ -212,6 +223,58 @@ def test_build_kube_env_expands_directory_kubeconfig_parts(
     assert build_kube_env(settings) == {
         "KUBECONFIG": os.pathsep.join([str(first_kubeconfig), str(second_kubeconfig)])
     }
+
+
+def test_build_exec_argv_includes_shell_wrapper(
+    fake_kubectl: dict[str, Path],
+) -> None:
+    settings = Settings(_env_file=None, AGENT_KUBECTL_BIN=str(fake_kubectl["kubectl_bin"]))
+
+    assert build_exec_argv(
+        settings,
+        KUBE_NAMESPACE,
+        KUBE_POD,
+        KUBE_CONTAINER,
+        "echo hello && exit 7",
+        "team/prod",
+    ) == [
+        str(fake_kubectl["kubectl_bin"]),
+        "exec",
+        KUBE_POD,
+        "--context=team/prod",
+        f"--namespace={KUBE_NAMESPACE}",
+        f"--container={KUBE_CONTAINER}",
+        KUBECTL_ARG_SEPARATOR,
+        KUBE_EXEC_SHELL,
+        KUBE_EXEC_SHELL_FLAG,
+        "echo hello && exit 7",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("pod", "container"),
+    [("Invalid_Pod", None), (KUBE_POD, "Invalid_Container")],
+)
+def test_build_exec_argv_rejects_invalid_resource_names(
+    fake_kubectl: dict[str, Path],
+    pod: str,
+    container: str | None,
+) -> None:
+    settings = Settings(_env_file=None, AGENT_KUBECTL_BIN=str(fake_kubectl["kubectl_bin"]))
+
+    with pytest.raises(ValueError, match="Invalid Kubernetes resource name"):
+        build_exec_argv(settings, KUBE_NAMESPACE, pod, container, "echo hello", "team/prod")
+
+
+@pytest.mark.parametrize("command", ["   ", "x" * (MAX_KUBE_EXEC_COMMAND_LENGTH + 1)])
+def test_build_exec_argv_rejects_invalid_commands(
+    fake_kubectl: dict[str, Path],
+    command: str,
+) -> None:
+    settings = Settings(_env_file=None, AGENT_KUBECTL_BIN=str(fake_kubectl["kubectl_bin"]))
+
+    with pytest.raises(ValueError, match="Invalid Kubernetes exec command"):
+        build_exec_argv(settings, KUBE_NAMESPACE, KUBE_POD, KUBE_CONTAINER, command, "team/prod")
 
 
 async def test_get_kube_contexts_default_to_active_kubeconfig_path(
@@ -461,21 +524,28 @@ async def test_kube_logs_stream_emit_log_and_terminal_events(
 
 
 @pytest.mark.parametrize(
-    "path",
+    ("method", "path", "body"),
     [
-        "/kube/contexts",
-        "/kube/namespaces?namespace=qa-demo",
-        "/kube/pods?namespace=qa-demo",
-        f"/kube/pods/{KUBE_POD}/describe?namespace=qa-demo",
-        f"/kube/pods/{KUBE_POD}/logs?namespace=qa-demo",
-        "/kube/top?namespace=qa-demo",
+        ("get", "/kube/contexts", None),
+        ("get", "/kube/namespaces?namespace=qa-demo", None),
+        ("get", "/kube/pods?namespace=qa-demo", None),
+        ("get", f"/kube/pods/{KUBE_POD}/describe?namespace=qa-demo", None),
+        ("get", f"/kube/pods/{KUBE_POD}/logs?namespace=qa-demo", None),
+        (
+            "post",
+            f"/kube/pods/{KUBE_POD}/exec",
+            {"command": "echo hello", "namespace": KUBE_NAMESPACE},
+        ),
+        ("get", "/kube/top?namespace=qa-demo", None),
     ],
 )
 async def test_kube_routes_require_bearer_auth(
     kube_client: httpx.AsyncClient,
+    method: str,
     path: str,
+    body: dict[str, Any] | None,
 ) -> None:
-    response = await kube_client.get(path)
+    response = await send_request(kube_client, method, path, None, body)
     assert response.status_code == 401
 
 
@@ -534,3 +604,125 @@ async def test_kube_routes_return_503_when_kubectl_is_absent(
             response = await send_request(client, method, path, auth_headers, body)
     assert response.status_code == 503
     assert response.json() == {"detail": "kubectl is not installed."}
+
+
+async def test_kube_exec_stream_emits_events_and_pushes_operation(
+    kube_client: httpx.AsyncClient,
+    auth_headers: dict[str, str],
+    backend_recorder: BackendRecorder,
+    fake_kubectl: dict[str, Path],
+) -> None:
+    command = "echo hello && exit 7"
+    response = await kube_client.post(
+        f"/kube/pods/{KUBE_POD}/exec",
+        headers=auth_headers,
+        json={
+            "command": command,
+            "container": KUBE_CONTAINER,
+            "context": "team/prod",
+            "namespace": KUBE_NAMESPACE,
+        },
+    )
+    assert response.status_code == 200
+    assert parse_sse_events(response.text) == [
+        ("log", {"type": "line", "line": f"exec: {command}"}),
+        ("log", {"type": "line", "line": "exec done"}),
+        ("terminal", {"type": "terminal", "status": "failed", "exitCode": 7}),
+    ]
+
+    invocation = read_invocations(fake_kubectl["record_path"])[0]
+    assert invocation["args"] == [
+        "exec",
+        KUBE_POD,
+        "--context=team/prod",
+        f"--namespace={KUBE_NAMESPACE}",
+        f"--container={KUBE_CONTAINER}",
+        KUBECTL_ARG_SEPARATOR,
+        KUBE_EXEC_SHELL,
+        KUBE_EXEC_SHELL_FLAG,
+        command,
+    ]
+    assert backend_recorder.operations[0]["type"] == "kube_exec"
+    assert backend_recorder.operations[0]["ns"] == KUBE_NAMESPACE
+    assert backend_recorder.operations[0]["recipe"] == {
+        "pod": KUBE_POD,
+        "container": KUBE_CONTAINER,
+        "context": "team/prod",
+        "command": command,
+    }
+    assert backend_recorder.operations[0]["log"] == f"exec: {command}\nexec done\n"
+    assert backend_recorder.operations[0]["exit_code"] == 7
+
+
+async def test_kube_exec_invalid_inputs_return_400(
+    kube_client: httpx.AsyncClient,
+    auth_headers: dict[str, str],
+) -> None:
+    invalid_name_response = await kube_client.post(
+        "/kube/pods/Invalid_Pod/exec",
+        headers=auth_headers,
+        json={
+            "command": "echo hello",
+            "container": KUBE_CONTAINER,
+            "context": "team/prod",
+            "namespace": KUBE_NAMESPACE,
+        },
+    )
+    whitespace_command_response = await kube_client.post(
+        f"/kube/pods/{KUBE_POD}/exec",
+        headers=auth_headers,
+        json={
+            "command": "   ",
+            "container": KUBE_CONTAINER,
+            "context": "team/prod",
+            "namespace": KUBE_NAMESPACE,
+        },
+    )
+    overlength_command_response = await kube_client.post(
+        f"/kube/pods/{KUBE_POD}/exec",
+        headers=auth_headers,
+        json={
+            "command": "x" * (MAX_KUBE_EXEC_COMMAND_LENGTH + 1),
+            "container": KUBE_CONTAINER,
+            "context": "team/prod",
+            "namespace": KUBE_NAMESPACE,
+        },
+    )
+
+    assert invalid_name_response.status_code == 400
+    assert invalid_name_response.json() == {"detail": "Invalid Kubernetes resource name."}
+    assert whitespace_command_response.status_code == 400
+    assert whitespace_command_response.json() == {"detail": "Invalid Kubernetes exec command."}
+    assert overlength_command_response.status_code == 400
+    assert overlength_command_response.json() == {"detail": "Invalid Kubernetes exec command."}
+
+
+async def test_kube_exec_returns_503_when_kubectl_is_absent(
+    backend_recorder: BackendRecorder,
+    auth_headers: dict[str, str],
+    tmp_path: Path,
+) -> None:
+    settings = Settings(
+        AGENT_HOST="127.0.0.1",
+        AGENT_PORT=47600,
+        AGENT_BACKEND_URL="http://backend.test",
+        AGENT_CORS_ORIGINS="http://localhost:3000,http://127.0.0.1:3000",
+        AGENT_KUBECTL_BIN=str(tmp_path / "missing-kubectl"),
+    )
+    application = create_app(settings, backend_transport=backend_recorder.build_transport())
+    async with application.router.lifespan_context(application):
+        transport = httpx.ASGITransport(app=application)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            response = await client.post(
+                f"/kube/pods/{KUBE_POD}/exec",
+                headers=auth_headers,
+                json={
+                    "command": "echo hello",
+                    "container": KUBE_CONTAINER,
+                    "context": "team/prod",
+                    "namespace": KUBE_NAMESPACE,
+                },
+            )
+    assert response.status_code == 503
+    assert response.json() == {"detail": "kubectl is not installed."}
+

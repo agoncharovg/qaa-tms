@@ -20,6 +20,7 @@ import {
   buildAgentJobStreamPath,
   buildAgentKubeNamespacesPath,
   buildAgentKubePodDeletePath,
+  buildAgentKubePodExecPath,
   buildAgentKubePodDescribePath,
   buildAgentKubePodLogsPath,
   buildAgentKubePodsPath,
@@ -63,6 +64,7 @@ import type {
   KubeconfigStatus,
   KubeContextsResponse,
   KubeDeletePodRequest,
+  KubeExecRequest,
   KubeNamespacesResponse,
   KubePodDescribe,
   KubePodsResponse,
@@ -126,13 +128,19 @@ function formatAgentErrorDetail(detail: unknown): string {
 }
 
 function createAgentHeaders(token?: string, extraHeaders?: HeadersInit): Headers {
-  const headers = new Headers(extraHeaders);
-  headers.set(HttpHeader.ACCEPT, MediaType.JSON);
-  headers.set(AGENT_REQUEST_HEADER, AGENT_REQUEST_HEADER_VALUE);
+  const headers = new Headers({
+    [HttpHeader.ACCEPT]: MediaType.JSON,
+    [AGENT_REQUEST_HEADER]: AGENT_REQUEST_HEADER_VALUE,
+  });
 
   if (token) {
     headers.set(HttpHeader.AUTHORIZATION, `${AUTH_SCHEME_BEARER} ${token}`);
   }
+
+  const additionalHeaders = new Headers(extraHeaders);
+  additionalHeaders.forEach((value, key) => {
+    headers.set(key, value);
+  });
 
   return headers;
 }
@@ -454,11 +462,13 @@ async function streamAgentCommand(
   token: string,
   path: string,
   onMessage: (message: JobStreamMessage) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  requestInit?: Pick<RequestInit, "body" | "headers" | "method">
 ): Promise<void> {
   const response = await fetch(buildAgentUrl(port, path), {
-    headers: createAgentHeaders(token),
-    method: HttpMethod.GET,
+    ...requestInit,
+    headers: createAgentHeaders(token, requestInit?.headers),
+    method: requestInit?.method ?? HttpMethod.GET,
     signal,
   });
 
@@ -921,6 +931,24 @@ export const agentClient = {
       createJsonBody(payload),
       token,
       signal
+    );
+  },
+
+  async execKubePod(
+    port: number,
+    token: string,
+    pod: string,
+    params: KubeExecRequest,
+    onMessage: (message: JobStreamMessage) => void,
+    signal?: AbortSignal
+  ): Promise<void> {
+    return streamAgentCommand(
+      port,
+      token,
+      buildAgentKubePodExecPath(pod),
+      onMessage,
+      signal,
+      createJsonBody(params)
     );
   },
 

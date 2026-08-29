@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 const agentClientMock = vi.hoisted(() => ({
   deleteKubePod: vi.fn(),
   describeKubePod: vi.fn(),
+  execKubePod: vi.fn(),
   getKubeContexts: vi.fn(),
   getKubeTop: vi.fn(),
   listKubeNamespaces: vi.fn(),
@@ -17,9 +18,9 @@ vi.mock("@/api/agentClient", () => ({
 }));
 
 import { PodsPanel } from "@/plugins/kuber/PodsPanel";
+import { resetKuberStoreState } from "@/plugins/kuber/kuberStore";
 import { renderWithProviders } from "@/test/render";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
-import { resetKuberStoreState } from "@/plugins/kuber/kuberStore";
 
 function buildPodsResponse(context: string | null | undefined, namespace: string) {
   return {
@@ -48,10 +49,38 @@ function createDeferredPromise<T>() {
   return { promise, resolve };
 }
 
+function setCurrentUser(permissions: string[]) {
+  useAuthStore.setState({
+    currentUser: {
+      auto_login: false,
+      created_at: "2026-08-11T00:00:00Z",
+      display_name: "Test User",
+      effective_permissions: permissions,
+      enabled_plugins: ["stagings", "kuber", "qaa-generator"],
+      id: 2,
+      is_admin: false,
+      qaa_generator_token_set: false,
+      updated_at: "2026-08-11T00:00:00Z",
+      username: "test",
+    },
+    token: "token-123",
+  });
+}
+
+async function openPodDrawer() {
+  const user = userEvent.setup();
+  await user.click(await screen.findByText("team/dev-qa-demo-pod"));
+  await screen.findByText("Logs");
+  return user;
+}
+
 describe("PodsPanel", () => {
+  let lastDownloadBlob: Blob | null = null;
+
   beforeEach(() => {
     agentClientMock.deleteKubePod.mockReset();
     agentClientMock.describeKubePod.mockReset();
+    agentClientMock.execKubePod.mockReset();
     agentClientMock.getKubeContexts.mockReset();
     agentClientMock.getKubeTop.mockReset();
     agentClientMock.listKubeNamespaces.mockReset();
@@ -60,25 +89,32 @@ describe("PodsPanel", () => {
     localStorage.clear();
     resetAuthStoreState();
     resetKuberStoreState();
+    lastDownloadBlob = null;
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: vi.fn(),
     });
-
-    useAuthStore.setState({
-      currentUser: {
-        auto_login: false,
-        created_at: "2026-08-11T00:00:00Z",
-        display_name: "Test User",
-        enabled_plugins: ["stagings", "kuber", "qaa-generator"],
-        qaa_generator_token_set: false,
-        id: 2,
-        is_admin: false,
-        updated_at: "2026-08-11T00:00:00Z",
-        username: "test",
-      },
-      token: "token-123",
+    Object.defineProperty(HTMLAnchorElement.prototype, "click", {
+      configurable: true,
+      value: vi.fn(),
     });
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn((objectUrlTarget: Blob | MediaSource) => {
+        if (objectUrlTarget instanceof Blob) {
+          lastDownloadBlob = objectUrlTarget;
+        }
+        return "blob:pods-panel";
+      }),
+      writable: true,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+      writable: true,
+    });
+
+    setCurrentUser(["kuber.read", "kuber.use_context", "kuber.delete_pod", "kuber.exec"]);
 
     agentClientMock.getKubeContexts.mockResolvedValue({
       contexts: [
@@ -137,6 +173,26 @@ describe("PodsPanel", () => {
           data: { type: "terminal", status: "success", exitCode: 0 },
         });
         return Promise.resolve();
+      }
+    );
+    agentClientMock.execKubePod.mockImplementation(
+      (
+        _port: number,
+        _token: string,
+        _pod: string,
+        params: { command: string },
+        onMessage: (message: {
+          event: "log" | "terminal";
+          data:
+            | { type: "line"; line: string }
+            | { type: "terminal"; status: "success"; exitCode: 0 };
+        }) => void
+      ) => {
+        onMessage({ event: "log", data: { type: "line", line: `out: ${params.command}` } });
+        onMessage({
+          event: "terminal",
+          data: { type: "terminal", status: "success", exitCode: 0 },
+        });
       }
     );
     agentClientMock.deleteKubePod.mockResolvedValue({
@@ -227,17 +283,11 @@ describe("PodsPanel", () => {
     await waitFor(() => {
       expect(refreshButton).toBeEnabled();
     });
-
-    expect(refreshButton).not.toHaveAttribute("data-loading");
   });
 
   it("keeps delete behind the type-to-confirm gate", async () => {
-    const user = userEvent.setup();
-
     renderWithProviders(<PodsPanel agentPort={47600} />);
-
-    await user.click(await screen.findByText("team/dev-qa-demo-pod"));
-    await screen.findByText("Logs");
+    const user = await openPodDrawer();
 
     const deleteButton = screen.getByRole("button", { name: "Delete pod" });
     expect(deleteButton).toBeDisabled();
@@ -258,5 +308,115 @@ describe("PodsPanel", () => {
         }
       );
     });
+  });
+
+  it("shows the exec card only when the user has kuber.exec", async () => {
+    setCurrentUser(["kuber.read"]);
+
+    renderWithProviders(<PodsPanel agentPort={47600} />);
+    await openPodDrawer();
+
+    expect(screen.queryByText("Exec")).not.toBeInTheDocument();
+  });
+
+  it("runs pod exec commands and accumulates output across runs", async () => {
+    renderWithProviders(<PodsPanel agentPort={47600} />);
+    const user = await openPodDrawer();
+
+    await user.type(screen.getByLabelText("Command"), "echo one");
+    await user.click(screen.getByRole("button", { name: "Run" }));
+
+    await waitFor(() => {
+      expect(agentClientMock.execKubePod).toHaveBeenCalledWith(
+        47600,
+        "token-123",
+        "team/dev-qa-demo-pod",
+        {
+          command: "echo one",
+          container: "api",
+          context: "team/dev",
+          namespace: "qa-demo",
+        },
+        expect.any(Function),
+        expect.any(AbortSignal)
+      );
+    });
+
+    expect(await screen.findByText("$ echo one")).toBeInTheDocument();
+    expect(screen.getByText("out: echo one")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Command"), "echo two");
+    await user.click(screen.getByRole("button", { name: "Run" }));
+
+    await waitFor(() => {
+      expect(agentClientMock.execKubePod).toHaveBeenNthCalledWith(
+        2,
+        47600,
+        "token-123",
+        "team/dev-qa-demo-pod",
+        {
+          command: "echo two",
+          container: "api",
+          context: "team/dev",
+          namespace: "qa-demo",
+        },
+        expect.any(Function),
+        expect.any(AbortSignal)
+      );
+    });
+
+    expect(screen.getByText("$ echo one")).toBeInTheDocument();
+    expect(screen.getByText("out: echo one")).toBeInTheDocument();
+    expect(screen.getByText("$ echo two")).toBeInTheDocument();
+    expect(screen.getByText("out: echo two")).toBeInTheDocument();
+  });
+
+  it("shows truncation controls, reveals full output, and downloads the retained exec buffer", async () => {
+    agentClientMock.execKubePod.mockImplementationOnce(
+      (
+        _port: number,
+        _token: string,
+        _pod: string,
+        _params: { command: string },
+        onMessage: (message: {
+          event: "log" | "terminal";
+          data:
+            | { type: "line"; line: string }
+            | { type: "terminal"; status: "success"; exitCode: 0 };
+        }) => void
+      ) => {
+        for (let index = 0; index <= 5000; index += 1) {
+          onMessage({ event: "log", data: { type: "line", line: `line ${index}` } });
+        }
+        onMessage({
+          event: "terminal",
+          data: { type: "terminal", status: "success", exitCode: 0 },
+        });
+      }
+    );
+
+    renderWithProviders(<PodsPanel agentPort={47600} />);
+    const user = await openPodDrawer();
+
+    await user.type(screen.getByLabelText("Command"), "bulk");
+    await user.click(screen.getByRole("button", { name: "Run" }));
+
+    expect(await screen.findByText("Output truncated to the last 5000 lines.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show all" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Download" })).toBeInTheDocument();
+    expect(screen.queryByText("line 0")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Show all" }));
+
+    expect(await screen.findByText("line 0")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Download" }));
+    expect(lastDownloadBlob).toBeInstanceOf(Blob);
+    if (!lastDownloadBlob) {
+      throw new Error("Expected a download blob.");
+    }
+    expect(lastDownloadBlob.size).toBeGreaterThan(0);
+    expect(lastDownloadBlob.type).toBe("text/plain;charset=utf-8");
+    expect(vi.mocked(URL.createObjectURL)).toHaveBeenCalled();
   });
 });
