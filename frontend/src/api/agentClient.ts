@@ -8,6 +8,11 @@ import {
   buildAgentNotebookNotePath,
   buildAgentNotebookNotesPath,
   buildAgentNotebookSearchPath,
+  buildAgentRequestsCredentialPath,
+  buildAgentRequestsFolderDeletePath,
+  buildAgentRequestsHistoryEntryPath,
+  buildAgentRequestsItemPath,
+  buildAgentRequestsItemsPath,
   buildAgentJenkinsAllureSkipCandidatesPath,
   buildAgentJenkinsBuildsPath,
   buildAgentJenkinsFolderPath,
@@ -83,6 +88,16 @@ import type {
   NotebookNotesResponse,
   NotebookRemindersResponse,
   NotebookSearchResponse,
+  RequestsCredentialPublic,
+  RequestsCredentialResolveResponse,
+  RequestsCredentialsListResponse,
+  RequestsExecuteResponse,
+  RequestsHistoryListResponse,
+  RequestsItemInput,
+  RequestsItemReadResponse,
+  RequestsItemsResponse,
+  RequestsItemUpdateInput,
+  RequestsTreeResponse,
   PreflightItem,
   SyncRequest,
 } from "@/api/types";
@@ -755,6 +770,307 @@ export const agentClient = {
       port,
       buildAgentNotebookSearchPath(query),
       { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
+  listCollections(
+    port: number,
+    token: string,
+    signal?: AbortSignal
+  ): Promise<RequestsTreeResponse> {
+    return readAgentJson<RequestsTreeResponse>(
+      port,
+      AgentPath.REQUESTS_COLLECTIONS,
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
+  writeCollections(
+    port: number,
+    token: string,
+    folders: RequestsTreeResponse["folders"],
+    signal?: AbortSignal
+  ): Promise<RequestsTreeResponse> {
+    return readAgentJson<RequestsTreeResponse>(
+      port,
+      AgentPath.REQUESTS_COLLECTIONS,
+      createJsonBody({ folders }, HttpMethod.PUT),
+      token,
+      signal
+    );
+  },
+
+  reorderCollections(
+    port: number,
+    token: string,
+    folders: string[],
+    signal?: AbortSignal
+  ): Promise<RequestsTreeResponse> {
+    return readAgentJson<RequestsTreeResponse>(
+      port,
+      AgentPath.REQUESTS_COLLECTIONS,
+      createJsonBody({ folders }, HttpMethod.PATCH),
+      token,
+      signal
+    );
+  },
+
+  createFolder(
+    port: number,
+    token: string,
+    payload: { flags?: Record<string, unknown>; name: string },
+    signal?: AbortSignal
+  ): Promise<RequestsTreeResponse> {
+    return readAgentJson<RequestsTreeResponse>(
+      port,
+      AgentPath.REQUESTS_FOLDER,
+      createJsonBody(payload),
+      token,
+      signal
+    );
+  },
+
+  renameFolder(
+    port: number,
+    token: string,
+    payload: { flags?: Record<string, unknown>; folder: string; name?: string },
+    signal?: AbortSignal
+  ): Promise<RequestsTreeResponse> {
+    return readAgentJson<RequestsTreeResponse>(
+      port,
+      AgentPath.REQUESTS_FOLDER,
+      createJsonBody(payload, HttpMethod.PUT),
+      token,
+      signal
+    );
+  },
+
+  deleteFolder(
+    port: number,
+    token: string,
+    folder: string,
+    signal?: AbortSignal
+  ): Promise<RequestsTreeResponse> {
+    return readAgentJson<RequestsTreeResponse>(
+      port,
+      buildAgentRequestsFolderDeletePath(folder),
+      { method: HttpMethod.DELETE },
+      token,
+      signal
+    );
+  },
+
+  listRequestItems(
+    port: number,
+    token: string,
+    folder: string,
+    signal?: AbortSignal
+  ): Promise<RequestsItemsResponse> {
+    return readAgentJson<RequestsItemsResponse>(
+      port,
+      buildAgentRequestsItemsPath(folder),
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
+  readRequestItem(
+    port: number,
+    token: string,
+    folder: string,
+    name: string,
+    signal?: AbortSignal
+  ): Promise<RequestsItemReadResponse> {
+    return readAgentJson<RequestsItemReadResponse>(
+      port,
+      buildAgentRequestsItemPath(folder, name),
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
+  createRequestItem(
+    port: number,
+    token: string,
+    payload: RequestsItemInput,
+    signal?: AbortSignal
+  ): Promise<RequestsItemReadResponse> {
+    return readAgentJson<RequestsItemReadResponse>(
+      port,
+      AgentPath.REQUESTS_ITEM,
+      createJsonBody(payload),
+      token,
+      signal
+    );
+  },
+
+  updateRequestItem(
+    port: number,
+    token: string,
+    sourceFolder: string,
+    name: string,
+    payload: RequestsItemUpdateInput,
+    signal?: AbortSignal
+  ): Promise<RequestsItemReadResponse> {
+    return readAgentJson<RequestsItemReadResponse>(
+      port,
+      buildAgentRequestsItemPath(sourceFolder, name),
+      createJsonBody(payload, HttpMethod.PUT),
+      token,
+      signal
+    );
+  },
+
+  deleteRequestItem(
+    port: number,
+    token: string,
+    folder: string,
+    name: string,
+    signal?: AbortSignal
+  ): Promise<RequestsItemsResponse> {
+    return readAgentJson<RequestsItemsResponse>(
+      port,
+      buildAgentRequestsItemPath(folder, name),
+      { method: HttpMethod.DELETE },
+      token,
+      signal
+    );
+  },
+
+  executeRequest(
+    port: number,
+    token: string,
+    payload: Omit<RequestsItemInput, "folder" | "name">,
+    signal?: AbortSignal
+  ): Promise<RequestsExecuteResponse> {
+    return readAgentJson<RequestsExecuteResponse>(
+      port,
+      AgentPath.REQUESTS_EXECUTE,
+      createJsonBody(payload),
+      token,
+      signal
+    );
+  },
+
+  listCredentials(
+    port: number,
+    token: string,
+    signal?: AbortSignal
+  ): Promise<RequestsCredentialsListResponse> {
+    return readAgentJson<RequestsCredentialsListResponse>(
+      port,
+      AgentPath.REQUESTS_CREDENTIALS,
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
+  createCredential(
+    port: number,
+    token: string,
+    payload: Record<string, unknown>,
+    signal?: AbortSignal
+  ): Promise<RequestsCredentialPublic> {
+    return readAgentJson<RequestsCredentialPublic>(
+      port,
+      AgentPath.REQUESTS_CREDENTIALS,
+      createJsonBody(payload),
+      token,
+      signal
+    );
+  },
+
+  updateCredential(
+    port: number,
+    token: string,
+    credentialId: string,
+    payload: Record<string, unknown>,
+    signal?: AbortSignal
+  ): Promise<RequestsCredentialPublic> {
+    return readAgentJson<RequestsCredentialPublic>(
+      port,
+      buildAgentRequestsCredentialPath(credentialId),
+      createJsonBody(payload, HttpMethod.PUT),
+      token,
+      signal
+    );
+  },
+
+  deleteCredential(
+    port: number,
+    token: string,
+    credentialId: string,
+    signal?: AbortSignal
+  ): Promise<RequestsCredentialsListResponse> {
+    return readAgentJson<RequestsCredentialsListResponse>(
+      port,
+      buildAgentRequestsCredentialPath(credentialId),
+      { method: HttpMethod.DELETE },
+      token,
+      signal
+    );
+  },
+
+  resolveCredential(
+    port: number,
+    token: string,
+    payload: { credentialId: string; force?: boolean },
+    signal?: AbortSignal
+  ): Promise<RequestsCredentialResolveResponse> {
+    return readAgentJson<RequestsCredentialResolveResponse>(
+      port,
+      AgentPath.REQUESTS_CREDENTIAL_RESOLVE,
+      createJsonBody(payload),
+      token,
+      signal
+    );
+  },
+
+  listHistory(
+    port: number,
+    token: string,
+    signal?: AbortSignal
+  ): Promise<RequestsHistoryListResponse> {
+    return readAgentJson<RequestsHistoryListResponse>(
+      port,
+      AgentPath.REQUESTS_HISTORY,
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
+  clearHistory(
+    port: number,
+    token: string,
+    signal?: AbortSignal
+  ): Promise<RequestsHistoryListResponse> {
+    return readAgentJson<RequestsHistoryListResponse>(
+      port,
+      AgentPath.REQUESTS_HISTORY,
+      { method: HttpMethod.DELETE },
+      token,
+      signal
+    );
+  },
+
+  deleteHistoryEntry(
+    port: number,
+    token: string,
+    entryId: string,
+    signal?: AbortSignal
+  ): Promise<RequestsHistoryListResponse> {
+    return readAgentJson<RequestsHistoryListResponse>(
+      port,
+      buildAgentRequestsHistoryEntryPath(entryId),
+      { method: HttpMethod.DELETE },
       token,
       signal
     );

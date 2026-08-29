@@ -299,7 +299,7 @@ type CredentialType = Literal["bearer", "api_key_permanent", "login_password", "
 class RequestsFolderWriteNode(BaseModel):
     """Folder node written into the requests `__contents__` tree."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     name: str = Field(min_length=1)
     children: list[RequestsFolderWriteNode] = Field(default_factory=list)
@@ -321,7 +321,7 @@ class RequestsFolderNode(BaseModel):
 class RequestsTreeWriteRequest(BaseModel):
     """Whole-tree requests contents update payload."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     folders: list[RequestsFolderWriteNode] = Field(default_factory=list)
 
@@ -329,7 +329,7 @@ class RequestsTreeWriteRequest(BaseModel):
 class RequestsReorderRequest(BaseModel):
     """Folder reorder payload."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     folders: list[str] = Field(min_length=1)
 
@@ -337,7 +337,7 @@ class RequestsReorderRequest(BaseModel):
 class RequestsTreeResponse(BaseModel):
     """Requests folder tree response."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     folders: list[RequestsFolderNode] = Field(default_factory=list)
 
@@ -345,7 +345,7 @@ class RequestsTreeResponse(BaseModel):
 class RequestsFolderCreateRequest(BaseModel):
     """Folder create payload."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     name: str = Field(min_length=1)
     flags: RequestsFlags = Field(default_factory=dict)
@@ -354,7 +354,7 @@ class RequestsFolderCreateRequest(BaseModel):
 class RequestsFolderUpdateRequest(BaseModel):
     """Folder rename and flags update payload."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     folder: str = Field(min_length=1)
     name: str | None = Field(default=None, min_length=1)
@@ -364,7 +364,7 @@ class RequestsFolderUpdateRequest(BaseModel):
 class RequestHeaderField(BaseModel):
     """Editable request header row."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     name: str = ""
     value: str = ""
@@ -374,7 +374,7 @@ class RequestHeaderField(BaseModel):
 class RequestQueryParam(BaseModel):
     """Editable request query parameter row."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     name: str = ""
     value: str = ""
@@ -384,7 +384,7 @@ class RequestQueryParam(BaseModel):
 class RequestHeaderValue(BaseModel):
     """Resolved request or response header row."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     name: str
     value: str
@@ -393,7 +393,7 @@ class RequestHeaderValue(BaseModel):
 class RequestBody(BaseModel):
     """Saved request body payload."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     mode: RequestBodyMode = "none"
     content: str = ""
@@ -402,25 +402,29 @@ class RequestBody(BaseModel):
 class RequestDocumentInput(BaseModel):
     """Saved request document fields before timestamps are assigned."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     method: RequestMethod
     url: str = Field(min_length=1)
     headers: list[RequestHeaderField] = Field(default_factory=list)
-    query_params: list[RequestQueryParam] = Field(default_factory=list)
+    query_params: list[RequestQueryParam] = Field(default_factory=list, alias="queryParams")
     body: RequestBody = Field(default_factory=RequestBody)
-    credential_id: str | None = None
+    credential_id: str | None = Field(default=None, alias="credentialId")
 
 
 class RequestDocument(RequestDocumentInput):
     """Saved request document persisted on disk."""
 
-    created_at: str
-    updated_at: str
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    created_at: str = Field(alias="createdAt")
+    updated_at: str = Field(alias="updatedAt")
 
 
 class RequestItemCreateRequest(RequestDocumentInput):
     """Request item create payload."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     folder: str = Field(min_length=1)
     name: str | None = Field(default=None, min_length=1)
@@ -429,34 +433,34 @@ class RequestItemCreateRequest(RequestDocumentInput):
 class RequestItemUpdateRequest(BaseModel):
     """Request item update payload."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     folder: str = Field(min_length=1)
     method: RequestMethod | None = None
     url: str | None = Field(default=None, min_length=1)
     headers: list[RequestHeaderField] | None = None
-    query_params: list[RequestQueryParam] | None = None
+    query_params: list[RequestQueryParam] | None = Field(default=None, alias="queryParams")
     body: RequestBody | None = None
-    credential_id: str | None = None
+    credential_id: str | None = Field(default=None, alias="credentialId")
 
 
 class RequestItemSummary(BaseModel):
     """Saved request item summary row."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     name: str
     method: RequestMethod
     url: str
-    credential_id: str | None = None
-    created_at: str
-    updated_at: str
+    credential_id: str | None = Field(default=None, alias="credentialId")
+    created_at: str = Field(alias="createdAt")
+    updated_at: str = Field(alias="updatedAt")
 
 
 class RequestsItemsResponse(BaseModel):
     """Saved request items listed for a folder."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     folder: str
     items: list[RequestItemSummary] = Field(default_factory=list)
@@ -465,152 +469,154 @@ class RequestsItemsResponse(BaseModel):
 class RequestItemReadResponse(RequestDocument):
     """Full saved request item payload."""
 
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
     folder: str
     name: str
 
 
 class BearerCredentialPublicConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    has_token: bool
+    has_token: bool = Field(alias="hasToken")
 
 
 class ApiKeyPermanentCredentialPublicConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    verify_url: str
+    verify_url: str = Field(alias="verifyUrl")
     scheme: str
-    has_permanent_token: bool
+    has_permanent_token: bool = Field(alias="hasPermanentToken")
 
 
 class LoginPasswordCredentialPublicConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    login_url: str
+    login_url: str = Field(alias="loginUrl")
     username: str
     referer: str
-    has_password: bool
+    has_password: bool = Field(alias="hasPassword")
 
 
 class ClientAdminCredentialPublicConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    admin_credential_id: str
-    admin_token_url: str
-    client_id: int
-    issue_by_current_user: bool
+    admin_credential_id: str = Field(alias="adminCredentialId")
+    admin_token_url: str = Field(alias="adminTokenUrl")
+    client_id: int = Field(alias="clientId")
+    issue_by_current_user: bool = Field(alias="issueByCurrentUser")
 
 
 class BearerCredentialCreateConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     token: str = Field(min_length=1)
 
 
 class ApiKeyPermanentCredentialCreateConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    permanent_token: str = Field(min_length=1)
-    verify_url: str = Field(min_length=1)
+    permanent_token: str = Field(min_length=1, alias="permanentToken")
+    verify_url: str = Field(min_length=1, alias="verifyUrl")
     scheme: str = Field(default="APIKey", min_length=1)
 
 
 class LoginPasswordCredentialCreateConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    login_url: str = Field(min_length=1)
+    login_url: str = Field(min_length=1, alias="loginUrl")
     username: str = Field(min_length=1)
     password: str = Field(min_length=1)
     referer: str = Field(min_length=1)
 
 
 class ClientAdminCredentialCreateConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    admin_credential_id: str = Field(min_length=1)
-    admin_token_url: str = Field(min_length=1)
-    client_id: int
-    issue_by_current_user: bool = True
+    admin_credential_id: str = Field(min_length=1, alias="adminCredentialId")
+    admin_token_url: str = Field(min_length=1, alias="adminTokenUrl")
+    client_id: int = Field(alias="clientId")
+    issue_by_current_user: bool = Field(default=True, alias="issueByCurrentUser")
 
 
 class BearerCredentialUpdateConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     token: str | None = None
 
 
 class ApiKeyPermanentCredentialUpdateConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    permanent_token: str | None = None
-    verify_url: str | None = None
+    permanent_token: str | None = Field(default=None, alias="permanentToken")
+    verify_url: str | None = Field(default=None, alias="verifyUrl")
     scheme: str | None = None
 
 
 class LoginPasswordCredentialUpdateConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    login_url: str | None = None
+    login_url: str | None = Field(default=None, alias="loginUrl")
     username: str | None = None
     password: str | None = None
     referer: str | None = None
 
 
 class ClientAdminCredentialUpdateConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    admin_credential_id: str | None = None
-    admin_token_url: str | None = None
-    client_id: int | None = None
-    issue_by_current_user: bool | None = None
+    admin_credential_id: str | None = Field(default=None, alias="adminCredentialId")
+    admin_token_url: str | None = Field(default=None, alias="adminTokenUrl")
+    client_id: int | None = Field(default=None, alias="clientId")
+    issue_by_current_user: bool | None = Field(default=None, alias="issueByCurrentUser")
 
 
 class BearerCredentialPublic(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     id: str
     name: str
     type: Literal["bearer"]
-    created_at: str
-    updated_at: str
+    created_at: str = Field(alias="createdAt")
+    updated_at: str = Field(alias="updatedAt")
     config: BearerCredentialPublicConfig
 
 
 class ApiKeyPermanentCredentialPublic(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     id: str
     name: str
     type: Literal["api_key_permanent"]
-    created_at: str
-    updated_at: str
+    created_at: str = Field(alias="createdAt")
+    updated_at: str = Field(alias="updatedAt")
     config: ApiKeyPermanentCredentialPublicConfig
 
 
 class LoginPasswordCredentialPublic(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     id: str
     name: str
     type: Literal["login_password"]
-    created_at: str
-    updated_at: str
+    created_at: str = Field(alias="createdAt")
+    updated_at: str = Field(alias="updatedAt")
     config: LoginPasswordCredentialPublicConfig
 
 
 class ClientAdminCredentialPublic(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     id: str
     name: str
     type: Literal["client_admin"]
-    created_at: str
-    updated_at: str
+    created_at: str = Field(alias="createdAt")
+    updated_at: str = Field(alias="updatedAt")
     config: ClientAdminCredentialPublicConfig
 
 
 class BearerCredentialCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     name: str = Field(min_length=1)
     type: Literal["bearer"]
@@ -618,7 +624,7 @@ class BearerCredentialCreate(BaseModel):
 
 
 class ApiKeyPermanentCredentialCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     name: str = Field(min_length=1)
     type: Literal["api_key_permanent"]
@@ -626,7 +632,7 @@ class ApiKeyPermanentCredentialCreate(BaseModel):
 
 
 class LoginPasswordCredentialCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     name: str = Field(min_length=1)
     type: Literal["login_password"]
@@ -634,7 +640,7 @@ class LoginPasswordCredentialCreate(BaseModel):
 
 
 class ClientAdminCredentialCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     name: str = Field(min_length=1)
     type: Literal["client_admin"]
@@ -642,7 +648,7 @@ class ClientAdminCredentialCreate(BaseModel):
 
 
 class BearerCredentialUpdate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     name: str | None = Field(default=None, min_length=1)
     type: Literal["bearer"]
@@ -650,7 +656,7 @@ class BearerCredentialUpdate(BaseModel):
 
 
 class ApiKeyPermanentCredentialUpdate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     name: str | None = Field(default=None, min_length=1)
     type: Literal["api_key_permanent"]
@@ -660,7 +666,7 @@ class ApiKeyPermanentCredentialUpdate(BaseModel):
 
 
 class LoginPasswordCredentialUpdate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     name: str | None = Field(default=None, min_length=1)
     type: Literal["login_password"]
@@ -670,7 +676,7 @@ class LoginPasswordCredentialUpdate(BaseModel):
 
 
 class ClientAdminCredentialUpdate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     name: str | None = Field(default=None, min_length=1)
     type: Literal["client_admin"]
@@ -707,7 +713,7 @@ type CredentialUpdateRequest = Annotated[
 class CredentialsListResponse(BaseModel):
     """Credential metadata list response."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     credentials: list[CredentialPublic] = Field(default_factory=list)
 
@@ -715,79 +721,81 @@ class CredentialsListResponse(BaseModel):
 class CredentialResolveRequest(BaseModel):
     """Credential resolve payload."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    credential_id: str = Field(min_length=1)
+    credential_id: str = Field(min_length=1, alias="credentialId")
     force: bool = False
 
 
 class CredentialResolveResponse(BaseModel):
     """Credential resolve response without exposing the token."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     ok: bool
-    expires_at: str | None = None
+    expires_at: str | None = Field(default=None, alias="expiresAt")
     error: str | None = None
 
 
 class RequestSummary(BaseModel):
     """Redacted executed request summary."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     method: RequestMethod
     url: str
     headers: list[RequestHeaderValue] = Field(default_factory=list)
-    query_params: list[RequestHeaderValue] = Field(default_factory=list)
+    query_params: list[RequestHeaderValue] = Field(default_factory=list, alias="queryParams")
 
 
 class RequestExecuteRequest(RequestDocumentInput):
     """Execute request payload."""
 
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
 
 class RequestExecuteResponse(BaseModel):
     """Execute request response."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    status_code: int | None
-    reason_phrase: str | None = None
-    elapsed_ms: int | None = None
-    size_bytes: int
+    status_code: int | None = Field(alias="statusCode")
+    reason_phrase: str | None = Field(default=None, alias="reasonPhrase")
+    elapsed_ms: int | None = Field(default=None, alias="elapsedMs")
+    size_bytes: int = Field(alias="sizeBytes")
     headers: list[RequestHeaderValue] = Field(default_factory=list)
-    body_text: str
+    body_text: str = Field(alias="bodyText")
     truncated: bool = False
     error: str | None = None
-    request_summary: RequestSummary
+    request_summary: RequestSummary = Field(alias="requestSummary")
 
 
 class HistoryResponseSummary(BaseModel):
     """Stored response summary for the execution history."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    status_code: int | None
-    elapsed_ms: int | None = None
-    size_bytes: int
+    status_code: int | None = Field(alias="statusCode")
+    elapsed_ms: int | None = Field(default=None, alias="elapsedMs")
+    size_bytes: int = Field(alias="sizeBytes")
     error: str | None = None
 
 
 class HistoryEntry(BaseModel):
     """Saved requests history row."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     id: str
     at: str
-    request_summary: RequestSummary
-    response_summary: HistoryResponseSummary
+    request_summary: RequestSummary = Field(alias="requestSummary")
+    response_summary: HistoryResponseSummary = Field(alias="responseSummary")
 
 
 class HistoryListResponse(BaseModel):
     """Saved requests history response."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     entries: list[HistoryEntry] = Field(default_factory=list)
 

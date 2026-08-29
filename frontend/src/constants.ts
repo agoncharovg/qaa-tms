@@ -5,6 +5,7 @@ export const PluginId = {
   JENKINS: "jenkins",
   LEONID: "leonid",
   NOTEBOOK: "notebook",
+  REQUESTS: "requests",
   NOTIFICATOR: "notificator",
   STATISTICS: "statistics",
   ADMIN: "admin",
@@ -32,6 +33,7 @@ export const IconName = {
   JENKINS: "jenkins",
   LEONID: "leonid",
   NOTEBOOK: "notebook",
+  REQUESTS: "requests",
   NOTIFICATOR: "notificator",
   ROCKET: "rocket",
   SPARKLES: "sparkles",
@@ -422,6 +424,13 @@ export const AgentPath = {
   NOTEBOOK_NOTE: "/notebook/note",
   NOTEBOOK_SEARCH: "/notebook/search",
   NOTEBOOK_REMINDERS: "/notebook/reminders",
+  REQUESTS_COLLECTIONS: "/requests/collections",
+  REQUESTS_FOLDER: "/requests/folder",
+  REQUESTS_ITEM: "/requests/item",
+  REQUESTS_EXECUTE: "/requests/execute",
+  REQUESTS_CREDENTIALS: "/requests/credentials",
+  REQUESTS_CREDENTIAL_RESOLVE: "/requests/credentials/resolve",
+  REQUESTS_HISTORY: "/requests/history",
   KUBECONFIG_STATUS: "/staging/kubeconfig/status",
   KUBECONFIG_REFRESH: "/staging/kubeconfig/refresh",
   KUBECONFIG_ACTIVATE: "/staging/kubeconfig/activate",
@@ -548,6 +557,35 @@ export function buildAgentNotebookSearchPath(query: string): string {
     query,
   });
   return `${AgentPath.NOTEBOOK_SEARCH}?${params.toString()}`;
+}
+
+export function buildAgentRequestsItemsPath(folder: string): string {
+  const params = new URLSearchParams({
+    folder,
+  });
+  return `${AgentPath.REQUESTS_ITEM}?${params.toString()}`;
+}
+
+export function buildAgentRequestsItemPath(folder: string, name: string): string {
+  const params = new URLSearchParams({
+    folder,
+  });
+  return `${AgentPath.REQUESTS_ITEM}/${encodeURIComponent(name)}?${params.toString()}`;
+}
+
+export function buildAgentRequestsFolderDeletePath(folder: string): string {
+  const params = new URLSearchParams({
+    folder,
+  });
+  return `${AgentPath.REQUESTS_FOLDER}?${params.toString()}`;
+}
+
+export function buildAgentRequestsCredentialPath(id: string): string {
+  return `${AgentPath.REQUESTS_CREDENTIALS}/${encodeURIComponent(id)}`;
+}
+
+export function buildAgentRequestsHistoryEntryPath(id: string): string {
+  return `${AgentPath.REQUESTS_HISTORY}/${encodeURIComponent(id)}`;
 }
 
 export function buildAgentKubeNamespacesPath(context?: string | null): string {
@@ -844,6 +882,9 @@ export const ViewKey = {
   NOTEBOOK_BROWSE: "notebook-browse",
   NOTEBOOK_REMINDERS: "notebook-reminders",
   NOTEBOOK_SEARCH: "notebook-search",
+  REQUESTS_BUILDER: "requests-builder",
+  REQUESTS_CREDENTIALS: "requests-credentials",
+  REQUESTS_HISTORY: "requests-history",
   NOTIFICATOR_CONTRACT_MANAGER: "notificator-contract-manager",
   NOTIFICATOR_NOTIFICATIONS: "notificator-notifications",
   STATISTICS_SMOKE: "statistics-smoke",
@@ -876,6 +917,9 @@ export const TabId = {
   LEONID_PIPELINE_CONFIGS: "tab-leonid-pipeline-configs",
   NOTEBOOK_BROWSE: "tab-notebook-browse",
   NOTEBOOK_SEARCH: "tab-notebook-search",
+  REQUESTS_BUILDER: "tab-requests-builder",
+  REQUESTS_CREDENTIALS: "tab-requests-credentials",
+  REQUESTS_HISTORY: "tab-requests-history",
   NOTIFICATOR_CONTRACT_MANAGER: "tab-notificator-contract-manager",
   NOTIFICATOR_NOTIFICATIONS: "tab-notificator-notifications",
   STATISTICS_SMOKE: "tab-statistics-smoke",
@@ -908,6 +952,9 @@ export const TabTitle: Record<TabId, string> = {
   [TabId.LEONID_PIPELINE_CONFIGS]: "Pipeline configs",
   [TabId.NOTEBOOK_BROWSE]: "Notes",
   [TabId.NOTEBOOK_SEARCH]: "Search",
+  [TabId.REQUESTS_BUILDER]: "Collections",
+  [TabId.REQUESTS_CREDENTIALS]: "Credentials",
+  [TabId.REQUESTS_HISTORY]: "History",
   [TabId.NOTIFICATOR_CONTRACT_MANAGER]: "Contract manager",
   [TabId.NOTIFICATOR_NOTIFICATIONS]: "Notifications",
   [TabId.STATISTICS_SMOKE]: "Smoke",
@@ -960,6 +1007,11 @@ export const QueryKey = {
   NOTEBOOK_NOTE: "notebook-note",
   NOTEBOOK_REMINDERS: "notebook-reminders",
   NOTEBOOK_SEARCH: "notebook-search",
+  REQUESTS_COLLECTIONS: "requests-collections",
+  REQUESTS_ITEMS: "requests-items",
+  REQUESTS_ITEM: "requests-item",
+  REQUESTS_CREDENTIALS: "requests-credentials",
+  REQUESTS_HISTORY: "requests-history",
   AGENT_NAMESPACES: "agent-namespaces",
   AGENT_NAMESPACE_STATUS: "agent-namespace-status",
   AGENT_NAMESPACE_CREDS: "agent-namespace-creds",

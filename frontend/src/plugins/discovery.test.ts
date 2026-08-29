@@ -78,6 +78,7 @@ describe("plugin discovery", () => {
       PluginId.NOTIFICATOR,
       PluginId.STATISTICS,
       PluginId.NOTEBOOK,
+      PluginId.REQUESTS,
       PluginId.ADMIN,
       PluginId.PROFILE,
     ]);
@@ -99,8 +100,10 @@ describe("plugin discovery", () => {
     expect(PLUGINS[6]?.requiresAgent).toBe(false);
     expect(PLUGINS[7]?.kind).toBe(PluginKind.OPTIONAL);
     expect(PLUGINS[7]?.requiresAgent).toBe(true);
-    expect(PLUGINS[8]?.kind).toBe(PluginKind.SYSTEM);
+    expect(PLUGINS[8]?.kind).toBe(PluginKind.OPTIONAL);
+    expect(PLUGINS[8]?.requiresAgent).toBe(true);
     expect(PLUGINS[9]?.kind).toBe(PluginKind.SYSTEM);
+    expect(PLUGINS[10]?.kind).toBe(PluginKind.SYSTEM);
   });
 
   it("rejects duplicate plugin ids", () => {
