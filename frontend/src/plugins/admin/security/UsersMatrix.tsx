@@ -10,6 +10,7 @@ import {
   ScrollArea,
   Select,
   Stack,
+  Tabs,
   Text,
   TextInput,
   Title,
@@ -24,6 +25,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { backendClient } from "@/api/backendClient";
 import type {
+  SecurityPermission,
   User,
   UserCreateRequest,
   UserPermissionsResponse,
@@ -154,6 +156,112 @@ function PermissionCell({
       disabled={addMutation.isPending}
       title="Not granted — click to add"
     />
+  );
+}
+
+function PermissionToggle({
+  permission,
+  inherited,
+  extra,
+  userId,
+  token,
+}: {
+  permission: SecurityPermission;
+  inherited: string[];
+  extra: string[];
+  userId: number;
+  token: string;
+}) {
+  const queryClient = useQueryClient();
+
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey: [QueryKey.USER_PERMISSIONS, userId] });
+
+  const addMutation = useMutation({
+    mutationFn: () => backendClient.addUserPermission(token, userId, permission.key),
+    onSuccess: () => void invalidate(),
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: () => backendClient.removeUserPermission(token, userId, permission.key),
+    onSuccess: () => void invalidate(),
+  });
+
+  const isInherited = inherited.includes(permission.key);
+  const isExtra = extra.includes(permission.key);
+  const pending = addMutation.isPending || removeMutation.isPending;
+
+  return (
+    <Checkbox
+      label={permission.display_name}
+      description={isInherited ? "Inherited from role or group — edit the role/group to change" : undefined}
+      title={permission.key}
+      checked={isInherited || isExtra}
+      disabled={isInherited || pending}
+      onChange={() => (isExtra ? removeMutation.mutate() : addMutation.mutate())}
+    />
+  );
+}
+
+function UserPermissionsEditor({
+  userId,
+  token,
+  domains,
+}: {
+  userId: number;
+  token: string;
+  domains: PermissionDomain[];
+}) {
+  const permsQuery = useQuery<UserPermissionsResponse>({
+    queryKey: [QueryKey.USER_PERMISSIONS, userId],
+    queryFn: ({ signal }) => backendClient.getUserPermissions(token, userId, signal),
+    staleTime: 60_000,
+  });
+
+  if (permsQuery.isLoading) {
+    return (
+      <Stack align="center" py="md">
+        <Loader size="sm" />
+      </Stack>
+    );
+  }
+
+  if (permsQuery.isError) {
+    return (
+      <Alert color="red" icon={<IconAlertCircle size={16} />}>
+        {formatError(permsQuery.error, "Failed to load permissions.")}
+      </Alert>
+    );
+  }
+
+  const inherited = permsQuery.data?.inherited ?? [];
+  const extra = permsQuery.data?.extra ?? [];
+
+  return (
+    <Stack gap="md">
+      <Text size="xs" c="dimmed">
+        Individual permissions save immediately. Inherited permissions are locked — change them via the role or group.
+      </Text>
+      {domains.map((domain) => (
+        <Stack key={domain.key} gap={4}>
+          <Text fw={600} size="sm">
+            {domain.label}
+          </Text>
+          <Stack gap={6} pl="xs">
+            {domain.permissions.map((permission) => (
+              <PermissionToggle
+                key={permission.key}
+                permission={permission}
+                inherited={inherited}
+                extra={extra}
+                userId={userId}
+                token={token}
+              />
+            ))}
+          </Stack>
+        </Stack>
+      ))}
+    </Stack>
   );
 }
 
@@ -452,7 +560,7 @@ export function UsersMatrix() {
           )}
         </Alert>
       ) : (
-        <ScrollArea>
+        <div style={{ overflowX: "auto", maxWidth: "100%" }}>
           <table style={{ borderCollapse: "collapse", fontSize: 16 }}>
             <thead>
               <tr>
@@ -512,7 +620,7 @@ export function UsersMatrix() {
             </tbody>
           </table>
           {users.length === 0 && <Text c="dimmed" p="sm">No users found.</Text>}
-        </ScrollArea>
+        </div>
       )}
 
       <Modal opened={createOpened} onClose={() => setCreateOpened(false)} title="Create user" centered transitionProps={{ duration: 0 }}>
@@ -580,6 +688,14 @@ export function UsersMatrix() {
               {formatError(updateMutation.error, "Unable to update the user.")}
             </Alert>
           )}
+          <Tabs defaultValue="details" keepMounted={false}>
+            <Tabs.List>
+              <Tabs.Tab value="details">Details</Tabs.Tab>
+              <Tabs.Tab value="permissions">Permissions</Tabs.Tab>
+            </Tabs.List>
+
+            <Tabs.Panel value="details" pt="md">
+        <Stack>
           <TextInput label="Username" readOnly value={editingUser?.username ?? ""} />
           <TextInput label="Display name" value={editForm?.displayName ?? ""}
             onChange={(e) => setEditForm((state) => state ? { ...state, displayName: e.currentTarget.value } : state)} />
@@ -630,6 +746,22 @@ export function UsersMatrix() {
             description="Enable reset above, then enter the new password."
             value={editForm?.password ?? ""}
             onChange={(e) => setEditForm((state) => state ? { ...state, password: e.currentTarget.value } : state)} />
+        </Stack>
+            </Tabs.Panel>
+
+            <Tabs.Panel value="permissions" pt="md">
+              <ScrollArea.Autosize mah={360} type="auto">
+                {editingUser && (
+                  <UserPermissionsEditor
+                    userId={editingUser.id}
+                    token={token ?? ""}
+                    domains={permissionDomains}
+                  />
+                )}
+              </ScrollArea.Autosize>
+            </Tabs.Panel>
+          </Tabs>
+
           <Group justify="flex-end">
             <Button variant="default" onClick={() => { setEditingUser(null); setEditForm(null); }}>Cancel</Button>
             <Button loading={updateMutation.isPending} onClick={submitEdit}>Save changes</Button>
