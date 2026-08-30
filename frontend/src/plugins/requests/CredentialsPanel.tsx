@@ -415,6 +415,7 @@ export function CredentialsPanel() {
       <Modal
         onClose={() => { setModalOpen(false); setForm(buildEmptyCredentialForm()); }}
         opened={modalOpen}
+        size={650}
         title={form.isEdit ? "Edit credential" : "Create credential"}
       >
         <Stack gap="sm">

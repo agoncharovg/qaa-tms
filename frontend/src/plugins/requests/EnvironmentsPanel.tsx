@@ -303,6 +303,7 @@ export function EnvironmentsPanel() {
           setForm(buildEmptyEnvironmentForm());
         }}
         opened={modalOpen}
+        size="xl"
         title={form.isEdit ? "Edit environment" : "Create environment"}
       >
         <Stack gap="sm">
@@ -328,10 +329,10 @@ export function EnvironmentsPanel() {
             <Table striped withTableBorder>
               <Table.Thead>
                 <Table.Tr>
-                  <Table.Th>Enabled</Table.Th>
-                  <Table.Th>Key</Table.Th>
+                  <Table.Th style={{ width: 64 }}>Enabled</Table.Th>
+                  <Table.Th style={{ width: "25%" }}>Key</Table.Th>
                   <Table.Th>Value</Table.Th>
-                  <Table.Th></Table.Th>
+                  <Table.Th style={{ width: 44 }}></Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>

@@ -358,6 +358,24 @@ function KeyValueTable<T extends RequestsHeaderField | RequestsQueryParam>({
   );
 }
 
+function UrlVariablePreview({ url, vars }: { url: string; vars: Record<string, string> }) {
+  const resolved = useMemo(
+    () => url.replace(/{{\s*([^{}]+?)\s*}}/g, (match, rawKey: string) => {
+      const key = rawKey.trim();
+      return Object.prototype.hasOwnProperty.call(vars, key) ? (vars[key] ?? "") : match;
+    }),
+    [url, vars]
+  );
+
+  if (resolved === url) return null;
+
+  return (
+    <Text c="dimmed" ff="monospace" size="xs" truncate>
+      {resolved}
+    </Text>
+  );
+}
+
 function FolderTree({
   expandedFolders,
   itemsByFolder,
@@ -1429,11 +1447,7 @@ export function RequestsBuilderPanel() {
                         </Button>
                       ) : null}
                     </Group>
-                    {resolvedEditor.unresolved.length > 0 ? (
-                      <Text c="yellow.8" size="sm">
-                        Unresolved variables: {resolvedEditor.unresolved.join(", ")}
-                      </Text>
-                    ) : null}
+                    <UrlVariablePreview url={editor.url} vars={environmentVariables} />
                     <KeyValueTable
                       addLabel="Add header"
                       onAdd={() => setEditor((current) => ({ ...current, headers: [...current.headers, buildEmptyHeaderField()] }))}
