@@ -438,6 +438,25 @@ export interface RequestsCredentialResolveResponse {
   error: string | null;
 }
 
+export interface RequestsEnvironmentVariable {
+  key: string;
+  value: string;
+  enabled: boolean;
+}
+
+export interface RequestsEnvironment {
+  id: string;
+  name: string;
+  variables: RequestsEnvironmentVariable[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RequestsEnvironmentsListResponse {
+  activeId: string | null;
+  environments: RequestsEnvironment[];
+}
+
 export interface RequestsHistoryResponseSummary {
   statusCode: number | null;
   elapsedMs: number | null;

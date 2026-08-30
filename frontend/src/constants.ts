@@ -428,6 +428,8 @@ export const AgentPath = {
   REQUESTS_FOLDER: "/requests/folder",
   REQUESTS_ITEM: "/requests/item",
   REQUESTS_EXECUTE: "/requests/execute",
+  REQUESTS_ENVIRONMENTS: "/requests/environments",
+  REQUESTS_ENVIRONMENT_ACTIVE: "/requests/environments/active",
   REQUESTS_CREDENTIALS: "/requests/credentials",
   REQUESTS_CREDENTIAL_RESOLVE: "/requests/credentials/resolve",
   REQUESTS_HISTORY: "/requests/history",
@@ -582,6 +584,10 @@ export function buildAgentRequestsFolderDeletePath(folder: string): string {
 
 export function buildAgentRequestsCredentialPath(id: string): string {
   return `${AgentPath.REQUESTS_CREDENTIALS}/${encodeURIComponent(id)}`;
+}
+
+export function buildAgentRequestsEnvironmentPath(id: string): string {
+  return `${AgentPath.REQUESTS_ENVIRONMENTS}/${encodeURIComponent(id)}`;
 }
 
 export function buildAgentRequestsHistoryEntryPath(id: string): string {
@@ -884,6 +890,7 @@ export const ViewKey = {
   NOTEBOOK_SEARCH: "notebook-search",
   REQUESTS_BUILDER: "requests-builder",
   REQUESTS_CREDENTIALS: "requests-credentials",
+  REQUESTS_ENVIRONMENTS: "requests-environments",
   REQUESTS_HISTORY: "requests-history",
   NOTIFICATOR_CONTRACT_MANAGER: "notificator-contract-manager",
   NOTIFICATOR_NOTIFICATIONS: "notificator-notifications",
@@ -919,6 +926,7 @@ export const TabId = {
   NOTEBOOK_SEARCH: "tab-notebook-search",
   REQUESTS_BUILDER: "tab-requests-builder",
   REQUESTS_CREDENTIALS: "tab-requests-credentials",
+  REQUESTS_ENVIRONMENTS: "tab-requests-environments",
   REQUESTS_HISTORY: "tab-requests-history",
   NOTIFICATOR_CONTRACT_MANAGER: "tab-notificator-contract-manager",
   NOTIFICATOR_NOTIFICATIONS: "tab-notificator-notifications",
@@ -954,6 +962,7 @@ export const TabTitle: Record<TabId, string> = {
   [TabId.NOTEBOOK_SEARCH]: "Search",
   [TabId.REQUESTS_BUILDER]: "Collections",
   [TabId.REQUESTS_CREDENTIALS]: "Credentials",
+  [TabId.REQUESTS_ENVIRONMENTS]: "Environments",
   [TabId.REQUESTS_HISTORY]: "History",
   [TabId.NOTIFICATOR_CONTRACT_MANAGER]: "Contract manager",
   [TabId.NOTIFICATOR_NOTIFICATIONS]: "Notifications",
@@ -1011,6 +1020,7 @@ export const QueryKey = {
   REQUESTS_ITEMS: "requests-items",
   REQUESTS_ITEM: "requests-item",
   REQUESTS_CREDENTIALS: "requests-credentials",
+  REQUESTS_ENVIRONMENTS: "requests-environments",
   REQUESTS_HISTORY: "requests-history",
   AGENT_NAMESPACES: "agent-namespaces",
   AGENT_NAMESPACE_STATUS: "agent-namespace-status",

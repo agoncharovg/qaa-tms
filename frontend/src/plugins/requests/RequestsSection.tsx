@@ -1,5 +1,6 @@
 import { ViewKey, type ViewKey as ViewKeyType } from "@/constants";
 import { CredentialsPanel } from "@/plugins/requests/CredentialsPanel";
+import { EnvironmentsPanel } from "@/plugins/requests/EnvironmentsPanel";
 import { RequestsBuilderPanel } from "@/plugins/requests/RequestsBuilderPanel";
 import { RequestsHistoryPanel } from "@/plugins/requests/RequestsHistoryPanel";
 
@@ -8,6 +9,7 @@ interface RequestsSectionProps {
     ViewKeyType,
     | typeof ViewKey.REQUESTS_BUILDER
     | typeof ViewKey.REQUESTS_CREDENTIALS
+    | typeof ViewKey.REQUESTS_ENVIRONMENTS
     | typeof ViewKey.REQUESTS_HISTORY
   >;
 }
@@ -21,6 +23,9 @@ export function RequestsSection({ mode }: RequestsSectionProps) {
     return <RequestsHistoryPanel />;
   }
 
+  if (mode === ViewKey.REQUESTS_ENVIRONMENTS) {
+    return <EnvironmentsPanel />;
+  }
+
   return <RequestsBuilderPanel />;
 }
-

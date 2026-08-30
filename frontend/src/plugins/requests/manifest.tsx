@@ -39,6 +39,12 @@ const requestsPlugin = definePlugin({
       element: <RequestsSection mode={ViewKey.REQUESTS_CREDENTIALS} />,
     },
     {
+      id: TabId.REQUESTS_ENVIRONMENTS,
+      title: TabTitle[TabId.REQUESTS_ENVIRONMENTS],
+      viewKey: ViewKey.REQUESTS_ENVIRONMENTS,
+      element: <RequestsSection mode={ViewKey.REQUESTS_ENVIRONMENTS} />,
+    },
+    {
       id: TabId.REQUESTS_HISTORY,
       title: TabTitle[TabId.REQUESTS_HISTORY],
       viewKey: ViewKey.REQUESTS_HISTORY,
@@ -48,4 +54,3 @@ const requestsPlugin = definePlugin({
 });
 
 export default requestsPlugin;
-

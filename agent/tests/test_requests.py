@@ -26,6 +26,9 @@ from app.schemas import (
     ClientAdminCredentialCreate,
     ClientAdminCredentialCreateConfig,
     ClientAdminCredentialUpdate,
+    EnvironmentCreateRequest,
+    EnvironmentUpdateRequest,
+    EnvironmentVariable,
     LoginPasswordCredentialCreate,
     LoginPasswordCredentialCreateConfig,
     RequestBody,
@@ -46,19 +49,25 @@ from app.services.requests_exec import (
     resolve_authorization,
 )
 from app.services.requests_store import (
+    RequestsEnvironmentNotFoundError,
     RequestsPathValidationError,
     create_credential,
+    create_environment,
     create_folder,
+    delete_environment,
     delete_folder,
     delete_item,
     get_credential_raw,
     list_credentials,
+    list_environments,
     list_items,
     list_tree,
     move_item,
     read_item,
     reorder,
+    set_active_environment,
     update_credential,
+    update_environment,
     update_item,
     write_item,
 )
@@ -218,6 +227,7 @@ def test_requests_paths_follow_qaa_tms_home(
     assert settings.requests_root == str(tmp_path / "requests")
     assert settings.requests_collections_root == str(tmp_path / "requests" / "collections")
     assert settings.requests_credentials_path == str(tmp_path / "requests" / "credentials.json")
+    assert settings.requests_environments_path == str(tmp_path / "requests" / "environments.json")
     assert settings.requests_history_path == str(tmp_path / "requests" / "history.jsonl")
 
 
@@ -386,6 +396,89 @@ def test_credentials_crud_strips_secrets_and_keeps_file_mode(
 
     mode = stat.S_IMODE(Path(settings.requests_credentials_path).stat().st_mode)
     assert mode == 0o600
+
+
+def test_environments_crud_persists_active_and_normalizes_variables(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = build_settings(monkeypatch, tmp_path)
+
+    created = create_environment(
+        settings,
+        EnvironmentCreateRequest(
+            name=" staging ",
+            variables=[
+                EnvironmentVariable(key=" iamBase ", value="https://stg.old", enabled=True),
+                EnvironmentVariable(key="verifyBase", value="https://verify.test", enabled=False),
+                EnvironmentVariable(key="iamBase", value="https://stg.new", enabled=True),
+            ],
+        ),
+    )
+
+    assert created.active_id is None
+    assert len(created.environments) == 1
+    environment = created.environments[0]
+    assert environment.name == "staging"
+    assert environment.variables == [
+        EnvironmentVariable(key="verifyBase", value="https://verify.test", enabled=False),
+        EnvironmentVariable(key="iamBase", value="https://stg.new", enabled=True),
+    ]
+
+    updated = update_environment(
+        settings,
+        environment.id,
+        EnvironmentUpdateRequest(
+            variables=[
+                EnvironmentVariable(key="iamBase", value="https://preprod.test", enabled=True),
+                EnvironmentVariable(key="token", value="abc", enabled=True),
+                EnvironmentVariable(key="token", value="def", enabled=False),
+            ]
+        ),
+    )
+    assert updated.environments[0].name == "staging"
+    assert updated.environments[0].variables == [
+        EnvironmentVariable(key="iamBase", value="https://preprod.test", enabled=True),
+        EnvironmentVariable(key="token", value="def", enabled=False),
+    ]
+
+    activated = set_active_environment(settings, environment.id)
+    assert activated.active_id == environment.id
+
+    cleared = delete_environment(settings, environment.id)
+    assert cleared.active_id is None
+    assert cleared.environments == []
+
+    mode = stat.S_IMODE(Path(settings.requests_environments_path).stat().st_mode)
+    assert mode == 0o600
+
+    payload = json.loads(Path(settings.requests_environments_path).read_text(encoding="utf-8"))
+    assert payload == {"activeId": None, "environments": []}
+
+
+def test_set_active_environment_rejects_unknown_and_can_clear(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = build_settings(monkeypatch, tmp_path)
+    created = create_environment(
+        settings,
+        EnvironmentCreateRequest(name="prod", variables=[]),
+    )
+    environment_id = created.environments[0].id
+
+    active = set_active_environment(settings, environment_id)
+    assert active.active_id == environment_id
+
+    cleared = set_active_environment(settings, None)
+    assert cleared.active_id is None
+
+    with pytest.raises(RequestsEnvironmentNotFoundError):
+        set_active_environment(settings, "missing-env")
+
+    listed = list_environments(settings)
+    assert listed.active_id is None
+    assert [environment.name for environment in listed.environments] == ["prod"]
 
 
 @pytest.mark.asyncio
@@ -691,6 +784,7 @@ READ_ROUTE_CASES = [
     ("get", AgentPath.REQUESTS_COLLECTIONS.value, {}),
     ("get", AgentPath.REQUESTS_ITEM.value, {"params": {"folder": "alpha"}}),
     ("get", f"{AgentPath.REQUESTS_ITEM.value}/item", {"params": {"folder": "alpha"}}),
+    ("get", AgentPath.REQUESTS_ENVIRONMENTS.value, {}),
     ("get", AgentPath.REQUESTS_CREDENTIALS.value, {}),
     ("get", f"{AgentPath.REQUESTS_CREDENTIALS.value}/cred", {}),
     ("get", AgentPath.REQUESTS_HISTORY.value, {}),
@@ -730,6 +824,27 @@ WRITE_ROUTE_CASES = [
         },
     ),
     ("delete", f"{AgentPath.REQUESTS_ITEM.value}/item", {"params": {"folder": "alpha"}}),
+    (
+        "post",
+        AgentPath.REQUESTS_ENVIRONMENTS.value,
+        {
+            "json": {
+                "name": "staging",
+                "variables": [{"key": "iamBase", "value": "https://stg", "enabled": True}],
+            }
+        },
+    ),
+    (
+        "put",
+        AgentPath.REQUESTS_ENVIRONMENT_ACTIVE.value,
+        {"json": {"environmentId": None}},
+    ),
+    (
+        "put",
+        f"{AgentPath.REQUESTS_ENVIRONMENTS.value}/env",
+        {"json": {"name": "prod"}},
+    ),
+    ("delete", f"{AgentPath.REQUESTS_ENVIRONMENTS.value}/env", {}),
     (
         "post",
         AgentPath.REQUESTS_CREDENTIALS.value,
@@ -811,3 +926,73 @@ async def test_requests_credentials_unknown_type_returns_400(
         )
 
     assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_requests_environments_routes_crud_and_active(
+    fake_staging_repo: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("QAA_TMS_HOME", str(tmp_path))
+
+    async with route_client(fake_staging_repo, denied_permissions=set()) as client:
+        create_response = await client.post(
+            AgentPath.REQUESTS_ENVIRONMENTS.value,
+            headers=AUTH_HEADERS,
+            json={
+                "name": "staging",
+                "variables": [
+                    {"key": "iamBase", "value": "https://stg.old", "enabled": True},
+                    {"key": "iamBase", "value": "https://stg.new", "enabled": True},
+                    {"key": "verifyBase", "value": "https://verify", "enabled": False},
+                ],
+            },
+        )
+        assert create_response.status_code == 200
+        created_payload = create_response.json()
+        created_environment = created_payload["environments"][0]
+        environment_id = created_environment["id"]
+        assert created_payload["activeId"] is None
+        assert created_environment["variables"] == [
+            {"enabled": True, "key": "iamBase", "value": "https://stg.new"},
+            {"enabled": False, "key": "verifyBase", "value": "https://verify"},
+        ]
+
+        active_response = await client.put(
+            AgentPath.REQUESTS_ENVIRONMENT_ACTIVE.value,
+            headers=AUTH_HEADERS,
+            json={"environmentId": environment_id},
+        )
+        assert active_response.status_code == 200
+        assert active_response.json()["activeId"] == environment_id
+
+        update_response = await client.put(
+            f"{AgentPath.REQUESTS_ENVIRONMENTS.value}/{environment_id}",
+            headers=AUTH_HEADERS,
+            json={"name": "preprod"},
+        )
+        assert update_response.status_code == 200
+        assert update_response.json()["environments"][0]["name"] == "preprod"
+
+        clear_response = await client.put(
+            AgentPath.REQUESTS_ENVIRONMENT_ACTIVE.value,
+            headers=AUTH_HEADERS,
+            json={"environmentId": None},
+        )
+        assert clear_response.status_code == 200
+        assert clear_response.json()["activeId"] is None
+
+        missing_response = await client.put(
+            AgentPath.REQUESTS_ENVIRONMENT_ACTIVE.value,
+            headers=AUTH_HEADERS,
+            json={"environmentId": "missing-env"},
+        )
+        assert missing_response.status_code == 404
+
+        delete_response = await client.delete(
+            f"{AgentPath.REQUESTS_ENVIRONMENTS.value}/{environment_id}",
+            headers=AUTH_HEADERS,
+        )
+        assert delete_response.status_code == 200
+        assert delete_response.json() == {"activeId": None, "environments": []}

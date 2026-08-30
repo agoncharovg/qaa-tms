@@ -27,6 +27,11 @@ from app.schemas import (
     ClientAdminCredentialPublic,
     ClientAdminCredentialPublicConfig,
     ClientAdminCredentialUpdate,
+    EnvironmentCreateRequest,
+    EnvironmentPublic,
+    EnvironmentsListResponse,
+    EnvironmentUpdateRequest,
+    EnvironmentVariable,
     LoginPasswordCredentialCreate,
     LoginPasswordCredentialPublic,
     LoginPasswordCredentialPublicConfig,
@@ -65,6 +70,13 @@ type CredentialPublicModel = (
     | LoginPasswordCredentialPublic
     | ClientAdminCredentialPublic
 )
+type EnvironmentCreateModel = EnvironmentCreateRequest
+type EnvironmentUpdateModel = EnvironmentUpdateRequest
+
+
+class RequestsEnvironmentsState(TypedDict):
+    active_id: str | None
+    environments: list[dict[str, Any]]
 
 
 class RequestsContentsNode(TypedDict, total=False):
@@ -98,6 +110,14 @@ class RequestsCredentialNotFoundError(FileNotFoundError):
 
 
 class RequestsCredentialValidationError(ValueError):
+    pass
+
+
+class RequestsEnvironmentNotFoundError(FileNotFoundError):
+    pass
+
+
+class RequestsEnvironmentValidationError(ValueError):
     pass
 
 
@@ -382,6 +402,75 @@ def get_credential_raw(settings: Settings, credential_id: str) -> dict[str, Any]
         if normalized["id"] == credential_id:
             return normalized
     raise RequestsCredentialNotFoundError(f"Credential not found: {credential_id}")
+
+
+def list_environments(settings: Settings) -> EnvironmentsListResponse:
+    return _environment_state_to_response(_load_environments_state(settings))
+
+
+def create_environment(
+    settings: Settings, environment: EnvironmentCreateModel
+) -> EnvironmentsListResponse:
+    state = _load_environments_state(settings)
+    state["environments"].append(_environment_create_to_raw(environment, _now_iso()))
+    _save_environments_state(settings, state)
+    return _environment_state_to_response(state)
+
+
+def update_environment(
+    settings: Settings,
+    environment_id: str,
+    environment: EnvironmentUpdateModel,
+) -> EnvironmentsListResponse:
+    state = _load_environments_state(settings)
+    for index, existing in enumerate(state["environments"]):
+        try:
+            normalized = _normalize_raw_environment(existing)
+        except RequestsEnvironmentValidationError:
+            continue
+        if normalized["id"] != environment_id:
+            continue
+        state["environments"][index] = _apply_environment_update(normalized, environment)
+        _save_environments_state(settings, state)
+        return _environment_state_to_response(state)
+    raise RequestsEnvironmentNotFoundError(f"Environment not found: {environment_id}")
+
+
+def delete_environment(settings: Settings, environment_id: str) -> EnvironmentsListResponse:
+    state = _load_environments_state(settings)
+    kept = [
+        environment
+        for environment in state["environments"]
+        if _normalize_raw_environment_id(environment) != environment_id
+    ]
+    if len(kept) == len(state["environments"]):
+        raise RequestsEnvironmentNotFoundError(f"Environment not found: {environment_id}")
+    state["environments"] = kept
+    if state["active_id"] == environment_id:
+        state["active_id"] = None
+    _save_environments_state(settings, state)
+    return _environment_state_to_response(state)
+
+
+def set_active_environment(
+    settings: Settings, environment_id: str | None
+) -> EnvironmentsListResponse:
+    state = _load_environments_state(settings)
+    if environment_id is not None:
+        environment_exists = False
+        for environment in state["environments"]:
+            try:
+                normalized = _normalize_raw_environment(environment)
+            except RequestsEnvironmentValidationError:
+                continue
+            if normalized["id"] == environment_id:
+                environment_exists = True
+                break
+        if not environment_exists:
+            raise RequestsEnvironmentNotFoundError(f"Environment not found: {environment_id}")
+    state["active_id"] = environment_id
+    _save_environments_state(settings, state)
+    return _environment_state_to_response(state)
 
 
 def _resolve_root(settings: Settings, create: bool = False) -> Path:
@@ -734,6 +823,62 @@ def _save_credentials(settings: Settings, credentials: list[dict[str, Any]]) -> 
     os.chmod(path, 0o600)
 
 
+def _load_environments_state(settings: Settings) -> RequestsEnvironmentsState:
+    path = Path(settings.requests_environments_path).expanduser()
+    empty_state: RequestsEnvironmentsState = {"active_id": None, "environments": []}
+    if not path.exists():
+        return empty_state
+    text = _read_text(path)
+    if not text.strip():
+        return empty_state
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return empty_state
+    if not isinstance(payload, dict):
+        return empty_state
+
+    raw_environments = payload.get("environments")
+    if not isinstance(raw_environments, list):
+        raw_environments = []
+
+    environments: list[dict[str, Any]] = []
+    valid_ids: set[str] = set()
+    for raw_environment in raw_environments:
+        if not isinstance(raw_environment, dict):
+            continue
+        try:
+            normalized = _normalize_raw_environment(raw_environment)
+        except RequestsEnvironmentValidationError:
+            continue
+        environments.append(normalized)
+        valid_ids.add(normalized["id"])
+
+    active_id = _as_str(payload.get("activeId")) or _as_str(payload.get("active_id"))
+    if active_id not in valid_ids:
+        active_id = None
+    return {"active_id": active_id, "environments": environments}
+
+
+def _save_environments_state(settings: Settings, state: RequestsEnvironmentsState) -> None:
+    path = Path(settings.requests_environments_path).expanduser()
+    body = (
+        json.dumps(
+            {
+                "activeId": state["active_id"],
+                "environments": [
+                    _environment_to_storage(environment) for environment in state["environments"]
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n"
+    )
+    _write_text_atomically(path, body)
+    os.chmod(path, 0o600)
+
+
 def _credential_create_to_raw(credential: CredentialCreateModel, now: str) -> dict[str, Any]:
     if isinstance(credential, BearerCredentialCreate):
         config: dict[str, Any] = {
@@ -775,6 +920,140 @@ def _credential_create_to_raw(credential: CredentialCreateModel, now: str) -> di
         "updated_at": now,
         "config": config,
     }
+
+
+def _environment_state_to_response(state: RequestsEnvironmentsState) -> EnvironmentsListResponse:
+    return EnvironmentsListResponse(
+        active_id=state["active_id"],
+        environments=[_environment_to_public(environment) for environment in state["environments"]],
+    )
+
+
+def _environment_create_to_raw(environment: EnvironmentCreateModel, now: str) -> dict[str, Any]:
+    return {
+        "id": str(uuid4()),
+        "name": _require_non_empty_environment(environment.name, "Environment name"),
+        "variables": _normalize_environment_variable_rows(environment.variables),
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
+def _apply_environment_update(
+    existing: dict[str, Any],
+    environment: EnvironmentUpdateModel,
+) -> dict[str, Any]:
+    updated = dict(existing)
+    if environment.name is not None:
+        updated["name"] = _require_non_empty_environment(environment.name, "Environment name")
+    if environment.variables is not None:
+        updated["variables"] = _normalize_environment_variable_rows(environment.variables)
+    updated["updated_at"] = _now_iso()
+    return _normalize_raw_environment(_environment_to_storage(updated))
+
+
+def _environment_to_public(environment: dict[str, Any]) -> EnvironmentPublic:
+    normalized = _normalize_raw_environment(environment)
+    return EnvironmentPublic(
+        id=normalized["id"],
+        name=normalized["name"],
+        variables=[
+            EnvironmentVariable(
+                key=variable["key"],
+                value=variable["value"],
+                enabled=variable["enabled"],
+            )
+            for variable in normalized["variables"]
+        ],
+        created_at=normalized["created_at"],
+        updated_at=normalized["updated_at"],
+    )
+
+
+def _environment_to_storage(environment: dict[str, Any]) -> dict[str, Any]:
+    normalized = _normalize_raw_environment(environment)
+    return {
+        "id": normalized["id"],
+        "name": normalized["name"],
+        "variables": [dict(variable) for variable in normalized["variables"]],
+        "createdAt": normalized["created_at"],
+        "updatedAt": normalized["updated_at"],
+    }
+
+
+def _normalize_raw_environment_id(environment: object) -> str | None:
+    if not isinstance(environment, dict):
+        return None
+    return _as_str(environment.get("id"))
+
+
+def _normalize_raw_environment(environment: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": _require_non_empty_environment(_as_str(environment.get("id")), "Environment ID"),
+        "name": _require_non_empty_environment(
+            _as_str(environment.get("name")),
+            "Environment name",
+        ),
+        "variables": _normalize_raw_environment_variables(environment.get("variables")),
+        "created_at": _require_non_empty_environment(
+            _as_str(environment.get("createdAt")) or _as_str(environment.get("created_at")),
+            "Environment createdAt",
+        ),
+        "updated_at": _require_non_empty_environment(
+            _as_str(environment.get("updatedAt")) or _as_str(environment.get("updated_at")),
+            "Environment updatedAt",
+        ),
+    }
+
+
+def _normalize_environment_variable_rows(
+    variables: list[EnvironmentVariable],
+) -> list[dict[str, Any]]:
+    rows = [
+        {
+            "key": _require_non_empty_environment(variable.key, "Environment variable key"),
+            "value": variable.value,
+            "enabled": variable.enabled,
+        }
+        for variable in variables
+    ]
+    return _dedupe_environment_variables(rows)
+
+
+def _normalize_raw_environment_variables(raw_variables: object) -> list[dict[str, Any]]:
+    if not isinstance(raw_variables, list):
+        return []
+
+    rows: list[dict[str, Any]] = []
+    for raw_variable in raw_variables:
+        if not isinstance(raw_variable, dict):
+            continue
+        key = (_as_str(raw_variable.get("key")) or "").strip()
+        value = raw_variable.get("value")
+        enabled = raw_variable.get("enabled")
+        if not key or not isinstance(value, str):
+            continue
+        rows.append(
+            {
+                "key": key,
+                "value": value,
+                "enabled": enabled if isinstance(enabled, bool) else True,
+            }
+        )
+    return _dedupe_environment_variables(rows)
+
+
+def _dedupe_environment_variables(variables: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
+    for variable in reversed(variables):
+        key = variable["key"]
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        deduped.append(variable)
+    deduped.reverse()
+    return deduped
 
 
 def _apply_credential_update(
@@ -963,6 +1242,13 @@ def _require_non_empty(value: str | None, label: str) -> str:
     normalized = (value or "").strip()
     if not normalized:
         raise RequestsCredentialValidationError(f"{label} must not be empty.")
+    return normalized
+
+
+def _require_non_empty_environment(value: str | None, label: str) -> str:
+    normalized = (value or "").strip()
+    if not normalized:
+        raise RequestsEnvironmentValidationError(f"{label} must not be empty.")
     return normalized
 
 

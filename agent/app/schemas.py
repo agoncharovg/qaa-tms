@@ -475,6 +475,63 @@ class RequestItemReadResponse(RequestDocument):
     name: str
 
 
+class EnvironmentVariable(BaseModel):
+    """Environment variable row."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    key: str = Field(min_length=1)
+    value: str = ""
+    enabled: bool = True
+
+
+class EnvironmentPublic(BaseModel):
+    """Saved environment returned to the frontend."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    id: str
+    name: str
+    variables: list[EnvironmentVariable] = Field(default_factory=list)
+    created_at: str = Field(alias="createdAt")
+    updated_at: str = Field(alias="updatedAt")
+
+
+class EnvironmentsListResponse(BaseModel):
+    """Environments list and active selection."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    active_id: str | None = Field(default=None, alias="activeId")
+    environments: list[EnvironmentPublic] = Field(default_factory=list)
+
+
+class EnvironmentCreateRequest(BaseModel):
+    """Environment create payload."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    name: str = Field(min_length=1)
+    variables: list[EnvironmentVariable] = Field(default_factory=list)
+
+
+class EnvironmentUpdateRequest(BaseModel):
+    """Environment update payload."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    name: str | None = Field(default=None, min_length=1)
+    variables: list[EnvironmentVariable] | None = None
+
+
+class EnvironmentActiveRequest(BaseModel):
+    """Active environment update payload."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    environment_id: str | None = Field(alias="environmentId")
+
+
 class BearerCredentialPublicConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 

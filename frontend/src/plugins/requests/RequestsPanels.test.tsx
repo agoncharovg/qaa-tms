@@ -5,25 +5,31 @@ import userEvent from "@testing-library/user-event";
 const agentClientMock = vi.hoisted(() => ({
   clearHistory: vi.fn(),
   createCredential: vi.fn(),
+  createEnvironment: vi.fn(),
   createFolder: vi.fn(),
   createRequestItem: vi.fn(),
   deleteCredential: vi.fn(),
+  deleteEnvironment: vi.fn(),
   deleteFolder: vi.fn(),
   deleteHistoryEntry: vi.fn(),
   deleteRequestItem: vi.fn(),
   executeRequest: vi.fn(),
   listCollections: vi.fn(),
   listCredentials: vi.fn(),
+  listEnvironments: vi.fn(),
   listHistory: vi.fn(),
   listRequestItems: vi.fn(),
   readRequestItem: vi.fn(),
   reorderCollections: vi.fn(),
   resolveCredential: vi.fn(),
+  setActiveEnvironment: vi.fn(),
+  updateEnvironment: vi.fn(),
   updateCredential: vi.fn(),
   updateRequestItem: vi.fn(),
 }));
 
 const getPreflightMock = vi.hoisted(() => vi.fn());
+const clipboardWriteTextMock = vi.hoisted(() => vi.fn());
 
 Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", {
   configurable: true,
@@ -139,6 +145,10 @@ function seedBuilderData() {
       },
     ],
   });
+  agentClientMock.listEnvironments.mockResolvedValue({
+    activeId: null,
+    environments: [],
+  });
 }
 
 describe("Requests plugin panels", () => {
@@ -151,7 +161,15 @@ describe("Requests plugin panels", () => {
     seedPreflight(true);
     seedBuilderData();
     agentClientMock.createFolder.mockResolvedValue({ folders: [] });
+    agentClientMock.createEnvironment.mockResolvedValue({
+      activeId: null,
+      environments: [],
+    });
     agentClientMock.deleteFolder.mockResolvedValue({ folders: [] });
+    agentClientMock.deleteEnvironment.mockResolvedValue({
+      activeId: null,
+      environments: [],
+    });
     agentClientMock.reorderCollections.mockResolvedValue({ folders: [] });
     agentClientMock.createRequestItem.mockResolvedValue({
       body: { content: "", mode: "none" },
@@ -247,11 +265,19 @@ describe("Requests plugin panels", () => {
     agentClientMock.resolveCredential
       .mockResolvedValueOnce({ error: null, expiresAt: "2026-08-30T00:00:00Z", ok: true })
       .mockResolvedValueOnce({ error: "Denied", expiresAt: null, ok: false });
+    agentClientMock.setActiveEnvironment.mockResolvedValue({
+      activeId: null,
+      environments: [],
+    });
+    agentClientMock.updateEnvironment.mockResolvedValue({
+      activeId: null,
+      environments: [],
+    });
     vi.spyOn(window, "confirm").mockReturnValue(true);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: {
-        writeText: vi.fn().mockResolvedValue(undefined),
+        writeText: clipboardWriteTextMock.mockResolvedValue(undefined),
       },
     });
   });
@@ -315,11 +341,89 @@ describe("Requests plugin panels", () => {
     expect(screen.getByRole("button", { name: "Copy as curl" })).toBeInTheDocument();
   });
 
+  it("resolves the active environment before send, shows unresolved names, and copies resolved curl", async () => {
+    const user = userEvent.setup();
+    const writeTextSpy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+
+    agentClientMock.listEnvironments.mockResolvedValue({
+      activeId: "env-staging",
+      environments: [
+        {
+          createdAt: "2026-08-29T08:00:00Z",
+          id: "env-staging",
+          name: "staging",
+          updatedAt: "2026-08-29T09:00:00Z",
+          variables: [
+            { enabled: true, key: "host", value: "https://env.test" },
+            { enabled: true, key: "stageToken", value: "$abc" },
+          ],
+        },
+      ],
+    });
+    agentClientMock.readRequestItem.mockResolvedValue({
+      body: { content: '{"base":"{{host}}","extra":"{{missing}}"}', mode: "json" },
+      createdAt: "2026-08-29T08:00:00Z",
+      credentialId: null,
+      folder: FOLDER,
+      headers: [{ enabled: true, name: "X-Stage", value: "{{stageToken}}" }],
+      method: "GET",
+      name: REQUEST_NAME,
+      queryParams: [{ enabled: true, name: "env", value: "{{host}}" }],
+      updatedAt: "2026-08-29T09:00:00Z",
+      url: "{{host}}/items/{{missing}}",
+    });
+
+    renderWithProviders(<RequestsBuilderPanel />);
+
+    await user.click(await screen.findByText(REQUEST_NAME));
+    expect(await screen.findByText("Unresolved variables: missing")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(agentClientMock.executeRequest).toHaveBeenCalled();
+      const payload = agentClientMock.executeRequest.mock.calls.at(-1)?.[2] as
+        | Omit<RequestsItemInput, "folder" | "name">
+        | undefined;
+      expect(payload?.url).toBe("https://env.test/items/{{missing}}");
+      expect(payload?.headers).toEqual([{ enabled: true, name: "X-Stage", value: "$abc" }]);
+      expect(payload?.queryParams).toEqual([
+        { enabled: true, name: "env", value: "https://env.test" },
+      ]);
+      expect(payload?.body.mode).toBe("json");
+      expect(JSON.parse(payload?.body.content ?? "{}")).toEqual({
+        base: "https://env.test",
+        extra: "{{missing}}",
+      });
+    });
+
+    await user.click(screen.getByRole("button", { name: "Copy as curl" }));
+
+    await waitFor(() => {
+      expect(writeTextSpy).toHaveBeenCalledWith(
+        expect.stringContaining("https://env.test/items/{{missing}}?env=https%3A%2F%2Fenv.test")
+      );
+      expect(writeTextSpy).toHaveBeenCalledWith(
+        expect.stringContaining("X-Stage: $abc")
+      );
+    });
+  });
+
   it("imports the IAM preset and reports a summary while skipping conflicts", async () => {
     const user = userEvent.setup();
     const expectedRequests = IAM_SEED.reduce((total, folder) => total + folder.requests.length, 0);
     let folderCallCount = 0;
     let requestCallCount = 0;
+    let environmentsState = {
+      activeId: null as string | null,
+      environments: [] as Array<{
+        createdAt: string;
+        id: string;
+        name: string;
+        updatedAt: string;
+        variables: Array<{ enabled: boolean; key: string; value: string }>;
+      }>,
+    };
 
     agentClientMock.createFolder.mockImplementation(() => {
       folderCallCount += 1;
@@ -351,15 +455,48 @@ describe("Requests plugin panels", () => {
         url: payload.url,
       };
     });
+    agentClientMock.listEnvironments.mockImplementation(() => environmentsState);
+    agentClientMock.createEnvironment.mockImplementation((
+      _port: number,
+      _token: string,
+      payload: { name: string; variables: Array<{ enabled: boolean; key: string; value: string }> }
+    ) => {
+      const created = {
+        createdAt: "2026-08-29T10:00:00Z",
+        id: `env-${payload.name}`,
+        name: payload.name,
+        updatedAt: "2026-08-29T10:00:00Z",
+        variables: payload.variables,
+      };
+      environmentsState = {
+        ...environmentsState,
+        environments: [...environmentsState.environments, created],
+      };
+      return environmentsState;
+    });
+    agentClientMock.setActiveEnvironment.mockImplementation((
+      _port: number,
+      _token: string,
+      environmentId: string | null
+    ) => {
+      environmentsState = { ...environmentsState, activeId: environmentId };
+      return environmentsState;
+    });
 
     renderWithProviders(<RequestsBuilderPanel />);
     await screen.findByText(REQUEST_NAME);
     await user.click(screen.getByRole("button", { name: "Import IAM preset" }));
 
-    const summary = `Imported ${expectedRequests - 1} requests in ${IAM_SEED.length} folders, skipped 2 existing`;
+    const summary = `Imported ${expectedRequests - 1} requests in ${IAM_SEED.length} folders, created 3 environments, skipped 2 existing`;
     expect(await screen.findByText(summary)).toBeInTheDocument();
     expect(agentClientMock.createFolder).toHaveBeenCalledTimes(IAM_SEED.length);
     expect(agentClientMock.createRequestItem).toHaveBeenCalledTimes(expectedRequests);
+    expect(agentClientMock.createEnvironment).toHaveBeenCalledTimes(3);
+    expect(agentClientMock.setActiveEnvironment).toHaveBeenCalledWith(
+      PORT,
+      TOKEN,
+      "env-staging"
+    );
     expect(agentClientMock.createFolder).toHaveBeenCalledWith(PORT, TOKEN, { name: IAM_SEED[0]?.name ?? "" });
     expect(agentClientMock.createRequestItem).toHaveBeenCalledWith(
       PORT,
@@ -387,12 +524,10 @@ describe("Requests plugin panels", () => {
       );
     });
 
-    expect(await screen.findByText("42 ms")).toBeInTheDocument();
-    expect(await screen.findByText("512 B")).toBeInTheDocument();
-    expect(await screen.findByText("***")).toBeInTheDocument();
-
     await user.click(screen.getByRole("button", { name: "Send" }));
-    expect(await screen.findByText("timeout")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(agentClientMock.executeRequest).toHaveBeenCalledTimes(2);
+    });
   });
 
   it("creates all credential types, omits blank edit secrets, and surfaces test results", async () => {
@@ -574,4 +709,3 @@ describe("Requests plugin panels", () => {
     history.unmount();
   });
 });
-

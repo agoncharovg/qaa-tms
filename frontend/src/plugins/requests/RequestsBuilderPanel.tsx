@@ -59,11 +59,14 @@ import {
   type RequestsEditorDraft,
 } from "@/plugins/requests/requestsDrafts";
 import { buildCurl, parseCurl } from "@/plugins/requests/requestsCurl";
-import { IAM_SEED } from "@/plugins/requests/requestsSeeds";
+import { IAM_ENVIRONMENT_SEED, IAM_SEED } from "@/plugins/requests/requestsSeeds";
 import { getErrorMessage, type RequestsNotice, useRequestsAgent } from "@/plugins/requests/requestsShared";
+import { buildVariableMap, resolveRequestDocument } from "@/plugins/requests/requestsVariables";
 import { useAuthStore } from "@/store/authStore";
 
 const REQUESTS_WRITE_PERMISSION = "requests.write";
+const NO_ENVIRONMENT_VALUE = "__none__";
+const STAGING_ENVIRONMENT_NAME = "staging";
 
 const FOLDER_ROW_STYLE: CSSProperties = {
   alignItems: "center",
@@ -451,6 +454,14 @@ export function RequestsBuilderPanel() {
     retry: false,
   });
 
+  const environmentsQuery = useQuery({
+    enabled: Boolean(token && agentPort !== null),
+    queryFn: ({ signal }) => agentClient.listEnvironments(agentPort ?? 0, token ?? "", signal),
+    queryKey: [QueryKey.REQUESTS_ENVIRONMENTS, token, agentPort],
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+
   const topLevelFolders = useMemo(() => collectionsQuery.data?.folders ?? [], [collectionsQuery.data?.folders]);
   const allFolders = useMemo(() => flattenFolders(topLevelFolders), [topLevelFolders]);
 
@@ -484,6 +495,24 @@ export function RequestsBuilderPanel() {
   }, [allFolders, itemsQueries]);
 
   const selectedFolderItemsState = selectedFolder ? itemsByFolder.get(selectedFolder) ?? null : null;
+  const activeEnvironment = useMemo(() => {
+    if (!environmentsQuery.data?.activeId) {
+      return null;
+    }
+    return (
+      environmentsQuery.data.environments.find(
+        (environment) => environment.id === environmentsQuery.data?.activeId
+      ) ?? null
+    );
+  }, [environmentsQuery.data]);
+  const environmentVariables = useMemo(
+    () => buildVariableMap(activeEnvironment),
+    [activeEnvironment]
+  );
+  const resolvedEditor = useMemo(
+    () => resolveRequestDocument(editor, environmentVariables),
+    [editor, environmentVariables]
+  );
 
   const requestQuery = useQuery({
     enabled: Boolean(token && agentPort !== null && selectedFolder && selectedRequestName && !isComposingNewRequest),
@@ -750,7 +779,7 @@ export function RequestsBuilderPanel() {
         throw new Error("URL is required.");
       }
 
-      const payload = buildRequestPayload(editor);
+      const payload = buildRequestPayload(resolvedEditor.document);
       return agentClient.executeRequest(agentPort, token, {
         body: payload.body,
         credentialId: payload.credentialId,
@@ -769,6 +798,25 @@ export function RequestsBuilderPanel() {
     },
   });
 
+  const setActiveEnvironmentMutation = useMutation({
+    mutationFn: async (environmentId: string | null) => {
+      if (!token || agentPort === null) {
+        throw new Error("Authentication is required.");
+      }
+
+      return agentClient.setActiveEnvironment(agentPort, token, environmentId);
+    },
+    onError: (error) => {
+      setNotice({
+        message: getErrorMessage(error, "Unable to change the active environment."),
+        status: "error",
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: [QueryKey.REQUESTS_ENVIRONMENTS] });
+    },
+  });
+
   const importPresetMutation = useMutation({
     mutationFn: async () => {
       if (!token || agentPort === null) {
@@ -777,6 +825,7 @@ export function RequestsBuilderPanel() {
 
       let importedRequests = 0;
       let skipped = 0;
+      let createdEnvironments = 0;
 
       for (const folder of IAM_SEED) {
         try {
@@ -812,19 +861,52 @@ export function RequestsBuilderPanel() {
         }
       }
 
-      return { importedRequests, skipped };
+      let environmentsState = await agentClient.listEnvironments(agentPort, token);
+      const existingEnvironmentNames = new Set(
+        environmentsState.environments.map((environment) => environment.name)
+      );
+
+      for (const environment of IAM_ENVIRONMENT_SEED) {
+        if (existingEnvironmentNames.has(environment.name)) {
+          skipped += 1;
+          continue;
+        }
+
+        environmentsState = await agentClient.createEnvironment(agentPort, token, {
+          name: environment.name,
+          variables: environment.variables,
+        });
+        createdEnvironments += 1;
+        existingEnvironmentNames.add(environment.name);
+      }
+
+      if (!environmentsState.activeId) {
+        const stagingEnvironment = environmentsState.environments.find(
+          (environment) => environment.name === STAGING_ENVIRONMENT_NAME
+        );
+        if (stagingEnvironment) {
+          environmentsState = await agentClient.setActiveEnvironment(
+            agentPort,
+            token,
+            stagingEnvironment.id
+          );
+        }
+      }
+
+      return { createdEnvironments, importedRequests, skipped };
     },
     onError: (error) => {
       setNotice({ message: getErrorMessage(error, "Unable to import the IAM preset."), status: "error" });
     },
-    onSuccess: async ({ importedRequests, skipped }) => {
+    onSuccess: async ({ createdEnvironments, importedRequests, skipped }) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: [QueryKey.REQUESTS_COLLECTIONS] }),
         queryClient.invalidateQueries({ queryKey: [QueryKey.REQUESTS_ITEMS] }),
+        queryClient.invalidateQueries({ queryKey: [QueryKey.REQUESTS_ENVIRONMENTS] }),
       ]);
       notifications.show({
         color: "green",
-        message: `Imported ${importedRequests} requests in ${IAM_SEED.length} folders, skipped ${skipped} existing`,
+        message: `Imported ${importedRequests} requests in ${IAM_SEED.length} folders, created ${createdEnvironments} environments, skipped ${skipped} existing`,
         title: "IAM preset imported",
       });
     },
@@ -874,6 +956,13 @@ export function RequestsBuilderPanel() {
     label: `${credential.name} (${credential.type})`,
     value: credential.id,
   }));
+  const environmentOptions = [
+    { label: "No environment", value: NO_ENVIRONMENT_VALUE },
+    ...((environmentsQuery.data?.environments ?? []).map((environment) => ({
+      label: environment.name,
+      value: environment.id,
+    }))),
+  ];
 
   const selectedCredentialName =
     editor.credentialId
@@ -1026,6 +1115,31 @@ export function RequestsBuilderPanel() {
                   <RequestsLoadingState message="Loading the selected request from the companion app." />
                 ) : (
                   <Stack gap="md">
+                    <Group justify="space-between" wrap="wrap">
+                      <Text c="dimmed" size="sm">
+                        Active environment values are applied only on send and curl export. Saved requests keep the raw templates.
+                      </Text>
+                      <Select
+                        data={environmentOptions}
+                        disabled={!canWrite || environmentsQuery.isLoading}
+                        label="Active environment"
+                        onChange={(value) =>
+                          void setActiveEnvironmentMutation.mutateAsync(
+                            value === NO_ENVIRONMENT_VALUE ? null : value ?? null
+                          )
+                        }
+                        value={environmentsQuery.data?.activeId ?? NO_ENVIRONMENT_VALUE}
+                        w={260}
+                      />
+                    </Group>
+                    {environmentsQuery.isError ? (
+                      <RequestsErrorAlert
+                        error={environmentsQuery.error}
+                        fallback="Unable to load environments."
+                        onRetry={() => void environmentsQuery.refetch()}
+                        title="Environments failed"
+                      />
+                    ) : null}
                     <Group align="flex-end" grow>
                       <TextInput
                         description={isComposingNewRequest ? "Leave empty to auto-name the saved request." : "Saved request names are fixed."}
@@ -1070,7 +1184,10 @@ export function RequestsBuilderPanel() {
                                   throw new Error("Clipboard is unavailable.");
                                 }
                                 await navigator.clipboard.writeText(
-                                  buildCurl({ ...editor, credentialName: selectedCredentialName })
+                                  buildCurl({
+                                    ...resolvedEditor.document,
+                                    credentialName: selectedCredentialName,
+                                  })
                                 );
                                 notifications.show({
                                   color: "green",
@@ -1097,6 +1214,11 @@ export function RequestsBuilderPanel() {
                         ) : null}
                       </Group>
                     </Group>
+                    {resolvedEditor.unresolved.length > 0 ? (
+                      <Text c="yellow.8" size="sm">
+                        Unresolved variables: {resolvedEditor.unresolved.join(", ")}
+                      </Text>
+                    ) : null}
                     <SegmentedControl
                       data={[
                         { label: "Headers", value: "headers" },
@@ -1176,7 +1298,7 @@ export function RequestsBuilderPanel() {
                       <Select
                         clearable
                         data={credentialOptions}
-                        description="Manual enabled Authorization headers override the selected credential."
+                        description="Manual enabled Authorization headers override the selected credential. Credential URLs are not templated in this phase; create per-environment credentials instead."
                         label="Credential"
                         onChange={(value) => setEditor((current) => ({ ...current, credentialId: value }))}
                         placeholder="No credential"
@@ -1358,4 +1480,3 @@ export function RequestsBuilderPanel() {
     </Stack>
   );
 }
-

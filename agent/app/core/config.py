@@ -36,6 +36,7 @@ from app.core.constants import (
     REQUESTS_COLLECTIONS_DIR_NAME,
     REQUESTS_CREDENTIALS_FILE_NAME,
     REQUESTS_DIR_NAME,
+    REQUESTS_ENVIRONMENTS_FILE_NAME,
     REQUESTS_HISTORY_FILE_NAME,
     EnvKey,
     StagingEnvKey,
@@ -255,6 +256,10 @@ class Settings(BaseSettings):
     @property
     def requests_credentials_path(self) -> str:
         return str(env_file.user_data_home() / REQUESTS_DIR_NAME / REQUESTS_CREDENTIALS_FILE_NAME)
+
+    @property
+    def requests_environments_path(self) -> str:
+        return str(env_file.user_data_home() / REQUESTS_DIR_NAME / REQUESTS_ENVIRONMENTS_FILE_NAME)
 
     @property
     def requests_history_path(self) -> str:

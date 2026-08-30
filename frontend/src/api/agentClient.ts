@@ -9,6 +9,7 @@ import {
   buildAgentNotebookNotesPath,
   buildAgentNotebookSearchPath,
   buildAgentRequestsCredentialPath,
+  buildAgentRequestsEnvironmentPath,
   buildAgentRequestsFolderDeletePath,
   buildAgentRequestsHistoryEntryPath,
   buildAgentRequestsItemPath,
@@ -91,8 +92,10 @@ import type {
   RequestsCredentialPublic,
   RequestsCredentialResolveResponse,
   RequestsCredentialsListResponse,
+  RequestsEnvironmentsListResponse,
   RequestsExecuteResponse,
   RequestsHistoryListResponse,
+  RequestsEnvironment,
   RequestsItemInput,
   RequestsItemReadResponse,
   RequestsItemsResponse,
@@ -967,6 +970,81 @@ export const agentClient = {
       port,
       AgentPath.REQUESTS_CREDENTIALS,
       { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
+  listEnvironments(
+    port: number,
+    token: string,
+    signal?: AbortSignal
+  ): Promise<RequestsEnvironmentsListResponse> {
+    return readAgentJson<RequestsEnvironmentsListResponse>(
+      port,
+      AgentPath.REQUESTS_ENVIRONMENTS,
+      { method: HttpMethod.GET },
+      token,
+      signal
+    );
+  },
+
+  createEnvironment(
+    port: number,
+    token: string,
+    payload: Pick<RequestsEnvironment, "name" | "variables">,
+    signal?: AbortSignal
+  ): Promise<RequestsEnvironmentsListResponse> {
+    return readAgentJson<RequestsEnvironmentsListResponse>(
+      port,
+      AgentPath.REQUESTS_ENVIRONMENTS,
+      createJsonBody(payload),
+      token,
+      signal
+    );
+  },
+
+  updateEnvironment(
+    port: number,
+    token: string,
+    environmentId: string,
+    payload: Partial<Pick<RequestsEnvironment, "name" | "variables">>,
+    signal?: AbortSignal
+  ): Promise<RequestsEnvironmentsListResponse> {
+    return readAgentJson<RequestsEnvironmentsListResponse>(
+      port,
+      buildAgentRequestsEnvironmentPath(environmentId),
+      createJsonBody(payload, HttpMethod.PUT),
+      token,
+      signal
+    );
+  },
+
+  deleteEnvironment(
+    port: number,
+    token: string,
+    environmentId: string,
+    signal?: AbortSignal
+  ): Promise<RequestsEnvironmentsListResponse> {
+    return readAgentJson<RequestsEnvironmentsListResponse>(
+      port,
+      buildAgentRequestsEnvironmentPath(environmentId),
+      { method: HttpMethod.DELETE },
+      token,
+      signal
+    );
+  },
+
+  setActiveEnvironment(
+    port: number,
+    token: string,
+    environmentId: string | null,
+    signal?: AbortSignal
+  ): Promise<RequestsEnvironmentsListResponse> {
+    return readAgentJson<RequestsEnvironmentsListResponse>(
+      port,
+      AgentPath.REQUESTS_ENVIRONMENT_ACTIVE,
+      createJsonBody({ environmentId }, HttpMethod.PUT),
       token,
       signal
     );
