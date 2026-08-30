@@ -254,4 +254,72 @@ describe("EnvironmentsPanel", () => {
       expect(agentClientMock.getRequestsState.mock.calls.length).toBeGreaterThan(0);
     });
   });
+  it("preserves unsaved draft rows after saving another variable", async () => {
+    const user = userEvent.setup();
+    let state: RequestsEnvironmentsState = {
+      activeId: null as string | null,
+      environments: [
+        {
+          createdAt: "2026-08-29T08:00:00Z",
+          id: "env-staging",
+          name: "staging",
+          updatedAt: "2026-08-29T09:00:00Z",
+        },
+      ],
+      variables: [],
+    };
+
+    agentClientMock.getRequestsState.mockImplementation(() => clone(state));
+    agentClientMock.createVariable.mockImplementation(
+      (_port: number, _token: string, payload: { enabled: boolean; key: string; secret: boolean; values: Record<string, string> }) => {
+        state = {
+          ...state,
+          variables: [
+            ...state.variables,
+            {
+              createdAt: "2026-08-29T12:00:00Z",
+              enabled: payload.enabled,
+              id: `var-${payload.key}`,
+              key: payload.key,
+              secret: payload.secret,
+              updatedAt: "2026-08-29T12:00:00Z",
+              values: payload.values,
+            },
+          ],
+        };
+        return clone(state);
+      }
+    );
+
+    renderWithProviders(<EnvironmentsPanel />);
+
+    expect(await screen.findByText("Requests / Environments")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Add variable" }));
+    await user.click(screen.getByRole("button", { name: "Add variable" }));
+
+    fireEvent.change(screen.getAllByLabelText("Variable key 1")[0], { target: { value: "iamBase" } });
+    fireEvent.change(screen.getAllByLabelText("staging value 1")[0], { target: { value: "https://stg.test" } });
+    fireEvent.change(screen.getAllByLabelText("Variable key 2")[0], { target: { value: "verifyBase" } });
+    fireEvent.change(screen.getAllByLabelText("staging value 2")[0], { target: { value: "https://verify.test" } });
+
+    await user.click(screen.getAllByRole("button", { name: "Save" })[0]);
+
+    await waitFor(() => {
+      expect(agentClientMock.createVariable).toHaveBeenCalledWith(PORT, TOKEN, {
+        enabled: true,
+        key: "iamBase",
+        secret: false,
+        values: {
+          "env-staging": "https://stg.test",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Variable key 2")[0]).toHaveValue("verifyBase");
+    });
+    expect(screen.getAllByLabelText("staging value 2")[0]).toHaveValue("https://verify.test");
+  });
+
 });

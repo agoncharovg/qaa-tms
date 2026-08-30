@@ -9,7 +9,7 @@ import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypedDict
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from pydantic import ValidationError
 
@@ -51,6 +51,7 @@ GENERATED_ITEM_NAME_FORMAT = "%Y-%m-%d-%H-%M-%S"
 TEMP_FILE_PREFIX = ".requests-"
 FOLDER_KIND = "Folder"
 ITEM_KIND = "Item"
+VARIABLE_ROW_ID_NAMESPACE = uuid5(NAMESPACE_URL, "qaa-tms/requests/variable")
 
 type CredentialCreateModel = (
     BearerCredentialCreate
@@ -1011,7 +1012,7 @@ def _migrate_legacy_environments_state(payload: dict[str, Any]) -> RequestsEnvir
             row = rows_by_key.get(variable["key"])
             if row is None:
                 row = {
-                    "id": str(uuid4()),
+                    "id": str(uuid5(VARIABLE_ROW_ID_NAMESPACE, variable["key"])),
                     "key": variable["key"],
                     "secret": False,
                     "enabled": variable["enabled"],

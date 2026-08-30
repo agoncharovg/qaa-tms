@@ -589,6 +589,35 @@ def test_requests_state_migrates_legacy_environment_shape(
     assert state.variables[1].values == {"env-staging": "https://verify.stg"}
     assert state.variables[2].enabled is False
     assert state.variables[2].values == {"env-preprod": "secret"}
+    migrated_variable_ids = [variable.id for variable in state.variables]
+    reloaded_state = list_state(settings)
+
+    assert [variable.id for variable in reloaded_state.variables] == migrated_variable_ids
+
+    updated_state = update_variable(
+        settings,
+        migrated_variable_ids[0],
+        VariableUpdateRequest(
+            values={
+                "env-staging": "https://stg.updated",
+                "env-preprod": "https://preprod.updated",
+            },
+        ),
+    )
+    assert next(
+        variable.values
+        for variable in updated_state.variables
+        if variable.id == migrated_variable_ids[0]
+    ) == {
+        "env-staging": "https://stg.updated",
+        "env-preprod": "https://preprod.updated",
+    }
+
+    deleted_state = delete_variable(settings, migrated_variable_ids[1])
+    assert [variable.id for variable in deleted_state.variables] == [
+        migrated_variable_ids[0],
+        migrated_variable_ids[2],
+    ]
 
 
 def test_create_variable_rejects_duplicate_keys(

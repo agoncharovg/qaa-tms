@@ -59,7 +59,7 @@ function normalizeValues(values: Record<string, string>): Record<string, string>
 }
 
 function syncDraftRows(
-  nextState: RequestsEnvironmentsState,
+  nextState: RequestsEnvironmentsState | undefined,
   currentRows: VariableDraftRow[],
   options: { removeDraftId?: string } = {}
 ): VariableDraftRow[] {
@@ -92,7 +92,7 @@ export function EnvironmentsPanel() {
   });
 
   useEffect(() => {
-    setDraftRows(buildDraftRows(environmentsQuery.data));
+    setDraftRows((current) => syncDraftRows(environmentsQuery.data, current));
   }, [environmentsQuery.data]);
 
   const environments = environmentsQuery.data?.environments ?? [];
