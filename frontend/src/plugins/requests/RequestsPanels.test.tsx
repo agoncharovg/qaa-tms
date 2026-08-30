@@ -8,24 +8,27 @@ const agentClientMock = vi.hoisted(() => ({
   createEnvironment: vi.fn(),
   createFolder: vi.fn(),
   createRequestItem: vi.fn(),
+  createVariable: vi.fn(),
   deleteCredential: vi.fn(),
   deleteEnvironment: vi.fn(),
   deleteFolder: vi.fn(),
   deleteHistoryEntry: vi.fn(),
   deleteRequestItem: vi.fn(),
+  deleteVariable: vi.fn(),
   executeRequest: vi.fn(),
+  getRequestsState: vi.fn(),
   listCollections: vi.fn(),
   listCredentials: vi.fn(),
-  listEnvironments: vi.fn(),
   listHistory: vi.fn(),
   listRequestItems: vi.fn(),
   readRequestItem: vi.fn(),
   reorderCollections: vi.fn(),
   resolveCredential: vi.fn(),
   setActiveEnvironment: vi.fn(),
-  updateEnvironment: vi.fn(),
   updateCredential: vi.fn(),
+  updateEnvironment: vi.fn(),
   updateRequestItem: vi.fn(),
+  updateVariable: vi.fn(),
 }));
 
 const getPreflightMock = vi.hoisted(() => vi.fn());
@@ -50,7 +53,7 @@ vi.mock("@/api/agentClient", async () => {
 });
 
 import { AgentRequestError } from "@/api/agentClient";
-import type { RequestsItemInput } from "@/api/types";
+import type { RequestsEnvironmentsState, RequestsItemInput } from "@/api/types";
 import { PluginId } from "@/constants";
 import { CredentialsPanel } from "@/plugins/requests/CredentialsPanel";
 import { RequestsBuilderPanel } from "@/plugins/requests/RequestsBuilderPanel";
@@ -145,9 +148,10 @@ function seedBuilderData() {
       },
     ],
   });
-  agentClientMock.listEnvironments.mockResolvedValue({
+  agentClientMock.getRequestsState.mockResolvedValue({
     activeId: null,
     environments: [],
+    variables: [],
   });
 }
 
@@ -155,20 +159,36 @@ describe("Requests plugin panels", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     clearRequestsDrafts();
-    localStorage.clear();
     resetAuthStoreState();
     seedAuth(["requests.read", "requests.write"]);
-    seedPreflight(true);
+    seedPreflight();
     seedBuilderData();
     agentClientMock.createFolder.mockResolvedValue({ folders: [] });
     agentClientMock.createEnvironment.mockResolvedValue({
       activeId: null,
       environments: [],
+      variables: [],
+    });
+    agentClientMock.createVariable.mockResolvedValue({
+      activeId: null,
+      environments: [],
+      variables: [],
     });
     agentClientMock.deleteFolder.mockResolvedValue({ folders: [] });
     agentClientMock.deleteEnvironment.mockResolvedValue({
       activeId: null,
       environments: [],
+      variables: [],
+    });
+    agentClientMock.deleteVariable.mockResolvedValue({
+      activeId: null,
+      environments: [],
+      variables: [],
+    });
+    agentClientMock.deleteEnvironment.mockResolvedValue({
+      activeId: null,
+      environments: [],
+      variables: [],
     });
     agentClientMock.reorderCollections.mockResolvedValue({ folders: [] });
     agentClientMock.createRequestItem.mockResolvedValue({
@@ -268,10 +288,12 @@ describe("Requests plugin panels", () => {
     agentClientMock.setActiveEnvironment.mockResolvedValue({
       activeId: null,
       environments: [],
+    variables: [],
     });
     agentClientMock.updateEnvironment.mockResolvedValue({
       activeId: null,
       environments: [],
+      variables: [],
     });
     vi.spyOn(window, "confirm").mockReturnValue(true);
     Object.defineProperty(navigator, "clipboard", {
@@ -286,7 +308,7 @@ describe("Requests plugin panels", () => {
     const user = userEvent.setup();
     renderWithProviders(<RequestsBuilderPanel />);
 
-    const savedRequestRow = await screen.findByText(REQUEST_NAME);
+    const savedRequestRow = await screen.findByRole("button", { name: REQUEST_NAME });
     expect(savedRequestRow).toBeInTheDocument();
     await user.click(savedRequestRow);
     const requestUrlInput = await screen.findByLabelText("Request URL");
@@ -324,7 +346,7 @@ describe("Requests plugin panels", () => {
       );
     });
 
-    await user.click(screen.getByText(REQUEST_NAME));
+    await user.click(screen.getByRole("button", { name: REQUEST_NAME }));
     await user.click(screen.getByRole("button", { name: "Delete request" }));
 
     await waitFor(() => {
@@ -385,11 +407,10 @@ describe("Requests plugin panels", () => {
     expect(screen.getByRole("button", { name: "Copy as curl" })).toBeInTheDocument();
   });
 
-  it("resolves the active environment before send, shows unresolved names, and copies resolved curl", async () => {
+  it("offers active-environment variables for URL insertion", async () => {
     const user = userEvent.setup();
-    const writeTextSpy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
 
-    agentClientMock.listEnvironments.mockResolvedValue({
+    agentClientMock.getRequestsState.mockResolvedValue({
       activeId: "env-staging",
       environments: [
         {
@@ -397,10 +418,65 @@ describe("Requests plugin panels", () => {
           id: "env-staging",
           name: "staging",
           updatedAt: "2026-08-29T09:00:00Z",
-          variables: [
-            { enabled: true, key: "host", value: "https://env.test" },
-            { enabled: true, key: "stageToken", value: "$abc" },
-          ],
+        },
+      ],
+      variables: [
+        {
+          createdAt: "2026-08-29T08:00:00Z",
+          enabled: true,
+          id: "var-host",
+          key: "host",
+          secret: false,
+          updatedAt: "2026-08-29T09:00:00Z",
+          values: { "env-staging": "https://env.test" },
+        },
+      ],
+    });
+
+    renderWithProviders(<RequestsBuilderPanel />);
+
+    await screen.findByRole("button", { name: REQUEST_NAME });
+    await user.click(screen.getByRole("button", { name: "New request" }));
+    const requestUrlInput = await screen.findByLabelText("Request URL");
+    await user.type(requestUrlInput, "https://");
+    await user.click(screen.getByRole("button", { name: "Insert variable" }));
+    await user.click(await screen.findByRole("menuitem", { name: "host" }));
+
+    expect(requestUrlInput).toHaveValue("https://{{host}}");
+  });
+
+  it("resolves the active environment before send, shows unresolved names, and copies resolved curl", async () => {
+    const user = userEvent.setup();
+    const writeTextSpy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+
+    agentClientMock.getRequestsState.mockResolvedValue({
+      activeId: "env-staging",
+      environments: [
+        {
+          createdAt: "2026-08-29T08:00:00Z",
+          id: "env-staging",
+          name: "staging",
+          updatedAt: "2026-08-29T09:00:00Z",
+        },
+      ],
+      variables: [
+        {
+          createdAt: "2026-08-29T08:00:00Z",
+          enabled: true,
+          id: "var-host",
+          key: "host",
+          secret: false,
+          updatedAt: "2026-08-29T09:00:00Z",
+          values: { "env-staging": "https://env.test" },
+        },
+        {
+          createdAt: "2026-08-29T08:00:00Z",
+          enabled: true,
+          id: "var-stage-token",
+          key: "stageToken",
+          secret: false,
+          updatedAt: "2026-08-29T09:00:00Z",
+          values: { "env-staging": "$abc" },
         },
       ],
     });
@@ -419,7 +495,7 @@ describe("Requests plugin panels", () => {
 
     renderWithProviders(<RequestsBuilderPanel />);
 
-    await user.click(await screen.findByText(REQUEST_NAME));
+    await user.click(await screen.findByRole("button", { name: REQUEST_NAME }));
     expect(await screen.findByText("Unresolved variables: missing")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Send" }));
@@ -458,15 +534,10 @@ describe("Requests plugin panels", () => {
     const expectedRequests = IAM_SEED.reduce((total, folder) => total + folder.requests.length, 0);
     let folderCallCount = 0;
     let requestCallCount = 0;
-    let environmentsState = {
-      activeId: null as string | null,
-      environments: [] as Array<{
-        createdAt: string;
-        id: string;
-        name: string;
-        updatedAt: string;
-        variables: Array<{ enabled: boolean; key: string; value: string }>;
-      }>,
+    let environmentsState: RequestsEnvironmentsState = {
+      activeId: null,
+      environments: [],
+      variables: [],
     };
 
     agentClientMock.createFolder.mockImplementation(() => {
@@ -499,18 +570,13 @@ describe("Requests plugin panels", () => {
         url: payload.url,
       };
     });
-    agentClientMock.listEnvironments.mockImplementation(() => environmentsState);
-    agentClientMock.createEnvironment.mockImplementation((
-      _port: number,
-      _token: string,
-      payload: { name: string; variables: Array<{ enabled: boolean; key: string; value: string }> }
-    ) => {
+    agentClientMock.getRequestsState.mockImplementation(() => environmentsState);
+    agentClientMock.createEnvironment.mockImplementation((_port: number, _token: string, payload: { name: string }) => {
       const created = {
         createdAt: "2026-08-29T10:00:00Z",
-        id: `env-${payload.name}`,
+        id: "env-" + payload.name,
         name: payload.name,
         updatedAt: "2026-08-29T10:00:00Z",
-        variables: payload.variables,
       };
       environmentsState = {
         ...environmentsState,
@@ -518,6 +584,28 @@ describe("Requests plugin panels", () => {
       };
       return environmentsState;
     });
+    agentClientMock.createVariable.mockImplementation(
+      (
+        _port: number,
+        _token: string,
+        payload: { enabled: boolean; key: string; secret: boolean; values: Record<string, string> }
+      ) => {
+        const created = {
+          createdAt: "2026-08-29T10:00:00Z",
+          enabled: payload.enabled,
+          id: "var-" + payload.key,
+          key: payload.key,
+          secret: payload.secret,
+          updatedAt: "2026-08-29T10:00:00Z",
+          values: payload.values,
+        };
+        environmentsState = {
+          ...environmentsState,
+          variables: [...environmentsState.variables, created],
+        };
+        return environmentsState;
+      }
+    );
     agentClientMock.setActiveEnvironment.mockImplementation((
       _port: number,
       _token: string,
@@ -528,7 +616,7 @@ describe("Requests plugin panels", () => {
     });
 
     renderWithProviders(<RequestsBuilderPanel />);
-    await screen.findByText(REQUEST_NAME);
+    await screen.findByRole("button", { name: REQUEST_NAME });
     await user.click(screen.getByRole("button", { name: "Import IAM preset" }));
 
     const summary = `Imported ${expectedRequests - 1} requests in ${IAM_SEED.length} folders, created 3 environments, skipped 2 existing`;
@@ -536,6 +624,7 @@ describe("Requests plugin panels", () => {
     expect(agentClientMock.createFolder).toHaveBeenCalledTimes(IAM_SEED.length);
     expect(agentClientMock.createRequestItem).toHaveBeenCalledTimes(expectedRequests);
     expect(agentClientMock.createEnvironment).toHaveBeenCalledTimes(3);
+    expect(agentClientMock.createVariable).toHaveBeenCalledTimes(2);
     expect(agentClientMock.setActiveEnvironment).toHaveBeenCalledWith(
       PORT,
       TOKEN,
@@ -552,7 +641,7 @@ describe("Requests plugin panels", () => {
     const user = userEvent.setup();
     renderWithProviders(<RequestsBuilderPanel />);
 
-    await user.click(await screen.findByText(REQUEST_NAME));
+    await user.click(await screen.findByRole("button", { name: REQUEST_NAME }));
     const sendUrlInput = await screen.findByLabelText("Request URL");
     await waitFor(() => expect(sendUrlInput).toHaveValue("https://svc.test/items"));
     await user.click(screen.getByRole("button", { name: "Send" }));
@@ -736,7 +825,7 @@ describe("Requests plugin panels", () => {
     seedAuth(["requests.read"]);
 
     const builder = renderWithProviders(<RequestsBuilderPanel />);
-    await screen.findByText(REQUEST_NAME);
+    await screen.findByRole("button", { name: REQUEST_NAME });
     expect(screen.queryByRole("button", { name: "Create folder" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
     builder.unmount();

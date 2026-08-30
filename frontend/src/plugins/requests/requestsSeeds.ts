@@ -1,5 +1,4 @@
 import type {
-  RequestsEnvironmentVariable,
   RequestsHeaderField,
   RequestsItemInput,
   RequestsMethod,
@@ -20,9 +19,20 @@ export interface RequestsSeedFolder {
   requests: RequestsSeedRequest[];
 }
 
-export interface RequestsSeedEnvironment {
+export interface RequestsSeedEnvironmentColumn {
   name: string;
-  variables: RequestsEnvironmentVariable[];
+}
+
+export interface RequestsSeedVariableRow {
+  key: string;
+  secret: boolean;
+  enabled: boolean;
+  values: Record<string, string>;
+}
+
+export interface RequestsSeedEnvironmentState {
+  environments: RequestsSeedEnvironmentColumn[];
+  variables: RequestsSeedVariableRow[];
 }
 
 function buildHeader(name: string, value: string): RequestsHeaderField {
@@ -67,20 +77,6 @@ function buildRequest(
 
 function buildFolder(name: string, requests: RequestsSeedRequest[]): RequestsSeedFolder {
   return { name, requests };
-}
-
-function buildEnvironment(
-  name: string,
-  iamBase: string,
-  verifyBase: string
-): RequestsSeedEnvironment {
-  return {
-    name,
-    variables: [
-      { enabled: true, key: "iamBase", value: iamBase },
-      { enabled: true, key: "verifyBase", value: verifyBase },
-    ],
-  };
 }
 
 export const IAM_SEED: RequestsSeedFolder[] = [
@@ -163,20 +159,28 @@ export const IAM_SEED: RequestsSeedFolder[] = [
   ]),
 ];
 
-export const IAM_ENVIRONMENT_SEED: RequestsSeedEnvironment[] = [
-  buildEnvironment(
-    "staging",
-    "https://iam-api-qaa-iam.frn-stg.p.gc.onl",
-    "https://iam-api-qaa-iam.frn-stg.p.gc.onl"
-  ),
-  buildEnvironment(
-    "preprod",
-    "https://api.preprod.world",
-    "https://iam-auth-preprod.i.gc.onl"
-  ),
-  buildEnvironment(
-    "prod",
-    "https://api.gcore.com",
-    "https://iam-auth-prod.i.gc.onl"
-  ),
-];
+export const IAM_ENVIRONMENT_SEED: RequestsSeedEnvironmentState = {
+  environments: [{ name: "staging" }, { name: "preprod" }, { name: "prod" }],
+  variables: [
+    {
+      enabled: true,
+      key: "iamBase",
+      secret: false,
+      values: {
+        staging: "https://iam-api-qaa-iam.frn-stg.p.gc.onl",
+        preprod: "https://api.preprod.world",
+        prod: "https://api.gcore.com",
+      },
+    },
+    {
+      enabled: true,
+      key: "verifyBase",
+      secret: false,
+      values: {
+        staging: "https://iam-api-qaa-iam.frn-stg.p.gc.onl",
+        preprod: "https://iam-auth-preprod.i.gc.onl",
+        prod: "https://iam-auth-prod.i.gc.onl",
+      },
+    },
+  ],
+};

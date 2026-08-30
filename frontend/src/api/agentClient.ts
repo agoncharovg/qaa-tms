@@ -10,6 +10,7 @@ import {
   buildAgentNotebookSearchPath,
   buildAgentRequestsCredentialPath,
   buildAgentRequestsEnvironmentPath,
+  buildAgentRequestsVariablePath,
   buildAgentRequestsFolderDeletePath,
   buildAgentRequestsHistoryEntryPath,
   buildAgentRequestsItemPath,
@@ -92,10 +93,11 @@ import type {
   RequestsCredentialPublic,
   RequestsCredentialResolveResponse,
   RequestsCredentialsListResponse,
-  RequestsEnvironmentsListResponse,
+  RequestsEnvironmentsState,
   RequestsExecuteResponse,
   RequestsHistoryListResponse,
-  RequestsEnvironment,
+  RequestsEnvironmentColumn,
+  RequestsVariableRow,
   RequestsItemInput,
   RequestsItemReadResponse,
   RequestsItemsResponse,
@@ -975,12 +977,12 @@ export const agentClient = {
     );
   },
 
-  listEnvironments(
+  getRequestsState(
     port: number,
     token: string,
     signal?: AbortSignal
-  ): Promise<RequestsEnvironmentsListResponse> {
-    return readAgentJson<RequestsEnvironmentsListResponse>(
+  ): Promise<RequestsEnvironmentsState> {
+    return readAgentJson<RequestsEnvironmentsState>(
       port,
       AgentPath.REQUESTS_ENVIRONMENTS,
       { method: HttpMethod.GET },
@@ -992,10 +994,10 @@ export const agentClient = {
   createEnvironment(
     port: number,
     token: string,
-    payload: Pick<RequestsEnvironment, "name" | "variables">,
+    payload: Pick<RequestsEnvironmentColumn, "name">,
     signal?: AbortSignal
-  ): Promise<RequestsEnvironmentsListResponse> {
-    return readAgentJson<RequestsEnvironmentsListResponse>(
+  ): Promise<RequestsEnvironmentsState> {
+    return readAgentJson<RequestsEnvironmentsState>(
       port,
       AgentPath.REQUESTS_ENVIRONMENTS,
       createJsonBody(payload),
@@ -1008,10 +1010,10 @@ export const agentClient = {
     port: number,
     token: string,
     environmentId: string,
-    payload: Partial<Pick<RequestsEnvironment, "name" | "variables">>,
+    payload: Partial<Pick<RequestsEnvironmentColumn, "name">>,
     signal?: AbortSignal
-  ): Promise<RequestsEnvironmentsListResponse> {
-    return readAgentJson<RequestsEnvironmentsListResponse>(
+  ): Promise<RequestsEnvironmentsState> {
+    return readAgentJson<RequestsEnvironmentsState>(
       port,
       buildAgentRequestsEnvironmentPath(environmentId),
       createJsonBody(payload, HttpMethod.PUT),
@@ -1025,8 +1027,8 @@ export const agentClient = {
     token: string,
     environmentId: string,
     signal?: AbortSignal
-  ): Promise<RequestsEnvironmentsListResponse> {
-    return readAgentJson<RequestsEnvironmentsListResponse>(
+  ): Promise<RequestsEnvironmentsState> {
+    return readAgentJson<RequestsEnvironmentsState>(
       port,
       buildAgentRequestsEnvironmentPath(environmentId),
       { method: HttpMethod.DELETE },
@@ -1040,11 +1042,57 @@ export const agentClient = {
     token: string,
     environmentId: string | null,
     signal?: AbortSignal
-  ): Promise<RequestsEnvironmentsListResponse> {
-    return readAgentJson<RequestsEnvironmentsListResponse>(
+  ): Promise<RequestsEnvironmentsState> {
+    return readAgentJson<RequestsEnvironmentsState>(
       port,
       AgentPath.REQUESTS_ENVIRONMENT_ACTIVE,
       createJsonBody({ environmentId }, HttpMethod.PUT),
+      token,
+      signal
+    );
+  },
+
+  createVariable(
+    port: number,
+    token: string,
+    payload: Pick<RequestsVariableRow, "key" | "secret" | "enabled" | "values">,
+    signal?: AbortSignal
+  ): Promise<RequestsEnvironmentsState> {
+    return readAgentJson<RequestsEnvironmentsState>(
+      port,
+      AgentPath.REQUESTS_VARIABLES,
+      createJsonBody(payload),
+      token,
+      signal
+    );
+  },
+
+  updateVariable(
+    port: number,
+    token: string,
+    variableId: string,
+    payload: Partial<Pick<RequestsVariableRow, "key" | "secret" | "enabled" | "values">>,
+    signal?: AbortSignal
+  ): Promise<RequestsEnvironmentsState> {
+    return readAgentJson<RequestsEnvironmentsState>(
+      port,
+      buildAgentRequestsVariablePath(variableId),
+      createJsonBody(payload, HttpMethod.PUT),
+      token,
+      signal
+    );
+  },
+
+  deleteVariable(
+    port: number,
+    token: string,
+    variableId: string,
+    signal?: AbortSignal
+  ): Promise<RequestsEnvironmentsState> {
+    return readAgentJson<RequestsEnvironmentsState>(
+      port,
+      buildAgentRequestsVariablePath(variableId),
+      { method: HttpMethod.DELETE },
       token,
       signal
     );

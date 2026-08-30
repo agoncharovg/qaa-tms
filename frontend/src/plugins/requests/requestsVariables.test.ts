@@ -1,23 +1,55 @@
 import { describe, expect, it } from "vitest";
 
-import type { RequestsEnvironment } from "@/api/types";
-import { buildVariableMap, findUnresolved, resolveRequestDocument, resolveTemplate } from "@/plugins/requests/requestsVariables";
+import type { RequestsEnvironmentsState } from "@/api/types";
+import {
+  availableVariableNames,
+  buildVariableMap,
+  findUnresolved,
+  resolveRequestDocument,
+  resolveTemplate,
+} from "@/plugins/requests/requestsVariables";
 
 describe("requestsVariables", () => {
-  it("builds the variable map from enabled rows with last key wins", () => {
-    const environment: RequestsEnvironment = {
-      createdAt: "2026-08-30T00:00:00Z",
-      id: "env-1",
-      name: "staging",
-      updatedAt: "2026-08-30T00:00:00Z",
+  it("builds the variable map from enabled rows with non-empty values for the active environment", () => {
+    const state: RequestsEnvironmentsState = {
+      activeId: "env-1",
+      environments: [
+        { createdAt: "2026-08-30T00:00:00Z", id: "env-1", name: "staging", updatedAt: "2026-08-30T00:00:00Z" },
+        { createdAt: "2026-08-30T00:00:00Z", id: "env-2", name: "prod", updatedAt: "2026-08-30T00:00:00Z" },
+      ],
       variables: [
-        { enabled: true, key: " iamBase ", value: "https://old.test" },
-        { enabled: false, key: "ignored", value: "nope" },
-        { enabled: true, key: "iamBase", value: "https://new.test" },
+        {
+          createdAt: "2026-08-30T00:00:00Z",
+          enabled: true,
+          id: "var-1",
+          key: " iamBase ",
+          secret: false,
+          updatedAt: "2026-08-30T00:00:00Z",
+          values: { "env-1": "https://new.test", "env-2": "https://prod.test" },
+        },
+        {
+          createdAt: "2026-08-30T00:00:00Z",
+          enabled: false,
+          id: "var-2",
+          key: "ignored",
+          secret: false,
+          updatedAt: "2026-08-30T00:00:00Z",
+          values: { "env-1": "nope" },
+        },
+        {
+          createdAt: "2026-08-30T00:00:00Z",
+          enabled: true,
+          id: "var-3",
+          key: "empty",
+          secret: false,
+          updatedAt: "2026-08-30T00:00:00Z",
+          values: {},
+        },
       ],
     };
 
-    expect(buildVariableMap(environment)).toEqual({ iamBase: "https://new.test" });
+    expect(buildVariableMap(state, state.activeId)).toEqual({ iamBase: "https://new.test" });
+    expect(availableVariableNames(state, state.activeId)).toEqual(["iamBase"]);
   });
 
   it("resolves templates with whitespace, preserves unknowns, and does not recurse", () => {
@@ -57,11 +89,11 @@ describe("requestsVariables", () => {
 
     const result = resolveRequestDocument(
       {
-        body: { content: '{"value":"{{bodyValue}}","missing":"{{missingBody}}"}', mode: "json" as const },
+        body: { content: "{\"value\":\"{{bodyValue}}\",\"missing\":\"{{missingBody}}\"}", mode: "json" as const },
         credentialId: "cred-1",
         folder: "Folder",
         headers: [
-          { enabled: true, name: "{{ headerName }}", value: "{{ stage }}", },
+          { enabled: true, name: "{{ headerName }}", value: "{{ stage }}" },
           { enabled: false, name: "{{ignored}}", value: "{{ignoredValue}}" },
         ],
         method: "GET" as const,
@@ -76,7 +108,7 @@ describe("requestsVariables", () => {
     );
 
     expect(result.document).toEqual({
-      body: { content: '{"value":"payload","missing":"{{missingBody}}"}', mode: "json" },
+      body: { content: "{\"value\":\"payload\",\"missing\":\"{{missingBody}}\"}", mode: "json" },
       credentialId: "cred-1",
       folder: "Folder",
       headers: [

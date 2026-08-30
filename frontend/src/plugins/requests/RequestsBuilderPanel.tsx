@@ -9,6 +9,7 @@ import {
   Grid,
   Group,
   Loader,
+  Menu,
   Modal,
   Select,
   SegmentedControl,
@@ -70,7 +71,7 @@ import {
 import { buildCurl, parseCurl } from "@/plugins/requests/requestsCurl";
 import { IAM_ENVIRONMENT_SEED, IAM_SEED } from "@/plugins/requests/requestsSeeds";
 import { getErrorMessage, type RequestsNotice, useRequestsAgent } from "@/plugins/requests/requestsShared";
-import { buildVariableMap, resolveRequestDocument } from "@/plugins/requests/requestsVariables";
+import { availableVariableNames, buildVariableMap, resolveRequestDocument } from "@/plugins/requests/requestsVariables";
 import { useAuthStore } from "@/store/authStore";
 
 const REQUESTS_WRITE_PERMISSION = "requests.write";
@@ -358,6 +359,39 @@ function KeyValueTable<T extends RequestsHeaderField | RequestsQueryParam>({
   );
 }
 
+type VariableCompletion = {
+  from: number;
+  partial: string;
+  to: number;
+};
+
+function getVariableCompletion(value: string, caret: number): VariableCompletion | null {
+  const beforeCaret = value.slice(0, caret);
+  const from = beforeCaret.lastIndexOf("{{");
+  if (from === -1) {
+    return null;
+  }
+
+  const partial = beforeCaret.slice(from + 2);
+  if (partial.includes("}") || partial.includes("\n")) {
+    return null;
+  }
+
+  return { from, partial: partial.trim(), to: caret };
+}
+
+function applyVariableCompletion(
+  value: string,
+  completion: VariableCompletion | null,
+  variableName: string
+): string {
+  if (!completion) {
+    return value;
+  }
+
+  return `${value.slice(0, completion.from)}{{${variableName}}}${value.slice(completion.to)}`;
+}
+
 function UrlVariablePreview({ url, vars }: { url: string; vars: Record<string, string> }) {
   const resolved = useMemo(
     () => url.replace(/{{\s*([^{}]+?)\s*}}/g, (match, rawKey: string) => {
@@ -635,6 +669,7 @@ export function RequestsBuilderPanel() {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set());
   const [editor, setEditor] = useState<RequestsEditorDraft>(() => buildEmptyDraft(null));
   const [executeResponse, setExecuteResponse] = useState<RequestsExecuteResponse | null>(null);
+  const [urlCompletion, setUrlCompletion] = useState<VariableCompletion | null>(null);
 
   const collectionsQuery = useQuery({
     enabled: Boolean(token && agentPort !== null),
@@ -654,7 +689,7 @@ export function RequestsBuilderPanel() {
 
   const environmentsQuery = useQuery({
     enabled: Boolean(token && agentPort !== null),
-    queryFn: ({ signal }) => agentClient.listEnvironments(agentPort ?? 0, token ?? "", signal),
+    queryFn: ({ signal }) => agentClient.getRequestsState(agentPort ?? 0, token ?? "", signal),
     queryKey: [QueryKey.REQUESTS_ENVIRONMENTS, token, agentPort],
     refetchOnWindowFocus: false,
     retry: false,
@@ -693,20 +728,25 @@ export function RequestsBuilderPanel() {
   }, [allFolders, itemsQueries]);
 
   const selectedFolderItemsState = selectedFolder ? itemsByFolder.get(selectedFolder) ?? null : null;
-  const activeEnvironment = useMemo(() => {
-    if (!environmentsQuery.data?.activeId) {
-      return null;
-    }
-    return (
-      environmentsQuery.data.environments.find(
-        (environment) => environment.id === environmentsQuery.data?.activeId
-      ) ?? null
-    );
-  }, [environmentsQuery.data]);
   const environmentVariables = useMemo(
-    () => buildVariableMap(activeEnvironment),
-    [activeEnvironment]
+    () => buildVariableMap(environmentsQuery.data ?? null, environmentsQuery.data?.activeId ?? null),
+    [environmentsQuery.data]
   );
+  const variableNames = useMemo(
+    () => availableVariableNames(environmentsQuery.data ?? null, environmentsQuery.data?.activeId ?? null),
+    [environmentsQuery.data]
+  );
+  const urlSuggestions = useMemo(() => {
+    if (!urlCompletion) {
+      return [];
+    }
+
+    const partial = urlCompletion.partial.toLowerCase();
+    return variableNames.filter((name) =>
+      partial.length === 0 ? true : name.toLowerCase().includes(partial)
+    );
+  }, [urlCompletion, variableNames]);
+
   const resolvedEditor = useMemo(
     () => resolveRequestDocument(editor, environmentVariables),
     [editor, environmentVariables]
@@ -1059,12 +1099,12 @@ export function RequestsBuilderPanel() {
         }
       }
 
-      let environmentsState = await agentClient.listEnvironments(agentPort, token);
+      let environmentsState = await agentClient.getRequestsState(agentPort, token);
       const existingEnvironmentNames = new Set(
         environmentsState.environments.map((environment) => environment.name)
       );
 
-      for (const environment of IAM_ENVIRONMENT_SEED) {
+      for (const environment of IAM_ENVIRONMENT_SEED.environments) {
         if (existingEnvironmentNames.has(environment.name)) {
           skipped += 1;
           continue;
@@ -1072,22 +1112,42 @@ export function RequestsBuilderPanel() {
 
         environmentsState = await agentClient.createEnvironment(agentPort, token, {
           name: environment.name,
-          variables: environment.variables,
         });
         createdEnvironments += 1;
         existingEnvironmentNames.add(environment.name);
       }
 
+      const existingVariableKeys = new Set(
+        environmentsState.variables.map((variable) => variable.key)
+      );
+      const environmentIdsByName = new Map(
+        environmentsState.environments.map((environment) => [environment.name, environment.id])
+      );
+
+      for (const variable of IAM_ENVIRONMENT_SEED.variables) {
+        if (existingVariableKeys.has(variable.key)) {
+          skipped += 1;
+          continue;
+        }
+
+        environmentsState = await agentClient.createVariable(agentPort, token, {
+          enabled: variable.enabled,
+          key: variable.key,
+          secret: variable.secret,
+          values: Object.fromEntries(
+            Object.entries(variable.values).flatMap(([environmentName, value]) => {
+              const environmentId = environmentIdsByName.get(environmentName);
+              return environmentId ? [[environmentId, value]] : [];
+            })
+          ),
+        });
+        existingVariableKeys.add(variable.key);
+      }
+
       if (!environmentsState.activeId) {
-        const stagingEnvironment = environmentsState.environments.find(
-          (environment) => environment.name === STAGING_ENVIRONMENT_NAME
-        );
-        if (stagingEnvironment) {
-          environmentsState = await agentClient.setActiveEnvironment(
-            agentPort,
-            token,
-            stagingEnvironment.id
-          );
+        const stagingEnvironmentId = environmentIdsByName.get(STAGING_ENVIRONMENT_NAME) ?? null;
+        if (stagingEnvironmentId) {
+          await agentClient.setActiveEnvironment(agentPort, token, stagingEnvironmentId);
         }
       }
 
@@ -1386,68 +1446,140 @@ export function RequestsBuilderPanel() {
                         title="Environments failed"
                       />
                     ) : null}
-                    <Group align="center" gap="sm" wrap="nowrap">
-                      <Select
-                        data={HTTP_METHOD_OPTIONS}
-                        onChange={(value) => setEditor((current) => ({ ...current, method: (value ?? HttpMethod.GET) as RequestsMethod }))}
-                        value={editor.method}
-                        w={95}
-                      />
-                      <TextInput
-                        aria-label="Request URL"
-                        onChange={(event) => setEditor((current) => ({ ...current, url: event.currentTarget.value }))}
-                        placeholder="URL"
-                        style={{ flex: 1 }}
-                        value={editor.url}
-                      />
-                      {canWrite ? (
-                        <Tooltip label="Import from curl">
-                          <ActionIcon onClick={() => setCurlImportModal({ open: true, value: "" })} size="lg" variant="default">
-                            <IconTerminal2 size={16} />
+                    <Stack gap="xs">
+                      <Group align="center" gap="sm" wrap="nowrap">
+                        <Select
+                          data={HTTP_METHOD_OPTIONS}
+                          onChange={(value) => setEditor((current) => ({ ...current, method: (value ?? HttpMethod.GET) as RequestsMethod }))}
+                          value={editor.method}
+                          w={95}
+                        />
+                        <Stack gap={4} style={{ flex: 1 }}>
+                          <TextInput
+                            aria-label="Request URL"
+                            onChange={(event) => {
+                              const value = event.currentTarget.value;
+                              const caret = event.currentTarget.selectionStart ?? value.length;
+                              setEditor((current) => ({ ...current, url: value }));
+                              setUrlCompletion(getVariableCompletion(value, caret));
+                            }}
+                            onClick={(event) => {
+                              const caret = event.currentTarget.selectionStart ?? editor.url.length;
+                              setUrlCompletion(getVariableCompletion(editor.url, caret));
+                            }}
+                            onKeyUp={(event) => {
+                              const target = event.currentTarget;
+                              const caret = target.selectionStart ?? target.value.length;
+                              setUrlCompletion(getVariableCompletion(target.value, caret));
+                            }}
+                            placeholder="URL"
+                            style={{ flex: 1 }}
+                            value={editor.url}
+                          />
+                          {urlCompletion && urlSuggestions.length > 0 ? (
+                            <Group gap="xs">
+                              <Text c="dimmed" size="xs">
+                                Variables
+                              </Text>
+                              {urlSuggestions.map((name) => (
+                                <Button
+                                  key={name}
+                                  onClick={() => {
+                                    setEditor((current) => ({
+                                      ...current,
+                                      url: applyVariableCompletion(current.url, urlCompletion, name),
+                                    }));
+                                    setUrlCompletion(null);
+                                  }}
+                                  size="xs"
+                                  variant="light"
+                                >
+                                  {name}
+                                </Button>
+                              ))}
+                            </Group>
+                          ) : null}
+                        </Stack>
+                        {variableNames.length > 0 ? (
+                          <Menu withinPortal>
+                            <Menu.Target>
+                              <Button size="xs" variant="default">
+                                Insert variable
+                              </Button>
+                            </Menu.Target>
+                            <Menu.Dropdown>
+                              {variableNames.map((name) => (
+                                <Menu.Item
+                                  key={name}
+                                  onClick={() => {
+                                    setEditor((current) => ({
+                                      ...current,
+                                      url: `${current.url}{{${name}}}`,
+                                    }));
+                                    setUrlCompletion(null);
+                                  }}
+                                >
+                                  {name}
+                                </Menu.Item>
+                              ))}
+                            </Menu.Dropdown>
+                          </Menu>
+                        ) : null}
+                        {canWrite ? (
+                          <Tooltip label="Import from curl">
+                            <ActionIcon aria-label="Import from curl" onClick={() => setCurlImportModal({ open: true, value: "" })} size="lg" variant="default">
+                              <IconTerminal2 size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                        ) : null}
+                        <Tooltip label="Copy as curl">
+                          <ActionIcon
+                            aria-label="Copy as curl"
+                            onClick={() => {
+                              void (async () => {
+                                try {
+                                  if (!navigator.clipboard) {
+                                    throw new Error("Clipboard is unavailable.");
+                                  }
+                                  await navigator.clipboard.writeText(
+                                    buildCurl({
+                                      ...resolvedEditor.document,
+                                      credentialName: selectedCredentialName,
+                                    })
+                                  );
+                                  notifications.show({
+                                    color: "green",
+                                    message: "curl copied to your clipboard.",
+                                    title: "Copied as curl",
+                                  });
+                                } catch (error) {
+                                  setNotice({ message: getErrorMessage(error, "Unable to copy curl."), status: "error" });
+                                }
+                              })();
+                            }}
+                            size="lg"
+                            variant="default"
+                          >
+                            <IconCopy size={16} />
                           </ActionIcon>
                         </Tooltip>
+                        {canWrite ? (
+                          <Button
+                            leftSection={<IconSend size={16} />}
+                            loading={executeMutation.isPending}
+                            onClick={() => void executeMutation.mutateAsync()}
+                          >
+                            Send
+                          </Button>
+                        ) : null}
+                      </Group>
+                      <UrlVariablePreview url={editor.url} vars={environmentVariables} />
+                      {resolvedEditor.unresolved.length > 0 ? (
+                        <Text c="yellow" size="xs">
+                          Unresolved variables: {resolvedEditor.unresolved.join(", ")}
+                        </Text>
                       ) : null}
-                      <Tooltip label="Copy as curl">
-                        <ActionIcon
-                          onClick={() => {
-                            void (async () => {
-                              try {
-                                if (!navigator.clipboard) {
-                                  throw new Error("Clipboard is unavailable.");
-                                }
-                                await navigator.clipboard.writeText(
-                                  buildCurl({
-                                    ...resolvedEditor.document,
-                                    credentialName: selectedCredentialName,
-                                  })
-                                );
-                                notifications.show({
-                                  color: "green",
-                                  message: "curl copied to your clipboard.",
-                                  title: "Copied as curl",
-                                });
-                              } catch (error) {
-                                setNotice({ message: getErrorMessage(error, "Unable to copy curl."), status: "error" });
-                              }
-                            })();
-                          }}
-                          size="lg"
-                          variant="default"
-                        >
-                          <IconCopy size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                      {canWrite ? (
-                        <Button
-                          leftSection={<IconSend size={16} />}
-                          loading={executeMutation.isPending}
-                          onClick={() => void executeMutation.mutateAsync()}
-                        >
-                          Send
-                        </Button>
-                      ) : null}
-                    </Group>
-                    <UrlVariablePreview url={editor.url} vars={environmentVariables} />
+                    </Stack>
                     <KeyValueTable
                       addLabel="Add header"
                       onAdd={() => setEditor((current) => ({ ...current, headers: [...current.headers, buildEmptyHeaderField()] }))}

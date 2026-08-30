@@ -1,20 +1,21 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActionIcon,
   Button,
   Checkbox,
   Group,
-  Modal,
+  Menu,
   Stack,
   Table,
+  Tabs,
   Text,
   TextInput,
 } from "@mantine/core";
-import { IconPlus, IconTrash } from "@tabler/icons-react";
+import { IconDeviceFloppy, IconDots, IconEdit, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { agentClient } from "@/api/agentClient";
-import type { RequestsEnvironment, RequestsEnvironmentVariable } from "@/api/types";
+import type { RequestsEnvironmentsState, RequestsVariableRow } from "@/api/types";
 import { QueryKey } from "@/constants";
 import { hasPermission } from "@/plugins/permissions";
 import {
@@ -29,50 +30,47 @@ import { getErrorMessage, type RequestsNotice, useRequestsAgent } from "@/plugin
 import { useAuthStore } from "@/store/authStore";
 
 const REQUESTS_WRITE_PERMISSION = "requests.write";
+type VariableTab = "variables" | "secrets";
+type VariableDraftRow = RequestsVariableRow & { isNew?: boolean };
 
-type EnvironmentFormState = {
-  id: string | null;
-  isEdit: boolean;
-  name: string;
-  variables: RequestsEnvironmentVariable[];
-};
-
-function buildEmptyVariable(): RequestsEnvironmentVariable {
-  return { enabled: true, key: "", value: "" };
+function buildDraftId(): string {
+  return `draft-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
 }
 
-function ensureVariableRows(rows: RequestsEnvironmentVariable[]): RequestsEnvironmentVariable[] {
-  return rows.length > 0 ? rows : [buildEmptyVariable()];
+function buildDraftRows(state: RequestsEnvironmentsState | undefined): VariableDraftRow[] {
+  return (state?.variables ?? []).map((row) => ({ ...row, isNew: false }));
 }
 
-function buildEmptyEnvironmentForm(): EnvironmentFormState {
+function buildNewVariableRow(secret: boolean): VariableDraftRow {
   return {
-    id: null,
-    isEdit: false,
-    name: "",
-    variables: [buildEmptyVariable()],
+    createdAt: "",
+    enabled: true,
+    id: buildDraftId(),
+    isNew: true,
+    key: "",
+    secret,
+    updatedAt: "",
+    values: {},
   };
 }
 
-function buildFormFromEnvironment(environment: RequestsEnvironment): EnvironmentFormState {
-  return {
-    id: environment.id,
-    isEdit: true,
-    name: environment.name,
-    variables: ensureVariableRows(environment.variables.map((variable) => ({ ...variable }))),
-  };
+function normalizeValues(values: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(values).filter(([, value]) => value.length > 0));
 }
 
-function buildEnvironmentPayload(form: EnvironmentFormState): {
-  name: string;
-  variables: RequestsEnvironmentVariable[];
-} {
-  return {
-    name: form.name.trim(),
-    variables: form.variables.filter(
-      (variable) => variable.key.trim().length > 0 || variable.value.trim().length > 0
-    ),
-  };
+function syncDraftRows(
+  nextState: RequestsEnvironmentsState,
+  currentRows: VariableDraftRow[],
+  options: { removeDraftId?: string } = {}
+): VariableDraftRow[] {
+  const unsavedRows = currentRows.filter(
+    (row) => row.isNew && row.id !== options.removeDraftId
+  );
+  return [...buildDraftRows(nextState), ...unsavedRows];
+}
+
+function rowMatchesTab(row: VariableDraftRow, tab: VariableTab): boolean {
+  return tab === "secrets" ? row.secret : !row.secret;
 }
 
 export function EnvironmentsPanel() {
@@ -81,46 +79,63 @@ export function EnvironmentsPanel() {
   const canWrite = hasPermission(currentUser, REQUESTS_WRITE_PERMISSION);
   const { agentPort, companionUnavailable, preflightQuery, probedPorts, token } = useRequestsAgent();
   const [notice, setNotice] = useState<RequestsNotice | null>(null);
-  const [form, setForm] = useState<EnvironmentFormState>(() => buildEmptyEnvironmentForm());
-  const [modalOpen, setModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<VariableTab>("variables");
+  const [draftRows, setDraftRows] = useState<VariableDraftRow[]>([]);
 
+  const queryKey = [QueryKey.REQUESTS_ENVIRONMENTS, token, agentPort] as const;
   const environmentsQuery = useQuery({
     enabled: Boolean(token && agentPort !== null),
-    queryFn: ({ signal }) => agentClient.listEnvironments(agentPort ?? 0, token ?? "", signal),
-    queryKey: [QueryKey.REQUESTS_ENVIRONMENTS, token, agentPort],
+    queryFn: ({ signal }) => agentClient.getRequestsState(agentPort ?? 0, token ?? "", signal),
+    queryKey,
     refetchOnWindowFocus: false,
     retry: false,
   });
 
-  const environments = useMemo(
-    () => environmentsQuery.data?.environments ?? [],
-    [environmentsQuery.data?.environments]
+  useEffect(() => {
+    setDraftRows(buildDraftRows(environmentsQuery.data));
+  }, [environmentsQuery.data]);
+
+  const environments = environmentsQuery.data?.environments ?? [];
+  const visibleRows = useMemo(
+    () => draftRows.filter((row) => rowMatchesTab(row, activeTab)),
+    [activeTab, draftRows]
   );
 
-  const saveMutation = useMutation({
-    mutationFn: async () => {
+  const applyState = (
+    nextState: RequestsEnvironmentsState,
+    options: { removeDraftId?: string } = {}
+  ) => {
+    queryClient.setQueryData(queryKey, nextState);
+    setDraftRows((current) => syncDraftRows(nextState, current, options));
+  };
+
+  const createEnvironmentMutation = useMutation({
+    mutationFn: async (name: string) => {
       if (!token || agentPort === null) {
         throw new Error("Authentication is required.");
       }
-
-      const payload = buildEnvironmentPayload(form);
-      if (form.isEdit && form.id) {
-        return agentClient.updateEnvironment(agentPort, token, form.id, payload);
-      }
-
-      return agentClient.createEnvironment(agentPort, token, payload);
+      return agentClient.createEnvironment(agentPort, token, { name });
     },
     onError: (error) => {
-      setNotice({ message: getErrorMessage(error, "Unable to save the environment."), status: "error" });
+      setNotice({ message: getErrorMessage(error, "Unable to create the environment."), status: "error" });
     },
-    onSuccess: async () => {
-      setModalOpen(false);
-      setForm(buildEmptyEnvironmentForm());
-      await queryClient.invalidateQueries({ queryKey: [QueryKey.REQUESTS_ENVIRONMENTS] });
-    },
+    onSuccess: (nextState) => applyState(nextState),
   });
 
-  const deleteMutation = useMutation({
+  const updateEnvironmentMutation = useMutation({
+    mutationFn: async (payload: { environmentId: string; name: string }) => {
+      if (!token || agentPort === null) {
+        throw new Error("Authentication is required.");
+      }
+      return agentClient.updateEnvironment(agentPort, token, payload.environmentId, { name: payload.name });
+    },
+    onError: (error) => {
+      setNotice({ message: getErrorMessage(error, "Unable to rename the environment."), status: "error" });
+    },
+    onSuccess: (nextState) => applyState(nextState),
+  });
+
+  const deleteEnvironmentMutation = useMutation({
     mutationFn: async (environmentId: string) => {
       if (!token || agentPort === null) {
         throw new Error("Authentication is required.");
@@ -130,10 +145,86 @@ export function EnvironmentsPanel() {
     onError: (error) => {
       setNotice({ message: getErrorMessage(error, "Unable to delete the environment."), status: "error" });
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: [QueryKey.REQUESTS_ENVIRONMENTS] });
+    onSuccess: (nextState) => applyState(nextState),
+  });
+
+  const saveVariableMutation = useMutation({
+    mutationFn: async (row: VariableDraftRow) => {
+      if (!token || agentPort === null) {
+        throw new Error("Authentication is required.");
+      }
+
+      const payload = {
+        enabled: row.enabled,
+        key: row.key.trim(),
+        secret: row.secret,
+        values: normalizeValues(row.values),
+      };
+
+      if (row.isNew) {
+        return { nextState: await agentClient.createVariable(agentPort, token, payload), removeDraftId: row.id };
+      }
+
+      return { nextState: await agentClient.updateVariable(agentPort, token, row.id, payload) };
+    },
+    onError: (error) => {
+      setNotice({ message: getErrorMessage(error, "Unable to save the variable row."), status: "error" });
+    },
+    onSuccess: ({ nextState, removeDraftId }) => applyState(nextState, { removeDraftId }),
+  });
+
+  const deleteVariableMutation = useMutation({
+    mutationFn: async (row: VariableDraftRow) => {
+      if (row.isNew) {
+        return { localOnly: true, removeDraftId: row.id } as const;
+      }
+      if (!token || agentPort === null) {
+        throw new Error("Authentication is required.");
+      }
+      return { nextState: await agentClient.deleteVariable(agentPort, token, row.id), removeDraftId: row.id } as const;
+    },
+    onError: (error) => {
+      setNotice({ message: getErrorMessage(error, "Unable to delete the variable row."), status: "error" });
+    },
+    onSuccess: (result) => {
+      if ("localOnly" in result) {
+        setDraftRows((current) => current.filter((row) => row.id !== result.removeDraftId));
+        return;
+      }
+      applyState(result.nextState, { removeDraftId: result.removeDraftId });
     },
   });
+
+  const updateDraftRow = (rowId: string, updater: (row: VariableDraftRow) => VariableDraftRow) => {
+    setDraftRows((current) => current.map((row) => (row.id === rowId ? updater(row) : row)));
+  };
+
+  const applyToAllEnvironments = (row: VariableDraftRow, mode: "fill-empty" | "overwrite-all") => {
+    const sourceValue =
+      mode === "fill-empty"
+        ? environments.map((environment) => row.values[environment.id] ?? "").find((value) => value.length > 0) ?? ""
+        : row.values[environments[0]?.id ?? ""] ?? "";
+
+    const nextValues = { ...row.values };
+    for (const environment of environments) {
+      if (mode === "fill-empty") {
+        if ((nextValues[environment.id] ?? "").length === 0 && sourceValue.length > 0) {
+          nextValues[environment.id] = sourceValue;
+        }
+        continue;
+      }
+
+      if (sourceValue.length > 0) {
+        nextValues[environment.id] = sourceValue;
+      } else {
+        delete nextValues[environment.id];
+      }
+    }
+
+    const nextRow = { ...row, values: nextValues };
+    updateDraftRow(row.id, () => nextRow);
+    void saveVariableMutation.mutateAsync(nextRow);
+  };
 
   if (preflightQuery.isLoading) {
     return <RequestsLoadingState message="Checking the local companion app before loading environments." />;
@@ -179,205 +270,230 @@ export function EnvironmentsPanel() {
       <RequestsNoticeAlert notice={notice} />
       {!canWrite ? (
         <Text c="dimmed" size="sm">
-          Read-only access. Environment create, edit, and delete controls are disabled.
+          Read-only access. Environment and variable edit controls are disabled.
         </Text>
       ) : null}
       <RequestsSurface
-        description="Environments define {{variables}} resolved in request URL, headers, params, and body. Select the active environment in the builder."
-        title="Environments"
+        description="Variables define {{name}} values per environment; pick the active environment in the builder."
+        title="Requests / Environments"
       >
-        <Stack gap="md">
-          {canWrite ? (
-            <Group justify="flex-end">
-              <Button
-                leftSection={<IconPlus size={16} />}
-                onClick={() => {
-                  setForm(buildEmptyEnvironmentForm());
-                  setModalOpen(true);
-                }}
-              >
-                New environment
-              </Button>
-            </Group>
-          ) : null}
-          {environments.length === 0 ? (
-            <RequestsEmptyCard body="No environments have been created yet." title="Environments" />
-          ) : (
-            <Table striped withTableBorder>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Name</Table.Th>
-                  <Table.Th>Variables</Table.Th>
-                  <Table.Th>Updated</Table.Th>
-                  <Table.Th></Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {environments.map((environment) => (
-                  <Table.Tr key={environment.id}>
-                    <Table.Td>
-                      <Text>{environment.name}</Text>
-                    </Table.Td>
-                    <Table.Td>{environment.variables.length}</Table.Td>
-                    <Table.Td>{environment.updatedAt}</Table.Td>
-                    <Table.Td>
-                      {canWrite ? (
-                        <Group gap="xs" justify="flex-end">
-                          <Button
-                            onClick={() => {
-                              setForm(buildFormFromEnvironment(environment));
-                              setModalOpen(true);
-                            }}
-                            size="xs"
-                            variant="light"
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            color="red"
-                            leftSection={<IconTrash size={16} />}
-                            onClick={() => {
-                              if (window.confirm(`Delete environment ${environment.name}?`)) {
-                                void deleteMutation.mutateAsync(environment.id);
-                              }
-                            }}
-                            size="xs"
-                            variant="light"
-                          >
-                            Delete
-                          </Button>
-                        </Group>
-                      ) : null}
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          )}
-        </Stack>
-      </RequestsSurface>
-      <Modal
-        onClose={() => {
-          setModalOpen(false);
-          setForm(buildEmptyEnvironmentForm());
-        }}
-        opened={modalOpen}
-        size="xl"
-        title={form.isEdit ? "Edit environment" : "Create environment"}
-      >
-        <Stack gap="sm">
-          <TextInput
-            label="Name"
-            onChange={(event) => setForm((current) => ({ ...current, name: event.currentTarget.value }))}
-            value={form.name}
-          />
+        <Stack gap="lg">
           <Stack gap="sm">
             <Group justify="space-between">
-              <Text fw={600}>Variables</Text>
-              <Button
-                leftSection={<IconPlus size={16} />}
-                onClick={() =>
-                  setForm((current) => ({ ...current, variables: [...current.variables, buildEmptyVariable()] }))
-                }
-                size="xs"
-                variant="light"
-              >
-                Add variable
-              </Button>
+              <Text fw={600}>Environments</Text>
+              {canWrite ? (
+                <Button
+                  leftSection={<IconPlus size={16} />}
+                  onClick={() => {
+                    const name = window.prompt("Environment name", "");
+                    if (!name?.trim()) {
+                      return;
+                    }
+                    void createEnvironmentMutation.mutateAsync(name.trim());
+                  }}
+                  size="xs"
+                  variant="light"
+                >
+                  Add environment
+                </Button>
+              ) : null}
             </Group>
-            <Table striped withTableBorder>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th style={{ width: 64 }}>Enabled</Table.Th>
-                  <Table.Th style={{ width: "25%" }}>Key</Table.Th>
-                  <Table.Th>Value</Table.Th>
-                  <Table.Th style={{ width: 44 }}></Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {form.variables.map((variable, index) => (
-                  <Table.Tr key={`variable-${index}`}>
-                    <Table.Td>
-                      <Checkbox
-                        checked={variable.enabled}
-                        onChange={(event) =>
-                          setForm((current) => ({
-                            ...current,
-                            variables: current.variables.map((item, itemIndex) =>
-                              itemIndex === index
-                                ? { ...item, enabled: event.currentTarget.checked }
-                                : item
-                            ),
-                          }))
-                        }
-                      />
-                    </Table.Td>
-                    <Table.Td>
-                      <TextInput
-                        aria-label={`Variable key ${index + 1}`}
-                        onChange={(event) =>
-                          setForm((current) => ({
-                            ...current,
-                            variables: current.variables.map((item, itemIndex) =>
-                              itemIndex === index ? { ...item, key: event.currentTarget.value } : item
-                            ),
-                          }))
-                        }
-                        value={variable.key}
-                      />
-                    </Table.Td>
-                    <Table.Td>
-                      <TextInput
-                        aria-label={`Variable value ${index + 1}`}
-                        onChange={(event) =>
-                          setForm((current) => ({
-                            ...current,
-                            variables: current.variables.map((item, itemIndex) =>
-                              itemIndex === index ? { ...item, value: event.currentTarget.value } : item
-                            ),
-                          }))
-                        }
-                        value={variable.value}
-                      />
-                    </Table.Td>
-                    <Table.Td>
-                      <ActionIcon
-                        aria-label={`Remove variable ${index + 1}`}
-                        color="red"
-                        onClick={() =>
-                          setForm((current) => ({
-                            ...current,
-                            variables: ensureVariableRows(
-                              current.variables.filter((_, itemIndex) => itemIndex !== index)
-                            ),
-                          }))
-                        }
+            {environments.length === 0 ? (
+              <RequestsEmptyCard body="No environments have been created yet." title="Environments" />
+            ) : (
+              <Table striped withTableBorder>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Name</Table.Th>
+                    <Table.Th>Updated</Table.Th>
+                    <Table.Th />
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {environments.map((environment) => (
+                    <Table.Tr key={environment.id}>
+                      <Table.Td>{environment.name}</Table.Td>
+                      <Table.Td>{environment.updatedAt}</Table.Td>
+                      <Table.Td>
+                        {canWrite ? (
+                          <Group gap="xs" justify="flex-end">
+                            <Button
+                              leftSection={<IconEdit size={16} />}
+                              onClick={() => {
+                                const nextName = window.prompt("Rename environment", environment.name);
+                                if (!nextName?.trim() || nextName.trim() === environment.name) {
+                                  return;
+                                }
+                                void updateEnvironmentMutation.mutateAsync({
+                                  environmentId: environment.id,
+                                  name: nextName.trim(),
+                                });
+                              }}
+                              size="xs"
+                              variant="light"
+                            >
+                              Rename
+                            </Button>
+                            <Button
+                              color="red"
+                              leftSection={<IconTrash size={16} />}
+                              onClick={() => {
+                                if (window.confirm(`Delete environment ${environment.name}?`)) {
+                                  void deleteEnvironmentMutation.mutateAsync(environment.id);
+                                }
+                              }}
+                              size="xs"
+                              variant="light"
+                            >
+                              Delete
+                            </Button>
+                          </Group>
+                        ) : null}
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            )}
+          </Stack>
+
+          <Tabs value={activeTab} onChange={(value) => setActiveTab((value as VariableTab | null) ?? "variables")}>
+            <Tabs.List>
+              <Tabs.Tab value="variables">Variables</Tabs.Tab>
+              <Tabs.Tab value="secrets">Secrets</Tabs.Tab>
+            </Tabs.List>
+
+            {(["variables", "secrets"] as VariableTab[]).map((tab) => (
+              <Tabs.Panel key={tab} pt="md" value={tab}>
+                <Stack gap="sm">
+                  <Group justify="space-between">
+                    <Text fw={600}>{tab === "secrets" ? "Secrets" : "Variables"}</Text>
+                    {canWrite ? (
+                      <Button
+                        leftSection={<IconPlus size={16} />}
+                        onClick={() => setDraftRows((current) => [...current, buildNewVariableRow(tab === "secrets")])}
+                        size="xs"
                         variant="light"
                       >
-                        <IconTrash size={16} />
-                      </ActionIcon>
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Stack>
-          <Group justify="flex-end">
-            <Button
-              onClick={() => {
-                setModalOpen(false);
-                setForm(buildEmptyEnvironmentForm());
-              }}
-              variant="default"
-            >
-              Cancel
-            </Button>
-            <Button loading={saveMutation.isPending} onClick={() => void saveMutation.mutateAsync()}>
-              Save
-            </Button>
-          </Group>
+                        Add variable
+                      </Button>
+                    ) : null}
+                  </Group>
+                  {visibleRows.length === 0 ? (
+                    <RequestsEmptyCard
+                      body={tab === "secrets" ? "No secret rows yet." : "No variable rows yet."}
+                      title={tab === "secrets" ? "Secrets" : "Variables"}
+                    />
+                  ) : (
+                    <Table striped withTableBorder>
+                      <Table.Thead>
+                        <Table.Tr>
+                          <Table.Th style={{ width: 80 }}>Enabled</Table.Th>
+                          <Table.Th style={{ minWidth: 220 }}>Key</Table.Th>
+                          {environments.map((environment) => (
+                            <Table.Th key={environment.id} style={{ minWidth: 220 }}>
+                              {environment.name}
+                            </Table.Th>
+                          ))}
+                          <Table.Th style={{ width: 220 }} />
+                        </Table.Tr>
+                      </Table.Thead>
+                      <Table.Tbody>
+                        {visibleRows.map((row, index) => (
+                          <Table.Tr key={row.id}>
+                            <Table.Td>
+                              <Checkbox
+                                checked={row.enabled}
+                                disabled={!canWrite}
+                                onChange={(event) => {
+                                  updateDraftRow(row.id, (current) => ({
+                                    ...current,
+                                    enabled: event.currentTarget.checked,
+                                  }));
+                                }}
+                              />
+                            </Table.Td>
+                            <Table.Td>
+                              <TextInput
+                                aria-label={`Variable key ${index + 1}`}
+                                disabled={!canWrite}
+                                onChange={(event) => {
+                                  const value = event.currentTarget.value;
+                                  updateDraftRow(row.id, (current) => ({ ...current, key: value }));
+                                }}
+                                value={row.key}
+                              />
+                            </Table.Td>
+                            {environments.map((environment) => (
+                              <Table.Td key={environment.id}>
+                                <TextInput
+                                  aria-label={`${environment.name} value ${index + 1}`}
+                                  disabled={!canWrite}
+                                  onChange={(event) => {
+                                    const value = event.currentTarget.value;
+                                    updateDraftRow(row.id, (current) => ({
+                                      ...current,
+                                      values: value.length > 0
+                                        ? { ...current.values, [environment.id]: value }
+                                        : Object.fromEntries(
+                                            Object.entries(current.values).filter(
+                                              ([key]) => key !== environment.id
+                                            )
+                                          ),
+                                    }));
+                                  }}
+                                  value={row.values[environment.id] ?? ""}
+                                />
+                              </Table.Td>
+                            ))}
+                            <Table.Td>
+                              {canWrite ? (
+                                <Group gap="xs" justify="flex-end" wrap="nowrap">
+                                  <Button
+                                    leftSection={<IconDeviceFloppy size={16} />}
+                                    onClick={() => void saveVariableMutation.mutateAsync(row)}
+                                    size="xs"
+                                    variant="light"
+                                  >
+                                    Save
+                                  </Button>
+                                  <Menu withinPortal>
+                                    <Menu.Target>
+                                      <ActionIcon aria-label={`Apply ${row.key || index + 1} to all environments`} variant="light">
+                                        <IconDots size={16} />
+                                      </ActionIcon>
+                                    </Menu.Target>
+                                    <Menu.Dropdown>
+                                      <Menu.Item onClick={() => applyToAllEnvironments(row, "fill-empty")}>
+                                        Fill empty cells from first non-empty
+                                      </Menu.Item>
+                                      <Menu.Item onClick={() => applyToAllEnvironments(row, "overwrite-all")}>
+                                        Overwrite all with first cell
+                                      </Menu.Item>
+                                    </Menu.Dropdown>
+                                  </Menu>
+                                  <ActionIcon
+                                    aria-label={`Delete variable ${index + 1}`}
+                                    color="red"
+                                    onClick={() => void deleteVariableMutation.mutateAsync(row)}
+                                    variant="light"
+                                  >
+                                    <IconTrash size={16} />
+                                  </ActionIcon>
+                                </Group>
+                              ) : null}
+                            </Table.Td>
+                          </Table.Tr>
+                        ))}
+                      </Table.Tbody>
+                    </Table>
+                  )}
+                </Stack>
+              </Tabs.Panel>
+            ))}
+          </Tabs>
         </Stack>
-      </Modal>
+      </RequestsSurface>
     </Stack>
   );
 }

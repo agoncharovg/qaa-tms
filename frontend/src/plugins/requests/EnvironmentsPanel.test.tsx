@@ -4,10 +4,12 @@ import userEvent from "@testing-library/user-event";
 
 const agentClientMock = vi.hoisted(() => ({
   createEnvironment: vi.fn(),
+  createVariable: vi.fn(),
   deleteEnvironment: vi.fn(),
-  listEnvironments: vi.fn(),
-  setActiveEnvironment: vi.fn(),
+  deleteVariable: vi.fn(),
+  getRequestsState: vi.fn(),
   updateEnvironment: vi.fn(),
+  updateVariable: vi.fn(),
 }));
 
 const getPreflightMock = vi.hoisted(() => vi.fn());
@@ -30,8 +32,9 @@ vi.mock("@/api/agentClient", async () => {
   };
 });
 
-import { EnvironmentsPanel } from "@/plugins/requests/EnvironmentsPanel";
+import type { RequestsEnvironmentsState } from "@/api/types";
 import { PluginId } from "@/constants";
+import { EnvironmentsPanel } from "@/plugins/requests/EnvironmentsPanel";
 import { renderWithProviders } from "@/test/render";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
 
@@ -84,42 +87,59 @@ describe("EnvironmentsPanel", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
   });
 
-  it("creates, updates, deletes, and activates environments with refetches", async () => {
+  it("manages environments and variable rows through the matrix state", async () => {
     const user = userEvent.setup();
-    let state = {
-      activeId: "env-staging" as string | null,
+    const promptMock = vi.spyOn(window, "prompt");
+    let state: RequestsEnvironmentsState = {
+      activeId: null as string | null,
       environments: [
         {
           createdAt: "2026-08-29T08:00:00Z",
           id: "env-staging",
           name: "staging",
           updatedAt: "2026-08-29T09:00:00Z",
-          variables: [{ enabled: true, key: "iamBase", value: "https://stg.test" }],
+        },
+      ],
+      variables: [
+        {
+          createdAt: "2026-08-29T08:00:00Z",
+          enabled: true,
+          id: "var-iam-base",
+          key: "iamBase",
+          secret: false,
+          updatedAt: "2026-08-29T09:00:00Z",
+          values: { "env-staging": "https://stg.test" },
+        },
+        {
+          createdAt: "2026-08-29T08:00:00Z",
+          enabled: true,
+          id: "var-secret",
+          key: "token",
+          secret: true,
+          updatedAt: "2026-08-29T09:00:00Z",
+          values: { "env-staging": "plain-secret" },
         },
       ],
     };
 
-    agentClientMock.listEnvironments.mockImplementation(() => clone(state));
-    agentClientMock.createEnvironment.mockImplementation(
-      (_port: number, _token: string, payload: { name: string; variables: Array<{ enabled: boolean; key: string; value: string }> }) => {
-        state = {
-          ...state,
-          environments: [
-            ...state.environments,
-            {
-              createdAt: "2026-08-29T10:00:00Z",
-              id: "env-preprod",
-              name: payload.name,
-              updatedAt: "2026-08-29T10:00:00Z",
-              variables: payload.variables,
-            },
-          ],
-        };
-        return clone(state);
-      }
-    );
+    agentClientMock.getRequestsState.mockImplementation(() => clone(state));
+    agentClientMock.createEnvironment.mockImplementation((_port: number, _token: string, payload: { name: string }) => {
+      state = {
+        ...state,
+        environments: [
+          ...state.environments,
+          {
+            createdAt: "2026-08-29T10:00:00Z",
+            id: "env-preprod",
+            name: payload.name,
+            updatedAt: "2026-08-29T10:00:00Z",
+          },
+        ],
+      };
+      return clone(state);
+    });
     agentClientMock.updateEnvironment.mockImplementation(
-      (_port: number, _token: string, environmentId: string, payload: { name?: string; variables?: Array<{ enabled: boolean; key: string; value: string }> }) => {
+      (_port: number, _token: string, environmentId: string, payload: { name?: string }) => {
         state = {
           ...state,
           environments: state.environments.map((environment) =>
@@ -128,7 +148,6 @@ describe("EnvironmentsPanel", () => {
                   ...environment,
                   name: payload.name ?? environment.name,
                   updatedAt: "2026-08-29T11:00:00Z",
-                  variables: payload.variables ?? environment.variables,
                 }
               : environment
           ),
@@ -136,68 +155,103 @@ describe("EnvironmentsPanel", () => {
         return clone(state);
       }
     );
-    agentClientMock.setActiveEnvironment.mockImplementation(
-      (_port: number, _token: string, environmentId: string | null) => {
-        state = { ...state, activeId: environmentId };
-        return clone(state);
-      }
-    );
-    agentClientMock.deleteEnvironment.mockImplementation(
-      (_port: number, _token: string, environmentId: string) => {
+    agentClientMock.createVariable.mockImplementation(
+      (_port: number, _token: string, payload: { enabled: boolean; key: string; secret: boolean; values: Record<string, string> }) => {
         state = {
-          activeId: state.activeId === environmentId ? null : state.activeId,
-          environments: state.environments.filter((environment) => environment.id !== environmentId),
+          ...state,
+          variables: [
+            ...state.variables,
+            {
+              createdAt: "2026-08-29T12:00:00Z",
+              enabled: payload.enabled,
+              id: `var-${payload.key}`,
+              key: payload.key,
+              secret: payload.secret,
+              updatedAt: "2026-08-29T12:00:00Z",
+              values: payload.values,
+            },
+          ],
         };
         return clone(state);
       }
     );
+    agentClientMock.deleteVariable.mockImplementation((_port: number, _token: string, variableId: string) => {
+      state = {
+        ...state,
+        variables: state.variables.filter((variable) => variable.id !== variableId),
+      };
+      return clone(state);
+    });
+    agentClientMock.deleteEnvironment.mockImplementation((_port: number, _token: string, environmentId: string) => {
+      state = {
+        ...state,
+        environments: state.environments.filter((environment) => environment.id !== environmentId),
+        variables: state.variables.map((variable) => ({
+          ...variable,
+          values: Object.fromEntries(
+            Object.entries(variable.values).filter(([key]) => key !== environmentId)
+          ),
+        })),
+      };
+      return clone(state);
+    });
+
+    promptMock
+      .mockReturnValueOnce("preprod")
+      .mockReturnValueOnce("staging renamed");
 
     renderWithProviders(<EnvironmentsPanel />);
 
-    expect(await screen.findByRole("button", { name: "Edit" })).toBeInTheDocument();
+    expect(await screen.findByText("Requests / Environments")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Active environment", { selector: "input" })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "New environment" }));
-    fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "preprod" } });
-    fireEvent.change(screen.getByLabelText("Variable key 1"), { target: { value: "iamBase" } });
-    fireEvent.change(screen.getByLabelText("Variable value 1"), { target: { value: "https://preprod.test" } });
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(screen.getByRole("button", { name: "Add environment" }));
 
     await waitFor(() => {
-      expect(agentClientMock.createEnvironment).toHaveBeenCalledWith(
-        PORT,
-        TOKEN,
-        {
-          name: "preprod",
-          variables: [{ enabled: true, key: "iamBase", value: "https://preprod.test" }],
-        }
-      );
+      expect(agentClientMock.createEnvironment).toHaveBeenCalledWith(PORT, TOKEN, { name: "preprod" });
     });
 
-    await user.click(screen.getAllByRole("button", { name: "Edit" })[0]);
-    fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "staging renamed" } });
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(screen.getByRole("button", { name: "Add variable" }));
+    fireEvent.change(screen.getAllByLabelText("Variable key 2")[0], { target: { value: "verifyBase" } });
+    fireEvent.change(screen.getAllByLabelText("staging value 2")[0], { target: { value: "https://verify.stg" } });
+    fireEvent.change(screen.getAllByLabelText("preprod value 2")[0], { target: { value: "https://verify.preprod" } });
+    await user.click(screen.getAllByRole("button", { name: "Save" })[1]);
 
     await waitFor(() => {
-      expect(agentClientMock.updateEnvironment).toHaveBeenCalledWith(
-        PORT,
-        TOKEN,
-        "env-staging",
-        expect.objectContaining({ name: "staging renamed" })
-      );
+      expect(agentClientMock.createVariable).toHaveBeenCalledWith(PORT, TOKEN, {
+        enabled: true,
+        key: "verifyBase",
+        secret: false,
+        values: {
+          "env-preprod": "https://verify.preprod",
+          "env-staging": "https://verify.stg",
+        },
+      });
     });
 
-    await user.click(screen.getByLabelText("Active environment", { selector: "input" }));
-    await user.click(screen.getByRole("option", { name: "No environment" }));
+    await user.click(screen.getByRole("tab", { name: "Secrets" }));
+    expect((await screen.findAllByDisplayValue("plain-secret"))[0]).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("button", { name: "Rename" })[0]);
 
     await waitFor(() => {
-      expect(agentClientMock.setActiveEnvironment).toHaveBeenCalledWith(PORT, TOKEN, null);
+      expect(agentClientMock.updateEnvironment).toHaveBeenCalledWith(PORT, TOKEN, "env-staging", {
+        name: "staging renamed",
+      });
+    });
+
+    await user.click(screen.getByRole("tab", { name: "Variables" }));
+    await user.click(screen.getAllByLabelText("Delete variable 1")[0]);
+
+    await waitFor(() => {
+      expect(agentClientMock.deleteVariable).toHaveBeenCalledWith(PORT, TOKEN, "var-iam-base");
     });
 
     await user.click(screen.getAllByRole("button", { name: "Delete" })[0]);
 
     await waitFor(() => {
       expect(agentClientMock.deleteEnvironment).toHaveBeenCalledWith(PORT, TOKEN, "env-staging");
-      expect(agentClientMock.listEnvironments.mock.calls.length).toBeGreaterThan(1);
+      expect(agentClientMock.getRequestsState.mock.calls.length).toBeGreaterThan(0);
     });
   });
 });

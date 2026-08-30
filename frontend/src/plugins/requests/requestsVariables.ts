@@ -1,11 +1,11 @@
 import type {
-  RequestsEnvironment,
+  RequestsEnvironmentsState,
   RequestsHeaderField,
   RequestsQueryParam,
   RequestsRequestBody,
 } from "@/api/types";
 
-const TEMPLATE_PATTERN = /{{\s*([^{}]+?)\s*}}/g;
+const TEMPLATE_PATTERN = /\{\{\s*([^{}]+?)\s*\}\}/g;
 
 type TemplatedRequestDocument = {
   body: RequestsRequestBody;
@@ -28,18 +28,33 @@ function collectTemplateNames(text: string): string[] {
   return [...names];
 }
 
-export function buildVariableMap(env: RequestsEnvironment | null): Record<string, string> {
+export function buildVariableMap(
+  state: RequestsEnvironmentsState | null | undefined,
+  activeId: string | null | undefined
+): Record<string, string> {
+  if (!state || !activeId) {
+    return {};
+  }
+
   const variables: Record<string, string> = {};
 
-  for (const variable of env?.variables ?? []) {
+  for (const variable of state.variables) {
     const key = variable.key.trim();
-    if (!variable.enabled || key.length === 0) {
+    const value = variable.values[activeId];
+    if (!variable.enabled || key.length === 0 || typeof value !== "string" || value.length === 0) {
       continue;
     }
-    variables[key] = variable.value;
+    variables[key] = value;
   }
 
   return variables;
+}
+
+export function availableVariableNames(
+  state: RequestsEnvironmentsState | null | undefined,
+  activeId: string | null | undefined
+): string[] {
+  return Object.keys(buildVariableMap(state, activeId));
 }
 
 export function resolveTemplate(text: string, vars: Record<string, string>): string {

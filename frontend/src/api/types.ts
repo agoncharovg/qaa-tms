@@ -438,23 +438,27 @@ export interface RequestsCredentialResolveResponse {
   error: string | null;
 }
 
-export interface RequestsEnvironmentVariable {
-  key: string;
-  value: string;
-  enabled: boolean;
-}
-
-export interface RequestsEnvironment {
+export interface RequestsEnvironmentColumn {
   id: string;
   name: string;
-  variables: RequestsEnvironmentVariable[];
   createdAt: string;
   updatedAt: string;
 }
 
-export interface RequestsEnvironmentsListResponse {
+export interface RequestsVariableRow {
+  id: string;
+  key: string;
+  secret: boolean;
+  enabled: boolean;
+  values: Record<string, string>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RequestsEnvironmentsState {
   activeId: string | null;
-  environments: RequestsEnvironment[];
+  environments: RequestsEnvironmentColumn[];
+  variables: RequestsVariableRow[];
 }
 
 export interface RequestsHistoryResponseSummary {

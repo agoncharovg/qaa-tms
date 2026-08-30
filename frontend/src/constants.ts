@@ -429,6 +429,7 @@ export const AgentPath = {
   REQUESTS_ITEM: "/requests/item",
   REQUESTS_EXECUTE: "/requests/execute",
   REQUESTS_ENVIRONMENTS: "/requests/environments",
+  REQUESTS_VARIABLES: "/requests/variables",
   REQUESTS_ENVIRONMENT_ACTIVE: "/requests/environments/active",
   REQUESTS_CREDENTIALS: "/requests/credentials",
   REQUESTS_CREDENTIAL_RESOLVE: "/requests/credentials/resolve",
@@ -585,9 +586,12 @@ export function buildAgentRequestsFolderDeletePath(folder: string): string {
 export function buildAgentRequestsCredentialPath(id: string): string {
   return `${AgentPath.REQUESTS_CREDENTIALS}/${encodeURIComponent(id)}`;
 }
-
 export function buildAgentRequestsEnvironmentPath(id: string): string {
   return `${AgentPath.REQUESTS_ENVIRONMENTS}/${encodeURIComponent(id)}`;
+}
+
+export function buildAgentRequestsVariablePath(id: string): string {
+  return `${AgentPath.REQUESTS_VARIABLES}/${encodeURIComponent(id)}`;
 }
 
 export function buildAgentRequestsHistoryEntryPath(id: string): string {
