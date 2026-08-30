@@ -86,17 +86,24 @@ export function RequestsSurface({
   children,
   description,
   title,
+  titleRight,
 }: {
   children: ReactNode;
   description?: string;
   title?: string;
+  titleRight?: ReactNode;
 }) {
   return (
     <Card padding="lg" radius="lg" withBorder>
       <Stack gap="md">
-        {title || description ? (
+        {title || description || titleRight ? (
           <div>
-            {title ? <Title order={3}>{title}</Title> : null}
+            {title || titleRight ? (
+              <Group align="center" justify="space-between">
+                {title ? <Title order={3}>{title}</Title> : null}
+                {titleRight ?? null}
+              </Group>
+            ) : null}
             {description ? (
               <Text c="dimmed" size="sm">
                 {description}

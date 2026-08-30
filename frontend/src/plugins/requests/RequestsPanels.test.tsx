@@ -333,6 +333,50 @@ describe("Requests plugin panels", () => {
     });
   }, 10_000);
 
+  it("reorders top-level folders through drag and drop", async () => {
+    agentClientMock.listCollections.mockResolvedValue({
+      folders: [
+        { children: [], flags: {}, itemCount: 0, name: "Alpha" },
+        { children: [], flags: {}, itemCount: 0, name: "Beta" },
+        { children: [], flags: {}, itemCount: 0, name: "Gamma" },
+      ],
+    });
+    agentClientMock.listRequestItems.mockImplementation((_port: number, _token: string, folder: string) =>
+      Promise.resolve({ folder, items: [] })
+    );
+
+    renderWithProviders(<RequestsBuilderPanel />);
+
+    const gammaButton = await screen.findByRole("button", { name: "Gamma" });
+    const alphaButton = await screen.findByRole("button", { name: "Alpha" });
+    vi.spyOn(alphaButton, "getBoundingClientRect").mockReturnValue({
+      bottom: 40,
+      height: 40,
+      left: 0,
+      right: 100,
+      top: 0,
+      width: 100,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    const dataTransfer = {
+      dropEffect: "none",
+      effectAllowed: "all",
+      getData: vi.fn().mockReturnValue("Gamma"),
+      setData: vi.fn(),
+      types: ["application/x-requests-folder-reorder"],
+    };
+
+    fireEvent.dragStart(gammaButton, { dataTransfer });
+    fireEvent.dragOver(alphaButton, { clientY: 5, dataTransfer });
+    fireEvent.drop(alphaButton, { dataTransfer });
+
+    await waitFor(() => {
+      expect(agentClientMock.reorderCollections).toHaveBeenCalledWith(PORT, TOKEN, ["Alpha", "Gamma", "Beta"]);
+    });
+  });
+
   it("renders curl import and copy actions", async () => {
     renderWithProviders(<RequestsBuilderPanel />);
 

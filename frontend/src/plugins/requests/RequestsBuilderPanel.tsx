@@ -1,12 +1,14 @@
-import { type CSSProperties, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, type DragEvent, type KeyboardEvent, useEffect, useMemo, useState } from "react";
 import {
   ActionIcon,
   Badge,
+  Box,
   Button,
   Checkbox,
   Collapse,
   Grid,
   Group,
+  Loader,
   Modal,
   Select,
   SegmentedControl,
@@ -15,20 +17,27 @@ import {
   Text,
   TextInput,
   Textarea,
+  Tooltip,
   UnstyledButton,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import {
   IconChevronDown,
   IconChevronRight,
+  IconCopy,
   IconDeviceFloppy,
+  IconDownload,
   IconFolder,
+  IconPencil,
   IconPlus,
   IconSend,
+  IconTerminal2,
   IconTrash,
 } from "@tabler/icons-react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { usePalette } from "@/app/theme/usePalette";
+import type { Palette } from "@/app/theme/tokens";
 import { AgentRequestError, agentClient } from "@/api/agentClient";
 import type {
   RequestsExecuteResponse,
@@ -68,26 +77,38 @@ const REQUESTS_WRITE_PERMISSION = "requests.write";
 const NO_ENVIRONMENT_VALUE = "__none__";
 const STAGING_ENVIRONMENT_NAME = "staging";
 
-const FOLDER_ROW_STYLE: CSSProperties = {
-  alignItems: "center",
-  border: "1px solid transparent",
-  borderRadius: "10px",
-  display: "flex",
-  gap: "8px",
-  justifyContent: "space-between",
-  padding: "8px 12px",
-  width: "100%",
-};
+function buildFolderRowStyle(active: boolean, palette: Palette): CSSProperties {
+  return {
+    alignItems: "center",
+    backgroundColor: active ? palette.chip : "transparent",
+    border: "1px solid transparent",
+    borderRadius: "10px",
+    color: active ? palette.accent : palette.inkSoft,
+    display: "flex",
+    gap: "8px",
+    justifyContent: "flex-start",
+    minWidth: 0,
+    padding: "8px 12px",
+    transition: "background-color 150ms ease, color 150ms ease",
+    width: "100%",
+  };
+}
 
-const ITEM_ROW_STYLE: CSSProperties = {
-  alignItems: "center",
-  border: "1px solid transparent",
-  borderRadius: "8px",
-  display: "flex",
-  justifyContent: "space-between",
-  padding: "6px 10px",
-  width: "100%",
-};
+function buildRequestRowStyle(active: boolean, palette: Palette): CSSProperties {
+  return {
+    alignItems: "center",
+    backgroundColor: active ? palette.accentSoft : "transparent",
+    border: "1px solid transparent",
+    borderRadius: "8px",
+    color: active ? palette.accent : palette.inkSoft,
+    display: "flex",
+    justifyContent: "space-between",
+    minWidth: 0,
+    padding: "6px 10px",
+    transition: "background-color 150ms ease, color 150ms ease",
+    width: "100%",
+  };
+}
 
 const BODY_MODE_OPTIONS = [
   { label: "None", value: "none" },
@@ -287,10 +308,10 @@ function KeyValueTable<T extends RequestsHeaderField | RequestsQueryParam>({
       <Table striped withTableBorder>
         <Table.Thead>
           <Table.Tr>
-            <Table.Th>Enabled</Table.Th>
-            <Table.Th>Name</Table.Th>
+            <Table.Th style={{ width: 64 }}>Enabled</Table.Th>
+            <Table.Th style={{ width: "28%" }}>Name</Table.Th>
             <Table.Th>Value</Table.Th>
-            <Table.Th></Table.Th>
+            <Table.Th style={{ width: 44 }}></Table.Th>
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
@@ -305,6 +326,7 @@ function KeyValueTable<T extends RequestsHeaderField | RequestsQueryParam>({
               <Table.Td>
                 <TextInput
                   aria-label={`${title} name ${index + 1}`}
+                  disabled={!row.enabled}
                   onChange={(event) => onChange(index, { ...row, name: event.currentTarget.value })}
                   value={row.name}
                 />
@@ -312,12 +334,19 @@ function KeyValueTable<T extends RequestsHeaderField | RequestsQueryParam>({
               <Table.Td>
                 <TextInput
                   aria-label={`${title} value ${index + 1}`}
+                  disabled={!row.enabled}
                   onChange={(event) => onChange(index, { ...row, value: event.currentTarget.value })}
                   value={row.value}
                 />
               </Table.Td>
               <Table.Td>
-                <ActionIcon aria-label={`Remove ${title} ${index + 1}`} color="red" onClick={() => onRemove(index)} variant="light">
+                <ActionIcon
+                  aria-label={`Remove ${title} ${index + 1}`}
+                  color="red"
+                  disabled={!row.enabled}
+                  onClick={() => onRemove(index)}
+                  variant="light"
+                >
                   <IconTrash size={16} />
                 </ActionIcon>
               </Table.Td>
@@ -332,8 +361,10 @@ function KeyValueTable<T extends RequestsHeaderField | RequestsQueryParam>({
 function FolderTree({
   expandedFolders,
   itemsByFolder,
+  onReorderFolders,
   onSelectFolder,
   onSelectRequest,
+  reorderDisabled,
   selectedFolder,
   selectedRequestName,
   toggleFolder,
@@ -341,49 +372,152 @@ function FolderTree({
 }: {
   expandedFolders: Set<string>;
   itemsByFolder: Map<string, FolderItemsState>;
+  onReorderFolders: (folders: string[]) => void;
   onSelectFolder: (folderName: string) => void;
   onSelectRequest: (folderName: string, requestName: string) => void;
+  reorderDisabled: boolean;
   selectedFolder: string | null;
   selectedRequestName: string | null;
   toggleFolder: (folderName: string) => void;
   tree: RequestsFolderNode[];
 }) {
-  const renderNodes = (nodes: RequestsFolderNode[], depth = 0): JSX.Element[] =>
-    nodes.flatMap((node) => {
-      const folderItems = itemsByFolder.get(node.name);
-      const isExpanded = expandedFolders.has(node.name);
-      const requestRows = folderItems?.items ?? [];
+  const palette = usePalette();
+  const [draggedFolderName, setDraggedFolderName] = useState<string | null>(null);
+  const [folderDropIndex, setFolderDropIndex] = useState<number | null>(null);
 
-      return [
-        <Stack gap="xs" key={node.name}>
-          <Group gap="xs" pl={depth * 16}>
-            <ActionIcon
-              aria-label={`${isExpanded ? "Collapse" : "Expand"} ${node.name}`}
-              onClick={() => toggleFolder(node.name)}
-              variant="subtle"
-            >
-              {isExpanded ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
-            </ActionIcon>
-            <UnstyledButton
-              onClick={() => onSelectFolder(node.name)}
-              style={{
-                ...FOLDER_ROW_STYLE,
-                backgroundColor: selectedFolder === node.name ? "rgba(34, 139, 230, 0.12)" : "transparent",
-                color: selectedFolder === node.name ? "#4dabf7" : "inherit",
-              }}
-            >
-              <Group gap="xs">
-                <IconFolder size={16} />
-                <Text>{node.name}</Text>
-              </Group>
-              <Badge size="sm" variant="light">
-                {node.itemCount}
-              </Badge>
-            </UnstyledButton>
+  function handleFolderRowClick(folderName: string): void {
+    onSelectFolder(folderName);
+  }
+
+  function handleFolderRowKeyDown(event: KeyboardEvent<HTMLDivElement>, folderName: string): void {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    event.preventDefault();
+    handleFolderRowClick(folderName);
+  }
+
+  function handleFolderDragStart(event: DragEvent<HTMLElement>, folderName: string): void {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("application/x-requests-folder-reorder", folderName);
+    setDraggedFolderName(folderName);
+    setFolderDropIndex(null);
+  }
+
+  function handleFolderDragEnd(): void {
+    setDraggedFolderName(null);
+    setFolderDropIndex(null);
+  }
+
+  function handleFolderDragOver(event: DragEvent<HTMLElement>, folderIndex: number): void {
+    if (draggedFolderName === null || reorderDisabled) {
+      return;
+    }
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const dropIndex = event.clientY <= rect.top + rect.height / 2 ? folderIndex : folderIndex + 1;
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    if (folderDropIndex !== dropIndex) {
+      setFolderDropIndex(dropIndex);
+    }
+  }
+
+  function handleFolderDrop(event: DragEvent<HTMLElement>): void {
+    event.preventDefault();
+
+    if (draggedFolderName === null || folderDropIndex === null || reorderDisabled) {
+      setDraggedFolderName(null);
+      setFolderDropIndex(null);
+      return;
+    }
+
+    const currentIndex = tree.findIndex((folder) => folder.name === draggedFolderName);
+    if (currentIndex < 0) {
+      setDraggedFolderName(null);
+      setFolderDropIndex(null);
+      return;
+    }
+
+    const reordered = [...tree];
+    const [draggedFolder] = reordered.splice(currentIndex, 1);
+    const insertIndex = currentIndex < folderDropIndex ? folderDropIndex - 1 : folderDropIndex;
+    reordered.splice(insertIndex, 0, draggedFolder);
+
+    const newOrder = reordered.map((folder) => folder.name);
+    const currentOrder = tree.map((folder) => folder.name);
+    if (newOrder.every((name, index) => name === currentOrder[index])) {
+      setDraggedFolderName(null);
+      setFolderDropIndex(null);
+      return;
+    }
+
+    onReorderFolders(newOrder);
+    setDraggedFolderName(null);
+    setFolderDropIndex(null);
+  }
+
+  function renderFolderNode(node: RequestsFolderNode, depth: number, rootIndex?: number): JSX.Element {
+    const folderItems = itemsByFolder.get(node.name);
+    const isExpanded = expandedFolders.has(node.name);
+    const requestRows = folderItems?.items ?? [];
+    const isActiveFolder = selectedFolder === node.name;
+    const isTopLevel = depth === 0;
+    const folderDraggable = isTopLevel && tree.length > 1 && !reorderDisabled;
+
+    return (
+      <Box key={node.name}>
+        <Box
+          aria-current={isActiveFolder ? "page" : undefined}
+          aria-label={node.name}
+          draggable={folderDraggable}
+          onClick={() => handleFolderRowClick(node.name)}
+          onDragEnd={folderDraggable ? handleFolderDragEnd : undefined}
+          onDragOver={folderDraggable ? (event) => handleFolderDragOver(event, rootIndex ?? -1) : undefined}
+          onDragStart={folderDraggable ? (event) => handleFolderDragStart(event, node.name) : undefined}
+          onDrop={folderDraggable ? handleFolderDrop : undefined}
+          onKeyDown={(event) => handleFolderRowKeyDown(event, node.name)}
+          role="button"
+          style={{
+            ...buildFolderRowStyle(isActiveFolder, palette),
+            cursor: folderDraggable ? "grab" : "pointer",
+            marginLeft: depth * 16,
+          }}
+          tabIndex={0}
+        >
+          <ActionIcon
+            aria-label={isExpanded ? `Collapse ${node.name}` : `Expand ${node.name}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              toggleFolder(node.name);
+            }}
+            size="md"
+            variant="subtle"
+          >
+            {isExpanded ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
+          </ActionIcon>
+          <Group gap={8} style={{ flex: 1, minWidth: 0 }} wrap="nowrap">
+            <IconFolder size={16} style={{ flexShrink: 0 }} />
+            <Text c="inherit" fw={isActiveFolder ? 600 : 500} truncate>
+              {node.name}
+            </Text>
+            <Text c="inherit" ml="auto" size="sm">
+              {node.itemCount}
+            </Text>
           </Group>
-          <Collapse in={isExpanded}>
-            <Stack gap="xs" pl={depth * 16 + 36}>
-              {folderItems?.isLoading ? <Text c="dimmed" size="sm">Loading requests...</Text> : null}
+        </Box>
+
+        <Collapse in={isExpanded}>
+          <Box ml="md" mt="xs" pl="md" style={{ borderLeft: `1px solid ${palette.line}` }}>
+            <Stack gap={6}>
+              {folderItems?.isLoading ? (
+                <Group c="dimmed" gap="xs" wrap="nowrap">
+                  <Loader size="xs" />
+                  <Text size="sm">Loading requests...</Text>
+                </Group>
+              ) : null}
               {folderItems?.isError ? (
                 <RequestsErrorAlert
                   error={folderItems.error}
@@ -392,34 +526,80 @@ function FolderTree({
                   title="Request list failed"
                 />
               ) : null}
-              {requestRows.map((item) => (
-                <UnstyledButton
-                  key={`${node.name}-${item.name}`}
-                  onClick={() => onSelectRequest(node.name, item.name)}
-                  style={{
-                    ...ITEM_ROW_STYLE,
-                    backgroundColor:
-                      selectedFolder === node.name && selectedRequestName === item.name
-                        ? "rgba(34, 139, 230, 0.08)"
-                        : "transparent",
-                  }}
-                >
-                  <Stack gap={0}>
-                    <Text fw={500}>{item.name}</Text>
-                    <Text c="dimmed" size="xs">
-                      {item.method} {item.url}
-                    </Text>
-                  </Stack>
-                </UnstyledButton>
-              ))}
-              {node.children.length > 0 ? renderNodes(node.children, depth + 1) : null}
-            </Stack>
-          </Collapse>
-        </Stack>,
-      ];
-    });
+              {requestRows.map((item) => {
+                const isSelected = selectedFolder === node.name && selectedRequestName === item.name;
 
-  return <Stack gap="xs">{renderNodes(tree)}</Stack>;
+                return (
+                  <Tooltip key={`${node.name}-${item.name}`} label={`${item.method} ${item.url}`} multiline>
+                    <UnstyledButton
+                      aria-current={isSelected ? "page" : undefined}
+                      aria-label={item.name}
+                      onClick={() => onSelectRequest(node.name, item.name)}
+                      style={buildRequestRowStyle(isSelected, palette)}
+                    >
+                      <Group gap="xs" style={{ flex: 1, minWidth: 0 }} wrap="nowrap">
+                        <Box
+                          aria-hidden="true"
+                          h={6}
+                          style={{
+                            backgroundColor: isSelected ? palette.accent : palette.faint,
+                            borderRadius: "999px",
+                            flexShrink: 0,
+                          }}
+                          w={6}
+                        />
+                        <Text c="inherit" fw={isSelected ? 600 : 500} size="sm" truncate>
+                          {item.name}
+                        </Text>
+                        <Text c={isSelected ? palette.accent : palette.faint} size="xs" truncate>
+                          {item.url}
+                        </Text>
+                      </Group>
+                      <Text c={isSelected ? palette.accent : palette.faint} size="xs">
+                        {item.method}
+                      </Text>
+                    </UnstyledButton>
+                  </Tooltip>
+                );
+              })}
+              {node.children.map((child) => renderFolderNode(child, depth + 1))}
+            </Stack>
+          </Box>
+        </Collapse>
+      </Box>
+    );
+  }
+
+  return (
+    <Stack gap="xs">
+      {tree.map((node, index) => (
+        <Box key={node.name}>
+          {folderDropIndex === index && draggedFolderName !== null ? (
+            <Box
+              aria-hidden="true"
+              mb={6}
+              style={{
+                backgroundColor: "var(--mantine-color-blue-5)",
+                borderRadius: "1px",
+                height: "2px",
+              }}
+            />
+          ) : null}
+          {renderFolderNode(node, 0, index)}
+        </Box>
+      ))}
+      {folderDropIndex === tree.length && draggedFolderName !== null ? (
+        <Box
+          aria-hidden="true"
+          style={{
+            backgroundColor: "var(--mantine-color-blue-5)",
+            borderRadius: "1px",
+            height: "2px",
+          }}
+        />
+      ) : null}
+    </Stack>
+  );
 }
 
 export function RequestsBuilderPanel() {
@@ -951,7 +1131,6 @@ export function RequestsBuilderPanel() {
     );
   }
 
-  const selectedTopLevelIndex = topLevelFolders.findIndex((folder) => folder.name === selectedFolder);
   const credentialOptions = (credentialsQuery.data?.credentials ?? []).map((credential) => ({
     label: `${credential.name} (${credential.type})`,
     value: credential.id,
@@ -980,85 +1159,100 @@ export function RequestsBuilderPanel() {
             title="Collections"
           >
             {canWrite ? (
-              <Group wrap="wrap">
-                <Button leftSection={<IconPlus size={16} />} onClick={() => { setFolderModal({ mode: "create", open: true }); setFolderName(""); }} size="xs" variant="light">
-                  Create folder
-                </Button>
-                <Button
-                  loading={importPresetMutation.isPending}
-                  onClick={() => void importPresetMutation.mutateAsync()}
-                  size="xs"
-                  variant="light"
-                >
-                  Import IAM preset
-                </Button>
-                <Button
-                  disabled={!selectedFolder}
-                  onClick={() => { setFolderModal({ mode: "rename", open: true }); setFolderName(selectedFolder ?? ""); }}
-                  size="xs"
-                  variant="light"
-                >
-                  Rename folder
-                </Button>
-                <Button
-                  color="red"
-                  disabled={!selectedFolder}
-                  loading={deleteFolderMutation.isPending}
-                  onClick={() => {
-                    if (selectedFolder && window.confirm(`Delete folder ${selectedFolder}?`)) {
-                      void deleteFolderMutation.mutateAsync();
-                    }
-                  }}
-                  size="xs"
-                  variant="light"
-                >
-                  Delete folder
-                </Button>
-                <Button
-                  disabled={selectedTopLevelIndex <= 0}
-                  onClick={() => {
-                    if (selectedTopLevelIndex < 1) {
-                      return;
-                    }
-                    const next = [...topLevelFolders.map((folder) => folder.name)];
-                    const [moved] = next.splice(selectedTopLevelIndex, 1);
-                    next.splice(selectedTopLevelIndex - 1, 0, moved);
-                    void reorderFoldersMutation.mutateAsync(next);
-                  }}
-                  size="xs"
-                  variant="default"
-                >
-                  Move up
-                </Button>
-                <Button
-                  disabled={selectedTopLevelIndex < 0 || selectedTopLevelIndex >= topLevelFolders.length - 1}
-                  onClick={() => {
-                    if (selectedTopLevelIndex < 0 || selectedTopLevelIndex >= topLevelFolders.length - 1) {
-                      return;
-                    }
-                    const next = [...topLevelFolders.map((folder) => folder.name)];
-                    const [moved] = next.splice(selectedTopLevelIndex, 1);
-                    next.splice(selectedTopLevelIndex + 1, 0, moved);
-                    void reorderFoldersMutation.mutateAsync(next);
-                  }}
-                  size="xs"
-                  variant="default"
-                >
-                  Move down
-                </Button>
-                <Button
-                  disabled={!selectedFolder}
-                  leftSection={<IconPlus size={16} />}
-                  onClick={() => {
-                    setIsComposingNewRequest(true);
-                    setSelectedRequestName(null);
-                    setEditor(buildEmptyDraft(selectedFolder));
-                  }}
-                  size="xs"
-                >
-                  New request
-                </Button>
-              </Group>
+              <Stack gap="xs">
+                <Group gap={4} wrap="wrap">
+                  <Tooltip label="Create folder">
+                    <Box component="span">
+                      <ActionIcon
+                        aria-label="Create folder"
+                        onClick={() => {
+                          setFolderModal({ mode: "create", open: true });
+                          setFolderName("");
+                        }}
+                        radius="md"
+                        size="lg"
+                        variant="light"
+                      >
+                        <IconPlus size={18} />
+                      </ActionIcon>
+                    </Box>
+                  </Tooltip>
+                  <Tooltip label="Import IAM preset">
+                    <Box component="span">
+                      <ActionIcon
+                        aria-label="Import IAM preset"
+                        loading={importPresetMutation.isPending}
+                        onClick={() => void importPresetMutation.mutateAsync()}
+                        radius="md"
+                        size="lg"
+                        variant="light"
+                      >
+                        <IconDownload size={18} />
+                      </ActionIcon>
+                    </Box>
+                  </Tooltip>
+                  <Tooltip label="Rename folder">
+                    <Box component="span">
+                      <ActionIcon
+                        aria-label="Rename folder"
+                        disabled={!selectedFolder}
+                        onClick={() => {
+                          setFolderModal({ mode: "rename", open: true });
+                          setFolderName(selectedFolder ?? "");
+                        }}
+                        radius="md"
+                        size="lg"
+                        variant="light"
+                      >
+                        <IconPencil size={18} />
+                      </ActionIcon>
+                    </Box>
+                  </Tooltip>
+                  <Tooltip label="Delete folder">
+                    <Box component="span">
+                      <ActionIcon
+                        aria-label="Delete folder"
+                        color="red"
+                        disabled={!selectedFolder}
+                        loading={deleteFolderMutation.isPending}
+                        onClick={() => {
+                          if (selectedFolder && window.confirm(`Delete folder ${selectedFolder}?`)) {
+                            void deleteFolderMutation.mutateAsync();
+                          }
+                        }}
+                        radius="md"
+                        size="lg"
+                        variant="light"
+                      >
+                        <IconTrash size={18} />
+                      </ActionIcon>
+                    </Box>
+                  </Tooltip>
+                  <Tooltip label="New request">
+                    <Box component="span">
+                      <ActionIcon
+                        aria-label="New request"
+                        disabled={!selectedFolder}
+                        onClick={() => {
+                          setIsComposingNewRequest(true);
+                          setSelectedRequestName(null);
+                          setEditor(buildEmptyDraft(selectedFolder));
+                        }}
+                        radius="md"
+                        size="lg"
+                        variant="light"
+                      >
+                        <IconSend size={18} />
+                      </ActionIcon>
+                    </Box>
+                  </Tooltip>
+                </Group>
+                {topLevelFolders.length > 1 ? (
+                  <Text c="dimmed" size="xs">
+                    Drag top-level folders to reorder.
+                  </Text>
+                ) : null}
+              </Stack>
             ) : null}
             {topLevelFolders.length === 0 ? (
               <RequestsEmptyCard body="No folders exist yet." title="Collections" />
@@ -1066,6 +1260,7 @@ export function RequestsBuilderPanel() {
               <FolderTree
                 expandedFolders={expandedFolders}
                 itemsByFolder={itemsByFolder}
+                onReorderFolders={(folders) => void reorderFoldersMutation.mutateAsync(folders)}
                 onSelectFolder={(folderName) => {
                   setSelectedFolder(folderName);
                   setIsComposingNewRequest(false);
@@ -1075,6 +1270,7 @@ export function RequestsBuilderPanel() {
                   setSelectedRequestName(requestName);
                   setIsComposingNewRequest(false);
                 }}
+                reorderDisabled={reorderFoldersMutation.isPending}
                 selectedFolder={selectedFolder}
                 selectedRequestName={selectedRequestName}
                 toggleFolder={(folderName) => {
@@ -1108,28 +1304,60 @@ export function RequestsBuilderPanel() {
               <RequestsEmptyCard body="Select a folder to edit or execute a request." title="Request builder" />
             ) : (
               <RequestsSurface
-                description={selectedRequestName && !isComposingNewRequest ? `Saved request: ${selectedRequestName}` : `Folder: ${selectedFolder}`}
                 title="Request builder"
+                titleRight={
+                  canWrite ? (
+                    <Group gap="sm">
+                      <Button
+                        leftSection={<IconDeviceFloppy size={16} />}
+                        loading={saveRequestMutation.isPending}
+                        onClick={() => void saveRequestMutation.mutateAsync()}
+                        size="sm"
+                        variant="default"
+                      >
+                        Save request
+                      </Button>
+                      <Button
+                        color="red"
+                        disabled={!selectedRequestName || isComposingNewRequest}
+                        loading={deleteRequestMutation.isPending}
+                        onClick={() => {
+                          if (selectedRequestName && window.confirm(`Delete request ${selectedRequestName}?`)) {
+                            void deleteRequestMutation.mutateAsync();
+                          }
+                        }}
+                        size="sm"
+                        variant="light"
+                      >
+                        Delete request
+                      </Button>
+                    </Group>
+                  ) : undefined
+                }
               >
                 {requestQuery.isLoading && !isComposingNewRequest ? (
                   <RequestsLoadingState message="Loading the selected request from the companion app." />
                 ) : (
                   <Stack gap="md">
-                    <Group justify="space-between" wrap="wrap">
-                      <Text c="dimmed" size="sm">
-                        Active environment values are applied only on send and curl export. Saved requests keep the raw templates.
-                      </Text>
+                    <Group align="flex-end">
+                      <TextInput
+                        label="Name"
+                        placeholder="Name"
+                        style={{ flex: 1 }}
+                        value={editor.name ?? ""}
+                        onChange={(event) => setEditor((current) => ({ ...current, name: event.currentTarget.value }))}
+                      />
                       <Select
                         data={environmentOptions}
                         disabled={!canWrite || environmentsQuery.isLoading}
-                        label="Active environment"
+                        label="Environment"
                         onChange={(value) =>
                           void setActiveEnvironmentMutation.mutateAsync(
                             value === NO_ENVIRONMENT_VALUE ? null : value ?? null
                           )
                         }
                         value={environmentsQuery.data?.activeId ?? NO_ENVIRONMENT_VALUE}
-                        w={260}
+                        w={220}
                       />
                     </Group>
                     {environmentsQuery.isError ? (
@@ -1140,43 +1368,29 @@ export function RequestsBuilderPanel() {
                         title="Environments failed"
                       />
                     ) : null}
-                    <Group align="flex-end" grow>
-                      <TextInput
-                        description={isComposingNewRequest ? "Leave empty to auto-name the saved request." : "Saved request names are fixed."}
-                        disabled={!isComposingNewRequest}
-                        label="Name"
-                        onChange={(event) => setEditor((current) => ({ ...current, name: event.currentTarget.value }))}
-                        value={editor.name ?? ""}
-                      />
+                    <Group align="center" gap="sm" wrap="nowrap">
                       <Select
                         data={HTTP_METHOD_OPTIONS}
-                        label="Method"
                         onChange={(value) => setEditor((current) => ({ ...current, method: (value ?? HttpMethod.GET) as RequestsMethod }))}
                         value={editor.method}
+                        w={95}
                       />
-                      <Select
-                        data={allFolders.map((folder) => ({ label: folder.name, value: folder.name }))}
-                        label="Folder"
-                        onChange={(value) => setEditor((current) => ({ ...current, folder: value }))}
-                        value={editor.folder}
-                      />
-                    </Group>
-                    <Group align="flex-end" wrap="wrap">
                       <TextInput
                         aria-label="Request URL"
-                        label="URL"
                         onChange={(event) => setEditor((current) => ({ ...current, url: event.currentTarget.value }))}
-                        placeholder="https://service.example/api"
+                        placeholder="URL"
                         style={{ flex: 1 }}
                         value={editor.url}
                       />
-                      <Group gap="sm">
-                        {canWrite ? (
-                          <Button onClick={() => setCurlImportModal({ open: true, value: "" })} variant="default">
-                            Import from curl
-                          </Button>
-                        ) : null}
-                        <Button
+                      {canWrite ? (
+                        <Tooltip label="Import from curl">
+                          <ActionIcon onClick={() => setCurlImportModal({ open: true, value: "" })} size="lg" variant="default">
+                            <IconTerminal2 size={16} />
+                          </ActionIcon>
+                        </Tooltip>
+                      ) : null}
+                      <Tooltip label="Copy as curl">
+                        <ActionIcon
                           onClick={() => {
                             void (async () => {
                               try {
@@ -1199,37 +1413,27 @@ export function RequestsBuilderPanel() {
                               }
                             })();
                           }}
+                          size="lg"
                           variant="default"
                         >
-                          Copy as curl
+                          <IconCopy size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                      {canWrite ? (
+                        <Button
+                          leftSection={<IconSend size={16} />}
+                          loading={executeMutation.isPending}
+                          onClick={() => void executeMutation.mutateAsync()}
+                        >
+                          Send
                         </Button>
-                        {canWrite ? (
-                          <Button
-                            leftSection={<IconSend size={16} />}
-                            loading={executeMutation.isPending}
-                            onClick={() => void executeMutation.mutateAsync()}
-                          >
-                            Send
-                          </Button>
-                        ) : null}
-                      </Group>
+                      ) : null}
                     </Group>
                     {resolvedEditor.unresolved.length > 0 ? (
                       <Text c="yellow.8" size="sm">
                         Unresolved variables: {resolvedEditor.unresolved.join(", ")}
                       </Text>
                     ) : null}
-                    <SegmentedControl
-                      data={[
-                        { label: "Headers", value: "headers" },
-                        { label: "Params", value: "params" },
-                        { label: "Body", value: "body" },
-                        { label: "Auth", value: "auth" },
-                      ]}
-                      fullWidth
-                      onChange={() => undefined}
-                      value="headers"
-                    />
                     <KeyValueTable
                       addLabel="Add header"
                       onAdd={() => setEditor((current) => ({ ...current, headers: [...current.headers, buildEmptyHeaderField()] }))}
@@ -1305,37 +1509,6 @@ export function RequestsBuilderPanel() {
                         value={editor.credentialId}
                       />
                     </Stack>
-                    {canWrite ? (
-                      <Group justify="space-between" wrap="wrap">
-                        <Group gap="sm">
-                          <Button
-                            leftSection={<IconDeviceFloppy size={16} />}
-                            loading={saveRequestMutation.isPending}
-                            onClick={() => void saveRequestMutation.mutateAsync()}
-                          >
-                            Save request
-                          </Button>
-                          <Button
-                            color="red"
-                            disabled={!selectedRequestName || isComposingNewRequest}
-                            loading={deleteRequestMutation.isPending}
-                            onClick={() => {
-                              if (selectedRequestName && window.confirm(`Delete request ${selectedRequestName}?`)) {
-                                void deleteRequestMutation.mutateAsync();
-                              }
-                            }}
-                            variant="light"
-                          >
-                            Delete request
-                          </Button>
-                        </Group>
-                        {requestQuery.data ? (
-                          <Text c="dimmed" size="sm">
-                            Updated {requestQuery.data.updatedAt}
-                          </Text>
-                        ) : null}
-                      </Group>
-                    ) : null}
                   </Stack>
                 )}
               </RequestsSurface>
