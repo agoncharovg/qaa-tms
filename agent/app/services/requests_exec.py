@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -38,6 +39,8 @@ from app.services.requests_store import (
     RequestsCredentialNotFoundError,
     _write_text_atomically,
     get_credential_raw,
+    list_state,
+    resolve_variable_map,
 )
 
 MAX_RESPONSE_BODY_BYTES = 2 * 1024 * 1024
@@ -53,11 +56,55 @@ class RequestsCredentialResolutionError(RuntimeError):
     pass
 
 
+TEMPLATE_PATTERN = re.compile(r"\{\{\s*([^{}]+?)\s*\}\}")
+
+
+def resolve_credential_template(
+    value: str,
+    variables: dict[str, str],
+) -> tuple[str, set[str]]:
+    resolved = TEMPLATE_PATTERN.sub(
+        lambda match: variables.get(match.group(1).strip(), match.group(0)),
+        value,
+    )
+    unresolved = {
+        match.group(1).strip()
+        for match in TEMPLATE_PATTERN.finditer(resolved)
+        if match.group(1).strip()
+    }
+    return resolved, unresolved
+
+
+def _resolve_credential_config(
+    config: dict[str, Any],
+    variables: dict[str, str],
+) -> tuple[dict[str, Any], set[str]]:
+    resolved_config = dict(config)
+    unresolved: set[str] = set()
+    for key, value in config.items():
+        if key == "admin_credential_id" or not isinstance(value, str):
+            continue
+        resolved_value, unresolved_names = resolve_credential_template(value, variables)
+        resolved_config[key] = resolved_value
+        unresolved.update(unresolved_names)
+    return resolved_config, unresolved
+
+
+def _effective_environment_id(
+    settings: Settings,
+    environment_id: str | None,
+) -> str | None:
+    if environment_id is not None:
+        return environment_id
+    return list_state(settings).active_id
+
+
 async def resolve_authorization(
     app: Any,
     settings: Settings,
     credential_id: str | None,
     *,
+    environment_id: str | None = None,
     force: bool = False,
     _seen: set[str] | None = None,
 ) -> str | None:
@@ -67,18 +114,30 @@ async def resolve_authorization(
     if credential_id in seen:
         raise RequestsCredentialResolutionError("Credential resolution cycle detected.")
     seen.add(credential_id)
+    effective_environment_id = _effective_environment_id(settings, environment_id)
     if not force:
-        cached = _read_cached_authorization(app, credential_id)
+        cached = _read_cached_authorization(app, credential_id, effective_environment_id)
         if cached is not None:
             return cached
 
     credential = get_credential_raw(settings, credential_id)
     credential_type = credential["type"]
-    config = credential["config"]
+    config, unresolved = _resolve_credential_config(
+        credential["config"],
+        resolve_variable_map(settings, effective_environment_id),
+    )
+    if unresolved:
+        unresolved_text = ", ".join(sorted(unresolved))
+        raise RequestsCredentialResolutionError(
+            "Unresolved variables in credential {!r}: {}".format(
+                credential["name"],
+                unresolved_text,
+            )
+        )
 
     if credential_type == "bearer":
         authorization = "{} {}".format(HeaderValue.BEARER.value, config["token"])
-        _cache_authorization(app, credential_id, authorization)
+        _cache_authorization(app, credential_id, effective_environment_id, authorization)
         return authorization
 
     try:
@@ -122,6 +181,7 @@ async def resolve_authorization(
                         app,
                         settings,
                         admin_credential_id,
+                        environment_id=effective_environment_id,
                         force=force,
                         _seen=seen,
                     )
@@ -160,7 +220,7 @@ async def resolve_authorization(
     except httpx.HTTPError as exc:
         raise RequestsCredentialResolutionError(str(exc)) from exc
 
-    _cache_authorization(app, credential_id, authorization)
+    _cache_authorization(app, credential_id, effective_environment_id, authorization)
     return authorization
 
 
@@ -179,7 +239,12 @@ async def execute(
 
     try:
         if not has_manual_authorization and spec.credential_id is not None:
-            authorization = await resolve_authorization(app, settings, spec.credential_id)
+            authorization = await resolve_authorization(
+                app,
+                settings,
+                spec.credential_id,
+                environment_id=getattr(spec, "environment_id", None),
+            )
             if authorization is not None:
                 headers.append(
                     RequestHeaderValue(name=HeaderName.AUTHORIZATION.value, value=authorization)
@@ -364,24 +429,42 @@ def _response_json(response: httpx.Response, context: str) -> dict[str, Any]:
     return payload
 
 
-def _read_cached_authorization(app: Any, credential_id: str) -> str | None:
+def _authorization_cache_key(
+    credential_id: str,
+    environment_id: str | None,
+) -> str:
+    return "{}:{}".format(credential_id, environment_id or "")
+
+
+def _read_cached_authorization(
+    app: Any,
+    credential_id: str,
+    environment_id: str | None,
+) -> str | None:
+    cache_key = _authorization_cache_key(credential_id, environment_id)
     cache: dict[str, CachedAuthorization] = app.state.requests_token_cache
-    cached = cache.get(credential_id)
+    cached = cache.get(cache_key)
     if cached is None:
         return None
     if cached["expires_at"] <= time.monotonic():
-        cache.pop(credential_id, None)
+        cache.pop(cache_key, None)
         return None
     return cached["value"]
 
 
-def _cache_authorization(app: Any, credential_id: str, value: str) -> None:
+def _cache_authorization(
+    app: Any,
+    credential_id: str,
+    environment_id: str | None,
+    value: str,
+) -> None:
+    cache_key = _authorization_cache_key(credential_id, environment_id)
     ttl_seconds = _authorization_ttl_seconds(value)
     if ttl_seconds is None:
-        app.state.requests_token_cache.pop(credential_id, None)
+        app.state.requests_token_cache.pop(cache_key, None)
         return
     cache: dict[str, CachedAuthorization] = app.state.requests_token_cache
-    cache[credential_id] = {
+    cache[cache_key] = {
         "value": value,
         "expires_at": time.monotonic() + ttl_seconds,
     }

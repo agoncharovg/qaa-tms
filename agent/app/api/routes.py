@@ -1250,6 +1250,7 @@ async def post_requests_credential_resolve(
             request.app,
             settings,
             request_body.credential_id,
+            environment_id=request_body.environment_id,
             force=request_body.force,
         )
     except RequestsCredentialNotFoundError as exc:

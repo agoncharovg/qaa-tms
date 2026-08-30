@@ -559,7 +559,7 @@ class EnvironmentActiveRequest(BaseModel):
 class BearerCredentialPublicConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    has_token: bool = Field(alias="hasToken")
+    token: str = ""
 
 
 class ApiKeyPermanentCredentialPublicConfig(BaseModel):
@@ -567,7 +567,7 @@ class ApiKeyPermanentCredentialPublicConfig(BaseModel):
 
     verify_url: str = Field(alias="verifyUrl")
     scheme: str
-    has_permanent_token: bool = Field(alias="hasPermanentToken")
+    permanent_token: str = Field(default="", alias="permanentToken")
 
 
 class LoginPasswordCredentialPublicConfig(BaseModel):
@@ -576,7 +576,7 @@ class LoginPasswordCredentialPublicConfig(BaseModel):
     login_url: str = Field(alias="loginUrl")
     username: str
     referer: str
-    has_password: bool = Field(alias="hasPassword")
+    password: str = ""
 
 
 class ClientAdminCredentialPublicConfig(BaseModel):
@@ -805,6 +805,7 @@ class CredentialResolveRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     credential_id: str = Field(min_length=1, alias="credentialId")
+    environment_id: str | None = Field(default=None, alias="environmentId")
     force: bool = False
 
 
@@ -833,6 +834,8 @@ class RequestExecuteRequest(RequestDocumentInput):
     """Execute request payload."""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    environment_id: str | None = Field(default=None, alias="environmentId")
 
 
 class RequestExecuteResponse(BaseModel):

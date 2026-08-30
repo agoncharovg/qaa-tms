@@ -426,6 +426,28 @@ def list_environments(settings: Settings) -> EnvironmentsStateResponse:
     return list_state(settings)
 
 
+
+def resolve_variable_map(settings: Settings, environment_id: str | None) -> dict[str, str]:
+    state = _load_environments_state(settings)
+    resolved_environment_id = _resolve_environment_id(state, environment_id)
+    if resolved_environment_id is None:
+        return {}
+
+    values: dict[str, str] = {}
+    valid_environment_ids = _environment_ids_from_state(state)
+    for raw_variable in state["variables"]:
+        try:
+            variable = _normalize_raw_variable_row(raw_variable, valid_environment_ids)
+        except RequestsVariableValidationError:
+            continue
+        if not variable["enabled"]:
+            continue
+        value = variable["values"].get(resolved_environment_id)
+        if isinstance(value, str) and value != "":
+            values[variable["key"]] = value
+    return values
+
+
 def create_environment(settings: Settings, name: str) -> EnvironmentsStateResponse:
     state = _load_environments_state(settings)
     state["environments"].append(_environment_create_to_raw(name, _now_iso()))
@@ -1201,6 +1223,19 @@ def _environment_ids_from_state(state: RequestsEnvironmentsState) -> set[str]:
     return ids
 
 
+
+def _resolve_environment_id(
+    state: RequestsEnvironmentsState,
+    environment_id: str | None,
+) -> str | None:
+    resolved_environment_id = environment_id if environment_id is not None else state["active_id"]
+    if resolved_environment_id is None:
+        return None
+    if not _environment_exists(state["environments"], resolved_environment_id):
+        return None
+    return resolved_environment_id
+
+
 def _environment_exists(environments: list[dict[str, Any]], environment_id: str) -> bool:
     for environment in environments:
         if _normalize_raw_environment_id(environment) == environment_id:
@@ -1383,42 +1418,28 @@ def _apply_credential_update(
         updated["name"] = _require_non_empty(credential.name, "Credential name")
     if isinstance(credential, BearerCredentialUpdate):
         if credential.config.token is not None:
-            updated_config["token"] = _require_non_empty(
-                credential.config.token, "Credential token"
-            )
+            updated_config["token"] = credential.config.token
     elif isinstance(credential, ApiKeyPermanentCredentialUpdate):
         if credential.config.permanent_token is not None:
-            updated_config["permanent_token"] = _require_non_empty(
-                credential.config.permanent_token, "Permanent token"
-            )
+            updated_config["permanent_token"] = credential.config.permanent_token
         if credential.config.verify_url is not None:
-            updated_config["verify_url"] = _require_non_empty(
-                credential.config.verify_url, "Verify URL"
-            )
+            updated_config["verify_url"] = credential.config.verify_url
         if credential.config.scheme is not None:
-            updated_config["scheme"] = _require_non_empty(
-                credential.config.scheme, "Authorization scheme"
-            )
+            updated_config["scheme"] = credential.config.scheme
     elif isinstance(credential, LoginPasswordCredentialUpdate):
         if credential.config.login_url is not None:
-            updated_config["login_url"] = _require_non_empty(
-                credential.config.login_url, "Login URL"
-            )
+            updated_config["login_url"] = credential.config.login_url
         if credential.config.username is not None:
-            updated_config["username"] = _require_non_empty(credential.config.username, "Username")
+            updated_config["username"] = credential.config.username
         if credential.config.password is not None:
-            updated_config["password"] = _require_non_empty(credential.config.password, "Password")
+            updated_config["password"] = credential.config.password
         if credential.config.referer is not None:
-            updated_config["referer"] = _require_non_empty(credential.config.referer, "Referer")
+            updated_config["referer"] = credential.config.referer
     elif isinstance(credential, ClientAdminCredentialUpdate):
         if credential.config.admin_credential_id is not None:
-            updated_config["admin_credential_id"] = _require_non_empty(
-                credential.config.admin_credential_id, "Admin credential ID"
-            )
+            updated_config["admin_credential_id"] = credential.config.admin_credential_id
         if credential.config.admin_token_url is not None:
-            updated_config["admin_token_url"] = _require_non_empty(
-                credential.config.admin_token_url, "Admin token URL"
-            )
+            updated_config["admin_token_url"] = credential.config.admin_token_url
         if credential.config.client_id is not None:
             updated_config["client_id"] = credential.config.client_id
         if credential.config.issue_by_current_user is not None:
@@ -1440,7 +1461,7 @@ def _credential_to_public(credential: dict[str, Any]) -> CredentialPublicModel:
             type=credential_type,
             created_at=normalized["created_at"],
             updated_at=normalized["updated_at"],
-            config=BearerCredentialPublicConfig(has_token=bool(normalized["config"]["token"])),
+            config=BearerCredentialPublicConfig(token=normalized["config"]["token"]),
         )
     if credential_type == "api_key_permanent":
         return ApiKeyPermanentCredentialPublic(
@@ -1452,7 +1473,7 @@ def _credential_to_public(credential: dict[str, Any]) -> CredentialPublicModel:
             config=ApiKeyPermanentCredentialPublicConfig(
                 verify_url=normalized["config"]["verify_url"],
                 scheme=normalized["config"]["scheme"],
-                has_permanent_token=bool(normalized["config"]["permanent_token"]),
+                permanent_token=normalized["config"]["permanent_token"],
             ),
         )
     if credential_type == "login_password":
@@ -1466,7 +1487,7 @@ def _credential_to_public(credential: dict[str, Any]) -> CredentialPublicModel:
                 login_url=normalized["config"]["login_url"],
                 username=normalized["config"]["username"],
                 referer=normalized["config"]["referer"],
-                has_password=bool(normalized["config"]["password"]),
+                password=normalized["config"]["password"],
             ),
         )
     return ClientAdminCredentialPublic(
@@ -1504,22 +1525,20 @@ def _normalize_raw_credential(credential: dict[str, Any]) -> dict[str, Any]:
 def _normalize_raw_credential_config(credential_type: str, raw_config: object) -> dict[str, Any]:
     config = _require_mapping(raw_config, "Credential config")
     if credential_type == "bearer":
-        return {"token": _require_non_empty(_as_str(config.get("token")), "Credential token")}
+        return {"token": _require_string(config.get("token"), "Credential token")}
     if credential_type == "api_key_permanent":
         scheme = _as_str(config.get("scheme")) or "APIKey"
         return {
-            "permanent_token": _require_non_empty(
-                _as_str(config.get("permanent_token")), "Permanent token"
-            ),
-            "verify_url": _require_non_empty(_as_str(config.get("verify_url")), "Verify URL"),
+            "permanent_token": _require_string(config.get("permanent_token"), "Permanent token"),
+            "verify_url": _require_string(config.get("verify_url"), "Verify URL"),
             "scheme": _require_non_empty(scheme, "Authorization scheme"),
         }
     if credential_type == "login_password":
         return {
-            "login_url": _require_non_empty(_as_str(config.get("login_url")), "Login URL"),
-            "username": _require_non_empty(_as_str(config.get("username")), "Username"),
-            "password": _require_non_empty(_as_str(config.get("password")), "Password"),
-            "referer": _require_non_empty(_as_str(config.get("referer")), "Referer"),
+            "login_url": _require_string(config.get("login_url"), "Login URL"),
+            "username": _require_string(config.get("username"), "Username"),
+            "password": _require_string(config.get("password"), "Password"),
+            "referer": _require_string(config.get("referer"), "Referer"),
         }
     if credential_type == "client_admin":
         client_id = config.get("client_id")
@@ -1529,11 +1548,11 @@ def _normalize_raw_credential_config(credential_type: str, raw_config: object) -
         if not isinstance(issue_by_current_user, bool):
             raise RequestsCredentialValidationError("issue_by_current_user must be a boolean.")
         return {
-            "admin_credential_id": _require_non_empty(
-                _as_str(config.get("admin_credential_id")), "Admin credential ID"
+            "admin_credential_id": _require_string(
+                config.get("admin_credential_id"), "Admin credential ID"
             ),
-            "admin_token_url": _require_non_empty(
-                _as_str(config.get("admin_token_url")), "Admin token URL"
+            "admin_token_url": _require_string(
+                config.get("admin_token_url"), "Admin token URL"
             ),
             "client_id": client_id,
             "issue_by_current_user": issue_by_current_user,
@@ -1551,6 +1570,13 @@ def _as_str(value: object) -> str | None:
     if not isinstance(value, str):
         return None
     return value
+
+
+def _require_string(value: object, label: str) -> str:
+    normalized = _as_str(value)
+    if normalized is None:
+        raise RequestsCredentialValidationError(f"{label} must be a string.")
+    return normalized
 
 
 def _require_non_empty(value: str | None, label: str) -> str:

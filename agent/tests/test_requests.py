@@ -26,10 +26,12 @@ from app.schemas import (
     ClientAdminCredentialCreate,
     ClientAdminCredentialCreateConfig,
     ClientAdminCredentialUpdate,
+    CredentialResolveRequest,
     LoginPasswordCredentialCreate,
     LoginPasswordCredentialCreateConfig,
     RequestBody,
     RequestDocumentInput,
+    RequestExecuteRequest,
     RequestExecuteResponse,
     RequestHeaderField,
     RequestHeaderValue,
@@ -67,6 +69,7 @@ from app.services.requests_store import (
     move_item,
     read_item,
     reorder,
+    resolve_variable_map,
     set_active_environment,
     update_credential,
     update_item,
@@ -321,7 +324,7 @@ def test_requests_item_path_traversal_is_rejected(
         write_item(settings, "alpha", item_name, make_request_document())
 
 
-def test_credentials_crud_strips_secrets_and_keeps_file_mode(
+def test_credentials_crud_returns_values_and_keeps_file_mode(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -375,14 +378,17 @@ def test_credentials_crud_strips_secrets_and_keeps_file_mode(
         credential.model_dump(mode="python") for credential in list_credentials(settings)
     ]
     assert len(public_credentials) == 4
-    assert all("token" not in credential["config"] for credential in public_credentials)
-    assert all("password" not in credential["config"] for credential in public_credentials)
-    assert any(credential["config"].get("has_token") is True for credential in public_credentials)
     assert any(
-        credential["config"].get("has_permanent_token") is True for credential in public_credentials
+        credential["config"].get("token") == "raw-token"
+        for credential in public_credentials
     )
     assert any(
-        credential["config"].get("has_password") is True for credential in public_credentials
+        credential["config"].get("permanent_token") == "permanent"
+        for credential in public_credentials
+    )
+    assert any(
+        credential["config"].get("password") == "secret"
+        for credential in public_credentials
     )
 
     updated_name_only = update_credential(
@@ -397,18 +403,61 @@ def test_credentials_crud_strips_secrets_and_keeps_file_mode(
     assert updated_name_only.name == "renamed"
     assert get_credential_raw(settings, bearer.id)["config"]["token"] == "raw-token"
 
-    update_credential(
+    updated_bearer = update_credential(
         settings,
         bearer.id,
         BearerCredentialUpdate(
             type="bearer",
-            config=BearerCredentialUpdateConfig(token="new-token"),
+            config=BearerCredentialUpdateConfig(token=""),
         ),
     )
-    assert get_credential_raw(settings, bearer.id)["config"]["token"] == "new-token"
+    assert updated_bearer.config.token == ""
+    assert get_credential_raw(settings, bearer.id)["config"]["token"] == ""
 
     mode = stat.S_IMODE(Path(settings.requests_credentials_path).stat().st_mode)
     assert mode == 0o600
+
+
+
+def test_resolve_variable_map_uses_active_environment_and_ignores_empty_values(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = build_settings(monkeypatch, tmp_path)
+    staging = create_environment(settings, "staging").environments[0]
+    prod = create_environment(settings, "prod").environments[1]
+    create_variable(
+        settings,
+        VariableCreateRequest(
+            key="systemadmin_token",
+            secret=True,
+            values={
+                staging.id: "staging-token",
+                prod.id: "prod-token",
+            },
+        ),
+    )
+    create_variable(
+        settings,
+        VariableCreateRequest(
+            key="disabled",
+            enabled=False,
+            values={staging.id: "ignored"},
+        ),
+    )
+    create_variable(
+        settings,
+        VariableCreateRequest(
+            key="blank",
+            values={staging.id: ""},
+        ),
+    )
+
+    set_active_environment(settings, staging.id)
+
+    assert resolve_variable_map(settings, None) == {"systemadmin_token": "staging-token"}
+    assert resolve_variable_map(settings, prod.id) == {"systemadmin_token": "prod-token"}
+    assert resolve_variable_map(settings, "missing-env") == {}
 
 
 def test_requests_state_crud_persists_active_and_drops_deleted_env_cells(
@@ -604,6 +653,158 @@ def test_set_active_environment_rejects_unknown_and_can_clear(
     assert [environment.name for environment in listed.environments] == ["prod"]
 
 
+
+
+
+def test_requests_execute_and_resolve_payloads_accept_environment_id() -> None:
+    resolve_request = CredentialResolveRequest.model_validate(
+        {"credentialId": "cred-1", "environmentId": "env-prod", "force": True}
+    )
+    execute_request = RequestExecuteRequest.model_validate(
+        {
+            "method": "GET",
+            "url": "https://svc.test",
+            "headers": [],
+            "queryParams": [],
+            "body": {"mode": "none", "content": ""},
+            "credentialId": None,
+            "environmentId": "env-prod",
+        }
+    )
+
+    assert resolve_request.environment_id == "env-prod"
+    assert resolve_request.force is True
+    assert execute_request.environment_id == "env-prod"
+
+
+@pytest.mark.asyncio
+async def test_resolve_authorization_resolves_templates_per_environment_and_cache(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = build_settings(monkeypatch, tmp_path)
+    staging = create_environment(settings, "staging").environments[0]
+    prod = create_environment(settings, "prod").environments[1]
+    set_active_environment(settings, staging.id)
+
+    create_variable(
+        settings,
+        VariableCreateRequest(
+            key="systemadmin_token",
+            secret=True,
+            values={staging.id: "staging-admin", prod.id: "prod-admin"},
+        ),
+    )
+    create_variable(
+        settings,
+        VariableCreateRequest(
+            key="iamBase",
+            values={
+                staging.id: "https://staging.iam.test",
+                prod.id: "https://prod.iam.test",
+            },
+        ),
+    )
+    create_variable(
+        settings,
+        VariableCreateRequest(
+            key="iamUser",
+            values={staging.id: "stage-user", prod.id: "prod-user"},
+        ),
+    )
+    create_variable(
+        settings,
+        VariableCreateRequest(
+            key="iamPassword",
+            secret=True,
+            values={staging.id: "stage-pass", prod.id: "prod-pass"},
+        ),
+    )
+
+    admin = create_credential(
+        settings,
+        BearerCredentialCreate(
+            name="admin",
+            type="bearer",
+            config=BearerCredentialCreateConfig(token="{{systemadmin_token}}"),
+        ),
+    )
+    login = create_credential(
+        settings,
+        LoginPasswordCredentialCreate(
+            name="login",
+            type="login_password",
+            config=LoginPasswordCredentialCreateConfig(
+                login_url="{{iamBase}}/login",
+                username="{{ iamUser }}",
+                password="{{iamPassword}}",
+                referer="{{iamBase}}/portal",
+            ),
+        ),
+    )
+    client_admin = create_credential(
+        settings,
+        ClientAdminCredentialCreate(
+            name="client",
+            type="client_admin",
+            config=ClientAdminCredentialCreateConfig(
+                admin_credential_id=admin.id,
+                admin_token_url="{{iamBase}}/admin/{client_id}",
+                client_id=77,
+                issue_by_current_user=False,
+            ),
+        ),
+    )
+
+    now = int(time.time())
+    stage_login_token = make_jwt(now + 3600)
+    prod_login_token = make_jwt(now + 3600)
+    prod_client_token = make_jwt(now + 3600)
+
+    def responder(method: str, url: str, kwargs: dict[str, Any]) -> httpx.Response:
+        if method == "POST" and url == "https://staging.iam.test/login":
+            assert kwargs["headers"]["Referer"] == "https://staging.iam.test/portal"
+            assert kwargs["json"] == {"username": "stage-user", "password": "stage-pass"}
+            return make_response(method, url, json_body={"access": stage_login_token})
+        if method == "POST" and url == "https://prod.iam.test/login":
+            assert kwargs["headers"]["Referer"] == "https://prod.iam.test/portal"
+            assert kwargs["json"] == {"username": "prod-user", "password": "prod-pass"}
+            return make_response(method, url, json_body={"access": prod_login_token})
+        if method == "GET" and url == "https://prod.iam.test/admin/77":
+            assert kwargs["headers"]["Authorization"] == "Bearer prod-admin"
+            assert kwargs["params"]["issue_by_current_user"] == "false"
+            return make_response(method, url, json_body={"access": prod_client_token})
+        raise AssertionError(f"Unexpected request: {method} {url}")
+
+    calls = patch_async_client(monkeypatch, responder)
+    app = make_app_state()
+
+    assert await resolve_authorization(app, settings, admin.id) == "Bearer staging-admin"
+    prod_admin = await resolve_authorization(
+        app, settings, admin.id, environment_id=prod.id
+    )
+    assert prod_admin == "Bearer prod-admin"
+
+    first_stage_login = await resolve_authorization(
+        app, settings, login.id, environment_id=staging.id
+    )
+    first_prod_login = await resolve_authorization(
+        app, settings, login.id, environment_id=prod.id
+    )
+    second_stage_login = await resolve_authorization(
+        app, settings, login.id, environment_id=staging.id
+    )
+    client_auth = await resolve_authorization(
+        app, settings, client_admin.id, environment_id=prod.id
+    )
+
+    assert first_stage_login == second_stage_login == f"Bearer {stage_login_token}"
+    assert first_prod_login == f"Bearer {prod_login_token}"
+    assert client_auth == f"Bearer {prod_client_token}"
+    assert sum(1 for call in calls if call["url"] == "https://staging.iam.test/login") == 1
+    assert sum(1 for call in calls if call["url"] == "https://prod.iam.test/login") == 1
+    assert sum(1 for call in calls if call["url"] == "https://prod.iam.test/admin/77") == 1
+
 @pytest.mark.asyncio
 async def test_resolve_authorization_flows_and_cache(
     monkeypatch: pytest.MonkeyPatch,
@@ -707,6 +908,44 @@ async def test_resolve_authorization_flows_and_cache(
     assert sum(1 for call in calls if call["url"] == "https://iam.test/near") == 2
 
 
+
+
+@pytest.mark.asyncio
+async def test_resolve_authorization_rejects_unresolved_credential_variables(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = build_settings(monkeypatch, tmp_path)
+    environment = create_environment(settings, "staging").environments[0]
+    set_active_environment(settings, environment.id)
+    create_variable(
+        settings,
+        VariableCreateRequest(
+            key="iamBase",
+            values={environment.id: "https://staging.iam.test"},
+        ),
+    )
+    login = create_credential(
+        settings,
+        LoginPasswordCredentialCreate(
+            name="login",
+            type="login_password",
+            config=LoginPasswordCredentialCreateConfig(
+                login_url="{{iamBase}}/login",
+                username="user",
+                password="{{missing_password}}",
+                referer="{{iamBase}}/portal",
+            ),
+        ),
+    )
+
+    calls = patch_async_client(monkeypatch, lambda method, url, kwargs: make_response(method, url))
+
+    with pytest.raises(RequestsCredentialResolutionError, match="missing_password"):
+        await resolve_authorization(make_app_state(), settings, login.id)
+
+    assert calls == []
+
 @pytest.mark.asyncio
 async def test_resolve_authorization_reports_missing_admin_and_cycle(
     monkeypatch: pytest.MonkeyPatch,
@@ -770,6 +1009,8 @@ async def test_resolve_authorization_reports_missing_admin_and_cycle(
 
     with pytest.raises(RequestsCredentialResolutionError, match="cycle"):
         await resolve_authorization(app, settings, first.id)
+
+
 
 
 @pytest.mark.asyncio
@@ -1000,6 +1241,8 @@ WRITE_ROUTE_CASES = [
 ]
 
 
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("method", "path", "kwargs"), READ_ROUTE_CASES)
 async def test_requests_read_routes_require_auth_and_permission(
@@ -1015,6 +1258,8 @@ async def test_requests_read_routes_require_auth_and_permission(
     async with route_client(fake_staging_repo, denied_permissions={"requests.read"}) as client:
         response = await getattr(client, method)(path, headers=AUTH_HEADERS, **kwargs)
         assert response.status_code == 403
+
+
 
 
 @pytest.mark.asyncio
@@ -1034,6 +1279,8 @@ async def test_requests_write_routes_require_auth_and_permission(
         assert response.status_code == 403
 
 
+
+
 @pytest.mark.asyncio
 async def test_requests_credentials_unknown_type_returns_400(
     fake_staging_repo: dict[str, Path],
@@ -1046,6 +1293,8 @@ async def test_requests_credentials_unknown_type_returns_400(
         )
 
     assert response.status_code == 400
+
+
 
 
 @pytest.mark.asyncio
