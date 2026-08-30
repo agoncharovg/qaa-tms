@@ -1,12 +1,10 @@
 import { useMemo, useState } from "react";
 import {
   ActionIcon,
-  Badge,
   Button,
   Checkbox,
   Group,
   Modal,
-  Select,
   Stack,
   Table,
   Text,
@@ -98,17 +96,6 @@ export function EnvironmentsPanel() {
     () => environmentsQuery.data?.environments ?? [],
     [environmentsQuery.data?.environments]
   );
-  const activeId = environmentsQuery.data?.activeId ?? null;
-  const environmentOptions = useMemo(
-    () => [
-      { label: "No environment", value: "__none__" },
-      ...environments.map((environment) => ({
-        label: environment.name,
-        value: environment.id,
-      })),
-    ],
-    [environments]
-  );
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -142,21 +129,6 @@ export function EnvironmentsPanel() {
     },
     onError: (error) => {
       setNotice({ message: getErrorMessage(error, "Unable to delete the environment."), status: "error" });
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: [QueryKey.REQUESTS_ENVIRONMENTS] });
-    },
-  });
-
-  const setActiveMutation = useMutation({
-    mutationFn: async (environmentId: string | null) => {
-      if (!token || agentPort === null) {
-        throw new Error("Authentication is required.");
-      }
-      return agentClient.setActiveEnvironment(agentPort, token, environmentId);
-    },
-    onError: (error) => {
-      setNotice({ message: getErrorMessage(error, "Unable to change the active environment."), status: "error" });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: [QueryKey.REQUESTS_ENVIRONMENTS] });
@@ -207,26 +179,16 @@ export function EnvironmentsPanel() {
       <RequestsNoticeAlert notice={notice} />
       {!canWrite ? (
         <Text c="dimmed" size="sm">
-          Read-only access. Environment create, edit, delete, and active selection controls are disabled.
+          Read-only access. Environment create, edit, and delete controls are disabled.
         </Text>
       ) : null}
       <RequestsSurface
-        description="The active environment resolves {{variables}} in request URL, headers, params, and body right before send or curl export."
+        description="Environments define {{variables}} resolved in request URL, headers, params, and body. Select the active environment in the builder."
         title="Environments"
       >
         <Stack gap="md">
-          <Group align="flex-end" justify="space-between" wrap="wrap">
-            <Select
-              data={environmentOptions}
-              disabled={!canWrite}
-              label="Active environment"
-              onChange={(value) => {
-                void setActiveMutation.mutateAsync(value === "__none__" ? null : value ?? null);
-              }}
-              value={activeId ?? "__none__"}
-              w={260}
-            />
-            {canWrite ? (
+          {canWrite ? (
+            <Group justify="flex-end">
               <Button
                 leftSection={<IconPlus size={16} />}
                 onClick={() => {
@@ -236,8 +198,8 @@ export function EnvironmentsPanel() {
               >
                 New environment
               </Button>
-            ) : null}
-          </Group>
+            </Group>
+          ) : null}
           {environments.length === 0 ? (
             <RequestsEmptyCard body="No environments have been created yet." title="Environments" />
           ) : (
@@ -254,10 +216,7 @@ export function EnvironmentsPanel() {
                 {environments.map((environment) => (
                   <Table.Tr key={environment.id}>
                     <Table.Td>
-                      <Group gap="xs">
-                        <Text>{environment.name}</Text>
-                        {environment.id === activeId ? <Badge variant="light">Active</Badge> : null}
-                      </Group>
+                      <Text>{environment.name}</Text>
                     </Table.Td>
                     <Table.Td>{environment.variables.length}</Table.Td>
                     <Table.Td>{environment.updatedAt}</Table.Td>
