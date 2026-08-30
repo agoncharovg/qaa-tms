@@ -4,7 +4,7 @@ import {
   Checkbox,
   Group,
   Modal,
-  PasswordInput,
+  Popover,
   Select,
   Stack,
   Table,
@@ -15,7 +15,11 @@ import { IconPlus, IconRefresh, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { agentClient } from "@/api/agentClient";
-import type { RequestsCredentialPublic, RequestsCredentialType } from "@/api/types";
+import type {
+  RequestsCredentialPublic,
+  RequestsCredentialType,
+  RequestsEnvironmentColumn,
+} from "@/api/types";
 import { QueryKey } from "@/constants";
 import { hasPermission } from "@/plugins/permissions";
 import {
@@ -27,6 +31,14 @@ import {
   RequestsSurface,
 } from "@/plugins/requests/RequestsShared";
 import { getErrorMessage, type RequestsNotice, useRequestsAgent } from "@/plugins/requests/requestsShared";
+import {
+  applyVariableCompletion,
+  availableVariableNames,
+  buildVariableMap,
+  findUnresolved,
+  getVariableCompletion,
+  type VariableCompletion,
+} from "@/plugins/requests/requestsVariables";
 import { useAuthStore } from "@/store/authStore";
 
 const REQUESTS_WRITE_PERMISSION = "requests.write";
@@ -49,6 +61,77 @@ type CredentialFormState = {
   username: string;
   verifyUrl: string;
 };
+
+type CredentialTemplateField =
+  | "adminTokenUrl"
+  | "loginUrl"
+  | "password"
+  | "permanentToken"
+  | "referer"
+  | "scheme"
+  | "token"
+  | "username"
+  | "verifyUrl";
+
+type NewSecretDraft = {
+  key: string;
+  values: Record<string, string>;
+};
+
+function buildEmptySecretDraft(): NewSecretDraft {
+  return { key: "", values: {} };
+}
+
+function normalizeVariableValues(values: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(values).filter(([, value]) => value.length > 0));
+}
+
+function insertVariableReference(
+  value: string,
+  completion: VariableCompletion | null,
+  variableName: string
+): string {
+  if (completion) {
+    return applyVariableCompletion(value, completion, variableName);
+  }
+
+  return `${value}{{${variableName}}}`;
+}
+
+function applySecretValuesToAll(
+  environments: RequestsEnvironmentColumn[],
+  values: Record<string, string>,
+  mode: "fill-empty" | "overwrite-all"
+): Record<string, string> {
+  if (environments.length === 0) {
+    return values;
+  }
+
+  const sourceValue =
+    mode === "fill-empty"
+      ? environments
+          .map((environment) => values[environment.id] ?? "")
+          .find((value) => value.length > 0) ?? ""
+      : values[environments[0]?.id ?? ""] ?? "";
+
+  const nextValues = { ...values };
+  for (const environment of environments) {
+    if (mode === "fill-empty") {
+      if ((nextValues[environment.id] ?? "").length === 0 && sourceValue.length > 0) {
+        nextValues[environment.id] = sourceValue;
+      }
+      continue;
+    }
+
+    if (sourceValue.length > 0) {
+      nextValues[environment.id] = sourceValue;
+    } else {
+      delete nextValues[environment.id];
+    }
+  }
+
+  return nextValues;
+}
 
 function buildEmptyCredentialForm(): CredentialFormState {
   return {
@@ -77,16 +160,22 @@ function buildFormFromCredential(credential: RequestsCredentialPublic): Credenti
   base.isEdit = true;
   base.name = credential.name;
   base.type = credential.type;
+  if (credential.type === "bearer") {
+    base.token = credential.config.token;
+  }
+
 
   if (credential.type === "api_key_permanent") {
     base.scheme = credential.config.scheme;
     base.verifyUrl = credential.config.verifyUrl;
+    base.permanentToken = credential.config.permanentToken;
   }
 
   if (credential.type === "login_password") {
     base.loginUrl = credential.config.loginUrl;
     base.referer = credential.config.referer;
     base.username = credential.config.username;
+    base.password = credential.config.password;
   }
 
   if (credential.type === "client_admin") {
@@ -101,15 +190,15 @@ function buildFormFromCredential(credential: RequestsCredentialPublic): Credenti
 
 function describeCredential(credential: RequestsCredentialPublic): string {
   if (credential.type === "bearer") {
-    return credential.config.hasToken ? "Token configured" : "Token missing";
+    return credential.config.token || "Blank token";
   }
 
   if (credential.type === "api_key_permanent") {
-    return `${credential.config.scheme} -> ${credential.config.verifyUrl} (${credential.config.hasPermanentToken ? "secret set" : "secret missing"})`;
+    return `${credential.config.scheme} -> ${credential.config.verifyUrl} (${credential.config.permanentToken || "blank token"})`;
   }
 
   if (credential.type === "login_password") {
-    return `${credential.config.username} @ ${credential.config.loginUrl} (${credential.config.hasPassword ? "password set" : "password missing"})`;
+    return `${credential.config.username} @ ${credential.config.loginUrl}`;
   }
 
   return `Admin ${credential.config.adminCredentialId}, client ${credential.config.clientId}`;
@@ -117,86 +206,48 @@ function describeCredential(credential: RequestsCredentialPublic): string {
 
 function buildCredentialPayload(form: CredentialFormState): Record<string, unknown> {
   if (form.type === "bearer") {
-    return form.isEdit
-      ? {
-          config: form.token.trim().length > 0 ? { token: form.token } : {},
-          name: form.name.trim() || undefined,
-          type: form.type,
-        }
-      : {
-          config: { token: form.token },
-          name: form.name.trim(),
-          type: form.type,
-        };
+    return {
+      config: { token: form.token },
+      name: form.name.trim() || undefined,
+      type: form.type,
+    };
   }
 
   if (form.type === "api_key_permanent") {
-    return form.isEdit
-      ? {
-          config: {
-            ...(form.permanentToken.trim().length > 0 ? { permanentToken: form.permanentToken } : {}),
-            ...(form.scheme.trim().length > 0 ? { scheme: form.scheme } : {}),
-            ...(form.verifyUrl.trim().length > 0 ? { verifyUrl: form.verifyUrl } : {}),
-          },
-          name: form.name.trim() || undefined,
-          type: form.type,
-        }
-      : {
-          config: {
-            permanentToken: form.permanentToken,
-            scheme: form.scheme || "APIKey",
-            verifyUrl: form.verifyUrl,
-          },
-          name: form.name.trim(),
-          type: form.type,
-        };
+    return {
+      config: {
+        permanentToken: form.permanentToken,
+        scheme: form.scheme,
+        verifyUrl: form.verifyUrl,
+      },
+      name: form.name.trim() || undefined,
+      type: form.type,
+    };
   }
 
   if (form.type === "login_password") {
-    return form.isEdit
-      ? {
-          config: {
-            ...(form.loginUrl.trim().length > 0 ? { loginUrl: form.loginUrl } : {}),
-            ...(form.password.trim().length > 0 ? { password: form.password } : {}),
-            ...(form.referer.trim().length > 0 ? { referer: form.referer } : {}),
-            ...(form.username.trim().length > 0 ? { username: form.username } : {}),
-          },
-          name: form.name.trim() || undefined,
-          type: form.type,
-        }
-      : {
-          config: {
-            loginUrl: form.loginUrl,
-            password: form.password,
-            referer: form.referer,
-            username: form.username,
-          },
-          name: form.name.trim(),
-          type: form.type,
-        };
+    return {
+      config: {
+        loginUrl: form.loginUrl,
+        password: form.password,
+        referer: form.referer,
+        username: form.username,
+      },
+      name: form.name.trim() || undefined,
+      type: form.type,
+    };
   }
 
-  return form.isEdit
-    ? {
-        config: {
-          ...(form.adminCredentialId.trim().length > 0 ? { adminCredentialId: form.adminCredentialId } : {}),
-          ...(form.adminTokenUrl.trim().length > 0 ? { adminTokenUrl: form.adminTokenUrl } : {}),
-          ...(form.clientId.trim().length > 0 ? { clientId: Number(form.clientId) } : {}),
-          issueByCurrentUser: form.issueByCurrentUser,
-        },
-        name: form.name.trim() || undefined,
-        type: form.type,
-      }
-    : {
-        config: {
-          adminCredentialId: form.adminCredentialId,
-          adminTokenUrl: form.adminTokenUrl,
-          clientId: Number(form.clientId),
-          issueByCurrentUser: form.issueByCurrentUser,
-        },
-        name: form.name.trim(),
-        type: form.type,
-      };
+  return {
+    config: {
+      adminCredentialId: form.adminCredentialId,
+      adminTokenUrl: form.adminTokenUrl,
+      clientId: Number(form.clientId),
+      issueByCurrentUser: form.issueByCurrentUser,
+    },
+    name: form.name.trim() || undefined,
+    type: form.type,
+  };
 }
 
 export function CredentialsPanel() {
@@ -208,11 +259,22 @@ export function CredentialsPanel() {
   const [form, setForm] = useState<CredentialFormState>(() => buildEmptyCredentialForm());
   const [modalOpen, setModalOpen] = useState(false);
   const [resolveMessages, setResolveMessages] = useState<Record<string, string>>({});
+  const [fieldCompletions, setFieldCompletions] = useState<Partial<Record<CredentialTemplateField, VariableCompletion | null>>>({});
+  const [newSecretDraft, setNewSecretDraft] = useState<NewSecretDraft>(() => buildEmptySecretDraft());
+  const [newSecretField, setNewSecretField] = useState<CredentialTemplateField | null>(null);
 
   const credentialsQuery = useQuery({
     enabled: Boolean(token && agentPort !== null),
     queryFn: ({ signal }) => agentClient.listCredentials(agentPort ?? 0, token ?? "", signal),
     queryKey: [QueryKey.REQUESTS_CREDENTIALS, token, agentPort],
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+
+  const environmentsQuery = useQuery({
+    enabled: Boolean(token && agentPort !== null),
+    queryFn: ({ signal }) => agentClient.getRequestsState(agentPort ?? 0, token ?? "", signal),
+    queryKey: [QueryKey.REQUESTS_ENVIRONMENTS, token, agentPort],
     refetchOnWindowFocus: false,
     retry: false,
   });
@@ -223,6 +285,263 @@ export function CredentialsPanel() {
       .filter((credential) => credential.type === "bearer")
       .map((credential) => ({ label: credential.name, value: credential.id }));
   }, [credentials]);
+
+  const environments = environmentsQuery.data?.environments ?? [];
+  const activeEnvironmentId = environmentsQuery.data?.activeId ?? null;
+  const variableMap = useMemo(
+    () => buildVariableMap(environmentsQuery.data ?? null, activeEnvironmentId),
+    [activeEnvironmentId, environmentsQuery.data]
+  );
+  const variableNames = useMemo(
+    () => availableVariableNames(environmentsQuery.data ?? null, activeEnvironmentId),
+    [activeEnvironmentId, environmentsQuery.data]
+  );
+
+  const resetFormState = () => {
+    setForm(buildEmptyCredentialForm());
+    setFieldCompletions({});
+    setNewSecretDraft(buildEmptySecretDraft());
+    setNewSecretField(null);
+  };
+
+  const updateTemplateField = (field: CredentialTemplateField, value: string) => {
+    setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const openNewSecret = (field: CredentialTemplateField) => {
+    setNewSecretField(field);
+    setNewSecretDraft(buildEmptySecretDraft());
+  };
+
+  const closeNewSecret = () => {
+    setNewSecretField(null);
+    setNewSecretDraft(buildEmptySecretDraft());
+  };
+
+  const insertSecretIntoField = (field: CredentialTemplateField, variableName: string) => {
+    setForm((current) => ({
+      ...current,
+      [field]: insertVariableReference(
+        current[field],
+        fieldCompletions[field] ?? null,
+        variableName
+      ),
+    }));
+    setFieldCompletions((current) => ({ ...current, [field]: null }));
+  };
+
+  const detectVariableCompletion = (value: string, caret: number) =>
+    getVariableCompletion(value, caret) ??
+    (caret === value.length ? null : getVariableCompletion(value, value.length));
+
+  const renderTemplateField = (field: CredentialTemplateField, label: string) => {
+    const completion = fieldCompletions[field] ?? detectVariableCompletion(form[field], form[field].length);
+    const suggestions =
+      completion === null
+        ? []
+        : variableNames.filter((name) =>
+            completion.partial.length === 0
+              ? true
+              : name.toLowerCase().includes(completion.partial.toLowerCase())
+          );
+    const unresolved = findUnresolved(form[field], variableMap);
+
+    return (
+      <Group align="flex-start" wrap="nowrap">
+        <Stack gap={4} style={{ flex: 1 }}>
+          <TextInput
+            label={label}
+            onChange={(event) => {
+              const value = event.currentTarget.value;
+              const caret = event.currentTarget.selectionStart ?? value.length;
+              updateTemplateField(field, value);
+              setFieldCompletions((current) => ({
+                ...current,
+                [field]: detectVariableCompletion(value, caret),
+              }));
+            }}
+            onClick={(event) => {
+              const value = event.currentTarget.value;
+              const caret = event.currentTarget.selectionStart ?? value.length;
+              setFieldCompletions((current) => ({
+                ...current,
+                [field]: detectVariableCompletion(value, caret),
+              }));
+            }}
+            onKeyUp={(event) => {
+              const value = event.currentTarget.value;
+              const caret = event.currentTarget.selectionStart ?? value.length;
+              setFieldCompletions((current) => ({
+                ...current,
+                [field]: detectVariableCompletion(value, caret),
+              }));
+            }}
+            type="text"
+            value={form[field]}
+          />
+          {completion && suggestions.length > 0 ? (
+            <Group gap="xs">
+              <Text c="dimmed" size="xs">
+                Variables
+              </Text>
+              {suggestions.map((name) => (
+                <Button
+                  key={name}
+                  onClick={() => insertSecretIntoField(field, name)}
+                  size="xs"
+                  variant="light"
+                >
+                  {name}
+                </Button>
+              ))}
+            </Group>
+          ) : null}
+          {unresolved.length > 0 ? (
+            <Text c="dimmed" size="xs">
+              Unresolved variables: {unresolved.join(", ")}
+            </Text>
+          ) : null}
+        </Stack>
+        <Popover opened={newSecretField === field} position="bottom-end" shadow="md" width={Math.max(360, 220 + environments.length * 120)} withinPortal>
+          <Popover.Target>
+            <Button onClick={() => openNewSecret(field)} size="xs" variant="default">
+              + New secret
+            </Button>
+          </Popover.Target>
+          <Popover.Dropdown>
+            <Stack gap="sm">
+              <Text fw={600} size="sm">
+                New secret
+              </Text>
+              <Table withTableBorder>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th style={{ minWidth: 160 }}>Name</Table.Th>
+                    {environments.map((environment) => (
+                      <Table.Th key={environment.id} style={{ minWidth: 160 }}>
+                        {environment.name}
+                      </Table.Th>
+                    ))}
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  <Table.Tr>
+                    <Table.Td>
+                      <TextInput
+                        aria-label="New secret name"
+                        onChange={(event) =>
+                          setNewSecretDraft((current) => ({
+                            ...current,
+                            key: event.currentTarget.value,
+                          }))
+                        }
+                        value={newSecretDraft.key}
+                      />
+                    </Table.Td>
+                    {environments.map((environment) => (
+                      <Table.Td key={environment.id}>
+                        <TextInput
+                          aria-label={`${environment.name} secret value`}
+                          onChange={(event) => {
+                            const value = event.currentTarget.value;
+                            setNewSecretDraft((current) => ({
+                              ...current,
+                              values:
+                                value.length > 0
+                                  ? { ...current.values, [environment.id]: value }
+                                  : Object.fromEntries(
+                                      Object.entries(current.values).filter(
+                                        ([key]) => key !== environment.id
+                                      )
+                                    ),
+                            }));
+                          }}
+                          value={newSecretDraft.values[environment.id] ?? ""}
+                        />
+                      </Table.Td>
+                    ))}
+                  </Table.Tr>
+                </Table.Tbody>
+              </Table>
+              <Group gap="xs" justify="space-between">
+                <Group gap="xs">
+                  <Button
+                    onClick={() =>
+                      setNewSecretDraft((current) => ({
+                        ...current,
+                        values: applySecretValuesToAll(
+                          environments,
+                          current.values,
+                          "fill-empty"
+                        ),
+                      }))
+                    }
+                    size="xs"
+                    variant="light"
+                  >
+                    Fill empty
+                  </Button>
+                  <Button
+                    onClick={() =>
+                      setNewSecretDraft((current) => ({
+                        ...current,
+                        values: applySecretValuesToAll(
+                          environments,
+                          current.values,
+                          "overwrite-all"
+                        ),
+                      }))
+                    }
+                    size="xs"
+                    variant="light"
+                  >
+                    Overwrite all
+                  </Button>
+                </Group>
+                <Button
+                  disabled={newSecretDraft.key.trim().length === 0}
+                  loading={createSecretMutation.isPending}
+                  onClick={() => void createSecretMutation.mutateAsync()}
+                  size="xs"
+                >
+                  Create secret
+                </Button>
+                <Button onClick={closeNewSecret} size="xs" variant="default">
+                  Close
+                </Button>
+              </Group>
+            </Stack>
+          </Popover.Dropdown>
+        </Popover>
+      </Group>
+    );
+  };
+
+  const createSecretMutation = useMutation({
+    mutationFn: async () => {
+      if (!token || agentPort === null || newSecretField === null) {
+        throw new Error("Authentication is required.");
+      }
+
+      return agentClient.createVariable(agentPort, token, {
+        enabled: true,
+        key: newSecretDraft.key.trim(),
+        secret: true,
+        values: normalizeVariableValues(newSecretDraft.values),
+      });
+    },
+    onError: (error) => {
+      setNotice({ message: getErrorMessage(error, "Unable to create the secret."), status: "error" });
+    },
+    onSuccess: async (nextState) => {
+      queryClient.setQueryData([QueryKey.REQUESTS_ENVIRONMENTS, token, agentPort], nextState);
+      if (newSecretField !== null) {
+        insertSecretIntoField(newSecretField, newSecretDraft.key.trim());
+      }
+      closeNewSecret();
+      await queryClient.invalidateQueries({ queryKey: [QueryKey.REQUESTS_ENVIRONMENTS] });
+    },
+  });
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -267,7 +586,7 @@ export function CredentialsPanel() {
       if (!token || agentPort === null) {
         throw new Error("Authentication is required.");
       }
-      return agentClient.resolveCredential(agentPort, token, { credentialId, force: true });
+      return agentClient.resolveCredential(agentPort, token, { credentialId, environmentId: activeEnvironmentId, force: true });
     },
     onError: (error, credentialId) => {
       setResolveMessages((current) => ({
@@ -329,14 +648,14 @@ export function CredentialsPanel() {
       <RequestsNoticeAlert notice={notice} />
       {!canWrite ? <Text c="dimmed" size="sm">Read-only access. Credential create, edit, delete, and test actions are hidden.</Text> : null}
       <RequestsSurface
-        description="Credential secrets stay local to the companion app and are never returned to the browser."
+        description="Credential recipes stay local and can reference {{variables}} or {{secrets}} from the active environment."
         title="Credentials"
       >
         {canWrite ? (
           <Group justify="space-between" wrap="wrap">
             <Button
               leftSection={<IconPlus size={16} />}
-              onClick={() => { setForm(buildEmptyCredentialForm()); setModalOpen(true); }}
+              onClick={() => { resetFormState(); setModalOpen(true); }}
             >
               New credential
             </Button>
@@ -375,7 +694,7 @@ export function CredentialsPanel() {
                     <Table.Td>
                       <Group gap="xs" justify="flex-end">
                         <Button
-                          onClick={() => { setForm(buildFormFromCredential(credential)); setModalOpen(true); }}
+                          onClick={() => { resetFormState(); setForm(buildFormFromCredential(credential)); setModalOpen(true); }}
                           size="xs"
                           variant="light"
                         >
@@ -413,7 +732,7 @@ export function CredentialsPanel() {
         )}
       </RequestsSurface>
       <Modal
-        onClose={() => { setModalOpen(false); setForm(buildEmptyCredentialForm()); }}
+        onClose={() => { setModalOpen(false); resetFormState(); }}
         opened={modalOpen}
         size={650}
         title={form.isEdit ? "Edit credential" : "Create credential"}
@@ -436,57 +755,20 @@ export function CredentialsPanel() {
             onChange={(value) => setForm((current) => ({ ...current, type: (value ?? "bearer") as RequestsCredentialType }))}
             value={form.type}
           />
-          {form.type === "bearer" ? (
-            <PasswordInput
-              label="Token"
-              onChange={(event) => setForm((current) => ({ ...current, token: event.currentTarget.value }))}
-              placeholder={form.isEdit ? "leave blank to keep" : undefined}
-              value={form.token}
-            />
-          ) : null}
+          {form.type === "bearer" ? renderTemplateField("token", "Token") : null}
           {form.type === "api_key_permanent" ? (
             <Stack gap="sm">
-              <PasswordInput
-                label="Permanent token"
-                onChange={(event) => setForm((current) => ({ ...current, permanentToken: event.currentTarget.value }))}
-                placeholder={form.isEdit ? "leave blank to keep" : undefined}
-                value={form.permanentToken}
-              />
-              <TextInput
-                label="Verify URL"
-                onChange={(event) => setForm((current) => ({ ...current, verifyUrl: event.currentTarget.value }))}
-                value={form.verifyUrl}
-              />
-              <TextInput
-                label="Scheme"
-                onChange={(event) => setForm((current) => ({ ...current, scheme: event.currentTarget.value }))}
-                value={form.scheme}
-              />
+              {renderTemplateField("permanentToken", "Permanent token")}
+              {renderTemplateField("verifyUrl", "Verify URL")}
+              {renderTemplateField("scheme", "Scheme")}
             </Stack>
           ) : null}
           {form.type === "login_password" ? (
             <Stack gap="sm">
-              <TextInput
-                label="Login URL"
-                onChange={(event) => setForm((current) => ({ ...current, loginUrl: event.currentTarget.value }))}
-                value={form.loginUrl}
-              />
-              <TextInput
-                label="Username"
-                onChange={(event) => setForm((current) => ({ ...current, username: event.currentTarget.value }))}
-                value={form.username}
-              />
-              <PasswordInput
-                label="Password"
-                onChange={(event) => setForm((current) => ({ ...current, password: event.currentTarget.value }))}
-                placeholder={form.isEdit ? "leave blank to keep" : undefined}
-                value={form.password}
-              />
-              <TextInput
-                label="Referer"
-                onChange={(event) => setForm((current) => ({ ...current, referer: event.currentTarget.value }))}
-                value={form.referer}
-              />
+              {renderTemplateField("loginUrl", "Login URL")}
+              {renderTemplateField("username", "Username")}
+              {renderTemplateField("password", "Password")}
+              {renderTemplateField("referer", "Referer")}
             </Stack>
           ) : null}
           {form.type === "client_admin" ? (
@@ -497,11 +779,7 @@ export function CredentialsPanel() {
                 onChange={(value) => setForm((current) => ({ ...current, adminCredentialId: value ?? "" }))}
                 value={form.adminCredentialId}
               />
-              <TextInput
-                label="Admin token URL"
-                onChange={(event) => setForm((current) => ({ ...current, adminTokenUrl: event.currentTarget.value }))}
-                value={form.adminTokenUrl}
-              />
+              {renderTemplateField("adminTokenUrl", "Admin token URL")}
               <TextInput
                 label="Client ID"
                 onChange={(event) => setForm((current) => ({ ...current, clientId: event.currentTarget.value }))}
@@ -517,7 +795,7 @@ export function CredentialsPanel() {
             </Stack>
           ) : null}
           <Group justify="flex-end">
-            <Button variant="default" onClick={() => { setModalOpen(false); setForm(buildEmptyCredentialForm()); }}>
+            <Button variant="default" onClick={() => { setModalOpen(false); resetFormState(); }}>
               Cancel
             </Button>
             <Button

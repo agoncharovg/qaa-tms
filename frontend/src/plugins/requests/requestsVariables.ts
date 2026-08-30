@@ -7,6 +7,39 @@ import type {
 
 const TEMPLATE_PATTERN = /\{\{\s*([^{}]+?)\s*\}\}/g;
 
+export type VariableCompletion = {
+  from: number;
+  partial: string;
+  to: number;
+};
+
+export function getVariableCompletion(value: string, caret: number): VariableCompletion | null {
+  const beforeCaret = value.slice(0, caret);
+  const from = beforeCaret.lastIndexOf("{{");
+  if (from === -1) {
+    return null;
+  }
+
+  const partial = beforeCaret.slice(from + 2);
+  if (partial.includes("}") || partial.includes("\n")) {
+    return null;
+  }
+
+  return { from, partial: partial.trim(), to: caret };
+}
+
+export function applyVariableCompletion(
+  value: string,
+  completion: VariableCompletion | null,
+  variableName: string
+): string {
+  if (!completion) {
+    return value;
+  }
+
+  return `${value.slice(0, completion.from)}{{${variableName}}}${value.slice(completion.to)}`;
+}
+
 type TemplatedRequestDocument = {
   body: RequestsRequestBody;
   headers: RequestsHeaderField[];

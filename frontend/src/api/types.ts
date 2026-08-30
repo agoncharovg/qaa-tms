@@ -377,7 +377,7 @@ export interface RequestsBearerCredentialPublic {
   createdAt: string;
   updatedAt: string;
   config: {
-    hasToken: boolean;
+    token: string;
   };
 }
 
@@ -390,7 +390,7 @@ export interface RequestsApiKeyPermanentCredentialPublic {
   config: {
     verifyUrl: string;
     scheme: string;
-    hasPermanentToken: boolean;
+    permanentToken: string;
   };
 }
 
@@ -404,7 +404,7 @@ export interface RequestsLoginPasswordCredentialPublic {
     loginUrl: string;
     username: string;
     referer: string;
-    hasPassword: boolean;
+    password: string;
   };
 }
 
@@ -431,6 +431,16 @@ export type RequestsCredentialPublic =
 export interface RequestsCredentialsListResponse {
   credentials: RequestsCredentialPublic[];
 }
+
+export interface RequestsCredentialResolveRequest {
+  credentialId: string;
+  environmentId?: string | null;
+  force?: boolean;
+}
+
+export type RequestsExecuteRequest = Omit<RequestsItemInput, "folder" | "name"> & {
+  environmentId?: string | null;
+};
 
 export interface RequestsCredentialResolveResponse {
   ok: boolean;

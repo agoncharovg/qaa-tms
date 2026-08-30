@@ -71,7 +71,14 @@ import {
 import { buildCurl, parseCurl } from "@/plugins/requests/requestsCurl";
 import { IAM_ENVIRONMENT_SEED, IAM_SEED } from "@/plugins/requests/requestsSeeds";
 import { getErrorMessage, type RequestsNotice, useRequestsAgent } from "@/plugins/requests/requestsShared";
-import { availableVariableNames, buildVariableMap, resolveRequestDocument } from "@/plugins/requests/requestsVariables";
+import {
+  applyVariableCompletion,
+  availableVariableNames,
+  buildVariableMap,
+  getVariableCompletion,
+  type VariableCompletion,
+  resolveRequestDocument,
+} from "@/plugins/requests/requestsVariables";
 import { useAuthStore } from "@/store/authStore";
 
 const REQUESTS_WRITE_PERMISSION = "requests.write";
@@ -357,39 +364,6 @@ function KeyValueTable<T extends RequestsHeaderField | RequestsQueryParam>({
       </Table>
     </Stack>
   );
-}
-
-type VariableCompletion = {
-  from: number;
-  partial: string;
-  to: number;
-};
-
-function getVariableCompletion(value: string, caret: number): VariableCompletion | null {
-  const beforeCaret = value.slice(0, caret);
-  const from = beforeCaret.lastIndexOf("{{");
-  if (from === -1) {
-    return null;
-  }
-
-  const partial = beforeCaret.slice(from + 2);
-  if (partial.includes("}") || partial.includes("\n")) {
-    return null;
-  }
-
-  return { from, partial: partial.trim(), to: caret };
-}
-
-function applyVariableCompletion(
-  value: string,
-  completion: VariableCompletion | null,
-  variableName: string
-): string {
-  if (!completion) {
-    return value;
-  }
-
-  return `${value.slice(0, completion.from)}{{${variableName}}}${value.slice(completion.to)}`;
 }
 
 function UrlVariablePreview({ url, vars }: { url: string; vars: Record<string, string> }) {
@@ -1025,6 +999,7 @@ export function RequestsBuilderPanel() {
         method: payload.method,
         queryParams: payload.queryParams,
         url: payload.url,
+        environmentId: environmentsQuery.data?.activeId ?? null,
       });
     },
     onError: (error) => {

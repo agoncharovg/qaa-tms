@@ -53,7 +53,7 @@ vi.mock("@/api/agentClient", async () => {
 });
 
 import { AgentRequestError } from "@/api/agentClient";
-import type { RequestsEnvironmentsState, RequestsItemInput } from "@/api/types";
+import type { RequestsEnvironmentsState, RequestsExecuteRequest, RequestsItemInput, RequestsVariableRow } from "@/api/types";
 import { PluginId } from "@/constants";
 import { CredentialsPanel } from "@/plugins/requests/CredentialsPanel";
 import { RequestsBuilderPanel } from "@/plugins/requests/RequestsBuilderPanel";
@@ -139,7 +139,7 @@ function seedBuilderData() {
   agentClientMock.listCredentials.mockResolvedValue({
     credentials: [
       {
-        config: { hasToken: true },
+        config: { token: "{{systemadmin_token}}" },
         createdAt: "2026-08-29T08:00:00Z",
         id: "cred-1",
         name: "Main bearer",
@@ -267,7 +267,7 @@ describe("Requests plugin panels", () => {
     agentClientMock.clearHistory.mockResolvedValue({ entries: [] });
     agentClientMock.deleteHistoryEntry.mockResolvedValue({ entries: [] });
     agentClientMock.createCredential.mockResolvedValue({
-      config: { hasToken: true },
+      config: { token: "{{systemadmin_token}}" },
       createdAt: "2026-08-29T08:00:00Z",
       id: "created",
       name: "Created",
@@ -275,7 +275,7 @@ describe("Requests plugin panels", () => {
       updatedAt: "2026-08-29T08:00:00Z",
     });
     agentClientMock.updateCredential.mockResolvedValue({
-      config: { hasPassword: true, loginUrl: "https://iam.test/login", referer: "https://iam.test", username: "user" },
+      config: { loginUrl: "https://iam.test/login", password: "{{login_password}}", referer: "https://iam.test", username: "user" },
       createdAt: "2026-08-29T08:00:00Z",
       id: "cred-login",
       name: "Login updated",
@@ -503,9 +503,10 @@ describe("Requests plugin panels", () => {
     await waitFor(() => {
       expect(agentClientMock.executeRequest).toHaveBeenCalled();
       const payload = agentClientMock.executeRequest.mock.calls.at(-1)?.[2] as
-        | Omit<RequestsItemInput, "folder" | "name">
+        | RequestsExecuteRequest
         | undefined;
       expect(payload?.url).toBe("https://env.test/items/{{missing}}");
+      expect(payload?.environmentId).toBe("env-staging");
       expect(payload?.headers).toEqual([{ enabled: true, name: "X-Stage", value: "$abc" }]);
       expect(payload?.queryParams).toEqual([
         { enabled: true, name: "env", value: "https://env.test" },
@@ -663,12 +664,68 @@ describe("Requests plugin panels", () => {
     });
   });
 
-  it("creates all credential types, omits blank edit secrets, and surfaces test results", async () => {
+  it("renders credential fields as text, prefills values, suggests variables, and creates a new secret", async () => {
     const user = userEvent.setup();
+    let environmentsState: RequestsEnvironmentsState = {
+      activeId: "env-staging",
+      environments: [
+        {
+          createdAt: "2026-08-29T08:00:00Z",
+          id: "env-staging",
+          name: "staging",
+          updatedAt: "2026-08-29T09:00:00Z",
+        },
+        {
+          createdAt: "2026-08-29T08:00:00Z",
+          id: "env-prod",
+          name: "prod",
+          updatedAt: "2026-08-29T09:00:00Z",
+        },
+      ],
+      variables: [
+        {
+          createdAt: "2026-08-29T08:00:00Z",
+          enabled: true,
+          id: "var-host",
+          key: "host",
+          secret: false,
+          updatedAt: "2026-08-29T09:00:00Z",
+          values: { "env-staging": "https://env.test" },
+        },
+        {
+          createdAt: "2026-08-29T08:00:00Z",
+          enabled: true,
+          id: "var-systemadmin",
+          key: "systemadmin_token",
+          secret: true,
+          updatedAt: "2026-08-29T09:00:00Z",
+          values: { "env-staging": "staging-secret", "env-prod": "prod-secret" },
+        },
+        {
+          createdAt: "2026-08-29T08:00:00Z",
+          enabled: true,
+          id: "var-login",
+          key: "login_password",
+          secret: true,
+          updatedAt: "2026-08-29T09:00:00Z",
+          values: { "env-staging": "pw-123" },
+        },
+        {
+          createdAt: "2026-08-29T08:00:00Z",
+          enabled: true,
+          id: "var-prod-only",
+          key: "prodOnly",
+          secret: false,
+          updatedAt: "2026-08-29T09:00:00Z",
+          values: { "env-prod": "only-prod" },
+        },
+      ],
+    };
+    agentClientMock.getRequestsState.mockImplementation(() => environmentsState);
     agentClientMock.listCredentials.mockResolvedValue({
       credentials: [
         {
-          config: { hasToken: true },
+          config: { token: "{{systemadmin_token}}" },
           createdAt: "2026-08-29T08:00:00Z",
           id: "cred-bearer",
           name: "Main bearer",
@@ -676,12 +733,119 @@ describe("Requests plugin panels", () => {
           updatedAt: "2026-08-29T09:00:00Z",
         },
         {
-          config: { hasPassword: true, loginUrl: "https://iam.test/login", referer: "https://iam.test", username: "user" },
+          config: { loginUrl: "https://iam.test/login", password: "{{login_password}}", referer: "https://iam.test", username: "user" },
           createdAt: "2026-08-29T08:00:00Z",
           id: "cred-login",
           name: "Login flow",
           type: "login_password",
           updatedAt: "2026-08-29T09:00:00Z",
+        },
+      ],
+    });
+    agentClientMock.createVariable.mockImplementation((_port, _token, payload: Pick<RequestsVariableRow, "key" | "secret" | "enabled" | "values">) => {
+      const created = {
+        createdAt: "2026-08-29T10:00:00Z",
+        enabled: payload.enabled,
+        id: `var-${payload.key}`,
+        key: payload.key,
+        secret: payload.secret,
+        updatedAt: "2026-08-29T10:00:00Z",
+        values: payload.values,
+      };
+      environmentsState = {
+        ...environmentsState,
+        variables: [...environmentsState.variables, created],
+      };
+      return environmentsState;
+    });
+
+    renderWithProviders(<CredentialsPanel />);
+    await screen.findByText("Main bearer");
+
+    await user.click(screen.getAllByRole("button", { name: "Edit" })[1]);
+    const passwordInput = await screen.findByLabelText("Password");
+    expect(passwordInput).toHaveValue("{{login_password}}");
+    expect(passwordInput).toHaveAttribute("type", "text");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await user.click(screen.getByRole("button", { name: "New credential" }));
+    const tokenInput = await screen.findByLabelText("Token");
+    fireEvent.change(tokenInput, { target: { value: "{{" } });
+    expect(await screen.findByText("systemadmin_token")).toBeInTheDocument();
+    expect(screen.getByText("host")).toBeInTheDocument();
+    await user.click(screen.getByText("systemadmin_token"));
+    expect(tokenInput).toHaveValue("{{systemadmin_token}}");
+
+    fireEvent.change(tokenInput, { target: { value: "{{prodOnly}}" } });
+    expect(await screen.findByText("Unresolved variables: prodOnly")).toBeInTheDocument();
+    fireEvent.change(tokenInput, { target: { value: "{{systemadmin_token}}" } });
+
+    await user.click(screen.getByRole("button", { name: "+ New secret" }));
+    fireEvent.change(await screen.findByLabelText("New secret name"), { target: { value: "fresh_token" } });
+    fireEvent.change(screen.getByLabelText("staging secret value"), { target: { value: "fresh-stage" } });
+    await user.click(screen.getByRole("button", { name: "Create secret" }));
+
+    await waitFor(() => {
+      expect(agentClientMock.createVariable).toHaveBeenCalledWith(PORT, TOKEN, {
+        enabled: true,
+        key: "fresh_token",
+        secret: true,
+        values: { "env-staging": "fresh-stage" },
+      });
+    });
+    expect(tokenInput).toHaveValue("{{systemadmin_token}}{{fresh_token}}");
+  });
+
+  it("creates all credential types, keeps text fields editable, and surfaces test results", async () => {
+    const user = userEvent.setup();
+    agentClientMock.listCredentials.mockResolvedValue({
+      credentials: [
+        {
+          config: { token: "{{systemadmin_token}}" },
+          createdAt: "2026-08-29T08:00:00Z",
+          id: "cred-bearer",
+          name: "Main bearer",
+          type: "bearer",
+          updatedAt: "2026-08-29T09:00:00Z",
+        },
+        {
+          config: { loginUrl: "https://iam.test/login", password: "{{login_password}}", referer: "https://iam.test", username: "user" },
+          createdAt: "2026-08-29T08:00:00Z",
+          id: "cred-login",
+          name: "Login flow",
+          type: "login_password",
+          updatedAt: "2026-08-29T09:00:00Z",
+        },
+      ],
+    });
+    agentClientMock.getRequestsState.mockResolvedValue({
+      activeId: "env-staging",
+      environments: [
+        {
+          createdAt: "2026-08-29T08:00:00Z",
+          id: "env-staging",
+          name: "staging",
+          updatedAt: "2026-08-29T09:00:00Z",
+        },
+      ],
+      variables: [
+        {
+          createdAt: "2026-08-29T08:00:00Z",
+          enabled: true,
+          id: "var-login",
+          key: "login_password",
+          secret: true,
+          updatedAt: "2026-08-29T09:00:00Z",
+          values: { "env-staging": "pw-123" },
+        },
+        {
+          createdAt: "2026-08-29T08:00:00Z",
+          enabled: true,
+          id: "var-systemadmin",
+          key: "systemadmin_token",
+          secret: true,
+          updatedAt: "2026-08-29T09:00:00Z",
+          values: { "env-staging": "secret-token" },
         },
       ],
     });
@@ -786,13 +950,29 @@ describe("Requests plugin panels", () => {
       expect(updateCall?.[1]).toBe(TOKEN);
       expect(updateCall?.[2]).toBe("cred-login");
       expect(updatePayload?.type).toBe("login_password");
-      expect(updatePayload?.config).not.toHaveProperty("password");
+      expect(updatePayload?.config).toHaveProperty("password", "{{login_password}}");
     });
 
     await user.click(screen.getAllByRole("button", { name: "Test" })[0]);
+    await waitFor(() => {
+      expect(agentClientMock.resolveCredential).toHaveBeenNthCalledWith(
+        1,
+        PORT,
+        TOKEN,
+        { credentialId: "cred-bearer", environmentId: "env-staging", force: true }
+      );
+    });
     expect(await screen.findByText(/expires 2026-08-30T00:00:00Z/)).toBeInTheDocument();
 
     await user.click(screen.getAllByRole("button", { name: "Test" })[1]);
+    await waitFor(() => {
+      expect(agentClientMock.resolveCredential).toHaveBeenNthCalledWith(
+        2,
+        PORT,
+        TOKEN,
+        { credentialId: "cred-login", environmentId: "env-staging", force: true }
+      );
+    });
     expect(await screen.findByText(/Denied/)).toBeInTheDocument();
   }, 10_000);
 

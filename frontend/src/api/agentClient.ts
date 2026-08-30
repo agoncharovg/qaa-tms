@@ -91,9 +91,11 @@ import type {
   NotebookRemindersResponse,
   NotebookSearchResponse,
   RequestsCredentialPublic,
+  RequestsCredentialResolveRequest,
   RequestsCredentialResolveResponse,
   RequestsCredentialsListResponse,
   RequestsEnvironmentsState,
+  RequestsExecuteRequest,
   RequestsExecuteResponse,
   RequestsHistoryListResponse,
   RequestsEnvironmentColumn,
@@ -951,7 +953,7 @@ export const agentClient = {
   executeRequest(
     port: number,
     token: string,
-    payload: Omit<RequestsItemInput, "folder" | "name">,
+    payload: RequestsExecuteRequest,
     signal?: AbortSignal
   ): Promise<RequestsExecuteResponse> {
     return readAgentJson<RequestsExecuteResponse>(
@@ -1147,7 +1149,7 @@ export const agentClient = {
   resolveCredential(
     port: number,
     token: string,
-    payload: { credentialId: string; force?: boolean },
+    payload: RequestsCredentialResolveRequest,
     signal?: AbortSignal
   ): Promise<RequestsCredentialResolveResponse> {
     return readAgentJson<RequestsCredentialResolveResponse>(
