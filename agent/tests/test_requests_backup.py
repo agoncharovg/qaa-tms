@@ -20,6 +20,7 @@ from app.schemas import (
     BearerCredentialCreateConfig,
     RequestBody,
     RequestDocumentInput,
+    VariableCreateRequest,
 )
 from app.services.requests_backup import (
     backup_dir,
@@ -28,7 +29,13 @@ from app.services.requests_backup import (
     prune_backups,
     should_backup,
 )
-from app.services.requests_store import create_credential, create_folder, write_item
+from app.services.requests_store import (
+    create_credential,
+    create_environment,
+    create_folder,
+    create_variable,
+    write_item,
+)
 
 
 def build_settings(monkeypatch: pytest.MonkeyPatch, home: Path) -> Settings:
@@ -71,6 +78,11 @@ def test_create_backup_writes_zip_to_sibling_dir_and_preserves_store(
             config=BearerCredentialCreateConfig(token="secret-token"),
         ),
     )
+    environment = create_environment(settings, "staging").environments[0]
+    create_variable(
+        settings,
+        VariableCreateRequest(key="iamBase", values={environment.id: "https://stg.test"}),
+    )
     requests_root = Path(settings.requests_root).expanduser()
     requests_root.joinpath(REQUESTS_HISTORY_FILE_NAME).write_text("history\n", encoding="utf-8")
     requests_root.joinpath(".scratch.json").write_text("temp\n", encoding="utf-8")
@@ -94,6 +106,7 @@ def test_create_backup_writes_zip_to_sibling_dir_and_preserves_store(
     assert "collections/alpha/clients" in names
     assert "collections/beta/" in names
     assert "credentials.json" in names
+    assert "environments.json" in names
     assert REQUESTS_HISTORY_FILE_NAME not in names
     assert ".scratch.json" not in names
     assert all(not name.startswith("requests-backups/") for name in names)

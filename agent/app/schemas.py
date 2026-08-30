@@ -475,35 +475,39 @@ class RequestItemReadResponse(RequestDocument):
     name: str
 
 
-class EnvironmentVariable(BaseModel):
-    """Environment variable row."""
-
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-    key: str = Field(min_length=1)
-    value: str = ""
-    enabled: bool = True
-
-
-class EnvironmentPublic(BaseModel):
-    """Saved environment returned to the frontend."""
+class EnvironmentColumn(BaseModel):
+    """Saved environment column returned to the frontend."""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     id: str
     name: str
-    variables: list[EnvironmentVariable] = Field(default_factory=list)
     created_at: str = Field(alias="createdAt")
     updated_at: str = Field(alias="updatedAt")
 
 
-class EnvironmentsListResponse(BaseModel):
-    """Environments list and active selection."""
+class EnvironmentVariableRow(BaseModel):
+    """Matrix row keyed by variable name."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    id: str
+    key: str = Field(min_length=1)
+    secret: bool = False
+    enabled: bool = True
+    values: dict[str, str] = Field(default_factory=dict)
+    created_at: str = Field(alias="createdAt")
+    updated_at: str = Field(alias="updatedAt")
+
+
+class EnvironmentsStateResponse(BaseModel):
+    """Environments columns, variable matrix, and active selection."""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     active_id: str | None = Field(default=None, alias="activeId")
-    environments: list[EnvironmentPublic] = Field(default_factory=list)
+    environments: list[EnvironmentColumn] = Field(default_factory=list)
+    variables: list[EnvironmentVariableRow] = Field(default_factory=list)
 
 
 class EnvironmentCreateRequest(BaseModel):
@@ -512,7 +516,6 @@ class EnvironmentCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     name: str = Field(min_length=1)
-    variables: list[EnvironmentVariable] = Field(default_factory=list)
 
 
 class EnvironmentUpdateRequest(BaseModel):
@@ -521,7 +524,28 @@ class EnvironmentUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     name: str | None = Field(default=None, min_length=1)
-    variables: list[EnvironmentVariable] | None = None
+
+
+class VariableCreateRequest(BaseModel):
+    """Variable row create payload."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    key: str = Field(min_length=1)
+    secret: bool = False
+    enabled: bool = True
+    values: dict[str, str] = Field(default_factory=dict)
+
+
+class VariableUpdateRequest(BaseModel):
+    """Variable row update payload."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    key: str | None = Field(default=None, min_length=1)
+    secret: bool | None = None
+    enabled: bool | None = None
+    values: dict[str, str] | None = None
 
 
 class EnvironmentActiveRequest(BaseModel):

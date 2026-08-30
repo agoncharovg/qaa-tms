@@ -59,7 +59,7 @@ from app.schemas import (
     E2eSuitesResponse,
     EnvironmentActiveRequest,
     EnvironmentCreateRequest,
-    EnvironmentsListResponse,
+    EnvironmentsStateResponse,
     EnvironmentUpdateRequest,
     HistoryListResponse,
     JenkinsAllureSkipCandidatesRequest,
@@ -119,6 +119,8 @@ from app.schemas import (
     RequestsTreeResponse,
     RequestsTreeWriteRequest,
     SyncRequest,
+    VariableCreateRequest,
+    VariableUpdateRequest,
     to_agent_settings_read,
 )
 from app.services.command import PlainTextCommandResult
@@ -212,16 +214,20 @@ from app.services.requests_store import (
     RequestsItemNotFoundError,
     RequestsPathValidationError,
     RequestsRootMissingError,
+    RequestsVariableNotFoundError,
+    RequestsVariableValidationError,
     create_credential,
     create_environment,
     create_folder,
+    create_variable,
     delete_credential,
     delete_environment,
     delete_folder,
     delete_item,
+    delete_variable,
     list_credentials,
-    list_environments,
     list_items,
+    list_state,
     list_tree,
     move_item,
     read_credential,
@@ -233,6 +239,7 @@ from app.services.requests_store import (
     update_credential,
     update_environment,
     update_item,
+    update_variable,
     write_item,
     write_tree,
 )
@@ -958,26 +965,28 @@ async def delete_requests_item(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
-@router.get(AgentPath.REQUESTS_ENVIRONMENTS.value, response_model=EnvironmentsListResponse)
+@router.get(AgentPath.REQUESTS_ENVIRONMENTS.value, response_model=EnvironmentsStateResponse)
 async def get_requests_environments(
     _: RequestsReadAuth,
     settings: SettingsDep,
-) -> EnvironmentsListResponse:
-    return list_environments(settings)
+) -> EnvironmentsStateResponse:
+    return list_state(settings)
 
 
-@router.post(AgentPath.REQUESTS_ENVIRONMENTS.value, response_model=EnvironmentsListResponse)
+@router.post(AgentPath.REQUESTS_ENVIRONMENTS.value, response_model=EnvironmentsStateResponse)
 async def post_requests_environment(
     request_body: dict[str, object],
     _: RequestsWriteAuth,
     settings: SettingsDep,
-) -> EnvironmentsListResponse:
+) -> EnvironmentsStateResponse:
     try:
         payload = EnvironmentCreateRequest.model_validate(request_body)
-        return create_environment(settings, payload)
+        return create_environment(settings, payload.name)
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    except (RequestsConflictError, RequestsEnvironmentValidationError) as exc:
+    except RequestsConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except RequestsEnvironmentValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except RequestsRootMissingError as exc:
         raise HTTPException(
@@ -987,13 +996,13 @@ async def post_requests_environment(
 
 @router.put(
     AgentPath.REQUESTS_ENVIRONMENT_ACTIVE.value,
-    response_model=EnvironmentsListResponse,
+    response_model=EnvironmentsStateResponse,
 )
 async def put_requests_environment_active(
     request_body: dict[str, object],
     _: RequestsWriteAuth,
     settings: SettingsDep,
-) -> EnvironmentsListResponse:
+) -> EnvironmentsStateResponse:
     try:
         payload = EnvironmentActiveRequest.model_validate(request_body)
         return set_active_environment(settings, payload.environment_id)
@@ -1001,7 +1010,9 @@ async def put_requests_environment_active(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except RequestsEnvironmentNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except (RequestsConflictError, RequestsEnvironmentValidationError) as exc:
+    except RequestsConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except RequestsEnvironmentValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except RequestsRootMissingError as exc:
         raise HTTPException(
@@ -1011,28 +1022,30 @@ async def put_requests_environment_active(
 
 @router.put(
     f"{AgentPath.REQUESTS_ENVIRONMENTS.value}/{{environment_id}}",
-    response_model=EnvironmentsListResponse,
+    response_model=EnvironmentsStateResponse,
 )
 async def put_requests_environment(
     environment_id: str,
     request_body: dict[str, object],
     _: RequestsWriteAuth,
     settings: SettingsDep,
-) -> EnvironmentsListResponse:
+) -> EnvironmentsStateResponse:
     try:
         payload = EnvironmentUpdateRequest.model_validate(request_body)
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    if payload.name is None and payload.variables is None:
+    if payload.name is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No environment changes requested.",
         )
     try:
-        return update_environment(settings, environment_id, payload)
+        return update_environment(settings, environment_id, payload.name)
     except RequestsEnvironmentNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except (RequestsConflictError, RequestsEnvironmentValidationError) as exc:
+    except RequestsConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except RequestsEnvironmentValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except RequestsRootMissingError as exc:
         raise HTTPException(
@@ -1042,18 +1055,97 @@ async def put_requests_environment(
 
 @router.delete(
     f"{AgentPath.REQUESTS_ENVIRONMENTS.value}/{{environment_id}}",
-    response_model=EnvironmentsListResponse,
+    response_model=EnvironmentsStateResponse,
 )
 async def delete_requests_environment(
     environment_id: str,
     _: RequestsWriteAuth,
     settings: SettingsDep,
-) -> EnvironmentsListResponse:
+) -> EnvironmentsStateResponse:
     try:
         return delete_environment(settings, environment_id)
     except RequestsEnvironmentNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except (RequestsConflictError, RequestsEnvironmentValidationError) as exc:
+    except RequestsConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except RequestsEnvironmentValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except RequestsRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+
+
+@router.post(AgentPath.REQUESTS_VARIABLES.value, response_model=EnvironmentsStateResponse)
+async def post_requests_variable(
+    request_body: dict[str, object],
+    _: RequestsWriteAuth,
+    settings: SettingsDep,
+) -> EnvironmentsStateResponse:
+    try:
+        payload = VariableCreateRequest.model_validate(request_body)
+        return create_variable(settings, payload)
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except RequestsConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except RequestsVariableValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except RequestsRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+
+
+@router.put(
+    f"{AgentPath.REQUESTS_VARIABLES.value}/{{variable_id}}",
+    response_model=EnvironmentsStateResponse,
+)
+async def put_requests_variable(
+    variable_id: str,
+    request_body: dict[str, object],
+    _: RequestsWriteAuth,
+    settings: SettingsDep,
+) -> EnvironmentsStateResponse:
+    try:
+        payload = VariableUpdateRequest.model_validate(request_body)
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    if not payload.model_fields_set:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No variable changes requested.",
+        )
+    try:
+        return update_variable(settings, variable_id, payload)
+    except RequestsVariableNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except RequestsConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except RequestsVariableValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except RequestsRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+
+
+@router.delete(
+    f"{AgentPath.REQUESTS_VARIABLES.value}/{{variable_id}}",
+    response_model=EnvironmentsStateResponse,
+)
+async def delete_requests_variable(
+    variable_id: str,
+    _: RequestsWriteAuth,
+    settings: SettingsDep,
+) -> EnvironmentsStateResponse:
+    try:
+        return delete_variable(settings, variable_id)
+    except RequestsVariableNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except RequestsConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except RequestsVariableValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except RequestsRootMissingError as exc:
         raise HTTPException(

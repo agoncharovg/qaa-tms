@@ -20,6 +20,7 @@ class AgentPath(StrEnum):
     REQUESTS_ITEM = "/requests/item"
     REQUESTS_EXECUTE = "/requests/execute"
     REQUESTS_ENVIRONMENTS = "/requests/environments"
+    REQUESTS_VARIABLES = "/requests/variables"
     REQUESTS_ENVIRONMENT_ACTIVE = "/requests/environments/active"
     REQUESTS_CREDENTIALS = "/requests/credentials"
     REQUESTS_CREDENTIAL_RESOLVE = "/requests/credentials/resolve"

@@ -27,11 +27,9 @@ from app.schemas import (
     ClientAdminCredentialPublic,
     ClientAdminCredentialPublicConfig,
     ClientAdminCredentialUpdate,
-    EnvironmentCreateRequest,
-    EnvironmentPublic,
-    EnvironmentsListResponse,
-    EnvironmentUpdateRequest,
-    EnvironmentVariable,
+    EnvironmentColumn,
+    EnvironmentsStateResponse,
+    EnvironmentVariableRow,
     LoginPasswordCredentialCreate,
     LoginPasswordCredentialPublic,
     LoginPasswordCredentialPublicConfig,
@@ -43,6 +41,8 @@ from app.schemas import (
     RequestsFolderNode,
     RequestsItemsResponse,
     RequestsTreeResponse,
+    VariableCreateRequest,
+    VariableUpdateRequest,
 )
 
 type RequestsFlags = dict[str, object]
@@ -70,13 +70,14 @@ type CredentialPublicModel = (
     | LoginPasswordCredentialPublic
     | ClientAdminCredentialPublic
 )
-type EnvironmentCreateModel = EnvironmentCreateRequest
-type EnvironmentUpdateModel = EnvironmentUpdateRequest
+type VariableCreateModel = VariableCreateRequest
+type VariableUpdateModel = VariableUpdateRequest
 
 
 class RequestsEnvironmentsState(TypedDict):
     active_id: str | None
     environments: list[dict[str, Any]]
+    variables: list[dict[str, Any]]
 
 
 class RequestsContentsNode(TypedDict, total=False):
@@ -118,6 +119,14 @@ class RequestsEnvironmentNotFoundError(FileNotFoundError):
 
 
 class RequestsEnvironmentValidationError(ValueError):
+    pass
+
+
+class RequestsVariableNotFoundError(FileNotFoundError):
+    pass
+
+
+class RequestsVariableValidationError(ValueError):
     pass
 
 
@@ -409,15 +418,17 @@ def get_credential_raw(settings: Settings, credential_id: str) -> dict[str, Any]
     raise RequestsCredentialNotFoundError(f"Credential not found: {credential_id}")
 
 
-def list_environments(settings: Settings) -> EnvironmentsListResponse:
+def list_state(settings: Settings) -> EnvironmentsStateResponse:
     return _environment_state_to_response(_load_environments_state(settings))
 
 
-def create_environment(
-    settings: Settings, environment: EnvironmentCreateModel
-) -> EnvironmentsListResponse:
+def list_environments(settings: Settings) -> EnvironmentsStateResponse:
+    return list_state(settings)
+
+
+def create_environment(settings: Settings, name: str) -> EnvironmentsStateResponse:
     state = _load_environments_state(settings)
-    state["environments"].append(_environment_create_to_raw(environment, _now_iso()))
+    state["environments"].append(_environment_create_to_raw(name, _now_iso()))
     _save_environments_state(settings, state)
     return _environment_state_to_response(state)
 
@@ -425,32 +436,39 @@ def create_environment(
 def update_environment(
     settings: Settings,
     environment_id: str,
-    environment: EnvironmentUpdateModel,
-) -> EnvironmentsListResponse:
+    name: str,
+) -> EnvironmentsStateResponse:
     state = _load_environments_state(settings)
     for index, existing in enumerate(state["environments"]):
         try:
-            normalized = _normalize_raw_environment(existing)
+            normalized = _normalize_raw_environment_column(existing)
         except RequestsEnvironmentValidationError:
             continue
         if normalized["id"] != environment_id:
             continue
-        state["environments"][index] = _apply_environment_update(normalized, environment)
+        state["environments"][index] = _apply_environment_update(normalized, name)
         _save_environments_state(settings, state)
         return _environment_state_to_response(state)
     raise RequestsEnvironmentNotFoundError(f"Environment not found: {environment_id}")
 
 
-def delete_environment(settings: Settings, environment_id: str) -> EnvironmentsListResponse:
+def delete_environment(settings: Settings, environment_id: str) -> EnvironmentsStateResponse:
     state = _load_environments_state(settings)
-    kept = [
-        environment
-        for environment in state["environments"]
-        if _normalize_raw_environment_id(environment) != environment_id
-    ]
-    if len(kept) == len(state["environments"]):
+    kept: list[dict[str, Any]] = []
+    found = False
+    for environment in state["environments"]:
+        if _normalize_raw_environment_id(environment) == environment_id:
+            found = True
+            continue
+        kept.append(environment)
+    if not found:
         raise RequestsEnvironmentNotFoundError(f"Environment not found: {environment_id}")
     state["environments"] = kept
+    state["variables"] = _drop_environment_from_variables(
+        state["variables"],
+        environment_id,
+        _now_iso(),
+    )
     if state["active_id"] == environment_id:
         state["active_id"] = None
     _save_environments_state(settings, state)
@@ -459,21 +477,71 @@ def delete_environment(settings: Settings, environment_id: str) -> EnvironmentsL
 
 def set_active_environment(
     settings: Settings, environment_id: str | None
-) -> EnvironmentsListResponse:
+) -> EnvironmentsStateResponse:
     state = _load_environments_state(settings)
-    if environment_id is not None:
-        environment_exists = False
-        for environment in state["environments"]:
-            try:
-                normalized = _normalize_raw_environment(environment)
-            except RequestsEnvironmentValidationError:
-                continue
-            if normalized["id"] == environment_id:
-                environment_exists = True
-                break
-        if not environment_exists:
-            raise RequestsEnvironmentNotFoundError(f"Environment not found: {environment_id}")
+    if environment_id is not None and not _environment_exists(
+        state["environments"], environment_id
+    ):
+        raise RequestsEnvironmentNotFoundError(f"Environment not found: {environment_id}")
     state["active_id"] = environment_id
+    _save_environments_state(settings, state)
+    return _environment_state_to_response(state)
+
+
+def create_variable(
+    settings: Settings,
+    variable: VariableCreateModel,
+) -> EnvironmentsStateResponse:
+    state = _load_environments_state(settings)
+    state["variables"].append(
+        _variable_create_to_raw(
+            variable,
+            _environment_ids_from_state(state),
+            state["variables"],
+            _now_iso(),
+        )
+    )
+    _save_environments_state(settings, state)
+    return _environment_state_to_response(state)
+
+
+def update_variable(
+    settings: Settings,
+    variable_id: str,
+    variable: VariableUpdateModel,
+) -> EnvironmentsStateResponse:
+    state = _load_environments_state(settings)
+    for index, existing in enumerate(state["variables"]):
+        try:
+            normalized = _normalize_raw_variable_row(
+                existing,
+                _environment_ids_from_state(state),
+            )
+        except RequestsVariableValidationError:
+            continue
+        if normalized["id"] != variable_id:
+            continue
+        state["variables"][index] = _apply_variable_update(
+            normalized,
+            variable,
+            _environment_ids_from_state(state),
+            [row for row in state["variables"] if _normalize_raw_variable_id(row) != variable_id],
+        )
+        _save_environments_state(settings, state)
+        return _environment_state_to_response(state)
+    raise RequestsVariableNotFoundError(f"Variable not found: {variable_id}")
+
+
+def delete_variable(settings: Settings, variable_id: str) -> EnvironmentsStateResponse:
+    state = _load_environments_state(settings)
+    kept = [
+        variable
+        for variable in state["variables"]
+        if _normalize_raw_variable_id(variable) != variable_id
+    ]
+    if len(kept) == len(state["variables"]):
+        raise RequestsVariableNotFoundError(f"Variable not found: {variable_id}")
+    state["variables"] = kept
     _save_environments_state(settings, state)
     return _environment_state_to_response(state)
 
@@ -830,7 +898,11 @@ def _save_credentials(settings: Settings, credentials: list[dict[str, Any]]) -> 
 
 def _load_environments_state(settings: Settings) -> RequestsEnvironmentsState:
     path = Path(settings.requests_environments_path).expanduser()
-    empty_state: RequestsEnvironmentsState = {"active_id": None, "environments": []}
+    empty_state: RequestsEnvironmentsState = {
+        "active_id": None,
+        "environments": [],
+        "variables": [],
+    }
     if not path.exists():
         return empty_state
     text = _read_text(path)
@@ -846,8 +918,56 @@ def _load_environments_state(settings: Settings) -> RequestsEnvironmentsState:
     raw_environments = payload.get("environments")
     if not isinstance(raw_environments, list):
         raw_environments = []
+    if any(
+        isinstance(raw_environment, dict) and isinstance(raw_environment.get("variables"), list)
+        for raw_environment in raw_environments
+    ):
+        return _migrate_legacy_environments_state(payload)
 
     environments: list[dict[str, Any]] = []
+    valid_ids: set[str] = set()
+    for raw_environment in raw_environments:
+        if not isinstance(raw_environment, dict):
+            continue
+        try:
+            normalized = _normalize_raw_environment_column(raw_environment)
+        except RequestsEnvironmentValidationError:
+            continue
+        environments.append(normalized)
+        valid_ids.add(normalized["id"])
+
+    raw_variables = payload.get("variables")
+    if not isinstance(raw_variables, list):
+        raw_variables = []
+
+    variables: list[dict[str, Any]] = []
+    for raw_variable in raw_variables:
+        if not isinstance(raw_variable, dict):
+            continue
+        try:
+            normalized = _normalize_raw_variable_row(raw_variable, valid_ids)
+        except RequestsVariableValidationError:
+            continue
+        variables.append(normalized)
+
+    active_id = _as_str(payload.get("activeId")) or _as_str(payload.get("active_id"))
+    if active_id not in valid_ids:
+        active_id = None
+
+    return {
+        "active_id": active_id,
+        "environments": environments,
+        "variables": _dedupe_variable_rows(variables),
+    }
+
+
+def _migrate_legacy_environments_state(payload: dict[str, Any]) -> RequestsEnvironmentsState:
+    raw_environments = payload.get("environments")
+    if not isinstance(raw_environments, list):
+        raw_environments = []
+
+    environments: list[dict[str, Any]] = []
+    rows_by_key: dict[str, dict[str, Any]] = {}
     valid_ids: set[str] = set()
     for raw_environment in raw_environments:
         if not isinstance(raw_environment, dict):
@@ -856,13 +976,47 @@ def _load_environments_state(settings: Settings) -> RequestsEnvironmentsState:
             normalized = _normalize_raw_environment(raw_environment)
         except RequestsEnvironmentValidationError:
             continue
-        environments.append(normalized)
+        environments.append(
+            {
+                "id": normalized["id"],
+                "name": normalized["name"],
+                "created_at": normalized["created_at"],
+                "updated_at": normalized["updated_at"],
+            }
+        )
         valid_ids.add(normalized["id"])
+        for variable in normalized["variables"]:
+            row = rows_by_key.get(variable["key"])
+            if row is None:
+                row = {
+                    "id": str(uuid4()),
+                    "key": variable["key"],
+                    "secret": False,
+                    "enabled": variable["enabled"],
+                    "values": {},
+                    "created_at": normalized["created_at"],
+                    "updated_at": normalized["updated_at"],
+                }
+                rows_by_key[variable["key"]] = row
+            else:
+                if normalized["created_at"] < row["created_at"]:
+                    row["created_at"] = normalized["created_at"]
+                if normalized["updated_at"] > row["updated_at"]:
+                    row["updated_at"] = normalized["updated_at"]
+            # Legacy per-environment enabled flags collapse into one row flag.
+            row["enabled"] = row["enabled"] or variable["enabled"]
+            if variable["value"] != "":
+                row["values"][normalized["id"]] = variable["value"]
 
     active_id = _as_str(payload.get("activeId")) or _as_str(payload.get("active_id"))
     if active_id not in valid_ids:
         active_id = None
-    return {"active_id": active_id, "environments": environments}
+
+    return {
+        "active_id": active_id,
+        "environments": environments,
+        "variables": _dedupe_variable_rows(list(rows_by_key.values())),
+    }
 
 
 def _save_environments_state(settings: Settings, state: RequestsEnvironmentsState) -> None:
@@ -874,6 +1028,7 @@ def _save_environments_state(settings: Settings, state: RequestsEnvironmentsStat
                 "environments": [
                     _environment_to_storage(environment) for environment in state["environments"]
                 ],
+                "variables": [_variable_to_storage(variable) for variable in state["variables"]],
             },
             ensure_ascii=False,
             indent=2,
@@ -927,60 +1082,45 @@ def _credential_create_to_raw(credential: CredentialCreateModel, now: str) -> di
     }
 
 
-def _environment_state_to_response(state: RequestsEnvironmentsState) -> EnvironmentsListResponse:
-    return EnvironmentsListResponse(
+def _environment_state_to_response(state: RequestsEnvironmentsState) -> EnvironmentsStateResponse:
+    return EnvironmentsStateResponse(
         active_id=state["active_id"],
         environments=[_environment_to_public(environment) for environment in state["environments"]],
+        variables=[_variable_to_public(variable) for variable in state["variables"]],
     )
 
 
-def _environment_create_to_raw(environment: EnvironmentCreateModel, now: str) -> dict[str, Any]:
+def _environment_create_to_raw(name: str, now: str) -> dict[str, Any]:
     return {
         "id": str(uuid4()),
-        "name": _require_non_empty_environment(environment.name, "Environment name"),
-        "variables": _normalize_environment_variable_rows(environment.variables),
+        "name": _require_non_empty_environment(name, "Environment name"),
         "created_at": now,
         "updated_at": now,
     }
 
 
-def _apply_environment_update(
-    existing: dict[str, Any],
-    environment: EnvironmentUpdateModel,
-) -> dict[str, Any]:
+def _apply_environment_update(existing: dict[str, Any], name: str) -> dict[str, Any]:
     updated = dict(existing)
-    if environment.name is not None:
-        updated["name"] = _require_non_empty_environment(environment.name, "Environment name")
-    if environment.variables is not None:
-        updated["variables"] = _normalize_environment_variable_rows(environment.variables)
+    updated["name"] = _require_non_empty_environment(name, "Environment name")
     updated["updated_at"] = _now_iso()
-    return _normalize_raw_environment(_environment_to_storage(updated))
+    return _normalize_raw_environment_column(_environment_to_storage(updated))
 
 
-def _environment_to_public(environment: dict[str, Any]) -> EnvironmentPublic:
-    normalized = _normalize_raw_environment(environment)
-    return EnvironmentPublic(
+def _environment_to_public(environment: dict[str, Any]) -> EnvironmentColumn:
+    normalized = _normalize_raw_environment_column(environment)
+    return EnvironmentColumn(
         id=normalized["id"],
         name=normalized["name"],
-        variables=[
-            EnvironmentVariable(
-                key=variable["key"],
-                value=variable["value"],
-                enabled=variable["enabled"],
-            )
-            for variable in normalized["variables"]
-        ],
         created_at=normalized["created_at"],
         updated_at=normalized["updated_at"],
     )
 
 
 def _environment_to_storage(environment: dict[str, Any]) -> dict[str, Any]:
-    normalized = _normalize_raw_environment(environment)
+    normalized = _normalize_raw_environment_column(environment)
     return {
         "id": normalized["id"],
         "name": normalized["name"],
-        "variables": [dict(variable) for variable in normalized["variables"]],
         "createdAt": normalized["created_at"],
         "updatedAt": normalized["updated_at"],
     }
@@ -992,14 +1132,13 @@ def _normalize_raw_environment_id(environment: object) -> str | None:
     return _as_str(environment.get("id"))
 
 
-def _normalize_raw_environment(environment: dict[str, Any]) -> dict[str, Any]:
+def _normalize_raw_environment_column(environment: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": _require_non_empty_environment(_as_str(environment.get("id")), "Environment ID"),
         "name": _require_non_empty_environment(
             _as_str(environment.get("name")),
             "Environment name",
         ),
-        "variables": _normalize_raw_environment_variables(environment.get("variables")),
         "created_at": _require_non_empty_environment(
             _as_str(environment.get("createdAt")) or _as_str(environment.get("created_at")),
             "Environment createdAt",
@@ -1011,18 +1150,10 @@ def _normalize_raw_environment(environment: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _normalize_environment_variable_rows(
-    variables: list[EnvironmentVariable],
-) -> list[dict[str, Any]]:
-    rows = [
-        {
-            "key": _require_non_empty_environment(variable.key, "Environment variable key"),
-            "value": variable.value,
-            "enabled": variable.enabled,
-        }
-        for variable in variables
-    ]
-    return _dedupe_environment_variables(rows)
+def _normalize_raw_environment(environment: dict[str, Any]) -> dict[str, Any]:
+    normalized = _normalize_raw_environment_column(environment)
+    normalized["variables"] = _normalize_raw_environment_variables(environment.get("variables"))
+    return normalized
 
 
 def _normalize_raw_environment_variables(raw_variables: object) -> list[dict[str, Any]]:
@@ -1049,6 +1180,185 @@ def _normalize_raw_environment_variables(raw_variables: object) -> list[dict[str
 
 
 def _dedupe_environment_variables(variables: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
+    for variable in reversed(variables):
+        key = variable["key"]
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        deduped.append(variable)
+    deduped.reverse()
+    return deduped
+
+
+def _environment_ids_from_state(state: RequestsEnvironmentsState) -> set[str]:
+    ids: set[str] = set()
+    for environment in state["environments"]:
+        environment_id = _normalize_raw_environment_id(environment)
+        if environment_id is not None:
+            ids.add(environment_id)
+    return ids
+
+
+def _environment_exists(environments: list[dict[str, Any]], environment_id: str) -> bool:
+    for environment in environments:
+        if _normalize_raw_environment_id(environment) == environment_id:
+            return True
+    return False
+
+
+def _variable_create_to_raw(
+    variable: VariableCreateModel,
+    valid_environment_ids: set[str],
+    existing_variables: list[dict[str, Any]],
+    now: str,
+) -> dict[str, Any]:
+    key = _normalize_variable_key(variable.key)
+    _assert_unique_variable_key(key, existing_variables)
+    return {
+        "id": str(uuid4()),
+        "key": key,
+        "secret": variable.secret,
+        "enabled": variable.enabled,
+        "values": _normalize_variable_values(variable.values, valid_environment_ids),
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
+def _apply_variable_update(
+    existing: dict[str, Any],
+    variable: VariableUpdateModel,
+    valid_environment_ids: set[str],
+    other_variables: list[dict[str, Any]],
+) -> dict[str, Any]:
+    updated = dict(existing)
+    if variable.key is not None:
+        key = _normalize_variable_key(variable.key)
+        _assert_unique_variable_key(key, other_variables)
+        updated["key"] = key
+    if variable.secret is not None:
+        updated["secret"] = variable.secret
+    if variable.enabled is not None:
+        updated["enabled"] = variable.enabled
+    if variable.values is not None:
+        updated["values"] = _normalize_variable_values(variable.values, valid_environment_ids)
+    updated["updated_at"] = _now_iso()
+    return _normalize_raw_variable_row(_variable_to_storage(updated), valid_environment_ids)
+
+
+def _drop_environment_from_variables(
+    variables: list[dict[str, Any]],
+    environment_id: str,
+    now: str,
+) -> list[dict[str, Any]]:
+    updated_rows: list[dict[str, Any]] = []
+    for variable in variables:
+        try:
+            normalized = _normalize_raw_variable_row(variable)
+        except RequestsVariableValidationError:
+            continue
+        values = dict(normalized["values"])
+        changed = values.pop(environment_id, None) is not None
+        updated_rows.append(
+            {
+                **normalized,
+                "values": values,
+                "updated_at": now if changed else normalized["updated_at"],
+            }
+        )
+    return updated_rows
+
+
+def _variable_to_public(variable: dict[str, Any]) -> EnvironmentVariableRow:
+    normalized = _normalize_raw_variable_row(variable)
+    return EnvironmentVariableRow(
+        id=normalized["id"],
+        key=normalized["key"],
+        secret=normalized["secret"],
+        enabled=normalized["enabled"],
+        values=dict(normalized["values"]),
+        created_at=normalized["created_at"],
+        updated_at=normalized["updated_at"],
+    )
+
+
+def _variable_to_storage(variable: dict[str, Any]) -> dict[str, Any]:
+    normalized = _normalize_raw_variable_row(variable)
+    return {
+        "id": normalized["id"],
+        "key": normalized["key"],
+        "secret": normalized["secret"],
+        "enabled": normalized["enabled"],
+        "values": dict(normalized["values"]),
+        "createdAt": normalized["created_at"],
+        "updatedAt": normalized["updated_at"],
+    }
+
+
+def _normalize_raw_variable_id(variable: object) -> str | None:
+    if not isinstance(variable, dict):
+        return None
+    return _as_str(variable.get("id"))
+
+
+def _normalize_raw_variable_row(
+    variable: dict[str, Any],
+    valid_environment_ids: set[str] | None = None,
+) -> dict[str, Any]:
+    return {
+        "id": _require_non_empty_variable(_as_str(variable.get("id")), "Variable ID"),
+        "key": _normalize_variable_key(_as_str(variable.get("key"))),
+        "secret": variable.get("secret") if isinstance(variable.get("secret"), bool) else False,
+        "enabled": variable.get("enabled") if isinstance(variable.get("enabled"), bool) else True,
+        "values": _normalize_variable_values(variable.get("values"), valid_environment_ids),
+        "created_at": _require_non_empty_variable(
+            _as_str(variable.get("createdAt")) or _as_str(variable.get("created_at")),
+            "Variable createdAt",
+        ),
+        "updated_at": _require_non_empty_variable(
+            _as_str(variable.get("updatedAt")) or _as_str(variable.get("updated_at")),
+            "Variable updatedAt",
+        ),
+    }
+
+
+def _normalize_variable_values(
+    raw_values: object,
+    valid_environment_ids: set[str] | None,
+) -> dict[str, str]:
+    if not isinstance(raw_values, dict):
+        return {}
+    values: dict[str, str] = {}
+    for raw_environment_id, raw_value in raw_values.items():
+        environment_id = _as_str(raw_environment_id)
+        if environment_id is None:
+            continue
+        if valid_environment_ids is not None and environment_id not in valid_environment_ids:
+            continue
+        if not isinstance(raw_value, str) or raw_value == "":
+            continue
+        values[environment_id] = raw_value
+    return values
+
+
+def _normalize_variable_key(value: str | None) -> str:
+    return _require_non_empty_variable(value, "Variable key")
+
+
+def _assert_unique_variable_key(key: str, variables: list[dict[str, Any]]) -> None:
+    for variable in variables:
+        if not isinstance(variable, dict):
+            continue
+        existing_key = _as_str(variable.get("key"))
+        if existing_key is None:
+            continue
+        if existing_key.strip() == key:
+            raise RequestsConflictError(f"Variable already exists: {key}")
+
+
+def _dedupe_variable_rows(variables: list[dict[str, Any]]) -> list[dict[str, Any]]:
     deduped: list[dict[str, Any]] = []
     seen_keys: set[str] = set()
     for variable in reversed(variables):
@@ -1254,6 +1564,13 @@ def _require_non_empty_environment(value: str | None, label: str) -> str:
     normalized = (value or "").strip()
     if not normalized:
         raise RequestsEnvironmentValidationError(f"{label} must not be empty.")
+    return normalized
+
+
+def _require_non_empty_variable(value: str | None, label: str) -> str:
+    normalized = (value or "").strip()
+    if not normalized:
+        raise RequestsVariableValidationError(f"{label} must not be empty.")
     return normalized
 
 
