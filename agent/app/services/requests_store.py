@@ -131,6 +131,11 @@ def read_contents(settings: Settings) -> RequestsContentsTree:
 
 
 def list_tree(settings: Settings) -> RequestsTreeResponse:
+    if not Path(settings.requests_collections_root).expanduser().exists():
+        # A store that has never been written to is empty, not broken: return an
+        # empty tree so the UI can render (and offer folder/preset creation, which
+        # lazily creates the root) instead of surfacing a hard error.
+        return RequestsTreeResponse(folders=[])
     root = _resolve_root(settings)
     contents = _read_contents_from_root(root)
     existing = _existing_folder_paths(root)

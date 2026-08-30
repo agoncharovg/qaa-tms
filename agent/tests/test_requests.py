@@ -283,6 +283,17 @@ def test_requests_collection_and_item_crud(
     assert [folder.name for folder in list_tree(settings).folders] == ["alpha", "beta"]
 
 
+def test_list_tree_returns_empty_when_store_never_initialized(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = build_settings(monkeypatch, tmp_path)
+
+    # No requests dir has been created yet: reading collections must be an empty
+    # tree, not a hard error, so the UI can render and offer creation actions.
+    assert list_tree(settings).folders == []
+
+
 @pytest.mark.parametrize("folder_name", ["..", "nested/name", "nested\\name", "/tmp/evil"])
 def test_requests_folder_path_traversal_is_rejected(
     folder_name: str,
