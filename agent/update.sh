@@ -85,8 +85,8 @@ def download_bytes(url: str) -> bytes:
         return response.read()
 
 
-def ensure_venv(install_dir: Path) -> None:
-    subprocess.run([sys.executable, "-m", "venv", ".venv"], cwd=install_dir, check=True)
+def ensure_venv(install_dir: Path, base_python: str) -> None:
+    subprocess.run([base_python, "-m", "venv", ".venv"], cwd=install_dir, check=True)
 
 
 def install_editable(install_dir: Path) -> None:
@@ -106,6 +106,28 @@ def restart_service() -> None:
 
 
 def main() -> int:
+    base_python = os.path.realpath(sys.executable)
+    if (
+        not base_python
+        or not os.access(base_python, os.X_OK)
+        or Path(base_python).resolve().is_relative_to(INSTALL_DIR)
+    ):
+        base_python = ""
+        for python_name in ("python3", "python"):
+            candidate = shutil.which(python_name)
+            if not candidate:
+                continue
+            candidate = os.path.realpath(candidate)
+            if (
+                candidate
+                and os.access(candidate, os.X_OK)
+                and not Path(candidate).resolve().is_relative_to(INSTALL_DIR)
+            ):
+                base_python = candidate
+                break
+    if not base_python:
+        raise RuntimeError("Could not resolve a stable Python interpreter for the venv rebuild.")
+
     home = Path(os.environ.get("QAA_TMS_HOME") or INSTALL_DIR.parent)
     env_path = home / ENV_FILE_NAME
     backend_url = read_env_value(env_path, BACKEND_URL_KEY).rstrip("/")
@@ -148,7 +170,7 @@ def main() -> int:
     try:
         INSTALL_DIR.rename(backup_dir)
         next_dir.rename(INSTALL_DIR)
-        ensure_venv(INSTALL_DIR)
+        ensure_venv(INSTALL_DIR, base_python)
         install_editable(INSTALL_DIR)
     except Exception:
         shutil.rmtree(INSTALL_DIR, ignore_errors=True)
