@@ -30,6 +30,7 @@ import {
   isVariableRowDirty,
   normalizeVariableRowValues,
 } from "@/plugins/requests/EnvironmentsPanelState";
+import { renameVariableInRequestsDrafts } from "@/plugins/requests/requestsDrafts";
 import { getErrorMessage, type RequestsNotice, useRequestsAgent } from "@/plugins/requests/requestsShared";
 import { useAuthStore } from "@/store/authStore";
 
@@ -193,17 +194,17 @@ export function EnvironmentsPanel() {
       applyState(nextState, { removeDraftId });
       const oldKey = context?.savedKey?.trim();
       const newKey = row.key.trim();
-      if (
-        typeof nextState.renamedReferences === "number" &&
-        nextState.renamedReferences > 0 &&
-        oldKey &&
-        oldKey !== newKey
-      ) {
-        setNotice({
-          message: `Renamed {{${oldKey}}} → {{${newKey}}} in ${nextState.renamedReferences} places.`,
-          status: "success",
-        });
+      if (oldKey && oldKey !== newKey) {
+        // The rewrite on the agent only touches saved files; unsaved editor
+        // drafts live in the browser and shadow them, so rewrite them too.
+        renameVariableInRequestsDrafts(oldKey, newKey);
         await invalidateRequestsContentQueries(queryClient);
+        if (typeof nextState.renamedReferences === "number" && nextState.renamedReferences > 0) {
+          setNotice({
+            message: `Renamed {{${oldKey}}} → {{${newKey}}} in ${nextState.renamedReferences} places.`,
+            status: "success",
+          });
+        }
       }
     },
     onSettled: (_result, _error, row) => {

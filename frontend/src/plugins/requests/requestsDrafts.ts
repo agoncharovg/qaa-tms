@@ -92,6 +92,37 @@ export function renameRequestsDraftFolder(
   }
 }
 
+export function renameVariableInRequestsDrafts(oldKey: string, newKey: string): void {
+  const trimmedOld = oldKey.trim();
+  const trimmedNew = newKey.trim();
+  if (!trimmedOld || trimmedOld === trimmedNew) {
+    return;
+  }
+
+  const escaped = trimmedOld.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`\\{\\{\\s*${escaped}\\s*\\}\\}`, "g");
+  const replacement = `{{${trimmedNew}}}`;
+  const rewrite = (text: string): string => text.replace(pattern, replacement);
+
+  for (const [key, draft] of requestsDrafts.entries()) {
+    requestsDrafts.set(key, {
+      ...draft,
+      body: { ...draft.body, content: rewrite(draft.body.content) },
+      headers: draft.headers.map((header) => ({
+        ...header,
+        name: rewrite(header.name),
+        value: rewrite(header.value),
+      })),
+      queryParams: draft.queryParams.map((param) => ({
+        ...param,
+        name: rewrite(param.name),
+        value: rewrite(param.value),
+      })),
+      url: rewrite(draft.url),
+    });
+  }
+}
+
 export function clearRequestsDrafts(): void {
   requestsDrafts.clear();
 }
