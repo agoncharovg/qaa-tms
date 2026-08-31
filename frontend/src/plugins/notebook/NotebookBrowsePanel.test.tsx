@@ -36,6 +36,7 @@ import type { NotebookNoteReadResponse, NotebookNotesResponse } from "@/api/type
 import { PluginId } from "@/constants";
 import { NotebookBrowsePanel } from "@/plugins/notebook/NotebookBrowsePanel";
 import { clearNotebookNoteDrafts } from "@/plugins/notebook/notebookDrafts";
+import { useNotebookNavStore } from "@/plugins/notebook/notebookNavStore";
 import { renderWithProviders } from "@/test/render";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
 
@@ -56,6 +57,7 @@ describe("NotebookBrowsePanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     clearNotebookNoteDrafts();
+    useNotebookNavStore.getState().clearPendingSelection();
     agentClientMock.getNotebookReminders.mockResolvedValue({ reminders: [] });
     localStorage.clear();
     resetAuthStoreState();
@@ -326,6 +328,66 @@ describe("NotebookBrowsePanel", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Notebook note body")).toHaveValue("Ops first");
     });
+  });
+
+  it("opens the pending notebook deep-link target after the tree loads", async () => {
+    const OTHER_NOTE_NAME = "2026-08-25-13-00-00";
+
+    useNotebookNavStore.getState().requestNotebookNote({ bookmark: BOOKMARK, name: NOTE_NAME });
+
+    agentClientMock.getNotebookTree.mockResolvedValue({
+      bookmarks: [
+        {
+          children: [],
+          flags: {},
+          name: BOOKMARK,
+          noteCount: 2,
+        },
+      ],
+    });
+    agentClientMock.listNotes.mockResolvedValue({
+      bookmark: BOOKMARK,
+      notes: [
+        {
+          flags: {},
+          name: OTHER_NOTE_NAME,
+          previewLines: ["Other preview"],
+        },
+        {
+          flags: {},
+          name: NOTE_NAME,
+          previewLines: ["Target preview"],
+        },
+      ],
+    });
+    agentClientMock.readNote.mockImplementation((_port, _token, _bookmark, noteName) => {
+      if (noteName === NOTE_NAME) {
+        return {
+          bookmark: BOOKMARK,
+          flags: {},
+          name: NOTE_NAME,
+          previewLines: ["Target preview"],
+          text: "Target body",
+        };
+      }
+
+      return {
+        bookmark: BOOKMARK,
+        flags: {},
+        name: OTHER_NOTE_NAME,
+        previewLines: ["Other preview"],
+        text: "Other body",
+      };
+    });
+
+    renderWithProviders(<NotebookBrowsePanel />);
+
+    await waitFor(() => {
+      expect(agentClientMock.readNote).toHaveBeenCalledWith(PORT, TOKEN, BOOKMARK, NOTE_NAME, expect.anything());
+    });
+    expect(await screen.findByText(NOTE_NAME)).toBeInTheDocument();
+    expect(await screen.findByLabelText("Notebook note body")).toHaveValue("Target body");
+    expect(useNotebookNavStore.getState().pendingSelection).toBeNull();
   });
 
   it("clears the editor when selecting a bookmark that has no notes", async () => {

@@ -1,12 +1,32 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppShell, MantineProvider } from "@mantine/core";
+import { Notifications } from "@mantine/notifications";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 
+const navigateMock = vi.hoisted(() => vi.fn());
+const formatReminderMock = vi.hoisted(() => vi.fn((value: string) => value));
+const useNotebookRemindersMock = vi.hoisted(() => vi.fn());
+
+vi.mock("react-router-dom", async () => {
+  const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
+  return {
+    ...actual,
+    useNavigate: () => navigateMock,
+  };
+});
+
+vi.mock("@/plugins/notebook/reminders", () => ({
+  formatReminder: formatReminderMock,
+  useNotebookReminders: useNotebookRemindersMock,
+}));
+
 import { Sidebar } from "@/app/layout/Sidebar";
+import type { NotebookReminder } from "@/api/types";
 import { PluginId, TabId } from "@/constants";
+import { useNotebookNavStore } from "@/plugins/notebook/notebookNavStore";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
 import { resetUiStoreState, useUiStore } from "@/store/uiStore";
 
@@ -18,6 +38,7 @@ function renderSidebar(activePluginId: PluginId = PluginId.STAGINGS) {
     <QueryClientProvider client={queryClient}>
       <MantineProvider forceColorScheme="dark">
         <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+          <Notifications />
           <AppShell navbar={{ breakpoint: "sm", width: 280 }}>
             <Sidebar activePluginId={activePluginId} />
           </AppShell>
@@ -29,9 +50,13 @@ function renderSidebar(activePluginId: PluginId = PluginId.STAGINGS) {
 
 describe("Sidebar", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     localStorage.clear();
     resetAuthStoreState();
     resetUiStoreState();
+    useNotebookNavStore.getState().clearPendingSelection();
+    formatReminderMock.mockImplementation((value: string) => value);
+    useNotebookRemindersMock.mockReturnValue({ dueReminders: [], reminders: [] });
   });
 
   it("shows the account menu items and hides Administration for non-admin users", async () => {
@@ -213,5 +238,45 @@ describe("Sidebar", () => {
     expect(useUiStore.getState().tabsByPlugin[PluginId.ADMIN].tabIds).toContain(TabId.ADMIN_SECURITY);
     expect(useUiStore.getState().activeWorkspaceTabId).toBe(TabId.ADMIN_SECURITY);
     expect(useUiStore.getState().workspaceTabIds).toContain(TabId.ADMIN_SECURITY);
+  });
+
+  it('requests the reminder note and navigates when the toast "Откройте" link is clicked', async () => {
+    const user = userEvent.setup();
+    const reminder: NotebookReminder = {
+      bookmark: "Research",
+      name: "2026-08-25-14-30-05",
+      previewLines: ["Remember the release"],
+      remindAt: "2026-09-01T18:00",
+    };
+
+    useAuthStore.setState({
+      currentUser: {
+        auto_login: false,
+        created_at: "2026-08-09T00:00:00Z",
+        display_name: "Test User",
+        enabled_plugins: [PluginId.NOTEBOOK],
+        effective_permissions: ["notebook.read"],
+        qaa_generator_token_set: false,
+        id: 2,
+        is_admin: false,
+        updated_at: "2026-08-09T00:00:00Z",
+        username: "test",
+      },
+      token: "token-456",
+    });
+    useNotebookRemindersMock.mockReturnValue({
+      dueReminders: [reminder],
+      reminders: [reminder],
+    });
+
+    renderSidebar();
+
+    await user.click(await screen.findByRole("button", { name: "Откройте" }));
+
+    expect(useNotebookNavStore.getState().pendingSelection).toEqual({
+      bookmark: reminder.bookmark,
+      name: reminder.name,
+    });
+    expect(navigateMock).toHaveBeenCalledWith("/notebook");
   });
 });

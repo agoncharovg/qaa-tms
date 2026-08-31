@@ -1,5 +1,6 @@
 import {
   ActionIcon,
+  Anchor,
   AppShell,
   Badge,
   Box,
@@ -25,13 +26,15 @@ import {
   IconSun,
   IconUserCircle,
 } from "@tabler/icons-react";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { usePalette } from "@/app/theme/usePalette";
 import type { Palette } from "@/app/theme/tokens";
+import type { NotebookReminder } from "@/api/types";
 import { PluginId, RoutePath, type PluginId as PluginIdType } from "@/constants";
 import { resolveIcon } from "@/core/plugins/icons";
+import { useNotebookNavStore } from "@/plugins/notebook/notebookNavStore";
 import {
   accountVisiblePlugins,
   enabledOptionalPluginIdSet,
@@ -120,6 +123,7 @@ export function Sidebar({ activePluginId }: SidebarProps) {
   const toggleColorScheme = useUiStore((state) => state.toggleColorScheme);
   const colorScheme = useUiStore((state) => state.colorScheme);
   const openTab = useUiStore((state) => state.openTab);
+  const requestNotebookNote = useNotebookNavStore((state) => state.requestNotebookNote);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [logoutConfirmOpened, logoutConfirm] = useDisclosure(false);
 
@@ -131,6 +135,18 @@ export function Sidebar({ activePluginId }: SidebarProps) {
   const notebookReminders = useNotebookReminders(hasVisibleNotebook);
   const shownReminderKeysRef = useRef(new Set<string>());
   const dueReminderCount = notebookReminders.dueReminders.length;
+
+  const openReminderNote = useCallback(
+    (reminder: NotebookReminder): void => {
+      requestNotebookNote({ bookmark: reminder.bookmark, name: reminder.name });
+      activatePluginWorkspaceTab(PluginId.NOTEBOOK);
+      const notebookPlugin = pluginById(PluginId.NOTEBOOK);
+      if (notebookPlugin) {
+        navigate(notebookPlugin.route);
+      }
+    },
+    [navigate, requestNotebookNote]
+  );
 
   useEffect(() => {
     if (!hasVisibleNotebook) {
@@ -145,13 +161,25 @@ export function Sidebar({ activePluginId }: SidebarProps) {
       if (!shownReminderKeysRef.current.has(reminderKey)) {
         notifications.show({
           autoClose: false,
-          message: reminder.bookmark + " • " + formatReminder(reminder.remindAt) + ". Откройте Notebook, чтобы закрыть.",
+          message: (
+            <Text size="sm">
+              {reminder.bookmark + " • " + formatReminder(reminder.remindAt) + ". "}
+              <Anchor
+                component="button"
+                onClick={() => openReminderNote(reminder)}
+                type="button"
+              >
+                Откройте
+              </Anchor>
+              {" Notebook, чтобы закрыть."}
+            </Text>
+          ),
           title: reminder.name,
         });
       }
     }
     shownReminderKeysRef.current = visibleKeys;
-  }, [hasVisibleNotebook, notebookReminders.dueReminders]);
+  }, [hasVisibleNotebook, notebookReminders.dueReminders, openReminderNote]);
 
   function openProfile(): void {
     if (!profilePlugin || !accountPlugins.some((plugin) => plugin.id === profilePlugin.id)) {
