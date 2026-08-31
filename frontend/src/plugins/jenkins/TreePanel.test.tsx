@@ -77,7 +77,13 @@ vi.mock("@/plugins/jenkins/BuildHistoryLine", () => ({
   },
 }));
 
-import { PluginId, QueryKey, StorageKey, TabId } from "@/constants";
+import {
+  DEFAULT_JENKINS_TREE_WARMING_WINDOW_MS,
+  PluginId,
+  QueryKey,
+  StorageKey,
+  TabId,
+} from "@/constants";
 import { TreePanel } from "@/plugins/jenkins/TreePanel";
 import { parseServerTimestampMs } from "@/plugins/jenkins/serverTime";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
@@ -2017,10 +2023,10 @@ describe("TreePanel", () => {
   });
 
   it("self-heals a cold shared tree cache by hydrating it from the discovered companion", async () => {
-    // Regression: the backend never fills the tree cache (no common creds), and
-    // agentPort used to stay null until a freeze/resume. After a backend restart
-    // the cold cache showed a false "No Jenkins data" forever. Discovering the
-    // companion on load lets the tree populate the shared cache itself.
+    // Regression: when the backend has no common creds to fill the tree cache and
+    // agentPort stayed null until a freeze/resume, a backend restart left the cold
+    // cache showing a false "No Jenkins data" forever. Discovering the companion on
+    // load lets the tree populate the shared cache itself as a fallback.
     discoverAgentMock.mockResolvedValue({ port: 47600 });
     backendClientMock.getJenkinsTreeCache
       .mockResolvedValueOnce({
@@ -2056,21 +2062,36 @@ describe("TreePanel", () => {
     expect(backendClientMock.putJenkinsTreeCache).toHaveBeenCalled();
   });
 
-  it("shows a start-the-companion prompt, not a false empty, when the cold cache cannot self-heal", async () => {
-    discoverAgentMock.mockResolvedValue(null);
-    backendClientMock.getJenkinsTreeCache.mockResolvedValue({
-      fetchedAt: null,
-      refreshLease: "lease-1",
-      roots: [],
-      signature: "scope-1234",
-      stale: true,
-    });
+  it("warms a cold cache briefly, then shows a start-the-companion prompt when nothing fills it", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      discoverAgentMock.mockResolvedValue(null);
+      backendClientMock.getJenkinsTreeCache.mockResolvedValue({
+        fetchedAt: null,
+        refreshLease: "lease-1",
+        roots: [],
+        signature: "scope-1234",
+        stale: true,
+      });
 
-    renderWithProviders(<TreePanel />);
+      renderWithProviders(<TreePanel />);
 
-    expect(await screen.findByText("Start the companion to load the tree")).toBeInTheDocument();
-    expect(screen.queryByText("No Jenkins data")).not.toBeInTheDocument();
-    expect(agentClientMock.getJenkinsTree).not.toHaveBeenCalled();
+      // A cold read opens a bounded warming window — the backend may be filling the
+      // shared cache server-side — instead of immediately blaming the companion.
+      expect(await screen.findByText("Warming the shared Jenkins cache.")).toBeInTheDocument();
+      expect(screen.queryByText("Start the companion to load the tree")).not.toBeInTheDocument();
+
+      // When the window elapses with the cache still cold, fall back to the prompt.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(DEFAULT_JENKINS_TREE_WARMING_WINDOW_MS);
+      });
+
+      expect(await screen.findByText("Start the companion to load the tree")).toBeInTheDocument();
+      expect(screen.queryByText("No Jenkins data")).not.toBeInTheDocument();
+      expect(agentClientMock.getJenkinsTree).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("still shows an honest empty state for a warm cache that genuinely has no folders", async () => {

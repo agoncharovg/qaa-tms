@@ -227,9 +227,11 @@ export function TreePanel() {
   const isActive = useUiStore(
     (state) => state.tabsByPlugin[PluginId.JENKINS].activeTabId === TabId.JENKINS_TREE
   );
-  // Best-effort companion discovery so the tree can self-hydrate a cold/stale
-  // shared cache on load — the backend never fills the tree cache (common creds
-  // are not configured), and freeze/resume only set a port after a mutation.
+  // Best-effort companion discovery. The backend fills the shared tree cache
+  // server-side with the common read-only token (briefs/26) whenever it is
+  // configured; the companion is only a personal fast-path / fallback used when
+  // the backend has no common creds (freeze/resume also set a port after a
+  // mutation).
   const companionQuery = useQuery({
     enabled: Boolean(token),
     queryFn: ({ signal }) => discoverAgent(signal),
@@ -469,13 +471,18 @@ export function TreePanel() {
   }
 
   if (treeState.roots.length === 0) {
-    // A cold/stale shared cache with no rows is not a genuinely empty scope:
-    // the tree fills itself from the companion (the backend has no common
-    // Jenkins creds to fill it server-side). Show honest warming / "start the
-    // companion" states instead of a misleading "No Jenkins data".
+    // A cold/stale shared cache with no rows is not a genuinely empty scope: the
+    // backend fills it server-side with the common token (briefs/26), or the
+    // companion fills it as a fallback. Show honest warming / "start the
+    // companion" states instead of a misleading "No Jenkins data". `treeState.
+    // isWarming` covers the bounded window while a server-side fill lands.
     const isColdCache = treeState.stale;
     const isWarming =
-      isColdCache && (companionQuery.isLoading || agentPort !== null || treeState.isRefreshing);
+      isColdCache &&
+      (treeState.isWarming ||
+        companionQuery.isLoading ||
+        agentPort !== null ||
+        treeState.isRefreshing);
 
     if (isWarming) {
       return (

@@ -1123,6 +1123,13 @@ export const DEFAULT_JOB_POLL_INTERVAL_MS = 2000 as const;
 export const DEFAULT_KUBECONFIG_STATUS_POLL_MS = 60000 as const;
 export const DEFAULT_KUBE_LOG_TAIL = 200 as const;
 export const DEFAULT_JENKINS_TREE_REFETCH_MS = 900000 as const;
+// While the shared tree cache is cold, the backend fills it server-side with the
+// common read-only token (briefs/26) as a background task the frontend cannot
+// observe. Poll the backend cache briefly so that fill is picked up within
+// seconds instead of after a full refetch interval, for a bounded warming window
+// before falling back to the "start the companion" prompt.
+export const DEFAULT_JENKINS_TREE_WARMING_REFETCH_MS = 3000 as const;
+export const DEFAULT_JENKINS_TREE_WARMING_WINDOW_MS = 30000 as const;
 export const DEFAULT_JENKINS_BUILDS_REFETCH_MS = 60000 as const;
 export const JENKINS_RESUME_RUN_REFETCH_MS = 1500 as const;
 
