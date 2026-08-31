@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import tempfile
 from datetime import UTC, datetime
@@ -52,6 +53,7 @@ TEMP_FILE_PREFIX = ".requests-"
 FOLDER_KIND = "Folder"
 ITEM_KIND = "Item"
 VARIABLE_ROW_ID_NAMESPACE = uuid5(NAMESPACE_URL, "qaa-tms/requests/variable")
+VARIABLE_TEMPLATE_PATTERN = re.compile(r"\{\{\s*([^{}]+?)\s*\}\}")
 
 type CredentialCreateModel = (
     BearerCredentialCreate
@@ -534,24 +536,33 @@ def update_variable(
     variable: VariableUpdateModel,
 ) -> EnvironmentsStateResponse:
     state = _load_environments_state(settings)
+    valid_environment_ids = _environment_ids_from_state(state)
     for index, existing in enumerate(state["variables"]):
         try:
             normalized = _normalize_raw_variable_row(
                 existing,
-                _environment_ids_from_state(state),
+                valid_environment_ids,
             )
         except RequestsVariableValidationError:
             continue
         if normalized["id"] != variable_id:
             continue
+        old_key = normalized["key"]
         state["variables"][index] = _apply_variable_update(
             normalized,
             variable,
-            _environment_ids_from_state(state),
+            valid_environment_ids,
             [row for row in state["variables"] if _normalize_raw_variable_id(row) != variable_id],
         )
         _save_environments_state(settings, state)
-        return _environment_state_to_response(state)
+        new_key = _normalize_raw_variable_row(
+            state["variables"][index],
+            valid_environment_ids,
+        )["key"]
+        renamed_references = None
+        if old_key != new_key:
+            renamed_references = rename_variable_references(settings, old_key, new_key)
+        return _environment_state_to_response(state, renamed_references=renamed_references)
     raise RequestsVariableNotFoundError(f"Variable not found: {variable_id}")
 
 
@@ -567,6 +578,37 @@ def delete_variable(settings: Settings, variable_id: str) -> EnvironmentsStateRe
     state["variables"] = kept
     _save_environments_state(settings, state)
     return _environment_state_to_response(state)
+
+
+def rename_variable_references(settings: Settings, old_key: str, new_key: str) -> int:
+    updated_total = 0
+    collections_root_path = Path(settings.requests_collections_root).expanduser()
+    if collections_root_path.exists():
+        root = _resolve_root(settings)
+        for item_path in _iter_saved_request_paths(root):
+            document = _read_request_document(item_path)
+            if document is None:
+                continue
+            updated_document = _rename_request_document_references(document, old_key, new_key)
+            if updated_document is None:
+                continue
+            _write_request_document(item_path, updated_document)
+            updated_total += 1
+
+    credentials = _load_credentials(settings)
+    updated_credentials = list(credentials)
+    credentials_changed = False
+    for index, credential in enumerate(credentials):
+        updated_credential = _rename_credential_references(credential, old_key, new_key)
+        if updated_credential is None:
+            continue
+        updated_credentials[index] = updated_credential
+        credentials_changed = True
+        updated_total += 1
+    if credentials_changed:
+        _save_credentials(settings, updated_credentials)
+
+    return updated_total
 
 
 def _resolve_root(settings: Settings, create: bool = False) -> Path:
@@ -844,6 +886,13 @@ def _item_paths(folder_path: Path) -> list[Path]:
     return sorted((path for path in folder_path.iterdir() if path.is_file()), reverse=True)
 
 
+def _iter_saved_request_paths(root: Path) -> list[Path]:
+    item_paths: list[Path] = []
+    for folder_path in _existing_folder_paths(root).values():
+        item_paths.extend(_item_paths(folder_path))
+    return item_paths
+
+
 def _read_request_document(path: Path) -> RequestDocument | None:
     try:
         payload = json.loads(_read_text(path))
@@ -917,6 +966,115 @@ def _save_credentials(settings: Settings, credentials: list[dict[str, Any]]) -> 
     body = json.dumps({"credentials": credentials}, ensure_ascii=False, indent=2) + "\n"
     _write_text_atomically(path, body)
     os.chmod(path, 0o600)
+
+
+def _rename_variable_reference_text(text: str, old_key: str, new_key: str) -> str:
+    def replace(match: re.Match[str]) -> str:
+        raw_key = match.group(1) or ""
+        if raw_key.strip() != old_key:
+            return match.group(0)
+        return f"{{{{{new_key}}}}}"
+
+    return VARIABLE_TEMPLATE_PATTERN.sub(replace, text)
+
+
+def _rename_request_document_references(
+    document: RequestDocument,
+    old_key: str,
+    new_key: str,
+) -> RequestDocument | None:
+    next_url = _rename_variable_reference_text(document.url, old_key, new_key)
+    changed = next_url != document.url
+
+    next_headers = []
+    for header in document.headers:
+        next_name = _rename_variable_reference_text(header.name, old_key, new_key)
+        next_value = _rename_variable_reference_text(header.value, old_key, new_key)
+        changed = changed or next_name != header.name or next_value != header.value
+        next_headers.append(header.model_copy(update={"name": next_name, "value": next_value}))
+
+    next_query_params = []
+    for query_param in document.query_params:
+        next_name = _rename_variable_reference_text(query_param.name, old_key, new_key)
+        next_value = _rename_variable_reference_text(query_param.value, old_key, new_key)
+        changed = changed or next_name != query_param.name or next_value != query_param.value
+        next_query_params.append(
+            query_param.model_copy(update={"name": next_name, "value": next_value})
+        )
+
+    next_body_content = _rename_variable_reference_text(document.body.content, old_key, new_key)
+    changed = changed or next_body_content != document.body.content
+    if not changed:
+        return None
+
+    return document.model_copy(
+        update={
+            "url": next_url,
+            "headers": next_headers,
+            "query_params": next_query_params,
+            "body": document.body.model_copy(update={"content": next_body_content}),
+            "updated_at": _now_iso(),
+        }
+    )
+
+
+def _rename_credential_references(
+    credential: dict[str, Any],
+    old_key: str,
+    new_key: str,
+) -> dict[str, Any] | None:
+    updated_credential, changed = _rename_variable_references_in_value(
+        credential,
+        old_key,
+        new_key,
+        skip_keys={"admin_credential_id"},
+    )
+    if not changed or not isinstance(updated_credential, dict):
+        return None
+    updated_credential["updated_at"] = _now_iso()
+    return updated_credential
+
+
+def _rename_variable_references_in_value(
+    value: object,
+    old_key: str,
+    new_key: str,
+    *,
+    skip_keys: set[str],
+) -> tuple[object, bool]:
+    if isinstance(value, str):
+        updated = _rename_variable_reference_text(value, old_key, new_key)
+        return updated, updated != value
+    if isinstance(value, list):
+        changed = False
+        updated_items: list[object] = []
+        for item in value:
+            updated_item, item_changed = _rename_variable_references_in_value(
+                item,
+                old_key,
+                new_key,
+                skip_keys=skip_keys,
+            )
+            updated_items.append(updated_item)
+            changed = changed or item_changed
+        return updated_items, changed
+    if isinstance(value, dict):
+        changed = False
+        updated_mapping: dict[str, object] = {}
+        for key, item in value.items():
+            if key in skip_keys:
+                updated_mapping[key] = item
+                continue
+            updated_item, item_changed = _rename_variable_references_in_value(
+                item,
+                old_key,
+                new_key,
+                skip_keys=skip_keys,
+            )
+            updated_mapping[key] = updated_item
+            changed = changed or item_changed
+        return updated_mapping, changed
+    return value, False
 
 
 def _load_environments_state(settings: Settings) -> RequestsEnvironmentsState:
@@ -1105,11 +1263,16 @@ def _credential_create_to_raw(credential: CredentialCreateModel, now: str) -> di
     }
 
 
-def _environment_state_to_response(state: RequestsEnvironmentsState) -> EnvironmentsStateResponse:
+def _environment_state_to_response(
+    state: RequestsEnvironmentsState,
+    *,
+    renamed_references: int | None = None,
+) -> EnvironmentsStateResponse:
     return EnvironmentsStateResponse(
         active_id=state["active_id"],
         environments=[_environment_to_public(environment) for environment in state["environments"]],
         variables=[_variable_to_public(variable) for variable in state["variables"]],
+        renamed_references=renamed_references,
     )
 
 

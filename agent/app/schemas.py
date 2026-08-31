@@ -508,6 +508,7 @@ class EnvironmentsStateResponse(BaseModel):
     active_id: str | None = Field(default=None, alias="activeId")
     environments: list[EnvironmentColumn] = Field(default_factory=list)
     variables: list[EnvironmentVariableRow] = Field(default_factory=list)
+    renamed_references: int | None = Field(default=None, alias="renamedReferences")
 
 
 class EnvironmentCreateRequest(BaseModel):

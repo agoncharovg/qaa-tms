@@ -53,6 +53,7 @@ from app.services.requests_store import (
     RequestsConflictError,
     RequestsEnvironmentNotFoundError,
     RequestsPathValidationError,
+    _rename_variable_reference_text,
     create_credential,
     create_environment,
     create_folder,
@@ -418,6 +419,22 @@ def test_credentials_crud_returns_values_and_keeps_file_mode(
     assert mode == 0o600
 
 
+def test_rename_variable_reference_text_matches_frontend_template_semantics() -> None:
+    assert _rename_variable_reference_text(
+        "{{ base }} {{base}} {{Base}} {{base_url}}",
+        "base",
+        "host",
+    ) == (
+        "{{host}} {{host}} {{Base}} {{base_url}}"
+    )
+    assert _rename_variable_reference_text(
+        "prefix {{ base }}/{{base}} suffix",
+        "base",
+        "host",
+    ) == (
+        "prefix {{host}}/{{host}} suffix"
+    )
+
 
 def test_resolve_variable_map_uses_active_environment_and_ignores_empty_values(
     monkeypatch: pytest.MonkeyPatch,
@@ -658,6 +675,128 @@ def test_create_variable_rejects_duplicate_keys(
             verify_variable_id,
             VariableUpdateRequest(key="iamBase"),
         )
+
+
+def test_update_variable_renames_request_and_credential_references(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = build_settings(monkeypatch, tmp_path)
+    environment = create_environment(settings, "staging").environments[0]
+    variable_id = create_variable(
+        settings,
+        VariableCreateRequest(
+            key="base",
+            values={environment.id: "https://stg.test"},
+        ),
+    ).variables[0].id
+    create_folder(settings, "Alpha")
+    write_item(
+        settings,
+        "Alpha",
+        "Request",
+        make_request_document(
+            url="{{ base }}/users/{{base_url}}",
+            headers=[
+                RequestHeaderField(
+                    enabled=True,
+                    name="X-{{ base }}",
+                    value="Bearer {{base}} {{Base}}",
+                ),
+            ],
+            query_params=[
+                RequestQueryParam(
+                    enabled=True,
+                    name="{{ base }}",
+                    value="next={{base}}&keep={{base_url}}",
+                ),
+            ],
+            body=RequestBody(
+                mode="raw",
+                content='{"host":"{{ base }}","keep":"{{base_url}}","case":"{{Base}}"}',
+            ),
+        ),
+    )
+    credential = create_credential(
+        settings,
+        BearerCredentialCreate(
+            name="Bearer {{base}}",
+            type="bearer",
+            config=BearerCredentialCreateConfig(token="token {{base}} {{Base}}"),
+        ),
+    )
+
+    updated_state = update_variable(settings, variable_id, VariableUpdateRequest(key="host"))
+
+    assert updated_state.renamed_references == 2
+    assert (
+        next(variable.key for variable in updated_state.variables if variable.id == variable_id)
+        == "host"
+    )
+
+    saved_request = read_item(settings, "Alpha", "Request")
+    assert saved_request.url == "{{host}}/users/{{base_url}}"
+    assert saved_request.headers == [
+        RequestHeaderField(enabled=True, name="X-{{host}}", value="Bearer {{host}} {{Base}}")
+    ]
+    assert saved_request.query_params == [
+        RequestQueryParam(enabled=True, name="{{host}}", value="next={{host}}&keep={{base_url}}")
+    ]
+    assert (
+        saved_request.body.content
+        == '{"host":"{{host}}","keep":"{{base_url}}","case":"{{Base}}"}'
+    )
+
+    saved_credential = get_credential_raw(settings, credential.id)
+    assert saved_credential["name"] == "Bearer {{host}}"
+    assert saved_credential["config"]["token"] == "token {{host}} {{Base}}"
+
+
+def test_update_variable_rejects_existing_key_before_rewriting_references(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = build_settings(monkeypatch, tmp_path)
+    environment = create_environment(settings, "staging").environments[0]
+    base_variable_id = create_variable(
+        settings,
+        VariableCreateRequest(
+            key="base",
+            values={environment.id: "https://stg.test"},
+        ),
+    ).variables[0].id
+    create_variable(settings, VariableCreateRequest(key="host"))
+    create_folder(settings, "Alpha")
+    write_item(
+        settings,
+        "Alpha",
+        "Request",
+        make_request_document(
+            url="{{base}}/users",
+            headers=[RequestHeaderField(enabled=True, name="X-Test", value="{{ base }}")],
+            body=RequestBody(mode="raw", content='{"host":"{{base}}"}'),
+        ),
+    )
+    credential = create_credential(
+        settings,
+        BearerCredentialCreate(
+            name="Bearer",
+            type="bearer",
+            config=BearerCredentialCreateConfig(token="{{base}}"),
+        ),
+    )
+
+    with pytest.raises(RequestsConflictError, match="Variable already exists: host"):
+        update_variable(settings, base_variable_id, VariableUpdateRequest(key="host"))
+
+    saved_request = read_item(settings, "Alpha", "Request")
+    assert saved_request.url == "{{base}}/users"
+    assert saved_request.headers == [
+        RequestHeaderField(enabled=True, name="X-Test", value="{{ base }}")
+    ]
+    assert saved_request.body.content == '{"host":"{{base}}"}'
+    assert get_credential_raw(settings, credential.id)["config"]["token"] == "{{base}}"
+    assert [variable.key for variable in list_state(settings).variables] == ["base", "host"]
 
 
 def test_set_active_environment_rejects_unknown_and_can_clear(
