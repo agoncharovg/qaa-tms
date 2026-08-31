@@ -97,15 +97,15 @@ function buildItemButtonStyle(active: boolean, collapsed: boolean, palette: Pale
   };
 }
 
-function buildTabButtonStyle(active: boolean, open: boolean, palette: Palette): CSSProperties {
+function buildTabButtonStyle(active: boolean, palette: Palette): CSSProperties {
   return {
     alignItems: "center",
-    backgroundColor: active ? palette.accentSoft : open ? palette.chip : "transparent",
+    backgroundColor: active ? palette.accentSoft : "transparent",
     border: "1px solid transparent",
     borderRadius: "8px",
     color: active ? palette.accent : palette.inkSoft,
     display: "flex",
-    justifyContent: "space-between",
+    justifyContent: "flex-start",
     padding: "8px 10px",
     transition: "background-color 150ms ease, color 150ms ease",
     width: "100%",
@@ -325,7 +325,6 @@ export function Sidebar({ activePluginId }: SidebarProps) {
                     <Stack gap={6}>
                       {pluginTabs.map((tab) => {
                         const isActiveTab = pluginState.activeTabId === tab.id;
-                        const isOpenTab = pluginState.tabIds.includes(tab.id);
 
                         return (
                           <UnstyledButton
@@ -336,7 +335,7 @@ export function Sidebar({ activePluginId }: SidebarProps) {
                               openTab(plugin.id, tab.id);
                               navigate(plugin.route);
                             }}
-                            style={buildTabButtonStyle(isActiveTab, isOpenTab, palette)}
+                            style={buildTabButtonStyle(isActiveTab, palette)}
                           >
                             <Group gap="xs" wrap="nowrap">
                               <Box
@@ -344,11 +343,7 @@ export function Sidebar({ activePluginId }: SidebarProps) {
                                 h={6}
                                 style={{
                                   borderRadius: "999px",
-                                  backgroundColor: isActiveTab
-                                    ? palette.accent
-                                    : isOpenTab
-                                      ? palette.dim
-                                      : palette.faint,
+                                  backgroundColor: isActiveTab ? palette.accent : palette.faint,
                                   flexShrink: 0,
                                 }}
                                 w={6}
@@ -357,11 +352,6 @@ export function Sidebar({ activePluginId }: SidebarProps) {
                                 {tab.title}
                               </Text>
                             </Group>
-                            {isOpenTab ? (
-                              <Text c={palette.faint} size="xs">
-                                Open
-                              </Text>
-                            ) : null}
                           </UnstyledButton>
                         );
                       })}
@@ -431,7 +421,7 @@ export function Sidebar({ activePluginId }: SidebarProps) {
                     aria-current={activePluginId === PluginId.PROFILE ? "page" : undefined}
                     aria-label={SidebarCopy.PROFILE}
                     onClick={openProfile}
-                    style={buildTabButtonStyle(activePluginId === PluginId.PROFILE, false, palette)}
+                    style={buildTabButtonStyle(activePluginId === PluginId.PROFILE, palette)}
                   >
                     <Group gap="xs" wrap="nowrap">
                       <Box
@@ -453,7 +443,7 @@ export function Sidebar({ activePluginId }: SidebarProps) {
                   <UnstyledButton
                     aria-label={SidebarCopy.CONFIRM_LOGOUT}
                     onClick={confirmLogout}
-                    style={buildTabButtonStyle(false, false, palette)}
+                    style={buildTabButtonStyle(false, palette)}
                   >
                     <Group gap="xs" wrap="nowrap">
                       <Box

@@ -208,6 +208,29 @@ describe("Sidebar", () => {
     expect(stagingSubmenuButtons).toEqual(submenuLabels);
   });
 
+  it("does not show Open badges for submenu items", () => {
+    useAuthStore.setState({
+      currentUser: {
+        auto_login: false,
+        created_at: "2026-08-09T00:00:00Z",
+        display_name: "Test User",
+        enabled_plugins: [PluginId.STAGINGS],
+        effective_permissions: ["stagings.read"],
+        qaa_generator_token_set: false,
+        id: 2,
+        is_admin: false,
+        updated_at: "2026-08-09T00:00:00Z",
+        username: "test",
+      },
+      token: "token-456",
+    });
+    useUiStore.getState().openTab(PluginId.STAGINGS, TabId.STAGINGS_HISTORY);
+
+    renderSidebar(PluginId.STAGINGS);
+
+    expect(screen.queryByText("Open")).not.toBeInTheDocument();
+  });
+
   it("opens the admin security tab directly from the sidebar tree", async () => {
     const user = userEvent.setup();
 
