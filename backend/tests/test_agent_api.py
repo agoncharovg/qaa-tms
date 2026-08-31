@@ -101,6 +101,23 @@ def test_agent_install_script_returns_bootstrap_script(tmp_path: Path) -> None:
     assert "install.sh --backend-url" in response.text
 
 
+def test_agent_install_script_honours_forwarded_proto(tmp_path: Path) -> None:
+    agent_dist_dir = tmp_path / "missing-dist"
+
+    with build_client(tmp_path, agent_dist_dir) as client:
+        response = client.get(
+            INSTALL_SCRIPT_PATH,
+            headers={
+                "X-Forwarded-Proto": "https",
+                "X-Forwarded-Host": "qaa-tms-preprod.i.gc.onl",
+            },
+        )
+
+    assert response.status_code == 200
+    assert 'BACKEND_ORIGIN="https://qaa-tms-preprod.i.gc.onl"' in response.text
+    assert "http://qaa-tms-preprod.i.gc.onl" not in response.text
+
+
 def test_agent_manifest_returns_503_when_bundle_is_missing(tmp_path: Path) -> None:
     agent_dist_dir = tmp_path / "missing-dist"
 

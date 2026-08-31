@@ -50,4 +50,39 @@ fi
 chmod +x "$tmp/agent/install.sh"
 "$tmp/agent/install.sh" --backend-url "${BACKEND_ORIGIN}" < /dev/tty
 
-echo "Companion installed. Reload the portal."
+# --- Verify: the portal only re-checks on reload, so confirm the companion is
+# --- actually running AND reachable with the origin the browser will send.
+AGENT_PORT="${QAA_TMS_AGENT_PORT:-47600}"
+PING_URL="http://127.0.0.1:${AGENT_PORT}/ping"
+
+echo "Waiting for the companion to answer on ${PING_URL} ..."
+deadline=$(( $(date +%s) + 30 ))
+until curl -fsS "$PING_URL" >/dev/null 2>&1; do
+  if [ "$(date +%s)" -ge "$deadline" ]; then
+    echo "The companion did not start within 30s." >&2
+    echo "Check its logs: journalctl --user -u qaa-tms-agent.service -e" >&2
+    exit 1
+  fi
+  sleep 1
+done
+echo "Companion is running: $(curl -fsS "$PING_URL")"
+
+# Replay the browser's cross-origin preflight to catch an http/https origin mismatch.
+allowed_origin=$(
+  curl -s -o /dev/null -D - -X OPTIONS "$PING_URL" \
+    -H "Origin: ${BACKEND_ORIGIN}" \
+    -H "Access-Control-Request-Method: GET" \
+    -H "Access-Control-Request-Headers: x-qaa-tms" \
+    | tr -d '\r' \
+    | awk -F': ' 'tolower($1) == "access-control-allow-origin" { print $2 }'
+)
+
+if [ "$allowed_origin" != "${BACKEND_ORIGIN}" ]; then
+  echo "The companion is running but rejects the portal origin ${BACKEND_ORIGIN} (CORS)." >&2
+  echo "Allowed-Origin header was: '${allowed_origin:-<none>}'." >&2
+  echo "Fix: set AGENT_CORS_ORIGINS=${BACKEND_ORIGIN} in \${QAA_TMS_HOME:-\$HOME/.qaa-tms}/.env" >&2
+  echo "then run: systemctl --user restart qaa-tms-agent.service" >&2
+  exit 1
+fi
+
+echo "✓ Companion installed, running, and reachable from ${BACKEND_ORIGIN}. Reload the portal (F5)."

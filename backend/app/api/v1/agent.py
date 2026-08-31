@@ -53,9 +53,30 @@ async def get_agent_manifest(request: Request, response: Response) -> AgentManif
     )
 
 
+def _client_facing_origin(request: Request) -> str:
+    """Origin the browser actually uses, honouring the TLS-terminating ingress.
+
+    Behind an ingress that terminates TLS, uvicorn sees plain ``http`` so
+    ``request.base_url`` reports the wrong scheme. The companion bakes this
+    origin into ``AGENT_CORS_ORIGINS``; a scheme mismatch makes the browser's
+    CORS preflight fail and the portal reports the companion as not installed.
+    """
+    forwarded_proto = request.headers.get(HttpHeader.X_FORWARDED_PROTO.value)
+    forwarded_host = request.headers.get(HttpHeader.X_FORWARDED_HOST.value) or request.headers.get(
+        HttpHeader.HOST.value
+    )
+    if forwarded_proto and forwarded_host:
+        # X-Forwarded-* may be a comma-separated chain; the client-facing value is first.
+        proto = forwarded_proto.split(",")[0].strip()
+        host = forwarded_host.split(",")[0].strip()
+        if proto and host:
+            return f"{proto}://{host}"
+    return str(request.base_url).rstrip("/")
+
+
 @router.get(RoutePath.INSTALL_SCRIPT.value)
 async def get_agent_install_script(request: Request) -> Response:
-    origin = str(request.base_url).rstrip("/")
+    origin = _client_facing_origin(request)
     script = render_install_script(origin)
     return Response(
         content=script,
