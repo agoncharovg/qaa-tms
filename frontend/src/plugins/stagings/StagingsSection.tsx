@@ -9,7 +9,6 @@ import {
   IconFlask,
   IconHistory,
   IconPlaylistAdd,
-  IconRefresh,
   IconRocket,
 } from "@tabler/icons-react";
 
@@ -47,7 +46,6 @@ export function StagingsSection({ mode }: StagingsSectionProps) {
   const deployOpen = pluginTabs.tabIds.includes(TabId.STAGINGS_DEPLOY);
   const historyOpen = pluginTabs.tabIds.includes(TabId.STAGINGS_HISTORY);
   const namespacesOpen = pluginTabs.tabIds.includes(TabId.STAGINGS_NAMESPACES);
-  const syncOpen = pluginTabs.tabIds.includes(TabId.STAGINGS_SYNC);
   const e2eOpen = pluginTabs.tabIds.includes(TabId.STAGINGS_E2E);
 
   const activateTab = (tabId: typeof TabId[keyof typeof TabId]) => {
@@ -89,13 +87,6 @@ export function StagingsSection({ mode }: StagingsSectionProps) {
             variant="light"
           >
             {namespacesOpen ? "Switch to Namespaces" : "Open Namespaces tab"}
-          </Button>
-          <Button
-            leftSection={<IconRefresh size={16} />}
-            onClick={() => activateTab(TabId.STAGINGS_SYNC)}
-            variant="light"
-          >
-            {syncOpen ? "Switch to Sync" : "Open Sync tab"}
           </Button>
           <Button
             leftSection={<IconFlask size={16} />}

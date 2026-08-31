@@ -275,7 +275,9 @@ class PermissionKey(StrEnum):
     STAGINGS_READ = "stagings.read"
     STAGINGS_DEPLOY = "stagings.deploy"
     STAGINGS_DESTROY = "stagings.destroy"
-    STAGINGS_SYNC = "stagings.sync"
+    # STAGINGS_SYNC intentionally removed — the Sync UI is unregistered; the
+    # agent still guards /sync with its own permission enum. Restore this key to
+    # bring the permission back into the matrix/role seeds.
     STAGINGS_E2E_RUN = "stagings.e2e_run"
     KUBER_READ = "kuber.read"
     KUBER_USE_CONTEXT = "kuber.use_context"

@@ -101,7 +101,6 @@ ROLE_SEEDS: tuple[RoleSeed, ...] = (
             PermissionKey.STAGINGS_READ,
             PermissionKey.STAGINGS_DEPLOY,
             PermissionKey.STAGINGS_DESTROY,
-            PermissionKey.STAGINGS_SYNC,
             PermissionKey.STAGINGS_E2E_RUN,
             PermissionKey.KUBER_READ,
             PermissionKey.KUBER_USE_CONTEXT,

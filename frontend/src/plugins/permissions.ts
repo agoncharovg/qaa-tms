@@ -35,7 +35,6 @@ export const PLUGIN_SETTINGS_ACTION_PERMISSIONS: Partial<Record<PluginIdType, st
   [PluginId.STAGINGS]: [
     "stagings.deploy",
     "stagings.destroy",
-    "stagings.sync",
     "stagings.e2e_run",
   ],
   [PluginId.KUBER]: ["kuber.use_context", "kuber.delete_pod"],
