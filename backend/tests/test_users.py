@@ -22,6 +22,7 @@ DEFAULT_OPTIONAL_PLUGIN_IDS = [
     PluginId.LEONID.value,
     PluginId.NOTEBOOK.value,
     PluginId.NOTIFICATOR.value,
+    PluginId.REQUESTS.value,
 ]
 
 

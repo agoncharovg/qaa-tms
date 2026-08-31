@@ -19,7 +19,8 @@ from app.api.routes import router
 from app.core.config import Settings, get_settings
 from app.core.constants import DEFAULT_BACKEND_TIMEOUT_SECONDS, HeaderName, HeaderValue
 from app.services.jobs import JobManager
-from app.services.notebook_backup import run_backup_loop
+from app.services.notebook_backup import run_backup_loop as run_notebook_backup_loop
+from app.services.requests_backup import run_backup_loop as run_requests_backup_loop
 
 
 async def allow_private_network_preflight(
@@ -81,19 +82,22 @@ def create_app(
             app.state.settings = resolved_settings
             app.state.backend_client = backend_client
             app.state.auth_cache = {}
+            app.state.requests_token_cache = {}
             app.state.jenkins_resume_tasks = {}
             app.state.job_manager = JobManager(
                 settings=resolved_settings,
                 backend_client=backend_client,
             )
-            app.state.notebook_backup_task = asyncio.create_task(run_backup_loop(app))
+            app.state.notebook_backup_task = asyncio.create_task(run_notebook_backup_loop(app))
+            app.state.requests_backup_task = asyncio.create_task(run_requests_backup_loop(app))
             try:
                 yield
             finally:
-                task = app.state.notebook_backup_task
-                task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await task
+                for task in (app.state.notebook_backup_task, app.state.requests_backup_task):
+                    task.cancel()
+                for task in (app.state.notebook_backup_task, app.state.requests_backup_task):
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await task
 
     app = FastAPI(title="QAA-TMS Agent", lifespan=lifespan)
     app.add_middleware(

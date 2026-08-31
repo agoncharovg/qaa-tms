@@ -260,6 +260,236 @@ export interface NotebookSearchResponse {
   matches: NotebookSearchMatch[];
 }
 
+export type RequestsMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
+
+export type RequestsBodyMode = "none" | "json" | "raw" | "form";
+
+export type RequestsCredentialType =
+  | "bearer"
+  | "api_key_permanent"
+  | "login_password"
+  | "client_admin";
+
+export interface RequestsFolderNode {
+  name: string;
+  itemCount: number;
+  flags: Record<string, unknown>;
+  children: RequestsFolderNode[];
+}
+
+export interface RequestsTreeResponse {
+  folders: RequestsFolderNode[];
+}
+
+export interface RequestsHeaderField {
+  name: string;
+  value: string;
+  enabled: boolean;
+}
+
+export interface RequestsHeaderValue {
+  name: string;
+  value: string;
+}
+
+export interface RequestsQueryParam {
+  name: string;
+  value: string;
+  enabled: boolean;
+}
+
+export interface RequestsRequestBody {
+  mode: RequestsBodyMode;
+  content: string;
+}
+
+export interface RequestsItemInput {
+  folder: string;
+  name?: string;
+  method: RequestsMethod;
+  url: string;
+  headers: RequestsHeaderField[];
+  queryParams: RequestsQueryParam[];
+  body: RequestsRequestBody;
+  credentialId: string | null;
+}
+
+export interface RequestsItemUpdateInput {
+  folder: string;
+  method?: RequestsMethod;
+  url?: string;
+  headers?: RequestsHeaderField[];
+  queryParams?: RequestsQueryParam[];
+  body?: RequestsRequestBody;
+  credentialId?: string | null;
+}
+
+export interface RequestsItemSummary {
+  name: string;
+  method: RequestsMethod;
+  url: string;
+  credentialId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RequestsItemsResponse {
+  folder: string;
+  items: RequestsItemSummary[];
+}
+
+export interface RequestsItemReadResponse {
+  folder: string;
+  name: string;
+  method: RequestsMethod;
+  url: string;
+  headers: RequestsHeaderField[];
+  queryParams: RequestsQueryParam[];
+  body: RequestsRequestBody;
+  credentialId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RequestsRequestSummary {
+  method: RequestsMethod;
+  url: string;
+  headers: RequestsHeaderValue[];
+  queryParams: RequestsHeaderValue[];
+}
+
+export interface RequestsExecuteResponse {
+  statusCode: number | null;
+  reasonPhrase: string | null;
+  elapsedMs: number | null;
+  sizeBytes: number;
+  headers: RequestsHeaderValue[];
+  bodyText: string;
+  truncated: boolean;
+  error: string | null;
+  requestSummary: RequestsRequestSummary;
+}
+
+export interface RequestsBearerCredentialPublic {
+  id: string;
+  name: string;
+  type: "bearer";
+  createdAt: string;
+  updatedAt: string;
+  config: {
+    token: string;
+  };
+}
+
+export interface RequestsApiKeyPermanentCredentialPublic {
+  id: string;
+  name: string;
+  type: "api_key_permanent";
+  createdAt: string;
+  updatedAt: string;
+  config: {
+    verifyUrl: string;
+    scheme: string;
+    permanentToken: string;
+  };
+}
+
+export interface RequestsLoginPasswordCredentialPublic {
+  id: string;
+  name: string;
+  type: "login_password";
+  createdAt: string;
+  updatedAt: string;
+  config: {
+    loginUrl: string;
+    username: string;
+    referer: string;
+    password: string;
+  };
+}
+
+export interface RequestsClientAdminCredentialPublic {
+  id: string;
+  name: string;
+  type: "client_admin";
+  createdAt: string;
+  updatedAt: string;
+  config: {
+    adminCredentialId: string;
+    adminTokenUrl: string;
+    clientId: number;
+    issueByCurrentUser: boolean;
+  };
+}
+
+export type RequestsCredentialPublic =
+  | RequestsBearerCredentialPublic
+  | RequestsApiKeyPermanentCredentialPublic
+  | RequestsLoginPasswordCredentialPublic
+  | RequestsClientAdminCredentialPublic;
+
+export interface RequestsCredentialsListResponse {
+  credentials: RequestsCredentialPublic[];
+}
+
+export interface RequestsCredentialResolveRequest {
+  credentialId: string;
+  environmentId?: string | null;
+  force?: boolean;
+}
+
+export type RequestsExecuteRequest = Omit<RequestsItemInput, "folder" | "name"> & {
+  environmentId?: string | null;
+};
+
+export interface RequestsCredentialResolveResponse {
+  ok: boolean;
+  expiresAt: string | null;
+  error: string | null;
+}
+
+export interface RequestsEnvironmentColumn {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RequestsVariableRow {
+  id: string;
+  key: string;
+  secret: boolean;
+  enabled: boolean;
+  values: Record<string, string>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RequestsEnvironmentsState {
+  activeId: string | null;
+  environments: RequestsEnvironmentColumn[];
+  variables: RequestsVariableRow[];
+  renamedReferences?: number;
+}
+
+export interface RequestsHistoryResponseSummary {
+  statusCode: number | null;
+  elapsedMs: number | null;
+  sizeBytes: number;
+  error: string | null;
+}
+
+export interface RequestsHistoryEntry {
+  id: string;
+  at: string;
+  requestSummary: RequestsRequestSummary;
+  responseSummary: RequestsHistoryResponseSummary;
+}
+
+export interface RequestsHistoryListResponse {
+  entries: RequestsHistoryEntry[];
+}
+
 export interface NotificatorChannel {
   id: number;
   channel_id: string;

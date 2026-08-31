@@ -19,10 +19,16 @@ def test_role_and_permission_seeds_include_kuber_exec_for_engineer() -> None:
 
     assert PermissionKey.NOTEBOOK_READ in permissions_by_role[SecurityRoleKey.ADMINISTRATOR]
     assert PermissionKey.NOTEBOOK_WRITE in permissions_by_role[SecurityRoleKey.ADMINISTRATOR]
+    assert PermissionKey.REQUESTS_READ in permissions_by_role[SecurityRoleKey.ADMINISTRATOR]
+    assert PermissionKey.REQUESTS_WRITE in permissions_by_role[SecurityRoleKey.ADMINISTRATOR]
     assert PermissionKey.NOTEBOOK_READ in permissions_by_role[SecurityRoleKey.ENGINEER]
     assert PermissionKey.NOTEBOOK_WRITE in permissions_by_role[SecurityRoleKey.ENGINEER]
+    assert PermissionKey.REQUESTS_READ in permissions_by_role[SecurityRoleKey.ENGINEER]
+    assert PermissionKey.REQUESTS_WRITE in permissions_by_role[SecurityRoleKey.ENGINEER]
     assert PermissionKey.KUBER_EXEC in permissions_by_role[SecurityRoleKey.ENGINEER]
     assert PermissionKey.KUBER_EXEC in seeded_permissions
+    assert PermissionKey.REQUESTS_READ in seeded_permissions
+    assert PermissionKey.REQUESTS_WRITE in seeded_permissions
 
 
 def test_seed_security_catalog_removes_stale_permissions_and_associations(

@@ -10,6 +10,7 @@ from typing import Annotated, cast
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
+from pydantic import TypeAdapter, ValidationError
 
 from app.api.deps import (
     AuthContext,
@@ -43,6 +44,12 @@ from app.schemas import (
     AgentSettingsRead,
     AgentSettingsUpdate,
     AgentUpdateAccepted,
+    CredentialCreateRequest,
+    CredentialPublic,
+    CredentialResolveRequest,
+    CredentialResolveResponse,
+    CredentialsListResponse,
+    CredentialUpdateRequest,
     DeployFlags,
     DeployRecipePayload,
     DeployRequest,
@@ -50,6 +57,11 @@ from app.schemas import (
     E2eRunRequest,
     E2eSuite,
     E2eSuitesResponse,
+    EnvironmentActiveRequest,
+    EnvironmentCreateRequest,
+    EnvironmentsStateResponse,
+    EnvironmentUpdateRequest,
+    HistoryListResponse,
     JenkinsAllureSkipCandidatesRequest,
     JenkinsAllureSkipCandidatesResponse,
     JenkinsBuildsResponse,
@@ -94,7 +106,21 @@ from app.schemas import (
     NotebookReorderRequest,
     NotebookSearchResponse,
     PreflightItem,
+    RequestDocumentInput,
+    RequestExecuteRequest,
+    RequestExecuteResponse,
+    RequestItemCreateRequest,
+    RequestItemReadResponse,
+    RequestItemUpdateRequest,
+    RequestsFolderCreateRequest,
+    RequestsFolderUpdateRequest,
+    RequestsItemsResponse,
+    RequestsReorderRequest,
+    RequestsTreeResponse,
+    RequestsTreeWriteRequest,
     SyncRequest,
+    VariableCreateRequest,
+    VariableUpdateRequest,
     to_agent_settings_read,
 )
 from app.services.command import PlainTextCommandResult
@@ -167,6 +193,56 @@ from app.services.notebook import (
     write_note,
 )
 from app.services.preflight import collect_preflight
+from app.services.requests_exec import (
+    RequestsCredentialResolutionError,
+    authorization_expires_at,
+    clear_history,
+    delete_history_entry,
+    list_history,
+    resolve_authorization,
+)
+from app.services.requests_exec import (
+    execute as execute_request,
+)
+from app.services.requests_store import (
+    RequestsConflictError,
+    RequestsCredentialNotFoundError,
+    RequestsCredentialValidationError,
+    RequestsEnvironmentNotFoundError,
+    RequestsEnvironmentValidationError,
+    RequestsFolderNotFoundError,
+    RequestsItemNotFoundError,
+    RequestsPathValidationError,
+    RequestsRootMissingError,
+    RequestsVariableNotFoundError,
+    RequestsVariableValidationError,
+    create_credential,
+    create_environment,
+    create_folder,
+    create_variable,
+    delete_credential,
+    delete_environment,
+    delete_folder,
+    delete_item,
+    delete_variable,
+    list_credentials,
+    list_items,
+    list_state,
+    list_tree,
+    move_item,
+    read_credential,
+    read_item,
+    rename_folder,
+    reorder,
+    set_active_environment,
+    set_folder_flags,
+    update_credential,
+    update_environment,
+    update_item,
+    update_variable,
+    write_item,
+    write_tree,
+)
 from app.services.staging import StagingNotInstalledError, build_ping_response
 from app.services.update import UpdateUnsupportedError, spawn_update_helper
 
@@ -204,7 +280,17 @@ NotebookReadAuth = Annotated[AuthContext, Depends(require_permission(PermissionK
 NotebookWriteAuth = Annotated[
     AuthContext, Depends(require_permission(PermissionKey.NOTEBOOK_WRITE))
 ]
+RequestsReadAuth = Annotated[AuthContext, Depends(require_permission(PermissionKey.REQUESTS_READ))]
+RequestsWriteAuth = Annotated[
+    AuthContext, Depends(require_permission(PermissionKey.REQUESTS_WRITE))
+]
 logger = logging.getLogger(__name__)
+CREDENTIAL_CREATE_ADAPTER: TypeAdapter[CredentialCreateRequest] = TypeAdapter(
+    CredentialCreateRequest
+)
+CREDENTIAL_UPDATE_ADAPTER: TypeAdapter[CredentialUpdateRequest] = TypeAdapter(
+    CredentialUpdateRequest
+)
 
 AGENT_SETTINGS_ENV_KEY_BY_FIELD = {
     "jenkins_history_limit": EnvKey.JENKINS_HISTORY_LIMIT,
@@ -611,6 +697,611 @@ async def get_notebook_reminders(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
         ) from exc
+
+
+def _build_request_document_input(
+    method: str,
+    url: str,
+    headers: object,
+    query_params: object,
+    body: object,
+    credential_id: str | None,
+) -> RequestDocumentInput:
+    return RequestDocumentInput.model_validate(
+        {
+            "method": method,
+            "url": url,
+            "headers": headers,
+            "query_params": query_params,
+            "body": body,
+            "credential_id": credential_id,
+        }
+    )
+
+
+@router.get(AgentPath.REQUESTS_COLLECTIONS.value, response_model=RequestsTreeResponse)
+async def get_requests_collections(
+    _: RequestsReadAuth,
+    settings: SettingsDep,
+) -> RequestsTreeResponse:
+    try:
+        return list_tree(settings)
+    except RequestsRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+
+
+@router.put(AgentPath.REQUESTS_COLLECTIONS.value, response_model=RequestsTreeResponse)
+async def put_requests_collections(
+    request_body: RequestsTreeWriteRequest,
+    _: RequestsWriteAuth,
+    settings: SettingsDep,
+) -> RequestsTreeResponse:
+    try:
+        write_tree(
+            settings,
+            [folder.model_dump(mode="python") for folder in request_body.folders],
+        )
+        return list_tree(settings)
+    except RequestsPathValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.patch(AgentPath.REQUESTS_COLLECTIONS.value, response_model=RequestsTreeResponse)
+async def patch_requests_collections(
+    request_body: RequestsReorderRequest,
+    _: RequestsWriteAuth,
+    settings: SettingsDep,
+) -> RequestsTreeResponse:
+    try:
+        reorder(settings, request_body.folders)
+        return list_tree(settings)
+    except RequestsRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+
+
+@router.post(AgentPath.REQUESTS_FOLDER.value, response_model=RequestsTreeResponse)
+async def post_requests_folder(
+    request_body: RequestsFolderCreateRequest,
+    _: RequestsWriteAuth,
+    settings: SettingsDep,
+) -> RequestsTreeResponse:
+    try:
+        create_folder(settings, request_body.name)
+        if request_body.flags:
+            set_folder_flags(settings, request_body.name, request_body.flags)
+        return list_tree(settings)
+    except (RequestsConflictError, RequestsPathValidationError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.put(AgentPath.REQUESTS_FOLDER.value, response_model=RequestsTreeResponse)
+async def put_requests_folder(
+    request_body: RequestsFolderUpdateRequest,
+    _: RequestsWriteAuth,
+    settings: SettingsDep,
+) -> RequestsTreeResponse:
+    if request_body.name is None and request_body.flags is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="No folder changes requested."
+        )
+    try:
+        folder_name = request_body.folder
+        if request_body.name is not None:
+            rename_folder(settings, request_body.folder, request_body.name)
+            folder_name = request_body.name
+        if request_body.flags is not None:
+            set_folder_flags(settings, folder_name, request_body.flags)
+        return list_tree(settings)
+    except RequestsRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+    except RequestsFolderNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except (RequestsConflictError, RequestsPathValidationError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.delete(AgentPath.REQUESTS_FOLDER.value, response_model=RequestsTreeResponse)
+async def delete_requests_folder(
+    _: RequestsWriteAuth,
+    settings: SettingsDep,
+    folder: str = Query(...),
+) -> RequestsTreeResponse:
+    try:
+        delete_folder(settings, folder)
+        return list_tree(settings)
+    except RequestsRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+    except RequestsFolderNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except RequestsPathValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.get(AgentPath.REQUESTS_ITEM.value, response_model=RequestsItemsResponse)
+async def get_requests_items(
+    _: RequestsReadAuth,
+    settings: SettingsDep,
+    folder: str = Query(...),
+) -> RequestsItemsResponse:
+    try:
+        return list_items(settings, folder)
+    except RequestsRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+    except RequestsFolderNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except RequestsPathValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.get(f"{AgentPath.REQUESTS_ITEM.value}/{{name}}", response_model=RequestItemReadResponse)
+async def get_requests_item(
+    name: str,
+    _: RequestsReadAuth,
+    settings: SettingsDep,
+    folder: str = Query(...),
+) -> RequestItemReadResponse:
+    try:
+        return read_item(settings, folder, name)
+    except RequestsRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+    except (RequestsFolderNotFoundError, RequestsItemNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except RequestsPathValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post(AgentPath.REQUESTS_ITEM.value, response_model=RequestItemReadResponse)
+async def post_requests_item(
+    request_body: RequestItemCreateRequest,
+    _: RequestsWriteAuth,
+    settings: SettingsDep,
+) -> RequestItemReadResponse:
+    try:
+        return write_item(
+            settings,
+            request_body.folder,
+            request_body.name,
+            _build_request_document_input(
+                request_body.method,
+                request_body.url,
+                request_body.headers,
+                request_body.query_params,
+                request_body.body,
+                request_body.credential_id,
+            ),
+        )
+    except RequestsRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+    except RequestsFolderNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except (RequestsConflictError, RequestsPathValidationError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.put(f"{AgentPath.REQUESTS_ITEM.value}/{{name}}", response_model=RequestItemReadResponse)
+async def put_requests_item(
+    name: str,
+    request_body: RequestItemUpdateRequest,
+    _: RequestsWriteAuth,
+    settings: SettingsDep,
+    folder: str = Query(...),
+) -> RequestItemReadResponse:
+    update_fields = request_body.model_fields_set - {"folder"}
+    is_move_request = folder != request_body.folder
+    if not is_move_request and not update_fields:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="No item changes requested."
+        )
+    try:
+        current = read_item(settings, folder, name)
+        target_folder = request_body.folder
+        if is_move_request:
+            move_item(settings, folder, request_body.folder, name)
+        if update_fields:
+            method = request_body.method if request_body.method is not None else current.method
+            url = request_body.url if request_body.url is not None else current.url
+            headers = request_body.headers if "headers" in update_fields else current.headers
+            query_params = (
+                request_body.query_params
+                if "query_params" in update_fields
+                else current.query_params
+            )
+            body = request_body.body if "body" in update_fields else current.body
+            credential_id = (
+                request_body.credential_id
+                if "credential_id" in update_fields
+                else current.credential_id
+            )
+            update_item(
+                settings,
+                target_folder,
+                name,
+                _build_request_document_input(
+                    method, url, headers, query_params, body, credential_id
+                ),
+            )
+        return read_item(settings, target_folder, name)
+    except RequestsRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+    except (RequestsFolderNotFoundError, RequestsItemNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except (RequestsConflictError, RequestsPathValidationError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.delete(f"{AgentPath.REQUESTS_ITEM.value}/{{name}}", response_model=RequestsItemsResponse)
+async def delete_requests_item(
+    name: str,
+    _: RequestsWriteAuth,
+    settings: SettingsDep,
+    folder: str = Query(...),
+) -> RequestsItemsResponse:
+    try:
+        delete_item(settings, folder, name)
+        return list_items(settings, folder)
+    except RequestsRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+    except (RequestsFolderNotFoundError, RequestsItemNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except RequestsPathValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.get(AgentPath.REQUESTS_ENVIRONMENTS.value, response_model=EnvironmentsStateResponse)
+async def get_requests_environments(
+    _: RequestsReadAuth,
+    settings: SettingsDep,
+) -> EnvironmentsStateResponse:
+    return list_state(settings)
+
+
+@router.post(AgentPath.REQUESTS_ENVIRONMENTS.value, response_model=EnvironmentsStateResponse)
+async def post_requests_environment(
+    request_body: dict[str, object],
+    _: RequestsWriteAuth,
+    settings: SettingsDep,
+) -> EnvironmentsStateResponse:
+    try:
+        payload = EnvironmentCreateRequest.model_validate(request_body)
+        return create_environment(settings, payload.name)
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except RequestsConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except RequestsEnvironmentValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except RequestsRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+
+
+@router.put(
+    AgentPath.REQUESTS_ENVIRONMENT_ACTIVE.value,
+    response_model=EnvironmentsStateResponse,
+)
+async def put_requests_environment_active(
+    request_body: dict[str, object],
+    _: RequestsWriteAuth,
+    settings: SettingsDep,
+) -> EnvironmentsStateResponse:
+    try:
+        payload = EnvironmentActiveRequest.model_validate(request_body)
+        return set_active_environment(settings, payload.environment_id)
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except RequestsEnvironmentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except RequestsConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except RequestsEnvironmentValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except RequestsRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+
+
+@router.put(
+    f"{AgentPath.REQUESTS_ENVIRONMENTS.value}/{{environment_id}}",
+    response_model=EnvironmentsStateResponse,
+)
+async def put_requests_environment(
+    environment_id: str,
+    request_body: dict[str, object],
+    _: RequestsWriteAuth,
+    settings: SettingsDep,
+) -> EnvironmentsStateResponse:
+    try:
+        payload = EnvironmentUpdateRequest.model_validate(request_body)
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    if payload.name is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No environment changes requested.",
+        )
+    try:
+        return update_environment(settings, environment_id, payload.name)
+    except RequestsEnvironmentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except RequestsConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except RequestsEnvironmentValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except RequestsRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+
+
+@router.delete(
+    f"{AgentPath.REQUESTS_ENVIRONMENTS.value}/{{environment_id}}",
+    response_model=EnvironmentsStateResponse,
+)
+async def delete_requests_environment(
+    environment_id: str,
+    _: RequestsWriteAuth,
+    settings: SettingsDep,
+) -> EnvironmentsStateResponse:
+    try:
+        return delete_environment(settings, environment_id)
+    except RequestsEnvironmentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except RequestsConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except RequestsEnvironmentValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except RequestsRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+
+
+@router.post(AgentPath.REQUESTS_VARIABLES.value, response_model=EnvironmentsStateResponse)
+async def post_requests_variable(
+    request_body: dict[str, object],
+    _: RequestsWriteAuth,
+    settings: SettingsDep,
+) -> EnvironmentsStateResponse:
+    try:
+        payload = VariableCreateRequest.model_validate(request_body)
+        return create_variable(settings, payload)
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except RequestsConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except RequestsVariableValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except RequestsRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+
+
+@router.put(
+    f"{AgentPath.REQUESTS_VARIABLES.value}/{{variable_id}}",
+    response_model=EnvironmentsStateResponse,
+)
+async def put_requests_variable(
+    variable_id: str,
+    request_body: dict[str, object],
+    _: RequestsWriteAuth,
+    settings: SettingsDep,
+) -> EnvironmentsStateResponse:
+    try:
+        payload = VariableUpdateRequest.model_validate(request_body)
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    if not payload.model_fields_set:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No variable changes requested.",
+        )
+    try:
+        return update_variable(settings, variable_id, payload)
+    except RequestsVariableNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except RequestsConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except RequestsVariableValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except RequestsRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+
+
+@router.delete(
+    f"{AgentPath.REQUESTS_VARIABLES.value}/{{variable_id}}",
+    response_model=EnvironmentsStateResponse,
+)
+async def delete_requests_variable(
+    variable_id: str,
+    _: RequestsWriteAuth,
+    settings: SettingsDep,
+) -> EnvironmentsStateResponse:
+    try:
+        return delete_variable(settings, variable_id)
+    except RequestsVariableNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except RequestsConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except RequestsVariableValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except RequestsRootMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+
+
+@router.get(AgentPath.REQUESTS_CREDENTIALS.value, response_model=CredentialsListResponse)
+async def get_requests_credentials(
+    _: RequestsReadAuth,
+    settings: SettingsDep,
+) -> CredentialsListResponse:
+    return CredentialsListResponse(credentials=list_credentials(settings))
+
+
+@router.get(
+    f"{AgentPath.REQUESTS_CREDENTIALS.value}/{{credential_id}}",
+    response_model=CredentialPublic,
+)
+async def get_requests_credential(
+    credential_id: str,
+    _: RequestsReadAuth,
+    settings: SettingsDep,
+) -> CredentialPublic:
+    try:
+        return read_credential(settings, credential_id)
+    except RequestsCredentialNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except RequestsCredentialValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post(AgentPath.REQUESTS_CREDENTIALS.value, response_model=CredentialPublic)
+async def post_requests_credential(
+    request_body: dict[str, object],
+    _: RequestsWriteAuth,
+    settings: SettingsDep,
+) -> CredentialPublic:
+    try:
+        payload = CREDENTIAL_CREATE_ADAPTER.validate_python(request_body)
+        return create_credential(settings, payload)
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except RequestsCredentialValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.put(
+    f"{AgentPath.REQUESTS_CREDENTIALS.value}/{{credential_id}}",
+    response_model=CredentialPublic,
+)
+async def put_requests_credential(
+    credential_id: str,
+    request_body: dict[str, object],
+    _: RequestsWriteAuth,
+    settings: SettingsDep,
+) -> CredentialPublic:
+    try:
+        payload = CREDENTIAL_UPDATE_ADAPTER.validate_python(request_body)
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    if payload.name is None and not payload.config.model_fields_set:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="No credential changes requested."
+        )
+    try:
+        return update_credential(settings, credential_id, payload)
+    except RequestsCredentialNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except RequestsCredentialValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.delete(
+    f"{AgentPath.REQUESTS_CREDENTIALS.value}/{{credential_id}}",
+    response_model=CredentialsListResponse,
+)
+async def delete_requests_credential(
+    credential_id: str,
+    _: RequestsWriteAuth,
+    settings: SettingsDep,
+) -> CredentialsListResponse:
+    try:
+        delete_credential(settings, credential_id)
+        return CredentialsListResponse(credentials=list_credentials(settings))
+    except RequestsCredentialNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post(
+    AgentPath.REQUESTS_CREDENTIAL_RESOLVE.value,
+    response_model=CredentialResolveResponse,
+)
+async def post_requests_credential_resolve(
+    request: Request,
+    request_body: CredentialResolveRequest,
+    _: RequestsWriteAuth,
+    settings: SettingsDep,
+) -> CredentialResolveResponse:
+    try:
+        authorization = await resolve_authorization(
+            request.app,
+            settings,
+            request_body.credential_id,
+            environment_id=request_body.environment_id,
+            force=request_body.force,
+        )
+    except RequestsCredentialNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except RequestsCredentialResolutionError as exc:
+        return CredentialResolveResponse(ok=False, expires_at=None, error=str(exc))
+    return CredentialResolveResponse(
+        ok=True,
+        expires_at=authorization_expires_at(authorization),
+        error=None,
+    )
+
+
+@router.post(AgentPath.REQUESTS_EXECUTE.value, response_model=RequestExecuteResponse)
+async def post_requests_execute(
+    request: Request,
+    request_body: RequestExecuteRequest,
+    _: RequestsWriteAuth,
+    settings: SettingsDep,
+) -> RequestExecuteResponse:
+    return await execute_request(request.app, settings, request_body)
+
+
+@router.get(AgentPath.REQUESTS_HISTORY.value, response_model=HistoryListResponse)
+async def get_requests_history(
+    _: RequestsReadAuth,
+    settings: SettingsDep,
+) -> HistoryListResponse:
+    return list_history(settings)
+
+
+@router.delete(AgentPath.REQUESTS_HISTORY.value, response_model=HistoryListResponse)
+async def delete_requests_history(
+    _: RequestsWriteAuth,
+    settings: SettingsDep,
+) -> HistoryListResponse:
+    clear_history(settings)
+    return list_history(settings)
+
+
+@router.delete(
+    f"{AgentPath.REQUESTS_HISTORY.value}/{{entry_id}}",
+    response_model=HistoryListResponse,
+)
+async def delete_requests_history_entry_route(
+    entry_id: str,
+    _: RequestsWriteAuth,
+    settings: SettingsDep,
+) -> HistoryListResponse:
+    delete_history_entry(settings, entry_id)
+    return list_history(settings)
 
 
 @router.get(AgentPath.PREFLIGHT.value, response_model=list[PreflightItem])

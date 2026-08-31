@@ -12,6 +12,7 @@ class PluginId(StrEnum):
     LEONID = "leonid"
     NOTEBOOK = "notebook"
     NOTIFICATOR = "notificator"
+    REQUESTS = "requests"
     ADMIN = "admin"
     PROFILE = "profile"
 
@@ -286,6 +287,8 @@ class PermissionKey(StrEnum):
     LEONID_WRITE = "leonid.write"
     NOTEBOOK_READ = "notebook.read"
     NOTEBOOK_WRITE = "notebook.write"
+    REQUESTS_READ = "requests.read"
+    REQUESTS_WRITE = "requests.write"
 
 
 class SettingsSurface(StrEnum):
@@ -439,6 +442,7 @@ OPTIONAL_PLUGIN_IDS = (
     PluginId.LEONID,
     PluginId.NOTEBOOK,
     PluginId.NOTIFICATOR,
+    PluginId.REQUESTS,
 )
 SYSTEM_PLUGIN_IDS = (PluginId.ADMIN, PluginId.PROFILE)
 OPTIONAL_PLUGIN_ID_VALUES = tuple(plugin_id.value for plugin_id in OPTIONAL_PLUGIN_IDS)
