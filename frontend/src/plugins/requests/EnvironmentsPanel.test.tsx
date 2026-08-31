@@ -454,4 +454,35 @@ describe("EnvironmentsPanel", () => {
     });
   });
 
+  it("survives toggling the Enabled checkbox repeatedly", async () => {
+    const user = userEvent.setup();
+    const state: RequestsEnvironmentsState = {
+      activeId: null,
+      environments: [
+        {
+          createdAt: "2026-08-29T08:00:00Z",
+          id: "env-staging",
+          name: "staging",
+          updatedAt: "2026-08-29T09:00:00Z",
+        },
+      ],
+      variables: [buildVariableRow({ values: { "env-staging": "https://stg.test" } })],
+    };
+    agentClientMock.getRequestsState.mockImplementation(() => clone(state));
+
+    renderWithProviders(<EnvironmentsPanel />);
+    expect(await screen.findByText("Requests / Environments")).toBeInTheDocument();
+
+    const checkbox = screen.getAllByRole("checkbox")[0];
+    await user.click(checkbox);
+    expect(screen.getAllByRole("button", { name: "Save" })[0]).toBeEnabled();
+    await user.click(checkbox);
+
+    // The panel must not crash; toggling back to the saved value re-disables Save.
+    expect(screen.getByText("Requests / Environments")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: "Save" })[0]).toBeDisabled();
+    });
+  });
+
 });

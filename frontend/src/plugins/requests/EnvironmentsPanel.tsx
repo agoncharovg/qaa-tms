@@ -448,9 +448,10 @@ export function EnvironmentsPanel() {
                                   checked={row.enabled}
                                   disabled={!canWrite}
                                   onChange={(event) => {
+                                    const checked = event.currentTarget.checked;
                                     updateDraftRow(row.id, (current) => ({
                                       ...current,
-                                      enabled: event.currentTarget.checked,
+                                      enabled: checked,
                                     }));
                                   }}
                                 />
