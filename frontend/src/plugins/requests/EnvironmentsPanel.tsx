@@ -26,6 +26,10 @@ import {
   RequestsNoticeAlert,
   RequestsSurface,
 } from "@/plugins/requests/RequestsShared";
+import {
+  isVariableRowDirty,
+  normalizeVariableRowValues,
+} from "@/plugins/requests/EnvironmentsPanelState";
 import { getErrorMessage, type RequestsNotice, useRequestsAgent } from "@/plugins/requests/requestsShared";
 import { useAuthStore } from "@/store/authStore";
 
@@ -54,10 +58,6 @@ function buildNewVariableRow(secret: boolean): VariableDraftRow {
   };
 }
 
-function normalizeValues(values: Record<string, string>): Record<string, string> {
-  return Object.fromEntries(Object.entries(values).filter(([, value]) => value.length > 0));
-}
-
 function syncDraftRows(
   nextState: RequestsEnvironmentsState | undefined,
   currentRows: VariableDraftRow[],
@@ -73,6 +73,16 @@ function rowMatchesTab(row: VariableDraftRow, tab: VariableTab): boolean {
   return tab === "secrets" ? row.secret : !row.secret;
 }
 
+async function invalidateRequestsContentQueries(
+  queryClient: ReturnType<typeof useQueryClient>
+): Promise<void> {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: [QueryKey.REQUESTS_ITEMS] }),
+    queryClient.invalidateQueries({ queryKey: [QueryKey.REQUESTS_ITEM] }),
+    queryClient.invalidateQueries({ queryKey: [QueryKey.REQUESTS_CREDENTIALS] }),
+  ]);
+}
+
 export function EnvironmentsPanel() {
   const queryClient = useQueryClient();
   const currentUser = useAuthStore((state) => state.currentUser);
@@ -81,6 +91,7 @@ export function EnvironmentsPanel() {
   const [notice, setNotice] = useState<RequestsNotice | null>(null);
   const [activeTab, setActiveTab] = useState<VariableTab>("variables");
   const [draftRows, setDraftRows] = useState<VariableDraftRow[]>([]);
+  const [savingRowId, setSavingRowId] = useState<string | null>(null);
 
   const queryKey = [QueryKey.REQUESTS_ENVIRONMENTS, token, agentPort] as const;
   const environmentsQuery = useQuery({
@@ -96,6 +107,10 @@ export function EnvironmentsPanel() {
   }, [environmentsQuery.data]);
 
   const environments = environmentsQuery.data?.environments ?? [];
+  const savedRowsById = useMemo(
+    () => new Map((environmentsQuery.data?.variables ?? []).map((row) => [row.id, row])),
+    [environmentsQuery.data?.variables]
+  );
   const visibleRows = useMemo(
     () => draftRows.filter((row) => rowMatchesTab(row, activeTab)),
     [activeTab, draftRows]
@@ -158,7 +173,7 @@ export function EnvironmentsPanel() {
         enabled: row.enabled,
         key: row.key.trim(),
         secret: row.secret,
-        values: normalizeValues(row.values),
+        values: normalizeVariableRowValues(row.values),
       };
 
       if (row.isNew) {
@@ -167,10 +182,33 @@ export function EnvironmentsPanel() {
 
       return { nextState: await agentClient.updateVariable(agentPort, token, row.id, payload) };
     },
+    onMutate: (row) => {
+      setSavingRowId(row.id);
+      return { savedKey: savedRowsById.get(row.id)?.key };
+    },
     onError: (error) => {
       setNotice({ message: getErrorMessage(error, "Unable to save the variable row."), status: "error" });
     },
-    onSuccess: ({ nextState, removeDraftId }) => applyState(nextState, { removeDraftId }),
+    onSuccess: async ({ nextState, removeDraftId }, row, context) => {
+      applyState(nextState, { removeDraftId });
+      const oldKey = context?.savedKey?.trim();
+      const newKey = row.key.trim();
+      if (
+        typeof nextState.renamedReferences === "number" &&
+        nextState.renamedReferences > 0 &&
+        oldKey &&
+        oldKey !== newKey
+      ) {
+        setNotice({
+          message: `Renamed {{${oldKey}}} → {{${newKey}}} in ${nextState.renamedReferences} places.`,
+          status: "success",
+        });
+        await invalidateRequestsContentQueries(queryClient);
+      }
+    },
+    onSettled: (_result, _error, row) => {
+      setSavingRowId((current) => (current === row.id ? null : current));
+    },
   });
 
   const deleteVariableMutation = useMutation({
@@ -398,94 +436,104 @@ export function EnvironmentsPanel() {
                           <Table.Th style={{ width: 220 }} />
                         </Table.Tr>
                       </Table.Thead>
-                      <Table.Tbody>
-                        {visibleRows.map((row, index) => (
-                          <Table.Tr key={row.id}>
-                            <Table.Td>
-                              <Checkbox
-                                checked={row.enabled}
-                                disabled={!canWrite}
-                                onChange={(event) => {
-                                  updateDraftRow(row.id, (current) => ({
-                                    ...current,
-                                    enabled: event.currentTarget.checked,
-                                  }));
-                                }}
-                              />
-                            </Table.Td>
-                            <Table.Td>
-                              <TextInput
-                                aria-label={`Variable key ${index + 1}`}
-                                disabled={!canWrite}
-                                onChange={(event) => {
-                                  const value = event.currentTarget.value;
-                                  updateDraftRow(row.id, (current) => ({ ...current, key: value }));
-                                }}
-                                value={row.key}
-                              />
-                            </Table.Td>
-                            {environments.map((environment) => (
-                              <Table.Td key={environment.id}>
+                        <Table.Tbody>
+                        {visibleRows.map((row, index) => {
+                          const rowDirty = isVariableRowDirty(row, savedRowsById.get(row.id));
+                          const isSavingRow = saveVariableMutation.isPending && savingRowId === row.id;
+
+                          return (
+                            <Table.Tr key={row.id}>
+                              <Table.Td>
+                                <Checkbox
+                                  checked={row.enabled}
+                                  disabled={!canWrite}
+                                  onChange={(event) => {
+                                    updateDraftRow(row.id, (current) => ({
+                                      ...current,
+                                      enabled: event.currentTarget.checked,
+                                    }));
+                                  }}
+                                />
+                              </Table.Td>
+                              <Table.Td>
                                 <TextInput
-                                  aria-label={`${environment.name} value ${index + 1}`}
+                                  aria-label={`Variable key ${index + 1}`}
                                   disabled={!canWrite}
                                   onChange={(event) => {
                                     const value = event.currentTarget.value;
-                                    updateDraftRow(row.id, (current) => ({
-                                      ...current,
-                                      values: value.length > 0
-                                        ? { ...current.values, [environment.id]: value }
-                                        : Object.fromEntries(
-                                            Object.entries(current.values).filter(
-                                              ([key]) => key !== environment.id
-                                            )
-                                          ),
-                                    }));
+                                    updateDraftRow(row.id, (current) => ({ ...current, key: value }));
                                   }}
-                                  value={row.values[environment.id] ?? ""}
+                                  value={row.key}
                                 />
                               </Table.Td>
-                            ))}
-                            <Table.Td>
-                              {canWrite ? (
-                                <Group gap="xs" justify="flex-end" wrap="nowrap">
-                                  <Button
-                                    leftSection={<IconDeviceFloppy size={16} />}
-                                    onClick={() => void saveVariableMutation.mutateAsync(row)}
-                                    size="xs"
-                                    variant="light"
-                                  >
-                                    Save
-                                  </Button>
-                                  <Menu withinPortal>
-                                    <Menu.Target>
-                                      <ActionIcon aria-label={`Apply ${row.key || index + 1} to all environments`} variant="light">
-                                        <IconDots size={16} />
-                                      </ActionIcon>
-                                    </Menu.Target>
-                                    <Menu.Dropdown>
-                                      <Menu.Item onClick={() => applyToAllEnvironments(row, "fill-empty")}>
-                                        Fill empty cells from first non-empty
-                                      </Menu.Item>
-                                      <Menu.Item onClick={() => applyToAllEnvironments(row, "overwrite-all")}>
-                                        Overwrite all with first cell
-                                      </Menu.Item>
-                                    </Menu.Dropdown>
-                                  </Menu>
-                                  <ActionIcon
-                                    aria-label={`Delete variable ${index + 1}`}
-                                    color="red"
-                                    onClick={() => void deleteVariableMutation.mutateAsync(row)}
-                                    variant="light"
-                                  >
-                                    <IconTrash size={16} />
-                                  </ActionIcon>
-                                </Group>
-                              ) : null}
-                            </Table.Td>
-                          </Table.Tr>
-                        ))}
-                      </Table.Tbody>
+                              {environments.map((environment) => (
+                                <Table.Td key={environment.id}>
+                                  <TextInput
+                                    aria-label={`${environment.name} value ${index + 1}`}
+                                    disabled={!canWrite}
+                                    onChange={(event) => {
+                                      const value = event.currentTarget.value;
+                                      updateDraftRow(row.id, (current) => ({
+                                        ...current,
+                                        values: value.length > 0
+                                          ? { ...current.values, [environment.id]: value }
+                                          : Object.fromEntries(
+                                              Object.entries(current.values).filter(
+                                                ([key]) => key !== environment.id
+                                              )
+                                            ),
+                                      }));
+                                    }}
+                                    value={row.values[environment.id] ?? ""}
+                                  />
+                                </Table.Td>
+                              ))}
+                              <Table.Td>
+                                {canWrite ? (
+                                  <Group gap="xs" justify="flex-end" wrap="nowrap">
+                                    <Button
+                                      disabled={!rowDirty || isSavingRow}
+                                      leftSection={<IconDeviceFloppy size={16} />}
+                                      loading={isSavingRow}
+                                      onClick={() => void saveVariableMutation.mutateAsync(row)}
+                                      size="xs"
+                                      variant="light"
+                                    >
+                                      Save
+                                    </Button>
+                                    <Menu withinPortal>
+                                      <Menu.Target>
+                                        <ActionIcon
+                                          aria-label={`Apply ${row.key || index + 1} to all environments`}
+                                          variant="light"
+                                        >
+                                          <IconDots size={16} />
+                                        </ActionIcon>
+                                      </Menu.Target>
+                                      <Menu.Dropdown>
+                                        <Menu.Item onClick={() => applyToAllEnvironments(row, "fill-empty")}>
+                                          Fill empty cells from first non-empty
+                                        </Menu.Item>
+                                        <Menu.Item onClick={() => applyToAllEnvironments(row, "overwrite-all")}>
+                                          Overwrite all with first cell
+                                        </Menu.Item>
+                                      </Menu.Dropdown>
+                                    </Menu>
+                                    <ActionIcon
+                                      aria-label={`Delete variable ${index + 1}`}
+                                      color="red"
+                                      onClick={() => void deleteVariableMutation.mutateAsync(row)}
+                                      variant="light"
+                                    >
+                                      <IconTrash size={16} />
+                                    </ActionIcon>
+                                  </Group>
+                                ) : null}
+                              </Table.Td>
+                            </Table.Tr>
+                          );
+                        })}
+                        </Table.Tbody>
                     </Table>
                   )}
                 </Stack>

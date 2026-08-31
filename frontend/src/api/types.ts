@@ -469,6 +469,7 @@ export interface RequestsEnvironmentsState {
   activeId: string | null;
   environments: RequestsEnvironmentColumn[];
   variables: RequestsVariableRow[];
+  renamedReferences?: number;
 }
 
 export interface RequestsHistoryResponseSummary {

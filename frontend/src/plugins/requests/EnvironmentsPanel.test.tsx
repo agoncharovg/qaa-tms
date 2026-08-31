@@ -32,9 +32,10 @@ vi.mock("@/api/agentClient", async () => {
   };
 });
 
-import type { RequestsEnvironmentsState } from "@/api/types";
+import type { RequestsEnvironmentsState, RequestsVariableRow } from "@/api/types";
 import { PluginId } from "@/constants";
 import { EnvironmentsPanel } from "@/plugins/requests/EnvironmentsPanel";
+import { isVariableRowDirty } from "@/plugins/requests/EnvironmentsPanelState";
 import { renderWithProviders } from "@/test/render";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
 
@@ -43,6 +44,21 @@ const PORT = 47600 as const;
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function buildVariableRow(
+  overrides: Partial<RequestsVariableRow> = {}
+): RequestsVariableRow {
+  return {
+    createdAt: "2026-08-29T08:00:00Z",
+    enabled: true,
+    id: "var-base",
+    key: "base",
+    secret: false,
+    updatedAt: "2026-08-29T09:00:00Z",
+    values: { "env-staging": "https://stg.test", "env-prod": "https://prod.test" },
+    ...overrides,
+  };
 }
 
 function seedAuth(permissions: string[]) {
@@ -85,6 +101,37 @@ describe("EnvironmentsPanel", () => {
     seedAuth(["requests.read", "requests.write"]);
     seedPreflight();
     vi.spyOn(window, "confirm").mockReturnValue(true);
+  });
+
+  it("detects row dirtiness per saved row and new draft rules", () => {
+    const savedRow = buildVariableRow();
+
+    expect(
+      isVariableRowDirty(
+        {
+          ...savedRow,
+          key: "  base  ",
+          values: {
+            "env-prod": "https://prod.test",
+            "env-staging": "https://stg.test",
+            "env-empty": "",
+          },
+        },
+        savedRow
+      )
+    ).toBe(false);
+    expect(
+      isVariableRowDirty(
+        {
+          ...savedRow,
+          enabled: false,
+        },
+        savedRow
+      )
+    ).toBe(true);
+    expect(isVariableRowDirty({ ...savedRow, isNew: true, key: "   " }, undefined)).toBe(false);
+    expect(isVariableRowDirty({ ...savedRow, isNew: true, key: " host " }, undefined)).toBe(true);
+    expect(isVariableRowDirty({ ...savedRow }, undefined)).toBe(true);
   });
 
   it("manages environments and variable rows through the matrix state", async () => {
@@ -320,6 +367,91 @@ describe("EnvironmentsPanel", () => {
       expect(screen.getAllByLabelText("Variable key 2")[0]).toHaveValue("verifyBase");
     });
     expect(screen.getAllByLabelText("staging value 2")[0]).toHaveValue("https://verify.test");
+  });
+
+  it("enables Save only for the edited row and shows rename notices when references were rewritten", async () => {
+    const user = userEvent.setup();
+    let state: RequestsEnvironmentsState = {
+      activeId: null,
+      environments: [
+        {
+          createdAt: "2026-08-29T08:00:00Z",
+          id: "env-staging",
+          name: "staging",
+          updatedAt: "2026-08-29T09:00:00Z",
+        },
+      ],
+      variables: [buildVariableRow({ values: { "env-staging": "https://stg.test" } })],
+    };
+
+    agentClientMock.getRequestsState.mockImplementation(() => clone(state));
+    agentClientMock.updateVariable.mockImplementation(
+      (
+        _port: number,
+        _token: string,
+        variableId: string,
+        payload: { enabled: boolean; key: string; secret: boolean; values: Record<string, string> }
+      ) => {
+        state = {
+          ...state,
+          renamedReferences: 2,
+          variables: state.variables.map((variable) =>
+            variable.id === variableId
+              ? {
+                  ...variable,
+                  enabled: payload.enabled,
+                  key: payload.key,
+                  secret: payload.secret,
+                  updatedAt: "2026-08-29T10:00:00Z",
+                  values: payload.values,
+                }
+              : variable
+          ),
+        };
+        return clone(state);
+      }
+    );
+
+    renderWithProviders(<EnvironmentsPanel />);
+
+    expect(await screen.findByText("Requests / Environments")).toBeInTheDocument();
+    const saveButton = screen.getByRole("button", { name: "Save" });
+    expect(saveButton).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "Add variable" }));
+    const saveButtons = screen.getAllByRole("button", { name: "Save" });
+    expect(saveButtons[0]).toBeDisabled();
+    expect(saveButtons[1]).toBeDisabled();
+
+    fireEvent.change(screen.getAllByLabelText("Variable key 2")[0], {
+      target: { value: "draftOnly" },
+    });
+    const afterDraftEdit = screen.getAllByRole("button", { name: "Save" });
+    expect(afterDraftEdit[0]).toBeDisabled();
+    expect(afterDraftEdit[1]).toBeEnabled();
+
+    fireEvent.change(screen.getAllByLabelText("Variable key 1")[0], {
+      target: { value: " host " },
+    });
+    const afterRenameEdit = screen.getAllByRole("button", { name: "Save" });
+    expect(afterRenameEdit[0]).toBeEnabled();
+    expect(afterRenameEdit[1]).toBeEnabled();
+
+    await user.click(afterRenameEdit[0]);
+
+    await waitFor(() => {
+      expect(agentClientMock.updateVariable).toHaveBeenCalledWith(PORT, TOKEN, "var-base", {
+        enabled: true,
+        key: "host",
+        secret: false,
+        values: { "env-staging": "https://stg.test" },
+      });
+    });
+
+    expect(await screen.findByText("Renamed {{base}} → {{host}} in 2 places.")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: "Save" })[0]).toBeDisabled();
+    });
   });
 
 });

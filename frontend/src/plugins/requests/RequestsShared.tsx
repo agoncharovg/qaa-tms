@@ -71,8 +71,16 @@ export function RequestsCompanionUnavailableAlert({
 }
 
 export function RequestsNoticeAlert({ notice }: { notice: RequestsNotice | null }) {
-  if (!notice || notice.status === "success") {
+  if (!notice) {
     return null;
+  }
+
+  if (notice.status === "success") {
+    return (
+      <Alert color="green" icon={<IconAlertCircle size={ALERT_ICON_SIZE_PX} />} title="Saved">
+        {notice.message}
+      </Alert>
+    );
   }
 
   return (
@@ -133,4 +141,3 @@ export function RequestsEmptyCard({
     </Card>
   );
 }
-
