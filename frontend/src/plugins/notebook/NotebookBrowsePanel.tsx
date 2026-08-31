@@ -1,4 +1,4 @@
-import { type CSSProperties, type DragEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { type CSSProperties, type DragEvent, type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   ActionIcon,
   Box,
@@ -76,6 +76,7 @@ import {
   setReminderFlags,
   useNotebookReminders,
 } from "@/plugins/notebook/reminders";
+import { useNotebookNavStore } from "./notebookNavStore";
 
 const NOTEBOOK_BROWSE_COPY = {
   BOOKMARK_CREATE: "Create bookmark",
@@ -300,6 +301,8 @@ export function NotebookBrowsePanel() {
   const [bookmarkDropIndex, setBookmarkDropIndex] = useState<number | null>(null);
   const [expandedBookmarks, setExpandedBookmarks] = useState<Set<string>>(() => new Set());
   const pendingSelectedNoteNameRef = useRef<string | null>(null);
+  const pendingSelection = useNotebookNavStore((state) => state.pendingSelection);
+  const clearPendingSelection = useNotebookNavStore((state) => state.clearPendingSelection);
 
   const contentsQuery = useQuery({
     enabled: Boolean(token && agentPort !== null),
@@ -403,6 +406,40 @@ export function NotebookBrowsePanel() {
   useEffect(() => {
     setReminderDraft("");
   }, [selectedNoteName]);
+
+  const openNote = useCallback(
+    (bookmark: string, noteName: string): void => {
+      setNoteNotice(null);
+      if (bookmark === selectedBookmark) {
+        setSelectedNoteName(noteName);
+        return;
+      }
+
+      pendingSelectedNoteNameRef.current = noteName;
+      setSelectedNoteName(null);
+      setSelectedBookmark(bookmark);
+      setEditorText("");
+    },
+    [selectedBookmark]
+  );
+
+  useEffect(() => {
+    if (!pendingSelection) {
+      return;
+    }
+    if (!contentsQuery.data) {
+      return;
+    }
+
+    const target = pendingSelection;
+    const bookmarkExists = (contentsQuery.data.bookmarks ?? []).some(
+      (bookmark) => bookmark.name === target.bookmark
+    );
+    clearPendingSelection();
+    if (bookmarkExists) {
+      openNote(target.bookmark, target.name);
+    }
+  }, [clearPendingSelection, contentsQuery.data, openNote, pendingSelection]);
 
   useEffect(() => {
     // Initialise the toggle from the loaded note's real flags (keyed on note
@@ -969,19 +1006,6 @@ export function NotebookBrowsePanel() {
     }
 
     setNotebookNoteDraft(currentIdentity, value);
-  }
-
-  function openNote(bookmark: string, noteName: string): void {
-    setNoteNotice(null);
-    if (bookmark === selectedBookmark) {
-      setSelectedNoteName(noteName);
-      return;
-    }
-
-    pendingSelectedNoteNameRef.current = noteName;
-    setSelectedNoteName(null);
-    setSelectedBookmark(bookmark);
-    setEditorText("");
   }
 
   function handleClearReminder(): void {
