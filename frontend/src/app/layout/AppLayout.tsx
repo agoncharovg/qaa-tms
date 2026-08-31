@@ -38,13 +38,21 @@ export function AppLayout() {
     syncedPathnameRef.current = location.pathname;
 
     if (!workspaceBootstrappedRef.current) {
-      if (activeWorkspaceTabId) {
-        workspaceBootstrappedRef.current = true;
+      workspaceBootstrappedRef.current = true;
+
+      // Honor a persisted workspace tab only when it belongs to the plugin the
+      // URL points at. Otherwise a deep-link or reload to a different plugin
+      // (e.g. /profile) would be overridden by the last-active tab restored from
+      // localStorage, so the URL changes but the workspace keeps showing the old
+      // tab — the link appears to do nothing.
+      const bootstrappedPluginId = activeWorkspaceTabId
+        ? TAB_DEFINITIONS[activeWorkspaceTabId]?.pluginId
+        : undefined;
+      if (activeWorkspaceTabId && bootstrappedPluginId === activePlugin.id) {
         return;
       }
 
       activatePluginWorkspaceTab(activePlugin.id);
-      workspaceBootstrappedRef.current = true;
       return;
     }
 
