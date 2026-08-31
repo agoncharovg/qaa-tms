@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import { Alert, Button, Code, CopyButton, Group, Loader, Stack, Text } from "@mantine/core";
 import {
   IconAlertCircle,
-  IconDownload,
   IconPlugConnectedX,
   IconRotateClockwise,
   IconUpload,
@@ -18,7 +17,7 @@ const CompanionGateCopy = {
   ERROR_TITLE: "Companion status failed",
   INSTALL_COMMAND_PREFIX: "Install command:",
   NOT_INSTALLED_BODY:
-    "Run this command in a terminal to install the companion, then reload this page. Download remains available if you need the tarball directly.",
+    "Copy the command below and run it in a terminal to install the companion, then reload this page (F5).",
   NOT_INSTALLED_TITLE: "Companion is not installed",
   UPDATE_AVAILABLE_BODY:
     "A newer companion build is available from this portal. You can keep working while the update is applied.",
@@ -86,19 +85,6 @@ export function CompanionGate({
       <Alert color="yellow" icon={<IconPlugConnectedX size={18} />} title={CompanionGateCopy.NOT_INSTALLED_TITLE}>
         <Stack gap="sm">
           <Text>{CompanionGateCopy.NOT_INSTALLED_BODY}</Text>
-          <Group>
-            <Button
-              component="a"
-              href={status.manifest.downloadUrl}
-              leftSection={<IconDownload size={16} />}
-              variant="light"
-            >
-              Download
-            </Button>
-            <Button leftSection={<IconRotateClockwise size={16} />} onClick={() => void status.refresh()} variant="subtle">
-              {status.retryLabel}
-            </Button>
-          </Group>
           <Text c="dimmed" size="sm">
             {CompanionGateCopy.INSTALL_COMMAND_PREFIX}
           </Text>
