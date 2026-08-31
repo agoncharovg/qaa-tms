@@ -107,7 +107,8 @@ settings such as `AGENT_HOST`, `AGENT_PORT`, `AGENT_CORS_ORIGINS`, and
   Optional explicit kubeconfig override exported only to `kubectl` subprocesses.
   If unset, the agent uses `AGENT_KUBECONFIG_ACTIVE_PATH` as the primary source
   and appends any inherited shell `KUBECONFIG` entries for merged context
-  discovery.
+  discovery. Install.sh-managed services that have no shell `KUBECONFIG` fall
+  back to scanning `~/.kube` for `*.yaml` and `*.yml` kubeconfigs.
 - `AGENT_KUBECTL_REQUEST_TIMEOUT`
   Timeout added to non-streaming `kubectl` read commands. Default: `10s`.
 

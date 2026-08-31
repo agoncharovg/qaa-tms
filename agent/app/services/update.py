@@ -6,11 +6,10 @@ import os
 import subprocess
 from pathlib import Path
 
-from app.core.constants import ErrorMessage
+from app.core.constants import QAA_TMS_AGENT_SERVICE_MANAGED_ENV, ErrorMessage
 
 UPDATE_FORCE_FLAG = "--force"
 UPDATE_HELPER_NAME = "update.sh"
-SERVICE_MANAGED_ENV_VAR = "QAA_TMS_AGENT_SERVICE_MANAGED"
 
 
 class UpdateUnsupportedError(RuntimeError):
@@ -32,7 +31,7 @@ def resolve_update_helper_path() -> Path:
 def is_service_managed_runtime() -> bool:
     """Return whether the agent was started through the managed run.sh entrypoint."""
 
-    return os.environ.get(SERVICE_MANAGED_ENV_VAR) == "1"
+    return os.environ.get(QAA_TMS_AGENT_SERVICE_MANAGED_ENV) == "1"
 
 
 def spawn_update_helper() -> None:

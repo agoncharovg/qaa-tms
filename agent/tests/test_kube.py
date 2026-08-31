@@ -225,6 +225,31 @@ def test_build_kube_env_expands_directory_kubeconfig_parts(
     }
 
 
+def test_build_kube_env_service_runtime_falls_back_to_home_kube_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("KUBECONFIG", raising=False)
+    monkeypatch.setenv("QAA_TMS_AGENT_SERVICE_MANAGED", "1")
+    kube_dir = tmp_path / ".kube"
+    kube_dir.mkdir()
+    active_target = kube_dir / "ai-staging.yaml"
+    additional_kubeconfig = kube_dir / "kubecfg.default.yaml"
+    ignored_file = kube_dir / "notes.txt"
+    active_target.write_text("apiVersion: v1\n", encoding="utf-8")
+    additional_kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")
+    ignored_file.write_text("ignore me\n", encoding="utf-8")
+    active_kubeconfig = kube_dir / "config"
+    active_kubeconfig.symlink_to(active_target)
+
+    settings = Settings(_env_file=None, AGENT_KUBECONFIG_ACTIVE_PATH=str(active_kubeconfig))
+
+    assert build_kube_env(settings) == {
+        "KUBECONFIG": os.pathsep.join([str(active_kubeconfig), str(additional_kubeconfig)])
+    }
+
+
 def test_build_exec_argv_includes_shell_wrapper(
     fake_kubectl: dict[str, Path],
 ) -> None:

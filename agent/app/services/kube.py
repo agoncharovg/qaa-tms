@@ -22,10 +22,12 @@ import httpx
 from app.core.config import Settings
 from app.core.constants import (
     DEFAULT_KUBE_LOG_TAIL,
+    DEFAULT_MANAGED_KUBECONFIG_DIR,
     KUBE_EXEC_SHELL,
     KUBE_EXEC_SHELL_FLAG,
     KUBECTL_ARG_SEPARATOR,
     MAX_KUBE_EXEC_COMMAND_LENGTH,
+    QAA_TMS_AGENT_SERVICE_MANAGED_ENV,
     ErrorMessage,
     JobEventType,
     JobStatus,
@@ -146,7 +148,7 @@ def build_kube_env(settings: Settings) -> dict[str, str]:
             return {}
         return {KubeEnvKey.KUBECONFIG.value: os.pathsep.join(expanded_parts)}
 
-    inherited_kubeconfig = os.environ.get(KubeEnvKey.KUBECONFIG.value, "").strip()
+    inherited_kubeconfig = _read_inherited_kubeconfig()
     kubeconfig_parts: list[str] = []
     merged_seen_paths: set[str] = set()
     _append_unique_kubeconfig_parts(
@@ -159,6 +161,15 @@ def build_kube_env(settings: Settings) -> dict[str, str]:
     if not kubeconfig_parts:
         return {}
     return {KubeEnvKey.KUBECONFIG.value: os.pathsep.join(kubeconfig_parts)}
+
+
+def _read_inherited_kubeconfig() -> str:
+    inherited_kubeconfig = os.environ.get(KubeEnvKey.KUBECONFIG.value, "").strip()
+    if inherited_kubeconfig:
+        return inherited_kubeconfig
+    if os.environ.get(QAA_TMS_AGENT_SERVICE_MANAGED_ENV) != "1":
+        return ""
+    return str(Path(DEFAULT_MANAGED_KUBECONFIG_DIR).expanduser())
 
 
 def _append_unique_kubeconfig_parts(
