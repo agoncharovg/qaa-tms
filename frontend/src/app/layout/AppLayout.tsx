@@ -3,7 +3,6 @@ import { AppShell, Stack } from "@mantine/core";
 import { Navigate, useLocation } from "react-router-dom";
 
 import { Sidebar } from "@/app/layout/Sidebar";
-import { TabBar } from "@/app/layout/TabBar";
 import { Workspace } from "@/app/layout/Workspace";
 import { usePalette } from "@/app/theme/usePalette";
 import { BuiltinHostApiProvider } from "@/core/plugins/host";
@@ -83,7 +82,6 @@ export function AppLayout() {
           <Sidebar activePluginId={activePlugin.id} />
           <AppShell.Main>
             <Stack gap="md" h="calc(100vh - 32px)">
-              <TabBar />
               <Workspace />
             </Stack>
           </AppShell.Main>
