@@ -4,7 +4,6 @@ export const PluginId = {
   QAA_GENERATOR: "qaa-generator",
   JENKINS: "jenkins",
   LEONID: "leonid",
-  NOTEBOOK: "notebook",
   REQUESTS: "requests",
   NOTIFICATOR: "notificator",
   STATISTICS: "statistics",
@@ -32,7 +31,6 @@ export const IconName = {
   CLUSTER: "cluster",
   JENKINS: "jenkins",
   LEONID: "leonid",
-  NOTEBOOK: "notebook",
   REQUESTS: "requests",
   NOTIFICATOR: "notificator",
   ROCKET: "rocket",
@@ -421,11 +419,6 @@ export const AgentPath = {
   JENKINS_FREEZE: "/jenkins/freeze",
   JENKINS_RESUME: "/jenkins/resume",
   JENKINS_RESUME_RUN: "/jenkins/resume-run",
-  NOTEBOOK_BOOKMARK: "/notebook/bookmark",
-  NOTEBOOK_CONTENTS: "/notebook/contents",
-  NOTEBOOK_NOTE: "/notebook/note",
-  NOTEBOOK_SEARCH: "/notebook/search",
-  NOTEBOOK_REMINDERS: "/notebook/reminders",
   REQUESTS_COLLECTIONS: "/requests/collections",
   REQUESTS_FOLDER: "/requests/folder",
   REQUESTS_ITEM: "/requests/item",
@@ -533,35 +526,6 @@ export function buildAgentJenkinsFolderPath(path: string): string {
 }
 export function buildAgentJenkinsAllureSkipCandidatesPath(): string {
   return AgentPath.JENKINS_ALLURE_SKIP_CANDIDATES;
-}
-
-
-export function buildAgentNotebookNotesPath(bookmark: string): string {
-  const params = new URLSearchParams({
-    bookmark,
-  });
-  return `${AgentPath.NOTEBOOK_NOTE}?${params.toString()}`;
-}
-
-export function buildAgentNotebookNotePath(bookmark: string, name: string): string {
-  const params = new URLSearchParams({
-    bookmark,
-  });
-  return `${AgentPath.NOTEBOOK_NOTE}/${encodeURIComponent(name)}?${params.toString()}`;
-}
-
-export function buildAgentNotebookBookmarkPath(bookmark: string): string {
-  const params = new URLSearchParams({
-    bookmark,
-  });
-  return `${AgentPath.NOTEBOOK_BOOKMARK}?${params.toString()}`;
-}
-
-export function buildAgentNotebookSearchPath(query: string): string {
-  const params = new URLSearchParams({
-    query,
-  });
-  return `${AgentPath.NOTEBOOK_SEARCH}?${params.toString()}`;
 }
 
 export function buildAgentRequestsItemsPath(folder: string): string {
@@ -891,9 +855,6 @@ export const ViewKey = {
   LEONID_SKIPPED_TESTS: "leonid-skipped-tests",
   LEONID_OBJECTS: "leonid-objects",
   LEONID_PIPELINE_CONFIGS: "leonid-pipeline-configs",
-  NOTEBOOK_BROWSE: "notebook-browse",
-  NOTEBOOK_REMINDERS: "notebook-reminders",
-  NOTEBOOK_SEARCH: "notebook-search",
   REQUESTS_BUILDER: "requests-builder",
   REQUESTS_CREDENTIALS: "requests-credentials",
   REQUESTS_ENVIRONMENTS: "requests-environments",
@@ -928,8 +889,6 @@ export const TabId = {
   LEONID_SKIPPED_TESTS: "tab-leonid-skipped-tests",
   LEONID_OBJECTS: "tab-leonid-objects",
   LEONID_PIPELINE_CONFIGS: "tab-leonid-pipeline-configs",
-  NOTEBOOK_BROWSE: "tab-notebook-browse",
-  NOTEBOOK_SEARCH: "tab-notebook-search",
   REQUESTS_BUILDER: "tab-requests-builder",
   REQUESTS_CREDENTIALS: "tab-requests-credentials",
   REQUESTS_ENVIRONMENTS: "tab-requests-environments",
@@ -964,8 +923,6 @@ export const TabTitle: Record<TabId, string> = {
   [TabId.LEONID_SKIPPED_TESTS]: "Skipped tests",
   [TabId.LEONID_OBJECTS]: "Objects",
   [TabId.LEONID_PIPELINE_CONFIGS]: "Pipeline configs",
-  [TabId.NOTEBOOK_BROWSE]: "Notes",
-  [TabId.NOTEBOOK_SEARCH]: "Search",
   [TabId.REQUESTS_BUILDER]: "Collections",
   [TabId.REQUESTS_CREDENTIALS]: "Credentials",
   [TabId.REQUESTS_ENVIRONMENTS]: "Environments",
@@ -1017,11 +974,6 @@ export const QueryKey = {
   AGENT_PREFLIGHT: "agent-preflight",
   AGENT_SETTINGS: "agent-settings",
   AGENT_JOB: "agent-job",
-  NOTEBOOK_CONTENTS: "notebook-contents",
-  NOTEBOOK_NOTES: "notebook-notes",
-  NOTEBOOK_NOTE: "notebook-note",
-  NOTEBOOK_REMINDERS: "notebook-reminders",
-  NOTEBOOK_SEARCH: "notebook-search",
   REQUESTS_COLLECTIONS: "requests-collections",
   REQUESTS_ITEMS: "requests-items",
   REQUESTS_ITEM: "requests-item",

@@ -240,58 +240,6 @@ export interface JenkinsAllureSkipCandidatesResponse {
   errors: JenkinsAllureSkipCandidatesError[];
 }
 
-export interface NotebookBookmarkNode {
-  name: string;
-  noteCount: number;
-  flags: Record<string, unknown>;
-  children: NotebookBookmarkNode[];
-}
-
-export interface NotebookContentsResponse {
-  bookmarks: NotebookBookmarkNode[];
-}
-
-export interface NotebookNoteSummary {
-  name: string;
-  previewLines: string[];
-  flags: Record<string, unknown>;
-}
-
-export interface NotebookNotesResponse {
-  bookmark: string;
-  notes: NotebookNoteSummary[];
-}
-
-export interface NotebookNoteReadResponse {
-  bookmark: string;
-  name: string;
-  text: string;
-  previewLines: string[];
-  flags: Record<string, unknown>;
-}
-
-export interface NotebookReminder {
-  bookmark: string;
-  name: string;
-  remindAt: string;
-  previewLines: string[];
-}
-
-export interface NotebookRemindersResponse {
-  reminders: NotebookReminder[];
-}
-
-export interface NotebookSearchMatch {
-  bookmark: string;
-  name: string;
-  previewLines: string[];
-}
-
-export interface NotebookSearchResponse {
-  query: string;
-  matches: NotebookSearchMatch[];
-}
-
 export type RequestsMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 
 export type RequestsBodyMode = "none" | "json" | "raw" | "form";

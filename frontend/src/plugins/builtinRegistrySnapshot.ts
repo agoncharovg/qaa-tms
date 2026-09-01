@@ -17,7 +17,6 @@ export const BUILTIN_PLUGIN_IDS: PluginIdType[] = [
   PluginId.LEONID,
   PluginId.NOTIFICATOR,
   PluginId.STATISTICS,
-  PluginId.NOTEBOOK,
   PluginId.REQUESTS,
   PluginId.ADMIN,
   PluginId.PROFILE,
@@ -31,7 +30,6 @@ export const BUILTIN_OPTIONAL_PLUGIN_IDS: PluginIdType[] = [
   PluginId.LEONID,
   PluginId.NOTIFICATOR,
   PluginId.STATISTICS,
-  PluginId.NOTEBOOK,
   PluginId.REQUESTS,
 ];
 
@@ -133,14 +131,6 @@ export const BUILTIN_TAB_DEFINITIONS = Object.fromEntries([
     createTabDefinition(PluginId.STATISTICS, TabId.STATISTICS_SMOKE, ViewKey.STATISTICS_SMOKE),
   ],
   [
-    TabId.NOTEBOOK_BROWSE,
-    createTabDefinition(PluginId.NOTEBOOK, TabId.NOTEBOOK_BROWSE, ViewKey.NOTEBOOK_BROWSE),
-  ],
-  [
-    TabId.NOTEBOOK_SEARCH,
-    createTabDefinition(PluginId.NOTEBOOK, TabId.NOTEBOOK_SEARCH, ViewKey.NOTEBOOK_SEARCH),
-  ],
-  [
     TabId.REQUESTS_BUILDER,
     createTabDefinition(PluginId.REQUESTS, TabId.REQUESTS_BUILDER, ViewKey.REQUESTS_BUILDER),
   ],
@@ -196,7 +186,6 @@ export const BUILTIN_TAB_CATALOG: Record<PluginIdType, TabIdType[]> = {
     TabId.NOTIFICATOR_NOTIFICATIONS,
   ],
   [PluginId.STATISTICS]: [TabId.STATISTICS_SMOKE],
-  [PluginId.NOTEBOOK]: [TabId.NOTEBOOK_BROWSE, TabId.NOTEBOOK_SEARCH],
   [PluginId.REQUESTS]: [
     TabId.REQUESTS_BUILDER,
     TabId.REQUESTS_CREDENTIALS,
@@ -215,7 +204,6 @@ export const BUILTIN_DEFAULT_TAB_ID_BY_PLUGIN: Record<PluginIdType, TabIdType | 
   [PluginId.LEONID]: TabId.LEONID_SHARED_RESOURCES,
   [PluginId.NOTIFICATOR]: TabId.NOTIFICATOR_CONTRACT_MANAGER,
   [PluginId.STATISTICS]: TabId.STATISTICS_SMOKE,
-  [PluginId.NOTEBOOK]: TabId.NOTEBOOK_BROWSE,
   [PluginId.REQUESTS]: TabId.REQUESTS_BUILDER,
   [PluginId.ADMIN]: TabId.ADMIN_SECURITY,
   [PluginId.PROFILE]: TabId.PROFILE,

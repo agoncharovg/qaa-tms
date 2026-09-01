@@ -1,13 +1,10 @@
 import {
   ActionIcon,
-  Anchor,
   AppShell,
-  Badge,
   Box,
   Button,
   Divider,
   Group,
-  Indicator,
   Menu,
   Modal,
   Stack,
@@ -16,7 +13,6 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { notifications } from "@mantine/notifications";
 import {
   IconChevronDown,
   IconChevronLeft,
@@ -26,15 +22,13 @@ import {
   IconSun,
   IconUserCircle,
 } from "@tabler/icons-react";
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { usePalette } from "@/app/theme/usePalette";
 import type { Palette } from "@/app/theme/tokens";
-import type { NotebookReminder } from "@/api/types";
 import { PluginId, RoutePath, type PluginId as PluginIdType } from "@/constants";
 import { resolveIcon } from "@/core/plugins/icons";
-import { useNotebookNavStore } from "@/plugins/notebook/notebookNavStore";
 import {
   useAccountVisiblePlugins,
   useEnabledOptionalPluginIdSet,
@@ -44,7 +38,6 @@ import {
 } from "@/plugins/registry";
 import { useAuthStore } from "@/store/authStore";
 import { activatePluginWorkspaceTab, useUiStore } from "@/store/uiStore";
-import { formatReminder, useNotebookReminders } from "@/plugins/notebook/reminders";
 
 interface SidebarProps {
   activePluginId: PluginIdType;
@@ -126,7 +119,6 @@ export function Sidebar({ activePluginId }: SidebarProps) {
   const toggleColorScheme = useUiStore((state) => state.toggleColorScheme);
   const colorScheme = useUiStore((state) => state.colorScheme);
   const openTab = useUiStore((state) => state.openTab);
-  const requestNotebookNote = useNotebookNavStore((state) => state.requestNotebookNote);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [logoutConfirmOpened, logoutConfirm] = useDisclosure(false);
 
@@ -134,56 +126,7 @@ export function Sidebar({ activePluginId }: SidebarProps) {
   const primaryPlugins = usePrimaryVisiblePlugins(currentUser, enabledOptionalIds);
   const plugins = sortPluginsByLabel(primaryPlugins);
   const accountPlugins = useAccountVisiblePlugins(currentUser, enabledOptionalIds);
-  const notebookPlugin = usePluginById(PluginId.NOTEBOOK);
   const profilePlugin = usePluginById(PluginId.PROFILE);
-  const hasVisibleNotebook = plugins.some((plugin) => plugin.id === PluginId.NOTEBOOK);
-  const notebookReminders = useNotebookReminders(hasVisibleNotebook);
-  const shownReminderKeysRef = useRef(new Set<string>());
-  const dueReminderCount = notebookReminders.dueReminders.length;
-
-  const openReminderNote = useCallback(
-    (reminder: NotebookReminder): void => {
-      requestNotebookNote({ bookmark: reminder.bookmark, name: reminder.name });
-      activatePluginWorkspaceTab(PluginId.NOTEBOOK);
-      if (notebookPlugin) {
-        navigate(notebookPlugin.route);
-      }
-    },
-    [navigate, notebookPlugin, requestNotebookNote]
-  );
-
-  useEffect(() => {
-    if (!hasVisibleNotebook) {
-      shownReminderKeysRef.current.clear();
-      return;
-    }
-
-    const visibleKeys = new Set<string>();
-    for (const reminder of notebookReminders.dueReminders) {
-      const reminderKey = [reminder.bookmark, reminder.name, reminder.remindAt].join("::");
-      visibleKeys.add(reminderKey);
-      if (!shownReminderKeysRef.current.has(reminderKey)) {
-        notifications.show({
-          autoClose: false,
-          message: (
-            <Text size="sm">
-              {reminder.bookmark + " • " + formatReminder(reminder.remindAt) + ". "}
-              <Anchor
-                component="button"
-                onClick={() => openReminderNote(reminder)}
-                type="button"
-              >
-                Откройте
-              </Anchor>
-              {" Notebook, чтобы закрыть."}
-            </Text>
-          ),
-          title: reminder.name,
-        });
-      }
-    }
-    shownReminderKeysRef.current = visibleKeys;
-  }, [hasVisibleNotebook, notebookReminders.dueReminders, openReminderNote]);
 
   // Opening a plugin expands its folder so its leaves are visible, but this only
   // fires when the active plugin actually changes — collapsing the active folder
@@ -281,7 +224,6 @@ export function Sidebar({ activePluginId }: SidebarProps) {
             const isActivePlugin = activePluginId === plugin.id;
             const pluginTabs = sortTabsByTitle(visibleTabs(plugin, currentUser));
             const pluginState = tabsByPlugin[plugin.id];
-            const notebookBadgeCount = plugin.id === PluginId.NOTEBOOK ? dueReminderCount : 0;
             const hasTabs = pluginTabs.length > 0;
             const isExpanded = expandedPluginIds.includes(plugin.id);
             const item = (
@@ -310,14 +252,11 @@ export function Sidebar({ activePluginId }: SidebarProps) {
                     padding: sidebarCollapsed ? "10px 10px" : "10px 12px",
                   }}
                 >
-                  {notebookBadgeCount > 0 ? <Indicator color="red" label={notebookBadgeCount} size={16}><Icon size={18} /></Indicator> : <Icon size={18} />}
+                  <Icon size={18} />
                   {!sidebarCollapsed ? (
-                    <>
-                      <Text c="inherit" fw={isActivePlugin ? 600 : 500}>
-                        {plugin.label}
-                      </Text>
-                      {notebookBadgeCount > 0 ? <Badge color="red" size="sm" variant="filled">{notebookBadgeCount}</Badge> : null}
-                    </>
+                    <Text c="inherit" fw={isActivePlugin ? 600 : 500}>
+                      {plugin.label}
+                    </Text>
                   ) : null}
                 </UnstyledButton>
                 {!sidebarCollapsed && hasTabs ? (

@@ -17,12 +17,8 @@ def test_role_and_permission_seeds_include_kuber_exec_for_engineer() -> None:
     permissions_by_role = {seed.key: set(seed.permissions) for seed in ROLE_SEEDS}
     seeded_permissions = {seed.key for seed in PERMISSION_SEEDS}
 
-    assert PermissionKey.NOTEBOOK_READ in permissions_by_role[SecurityRoleKey.ADMINISTRATOR]
-    assert PermissionKey.NOTEBOOK_WRITE in permissions_by_role[SecurityRoleKey.ADMINISTRATOR]
     assert PermissionKey.REQUESTS_READ in permissions_by_role[SecurityRoleKey.ADMINISTRATOR]
     assert PermissionKey.REQUESTS_WRITE in permissions_by_role[SecurityRoleKey.ADMINISTRATOR]
-    assert PermissionKey.NOTEBOOK_READ in permissions_by_role[SecurityRoleKey.ENGINEER]
-    assert PermissionKey.NOTEBOOK_WRITE in permissions_by_role[SecurityRoleKey.ENGINEER]
     assert PermissionKey.REQUESTS_READ in permissions_by_role[SecurityRoleKey.ENGINEER]
     assert PermissionKey.REQUESTS_WRITE in permissions_by_role[SecurityRoleKey.ENGINEER]
     assert PermissionKey.KUBER_EXEC in permissions_by_role[SecurityRoleKey.ENGINEER]

@@ -20,7 +20,6 @@ DEFAULT_OPTIONAL_PLUGIN_IDS = [
     PluginId.JENKINS.value,
     PluginId.STATISTICS.value,
     PluginId.LEONID.value,
-    PluginId.NOTEBOOK.value,
     PluginId.NOTIFICATOR.value,
     PluginId.REQUESTS.value,
 ]

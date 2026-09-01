@@ -278,10 +278,6 @@ StagingsSyncAuth = Annotated[AuthContext, Depends(require_permission(PermissionK
 StagingsE2eRunAuth = Annotated[
     AuthContext, Depends(require_permission(PermissionKey.STAGINGS_E2E_RUN))
 ]
-NotebookReadAuth = Annotated[AuthContext, Depends(require_permission(PermissionKey.NOTEBOOK_READ))]
-NotebookWriteAuth = Annotated[
-    AuthContext, Depends(require_permission(PermissionKey.NOTEBOOK_WRITE))
-]
 RequestsReadAuth = Annotated[AuthContext, Depends(require_permission(PermissionKey.REQUESTS_READ))]
 RequestsWriteAuth = Annotated[
     AuthContext, Depends(require_permission(PermissionKey.REQUESTS_WRITE))
@@ -407,7 +403,7 @@ async def get_local_plugin_asset(
 
 @router.get(AgentPath.NOTEBOOK_CONTENTS.value, response_model=NotebookContentsResponse)
 async def get_notebook_contents(
-    _: NotebookReadAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> NotebookContentsResponse:
     try:
@@ -422,7 +418,7 @@ async def get_notebook_contents(
 @router.put(AgentPath.NOTEBOOK_CONTENTS.value, response_model=NotebookContentsResponse)
 async def put_notebook_contents(
     request_body: NotebookContentsWriteRequest,
-    _: NotebookWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> NotebookContentsResponse:
     try:
@@ -441,7 +437,7 @@ async def put_notebook_contents(
 @router.patch(AgentPath.NOTEBOOK_CONTENTS.value, response_model=NotebookContentsResponse)
 async def patch_notebook_contents(
     request_body: NotebookReorderRequest,
-    _: NotebookWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> NotebookContentsResponse:
     try:
@@ -457,7 +453,7 @@ async def patch_notebook_contents(
 @router.post(AgentPath.NOTEBOOK_BOOKMARK.value, response_model=NotebookContentsResponse)
 async def post_notebook_bookmark(
     request_body: NotebookBookmarkCreateRequest,
-    _: NotebookWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> NotebookContentsResponse:
     try:
@@ -475,7 +471,7 @@ async def post_notebook_bookmark(
 @router.put(AgentPath.NOTEBOOK_BOOKMARK.value, response_model=NotebookContentsResponse)
 async def put_notebook_bookmark(
     request_body: NotebookBookmarkUpdateRequest,
-    _: NotebookWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> NotebookContentsResponse:
     if request_body.name is None and request_body.flags is None:
@@ -510,7 +506,7 @@ async def put_notebook_bookmark(
 
 @router.delete(AgentPath.NOTEBOOK_BOOKMARK.value, response_model=NotebookContentsResponse)
 async def delete_notebook_bookmark(
-    _: NotebookWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
     bookmark: str = Query(...),
 ) -> NotebookContentsResponse:
@@ -536,7 +532,7 @@ async def delete_notebook_bookmark(
 
 @router.get(AgentPath.NOTEBOOK_NOTE.value, response_model=NotebookNotesResponse)
 async def get_notebook_notes(
-    _: NotebookReadAuth,
+    _: AuthDep,
     settings: SettingsDep,
     bookmark: str = Query(...),
 ) -> NotebookNotesResponse:
@@ -565,7 +561,7 @@ async def get_notebook_notes(
 )
 async def get_notebook_note(
     name: str,
-    _: NotebookReadAuth,
+    _: AuthDep,
     settings: SettingsDep,
     bookmark: str = Query(...),
 ) -> NotebookNoteReadResponse:
@@ -591,7 +587,7 @@ async def get_notebook_note(
 @router.post(AgentPath.NOTEBOOK_NOTE.value, response_model=NotebookNoteReadResponse)
 async def post_notebook_note(
     request_body: NotebookNoteCreateRequest,
-    _: NotebookWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> NotebookNoteReadResponse:
     try:
@@ -628,7 +624,7 @@ async def post_notebook_note(
 async def put_notebook_note(
     name: str,
     request_body: NotebookNoteUpdateRequest,
-    _: NotebookWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
     bookmark: str = Query(...),
 ) -> NotebookNoteReadResponse:
@@ -671,7 +667,7 @@ async def put_notebook_note(
 )
 async def delete_notebook_note(
     name: str,
-    _: NotebookWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
     bookmark: str = Query(...),
 ) -> NotebookNotesResponse:
@@ -697,7 +693,7 @@ async def delete_notebook_note(
 
 @router.get(AgentPath.NOTEBOOK_SEARCH.value, response_model=NotebookSearchResponse)
 async def get_notebook_search(
-    _: NotebookReadAuth,
+    _: AuthDep,
     settings: SettingsDep,
     query: str = Query(..., min_length=1),
 ) -> NotebookSearchResponse:
@@ -712,7 +708,7 @@ async def get_notebook_search(
 
 @router.get(AgentPath.NOTEBOOK_REMINDERS.value, response_model=NotebookRemindersResponse)
 async def get_notebook_reminders(
-    _: NotebookReadAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> NotebookRemindersResponse:
     try:

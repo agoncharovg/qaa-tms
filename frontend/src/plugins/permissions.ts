@@ -15,7 +15,6 @@ export const PLUGIN_REQUIRED_READ_PERMISSION: Record<PluginIdType, string | null
   [PluginId.JENKINS]: "jenkins.read",
   [PluginId.STATISTICS]: "statistics.read",
   [PluginId.LEONID]: "leonid.read",
-  [PluginId.NOTEBOOK]: "notebook.read",
   [PluginId.REQUESTS]: "requests.read",
   [PluginId.NOTIFICATOR]: "notificator.read",
   [PluginId.ADMIN]: null,
@@ -39,7 +38,6 @@ export const PLUGIN_SETTINGS_ACTION_PERMISSIONS: Partial<Record<PluginIdType, st
   ],
   [PluginId.KUBER]: ["kuber.use_context", "kuber.delete_pod"],
   [PluginId.QAA_GENERATOR]: ["qaa.run", "qaa.admin"],
-  [PluginId.NOTEBOOK]: ["notebook.write"],
 };
 
 export function pluginPermitted(
