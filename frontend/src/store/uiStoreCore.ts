@@ -25,6 +25,8 @@ export type ColorScheme = "light" | "dark";
 interface UiState extends WorkspaceTabsState {
   closeTab: (pluginId: PluginIdType, tabId: TabIdType) => void;
   colorScheme: ColorScheme;
+  expandPlugin: (pluginId: PluginIdType) => void;
+  expandedPluginIds: PluginIdType[];
   openTab: (pluginId: PluginIdType, tabId: TabIdType) => void;
   setColorScheme: (scheme: ColorScheme) => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -32,6 +34,7 @@ interface UiState extends WorkspaceTabsState {
   switchTab: (pluginId: PluginIdType, tabId: TabIdType) => void;
   tabsByPlugin: TabsByPlugin;
   toggleColorScheme: () => void;
+  togglePluginExpanded: (pluginId: PluginIdType) => void;
   toggleSidebar: () => void;
 }
 
@@ -80,6 +83,36 @@ function writeStoredSidebarCollapsed(collapsed: boolean): void {
   }
 
   window.localStorage.setItem(StorageKey.SIDEBAR_COLLAPSED, String(collapsed));
+}
+
+export function readStoredExpandedPluginIds(): PluginIdType[] {
+  if (!isBrowser()) {
+    return [];
+  }
+
+  const rawValue = window.localStorage.getItem(StorageKey.SIDEBAR_EXPANDED);
+  if (!rawValue) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.filter((value): value is PluginIdType => typeof value === "string");
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredExpandedPluginIds(pluginIds: PluginIdType[]): void {
+  if (!isBrowser()) {
+    return;
+  }
+
+  window.localStorage.setItem(StorageKey.SIDEBAR_EXPANDED, JSON.stringify(pluginIds));
 }
 
 export function writeStoredUiState(state: PersistedUiState): void {
@@ -256,6 +289,30 @@ export const useUiStore = create<UiState>()((set) => ({
   activeWorkspaceTabId: null,
 
   colorScheme: readStoredColorScheme(),
+
+  expandedPluginIds: readStoredExpandedPluginIds(),
+
+  expandPlugin(pluginId) {
+    set((state) => {
+      if (state.expandedPluginIds.includes(pluginId)) {
+        return state;
+      }
+
+      const nextExpanded = [...state.expandedPluginIds, pluginId];
+      writeStoredExpandedPluginIds(nextExpanded);
+      return { expandedPluginIds: nextExpanded };
+    });
+  },
+
+  togglePluginExpanded(pluginId) {
+    set((state) => {
+      const nextExpanded = state.expandedPluginIds.includes(pluginId)
+        ? state.expandedPluginIds.filter((existingId) => existingId !== pluginId)
+        : [...state.expandedPluginIds, pluginId];
+      writeStoredExpandedPluginIds(nextExpanded);
+      return { expandedPluginIds: nextExpanded };
+    });
+  },
 
   setColorScheme(scheme) {
     writeStoredColorScheme(scheme);

@@ -20,6 +20,7 @@ import {
   createBootstrapWorkspaceTabsState,
   createEmptyPluginState,
   openTabInPluginState,
+  readStoredExpandedPluginIds,
   readStoredSidebarCollapsed,
   switchTabInPluginState,
   type PluginTabState,
@@ -293,6 +294,7 @@ export function readStoredWorkspaceTabsState(
 
 export function restoreUiStoreFromStorage(): void {
   useUiStore.setState({
+    expandedPluginIds: readStoredExpandedPluginIds(),
     sidebarCollapsed: readStoredSidebarCollapsed(),
     ...readStoredUiStateStructurally(),
   });
@@ -367,11 +369,13 @@ export function resetUiStoreState(
 ): void {
   if (isBrowser()) {
     window.localStorage.removeItem(StorageKey.SIDEBAR_COLLAPSED);
+    window.localStorage.removeItem(StorageKey.SIDEBAR_EXPANDED);
     window.localStorage.removeItem(StorageKey.TABS);
   }
 
   useUiStore.setState({
     activeWorkspaceTabId: null,
+    expandedPluginIds: [],
     sidebarCollapsed: false,
     tabsByPlugin: createDefaultTabsByPlugin(user),
     workspaceTabIds: [],
@@ -383,6 +387,7 @@ export {
   closeTabInPluginState,
   createEmptyPluginState,
   openTabInPluginState,
+  readStoredExpandedPluginIds,
   readStoredSidebarCollapsed,
   switchTabInPluginState,
   useUiStore,

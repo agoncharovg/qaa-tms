@@ -119,6 +119,9 @@ export function Sidebar({ activePluginId }: SidebarProps) {
   const logout = useAuthStore((state) => state.logout);
   const sidebarCollapsed = useUiStore((state) => state.sidebarCollapsed);
   const tabsByPlugin = useUiStore((state) => state.tabsByPlugin);
+  const expandedPluginIds = useUiStore((state) => state.expandedPluginIds);
+  const expandPlugin = useUiStore((state) => state.expandPlugin);
+  const togglePluginExpanded = useUiStore((state) => state.togglePluginExpanded);
   const toggleSidebar = useUiStore((state) => state.toggleSidebar);
   const toggleColorScheme = useUiStore((state) => state.toggleColorScheme);
   const colorScheme = useUiStore((state) => state.colorScheme);
@@ -180,6 +183,13 @@ export function Sidebar({ activePluginId }: SidebarProps) {
     }
     shownReminderKeysRef.current = visibleKeys;
   }, [hasVisibleNotebook, notebookReminders.dueReminders, openReminderNote]);
+
+  // Opening a plugin expands its folder so its leaves are visible, but this only
+  // fires when the active plugin actually changes — collapsing the active folder
+  // by hand stays collapsed, and other open folders are never touched.
+  useEffect(() => {
+    expandPlugin(activePluginId);
+  }, [activePluginId, expandPlugin]);
 
   function openProfile(): void {
     if (!profilePlugin || !accountPlugins.some((plugin) => plugin.id === profilePlugin.id)) {
@@ -271,38 +281,65 @@ export function Sidebar({ activePluginId }: SidebarProps) {
             const pluginTabs = sortTabsByTitle(visibleTabs(plugin, currentUser));
             const pluginState = tabsByPlugin[plugin.id];
             const notebookBadgeCount = plugin.id === PluginId.NOTEBOOK ? dueReminderCount : 0;
+            const hasTabs = pluginTabs.length > 0;
+            const isExpanded = expandedPluginIds.includes(plugin.id);
             const item = (
-              <UnstyledButton
-                aria-current={isActivePlugin ? "page" : undefined}
-                aria-label={plugin.label}
-                key={plugin.id}
-                onClick={() => {
-                  activatePluginWorkspaceTab(plugin.id);
-                  navigate(plugin.route);
+              <Box
+                style={{
+                  ...buildItemButtonStyle(isActivePlugin, sidebarCollapsed, palette),
+                  gap: 0,
+                  padding: 0,
                 }}
-                style={buildItemButtonStyle(isActivePlugin, sidebarCollapsed, palette)}
               >
-                {notebookBadgeCount > 0 ? <Indicator color="red" label={notebookBadgeCount} size={16}><Icon size={18} /></Indicator> : <Icon size={18} />}
-                {!sidebarCollapsed ? (
-                  <>
-                    <Text c="inherit" fw={isActivePlugin ? 600 : 500}>
-                      {plugin.label}
-                    </Text>
-                    {notebookBadgeCount > 0 ? <Badge color="red" size="sm" variant="filled">{notebookBadgeCount}</Badge> : null}
-                    <Box ml="auto">
-                      <IconChevronDown
-                        size={16}
-                        style={{
-                          opacity: isActivePlugin && pluginTabs.length > 0 ? 0.9 : 0.35,
-                          transform:
-                            isActivePlugin && pluginTabs.length > 0 ? "rotate(0deg)" : "rotate(-90deg)",
-                          transition: "transform 150ms ease, opacity 150ms ease",
-                        }}
-                      />
-                    </Box>
-                  </>
+                <UnstyledButton
+                  aria-current={isActivePlugin ? "page" : undefined}
+                  aria-label={plugin.label}
+                  onClick={() => {
+                    activatePluginWorkspaceTab(plugin.id);
+                    navigate(plugin.route);
+                  }}
+                  style={{
+                    alignItems: "center",
+                    color: "inherit",
+                    display: "flex",
+                    flex: 1,
+                    gap: "12px",
+                    justifyContent: sidebarCollapsed ? "center" : "flex-start",
+                    minWidth: 0,
+                    padding: sidebarCollapsed ? "10px 10px" : "10px 12px",
+                  }}
+                >
+                  {notebookBadgeCount > 0 ? <Indicator color="red" label={notebookBadgeCount} size={16}><Icon size={18} /></Indicator> : <Icon size={18} />}
+                  {!sidebarCollapsed ? (
+                    <>
+                      <Text c="inherit" fw={isActivePlugin ? 600 : 500}>
+                        {plugin.label}
+                      </Text>
+                      {notebookBadgeCount > 0 ? <Badge color="red" size="sm" variant="filled">{notebookBadgeCount}</Badge> : null}
+                    </>
+                  ) : null}
+                </UnstyledButton>
+                {!sidebarCollapsed && hasTabs ? (
+                  <ActionIcon
+                    aria-label={isExpanded ? `Collapse ${plugin.label}` : `Expand ${plugin.label}`}
+                    color="gray"
+                    mr={6}
+                    onClick={() => togglePluginExpanded(plugin.id)}
+                    radius="md"
+                    size="md"
+                    variant="subtle"
+                  >
+                    <IconChevronDown
+                      size={16}
+                      style={{
+                        opacity: isExpanded ? 0.9 : 0.4,
+                        transform: isExpanded ? "rotate(0deg)" : "rotate(-90deg)",
+                        transition: "transform 150ms ease, opacity 150ms ease",
+                      }}
+                    />
+                  </ActionIcon>
                 ) : null}
-              </UnstyledButton>
+              </Box>
             );
 
             return (
@@ -315,7 +352,7 @@ export function Sidebar({ activePluginId }: SidebarProps) {
                   item
                 )}
 
-                {!sidebarCollapsed && isActivePlugin && pluginTabs.length > 0 ? (
+                {!sidebarCollapsed && isExpanded && pluginTabs.length > 0 ? (
                   <Box
                     ml="md"
                     mt="xs"
