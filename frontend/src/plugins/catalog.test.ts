@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { PluginId } from "@/constants";
+import { CONTRACT_VERSION, IconName, PluginId, PluginOrigin, type PluginId as PluginIdType, type TabId, type ViewKey } from "@/constants";
+import { PluginKind, type PluginManifest } from "@/core/plugins/types";
 import {
   getOptionalPluginIds,
   enabledOptionalPluginIdSet,
@@ -107,5 +108,38 @@ describe("pluginVisible", () => {
     expect(
       pluginVisible(requirePlugin(PluginId.JENKINS), user, enabledOptionalPluginIdSet([]))
     ).toBe(false);
+  });
+
+  it("shows LOCAL plugins for any logged-in user even without permissions or enabled_plugins", () => {
+    const localPlugin: PluginManifest = {
+      contractVersion: CONTRACT_VERSION,
+      icon: IconName.SPARKLES,
+      id: "local-alpha" as PluginIdType,
+      kind: PluginKind.OPTIONAL,
+      label: "Local Alpha",
+      order: 500,
+      origin: PluginOrigin.LOCAL,
+      route: "/local-alpha",
+      tabs: [
+        {
+          element: null,
+          id: "local-alpha-tab" as TabId,
+          title: "Alpha",
+          viewKey: "local-alpha-view" as ViewKey,
+        },
+      ],
+    };
+
+    expect(
+      pluginVisible(
+        localPlugin,
+        {
+          effective_permissions: [],
+          enabled_plugins: [],
+          is_admin: false,
+        },
+        enabledOptionalPluginIdSet([])
+      )
+    ).toBe(true);
   });
 });

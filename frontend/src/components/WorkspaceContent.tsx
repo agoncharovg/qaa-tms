@@ -11,6 +11,7 @@ import {
   type PluginManifest,
   type PluginMountTab,
 } from "@/core/plugins/types";
+import { useResolvedAgentBaseUrl } from "@/plugins/localPlugins";
 import { useViewRegistry } from "@/plugins/registry";
 import { useAuthStore } from "@/store/authStore";
 
@@ -19,15 +20,12 @@ interface WorkspaceContentProps {
   tab: WorkspaceTabDefinition | null;
 }
 
-const PluginTabRenderCopy = {
-  NO_LOCAL_PLUGIN_BODY: "Local plugins are not supported by this build yet.",
-  NO_LOCAL_PLUGIN_TITLE: "Unsupported plugin origin",
-} as const;
-
-function MountedBuiltinPluginTab({
+function MountedPluginTab({
+  agentBaseUrl,
   mountTab,
   viewKey,
 }: {
+  agentBaseUrl?: string;
   mountTab: PluginMountTab;
   viewKey: PluginMountTab["viewKey"];
 }) {
@@ -41,17 +39,23 @@ function MountedBuiltinPluginTab({
     }
 
     return mountTab.mount({
+      agentBaseUrl,
       container,
       host,
       viewKey,
     });
-  }, [host, mountTab, viewKey]);
+  }, [agentBaseUrl, host, mountTab, viewKey]);
 
   return <div ref={containerRef} style={{ height: "100%" }} />;
 }
 
 function PluginTabView({ plugin, tab }: { plugin: PluginManifest; tab: WorkspaceTabDefinition }) {
   const viewRegistry = useViewRegistry();
+  const currentUser = useAuthStore((state) => state.currentUser);
+  const token = useAuthStore((state) => state.token);
+  const agentBaseUrl = useResolvedAgentBaseUrl(
+    plugin.origin === PluginOrigin.LOCAL && Boolean(currentUser && token)
+  );
   const pluginTab = plugin.tabs.find(
     (candidate) => candidate.id === tab.id && candidate.viewKey === tab.viewKey
   );
@@ -67,18 +71,23 @@ function PluginTabView({ plugin, tab }: { plugin: PluginManifest; tab: Workspace
       }
 
       if (pluginTabHasMount(pluginTab) && tab.viewKey) {
-        return <MountedBuiltinPluginTab mountTab={pluginTab} viewKey={tab.viewKey} />;
+        return <MountedPluginTab mountTab={pluginTab} viewKey={tab.viewKey} />;
       }
 
       return null;
 
     case PluginOrigin.LOCAL:
-      return (
-        <Alert icon={<IconInfoCircle size={16} />} title={PluginTabRenderCopy.NO_LOCAL_PLUGIN_TITLE}>
-          <Text>{PluginTabRenderCopy.NO_LOCAL_PLUGIN_BODY}</Text>
-          <Code>{tab.id}</Code>
-        </Alert>
-      );
+      if (pluginTab && pluginTabHasMount(pluginTab) && tab.viewKey && agentBaseUrl) {
+        return (
+          <MountedPluginTab
+            agentBaseUrl={agentBaseUrl}
+            mountTab={pluginTab}
+            viewKey={tab.viewKey}
+          />
+        );
+      }
+
+      return null;
 
     default:
       return null;

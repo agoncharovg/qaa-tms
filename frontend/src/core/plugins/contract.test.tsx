@@ -5,6 +5,21 @@ import { IconRocket } from "@tabler/icons-react";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
+vi.mock("@/plugins/companion/useCompanionStatus", () => ({
+  useCompanionStatus: vi.fn(() => ({
+    agent: null,
+    error: null,
+    isUpdating: false,
+    kind: "ok",
+    manifest: null,
+    port: 47600,
+    refresh: () => Promise.resolve(),
+    retryLabel: "Retry",
+    update: () => Promise.resolve(),
+    updateError: null,
+  })),
+}));
+
 import type { WorkspaceTabDefinition } from "@/api/types";
 import { WorkspaceContent } from "@/components/WorkspaceContent";
 import {
@@ -154,6 +169,77 @@ describe("plugin contract", () => {
       throw new Error("Expected the mount contract test container to exist.");
     }
     expect(mountedElement.textContent).toContain('"primaryColor"');
+
+    unmount();
+
+    expect(cleanupSpy).toHaveBeenCalledTimes(1);
+    expect(mountedElement.textContent).toBe("");
+  });
+
+  it("mounts a LOCAL plugin tab through mount() and passes the agent base URL", () => {
+    resetAuthStoreState();
+    useAuthStore.setState({
+      currentUser: {
+        auto_login: false,
+        created_at: "2026-08-11T00:00:00Z",
+        display_name: "Viewer",
+        enabled_plugins: [],
+        qaa_generator_token_set: false,
+        id: 2,
+        is_admin: false,
+        updated_at: "2026-08-11T00:00:00Z",
+        username: "viewer@example.com",
+      },
+      token: "token-123",
+    });
+
+    const cleanupSpy = vi.fn();
+    let mountedElement: HTMLElement | undefined;
+    const plugin = definePlugin({
+      contractVersion: CONTRACT_VERSION,
+      id: "local-alpha" as PluginId,
+      icon: IconName.SPARKLES,
+      kind: PluginKind.OPTIONAL,
+      label: "Local mount contract",
+      origin: PluginOrigin.LOCAL,
+      order: 10,
+      route: "/local-alpha",
+      tabs: [
+        {
+          id: "local-alpha-tab" as TabId,
+          mount({ agentBaseUrl, container, viewKey }) {
+            mountedElement = container;
+            container.textContent = `${viewKey}:${agentBaseUrl ?? "missing"}`;
+            return () => {
+              cleanupSpy();
+              container.replaceChildren();
+            };
+          },
+          title: "Local Alpha",
+          viewKey: "local-alpha-view" as ViewKey,
+        },
+      ],
+    });
+
+    const { unmount } = renderWithHost(
+      <WorkspaceContent
+        activePlugin={plugin}
+        tab={createWorkspaceTabDefinition({
+          id: "local-alpha-tab" as TabId,
+          pluginId: "local-alpha" as PluginId,
+          title: "Local Alpha",
+          viewKey: "local-alpha-view" as ViewKey,
+        })}
+      />
+    );
+
+    expect(
+      screen.getByText("local-alpha-view:http://127.0.0.1:47600")
+    ).toBeInTheDocument();
+    if (!mountedElement) {
+      throw new Error("Expected the local mount contract test container to exist.");
+    }
+    expect(mountedElement.textContent).toBe("local-alpha-view:http://127.0.0.1:47600");
 
     unmount();
 

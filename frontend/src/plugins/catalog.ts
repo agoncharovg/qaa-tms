@@ -2,6 +2,7 @@ import type { User } from "@/api/types";
 import { PluginKind, type PluginManifest, type PluginSpec, type PluginTab, type PluginTabSpec } from "@/core/plugins/types";
 import {
   NavSection,
+  PluginOrigin,
   type PluginId as PluginIdType,
 } from "@/constants";
 import { pluginPermitted } from "@/plugins/permissions";
@@ -83,6 +84,9 @@ export function pluginVisible(
 ): boolean {
   if (!user) {
     return false;
+  }
+  if (plugin.origin === PluginOrigin.LOCAL) {
+    return true;
   }
   if (plugin.adminOnly && !user.is_admin) {
     return false;

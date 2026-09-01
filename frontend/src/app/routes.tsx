@@ -6,6 +6,7 @@ import { AppLayout } from "@/app/layout/AppLayout";
 import { LoginPage } from "@/app/auth/LoginPage";
 import { GcoreProfilePoc } from "@/app/design-poc/GcoreProfilePoc";
 import { RoutePath } from "@/constants";
+import { LocalPluginsLifecycle } from "@/plugins/localPlugins";
 import {
   useEnabledOptionalPluginIdSet,
   usePlugins,
@@ -54,5 +55,12 @@ export function AppRoutes() {
     },
   ];
 
-  return useRoutes(appRoutes);
+  const routes = useRoutes(appRoutes);
+
+  return (
+    <>
+      <LocalPluginsLifecycle />
+      {routes}
+    </>
+  );
 }

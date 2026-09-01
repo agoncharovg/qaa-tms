@@ -18,7 +18,12 @@ import type { User } from "@/api/types";
 import { QueryKey } from "@/constants";
 import { resolveIcon } from "@/core/plugins/icons";
 import { PluginKind } from "@/core/plugins/types";
-import { usePluginsContext } from "@/plugins/context";
+import { BUILTIN_OPTIONAL_PLUGIN_IDS } from "@/plugins/builtinRegistrySnapshot";
+import {
+  enabledOptionalPluginIdSet,
+  resolveEnabledOptionalPluginIds,
+} from "@/plugins/catalog";
+import { BUILTIN_PLUGINS } from "@/plugins/discovery";
 import { pluginPermitted } from "@/plugins/permissions";
 import { useAuthStore } from "@/store/authStore";
 
@@ -28,8 +33,6 @@ export function PluginsPanel() {
   const currentUser = useAuthStore((state) => state.currentUser);
   const setEnabledPlugins = useAuthStore((state) => state.setEnabledPlugins);
   const [pendingPluginId, setPendingPluginId] = useState<string | null>(null);
-  const { enabledOptionalPluginIdSet, plugins, resolveEnabledOptionalPluginIds } =
-    usePluginsContext();
 
   const updateMutation = useMutation({
     mutationFn: async (enabledPluginIds: User["enabled_plugins"]) => {
@@ -58,17 +61,23 @@ export function PluginsPanel() {
   }
 
   const resolvedCurrentUser = currentUser;
-  const optionalPlugins = plugins.filter(
+  const optionalPlugins = BUILTIN_PLUGINS.filter(
     (plugin) => plugin.kind === PluginKind.OPTIONAL && pluginPermitted(plugin, resolvedCurrentUser)
   );
-  const enabledOptionalIds = enabledOptionalPluginIdSet(resolvedCurrentUser.enabled_plugins);
-  const systemPlugins = plugins.filter(
+  const enabledOptionalIds = enabledOptionalPluginIdSet(
+    resolvedCurrentUser.enabled_plugins,
+    BUILTIN_OPTIONAL_PLUGIN_IDS
+  );
+  const systemPlugins = BUILTIN_PLUGINS.filter(
     (plugin) =>
       plugin.kind === PluginKind.SYSTEM && (!plugin.adminOnly || resolvedCurrentUser.is_admin)
   );
 
   function handleToggle(pluginId: (typeof optionalPlugins)[number]["id"], checked: boolean): void {
-    const currentIds = resolveEnabledOptionalPluginIds(resolvedCurrentUser.enabled_plugins);
+    const currentIds = resolveEnabledOptionalPluginIds(
+      resolvedCurrentUser.enabled_plugins,
+      BUILTIN_OPTIONAL_PLUGIN_IDS
+    );
     const nextEnabledPluginIds = checked
       ? [...currentIds, pluginId].filter((value, index, values) => values.indexOf(value) === index)
       : currentIds.filter((value) => value !== pluginId);

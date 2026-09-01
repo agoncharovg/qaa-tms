@@ -126,8 +126,12 @@ type AgentDiscovery = {
   port: number;
 };
 
+export function buildAgentBaseUrl(port: number): string {
+  return `http://${AGENT_HOST}:${port}`;
+}
+
 function buildAgentUrl(port: number, path: string): string {
-  return `http://${AGENT_HOST}:${port}${path}`;
+  return `${buildAgentBaseUrl(port)}${path}`;
 }
 
 function formatAgentErrorDetail(detail: unknown): string {
@@ -149,7 +153,7 @@ function formatAgentErrorDetail(detail: unknown): string {
   return "Agent request failed.";
 }
 
-function createAgentHeaders(token?: string, extraHeaders?: HeadersInit): Headers {
+export function createAgentHeaders(token?: string, extraHeaders?: HeadersInit): Headers {
   const headers = new Headers({
     [HttpHeader.ACCEPT]: MediaType.JSON,
     [AGENT_REQUEST_HEADER]: AGENT_REQUEST_HEADER_VALUE,

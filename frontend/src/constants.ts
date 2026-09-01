@@ -409,6 +409,7 @@ export function buildBackendNotificatorHistoryPath(historyItemId?: number): stri
 
 export const AgentPath = {
   PING: "/ping",
+  PLUGINS: "/plugins",
   SETTINGS: "/settings",
   PREFLIGHT: "/preflight",
   UPDATE: "/update",

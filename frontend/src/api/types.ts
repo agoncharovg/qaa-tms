@@ -143,6 +143,36 @@ export interface AgentPreflightAvailable {
 
 export type AgentPreflightState = AgentPreflightAvailable | AgentPreflightUnavailable;
 
+export interface LocalPluginTabRead {
+  id: string;
+  title: string;
+  viewKey: string;
+}
+
+export interface LocalPluginRead {
+  id: string;
+  label: string;
+  icon: string;
+  route: string;
+  order: number;
+  contractVersion: number;
+  requiresAgent: boolean;
+  entry: string;
+  entryUrl: string;
+  navSection?: "primary" | "account";
+  tabs: LocalPluginTabRead[];
+}
+
+export interface LocalPluginWarning {
+  dir: string;
+  error: string;
+}
+
+export interface LocalPluginsResponse {
+  plugins: LocalPluginRead[];
+  warnings: LocalPluginWarning[];
+}
+
 export interface AgentSettings {
   jenkins_url: string;
   jenkins_username: string;

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
@@ -7,6 +7,14 @@ import { AppRoutes } from "@/app/routes";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
 import { resetUiStoreState, useUiStore } from "@/store/uiStore";
 import { renderWithProviders } from "@/test/render";
+
+vi.mock("@/plugins/localPlugins", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/plugins/localPlugins")>();
+  return {
+    ...actual,
+    LocalPluginsLifecycle: () => null,
+  };
+});
 
 function renderApp(initialEntry: string) {
   return renderWithProviders(
