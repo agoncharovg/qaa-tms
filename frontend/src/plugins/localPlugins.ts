@@ -7,6 +7,7 @@ import type {
   LocalPluginWarning,
 } from "@/api/types";
 import { buildAgentBaseUrl, createAgentHeaders } from "@/api/agentClient";
+import type { LocalPluginModule } from "@qaa-tms/plugin-sdk";
 import {
   AgentPath,
   CompanionStatusKind,
@@ -19,7 +20,6 @@ import {
   type ViewKey,
 } from "@/constants";
 import { definePlugin, isSupportedContractVersion } from "@/core/plugins/definePlugin";
-import type { MountContext, Unmount } from "@/core/plugins/host";
 import { PluginKind, type PluginManifest } from "@/core/plugins/types";
 import { useCompanionStatus } from "@/plugins/companion/useCompanionStatus";
 import { validatePluginManifests } from "@/plugins/discovery";
@@ -32,10 +32,7 @@ const COMPANION_AVAILABLE_KINDS: ReadonlySet<string> = new Set([
   CompanionStatusKind.UPDATE_REQUIRED,
 ]);
 
-interface LocalPluginModule {
-  contractVersion: number;
-  mount(viewKey: string, ctx: MountContext): Unmount;
-}
+export type { LocalPluginModule } from "@qaa-tms/plugin-sdk";
 
 interface LoadLocalPluginsOptions {
   agentBaseUrl: string;

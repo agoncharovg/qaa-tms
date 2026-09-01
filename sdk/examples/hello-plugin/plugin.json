@@ -1,0 +1,18 @@
+{
+  "id": "hello",
+  "label": "Hello",
+  "icon": "sparkles",
+  "route": "/hello",
+  "order": 100,
+  "contractVersion": 1,
+  "requiresAgent": true,
+  "entry": "dist/index.js",
+  "navSection": "primary",
+  "tabs": [
+    {
+      "id": "hello-home",
+      "title": "Hello",
+      "viewKey": "hello-home"
+    }
+  ]
+}

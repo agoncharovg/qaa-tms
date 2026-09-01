@@ -1,49 +1,14 @@
 import { createContext, createElement, useContext, useEffect, useRef, type ReactNode } from "react";
 import { useMantineTheme, type MantineTheme } from "@mantine/core";
 import { useNavigate } from "react-router-dom";
+import type { HostApi, ThemeTokens } from "@qaa-tms/plugin-sdk";
 
-import { CONTRACT_VERSION, type TabId, type ViewKey } from "@/constants";
+import { CONTRACT_VERSION, type TabId } from "@/constants";
 import { pluginById } from "@/plugins/catalog";
 import { getTabDefinitions } from "@/plugins/pluginRegistryStore";
 import { useUiStore } from "@/store/uiStore";
 
-export type Unmount = () => void;
-
-export interface ThemeTokens {
-  colorScheme: string;
-  primaryColor: string;
-  background: string;
-  surface: string;
-  text: string;
-  dimmed: string;
-  border: string;
-  radius: string;
-  spacing: string;
-  fontFamily: string;
-}
-
-export interface HostApi {
-  contractVersion: number;
-  theme: {
-    getTokens(): ThemeTokens;
-    subscribe(cb: (tokens: ThemeTokens) => void): Unmount;
-  };
-  view: {
-    setTitle(title: string): void;
-    setBusy(busy: boolean): void;
-    requestResize(px: number): void;
-  };
-  nav: {
-    openTab?(tabId: TabId): void;
-  };
-}
-
-export interface MountContext {
-  container: HTMLElement;
-  viewKey: ViewKey;
-  host: HostApi;
-  agentBaseUrl?: string;
-}
+export type { HostApi, MountContext, ThemeTokens, Unmount } from "@qaa-tms/plugin-sdk";
 
 interface BuiltinHostApiProviderProps {
   children: ReactNode;
@@ -122,12 +87,12 @@ export function BuiltinHostApiProvider({ children }: BuiltinHostApiProviderProps
     contractVersion: CONTRACT_VERSION,
     nav: {
       openTab(tabId) {
-        const tab = getTabDefinitions()[tabId];
+        const tab = getTabDefinitions()[tabId as TabId];
         if (!tab) {
           return;
         }
 
-        openTab(tab.pluginId, tabId);
+        openTab(tab.pluginId, tabId as TabId);
 
         const plugin = pluginById(tab.pluginId);
         if (plugin) {

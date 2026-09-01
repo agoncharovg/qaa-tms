@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createAgentHeaders } from "@/api/agentClient";
-import { CONTRACT_VERSION, PluginOrigin, type ViewKey } from "@/constants";
+import { CONTRACT_VERSION, PluginOrigin } from "@/constants";
 import { PluginKind, pluginTabHasMount } from "@/core/plugins/types";
 import { loadLocalPluginsFromAgent } from "@/plugins/localPlugins";
 
@@ -206,7 +206,7 @@ describe("loadLocalPluginsFromAgent", () => {
           setTitle: () => undefined,
         },
       },
-      viewKey: "local-alpha-view" as ViewKey,
+      viewKey: "local-alpha-view",
     });
 
     expect(mountSpy).toHaveBeenCalledWith(
@@ -333,7 +333,7 @@ describe("loadLocalPluginsFromAgent", () => {
           setTitle: () => undefined,
         },
       },
-      viewKey: "local-alpha-view" as ViewKey,
+      viewKey: "local-alpha-view",
     });
 
     expect(mountSpy).toHaveBeenCalledWith(

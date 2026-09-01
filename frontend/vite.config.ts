@@ -8,6 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@qaa-tms/plugin-sdk": path.resolve(__dirname, "../sdk/src/index.ts"),
     },
   },
   server: {

@@ -3,7 +3,6 @@
     "target": "ES2022",
     "useDefineForClassFields": true,
     "lib": ["DOM", "DOM.Iterable", "ES2022"],
-    "allowJs": false,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
@@ -15,12 +14,7 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "types": ["vite/client", "vitest/globals"],
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./src/*"],
-      "@qaa-tms/plugin-sdk": ["../sdk/src/index.ts"]
-    }
+    "types": ["vite/client"]
   },
-  "include": ["src", "../sdk/src", "vite.config.ts", "eslint.config.js"]
+  "include": ["src", "vite.config.ts"]
 }
