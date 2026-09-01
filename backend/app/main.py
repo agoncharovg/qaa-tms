@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -9,24 +10,42 @@ from pathlib import Path
 import httpx
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
+from starlette.responses import Response
+from starlette.types import Scope
 
 from app.api.v1 import router as api_v1_router
 from app.core.config import Settings, get_settings
 from app.core.constants import (
     DEFAULT_QAA_GENERATOR_TIMEOUT_SECONDS,
     ApiTag,
+    CacheControl,
     ErrorMessage,
     HealthFieldName,
     HealthStatus,
+    HttpHeader,
     RoutePath,
 )
 from app.db.seed import seed_system_data
 from app.db.session import create_engine_and_session_maker
 from app.services.jenkins_cache import JenkinsCache
 from app.services.qaa_generator_transport import resolve_qaa_generator_runtime
+
+
+class ImmutableStaticFiles(StaticFiles):
+    def file_response(
+        self,
+        full_path: str | os.PathLike[str],
+        stat_result: os.stat_result,
+        scope: Scope,
+        status_code: int = 200,
+    ) -> Response:
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        response.headers[HttpHeader.CACHE_CONTROL.value] = CacheControl.IMMUTABLE.value
+        return response
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -66,6 +85,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await engine.dispose()
 
     app = FastAPI(title="QAA-TMS Backend", lifespan=lifespan)
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
 
     if resolved_settings.cors_origins:
         app.add_middleware(
@@ -98,7 +118,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if static_dir.is_dir():
         assets_dir = static_dir / "assets"
         if assets_dir.is_dir():
-            app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+            app.mount("/assets", ImmutableStaticFiles(directory=assets_dir), name="assets")
 
         index_file = static_dir / "index.html"
 
@@ -112,7 +132,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
             if candidate.is_file():
                 return FileResponse(candidate)
-            return FileResponse(index_file)
+            return FileResponse(
+                index_file,
+                headers={HttpHeader.CACHE_CONTROL.value: CacheControl.NO_CACHE.value},
+            )
 
     return app
 

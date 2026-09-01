@@ -193,6 +193,8 @@ class HttpHeader(StrEnum):
 
 class CacheControl(StrEnum):
     NO_STORE = "no-store"
+    NO_CACHE = "no-cache"
+    IMMUTABLE = "public, max-age=31536000, immutable"
 
 
 class HttpMethod(StrEnum):
