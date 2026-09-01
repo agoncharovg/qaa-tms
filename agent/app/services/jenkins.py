@@ -230,7 +230,6 @@ class JenkinsAllureReportError(ValueError):
     """Raised when an Allure report cannot be normalized, fetched, or parsed."""
 
 
-
 def require_configured(settings: Settings) -> None:
     """Reject requests when Jenkins credentials are not configured locally."""
 
@@ -422,6 +421,7 @@ def validate_job_path(settings: Settings, path: str) -> str:
 
     return normalized_path
 
+
 async def fetch_allure_skip_candidates(
     settings: Settings,
     report_urls: list[str],
@@ -466,19 +466,14 @@ async def fetch_allure_skip_candidates(
 
     if not candidates_by_full_name:
         if errors:
-            details = "; ".join(
-                f"{error.report_url}: {error.message}" for error in errors
-            )
-            raise JenkinsAllureReportError(
-                f"Failed to load Allure skip candidates. {details}"
-            )
+            details = "; ".join(f"{error.report_url}: {error.message}" for error in errors)
+            raise JenkinsAllureReportError(f"Failed to load Allure skip candidates. {details}")
         raise JenkinsAllureReportError("Allure reports did not return any test candidates.")
 
     return JenkinsAllureSkipCandidatesResponse(
         candidates=list(candidates_by_full_name.values()),
         errors=errors,
     )
-
 
 
 async def fetch_tree(
@@ -1078,7 +1073,6 @@ async def run_resume_campaign(
                 await asyncio.sleep(settings.jenkins_resume_pause_seconds)
 
 
-
 def _normalize_allure_report_url(settings: Settings, report_url: str) -> str:
     raw_report_url = report_url.strip()
     if not raw_report_url:
@@ -1257,9 +1251,8 @@ def _extract_allure_product(payload: Mapping[str, Any]) -> str | None:
             continue
         if label_name == ALLURE_PRODUCT_LABEL_NAME:
             return _normalize_allure_product_name(label_value)
-        if (
-            label_name == ALLURE_TAG_LABEL_NAME
-            and label_value.startswith(ALLURE_PRODUCT_TAG_PREFIX)
+        if label_name == ALLURE_TAG_LABEL_NAME and label_value.startswith(
+            ALLURE_PRODUCT_TAG_PREFIX
         ):
             return _normalize_allure_product_name(
                 label_value.removeprefix(ALLURE_PRODUCT_TAG_PREFIX)

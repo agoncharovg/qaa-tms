@@ -429,7 +429,6 @@ def list_environments(settings: Settings) -> EnvironmentsStateResponse:
     return list_state(settings)
 
 
-
 def resolve_variable_map(settings: Settings, environment_id: str | None) -> dict[str, str]:
     state = _load_environments_state(settings)
     resolved_environment_id = _resolve_environment_id(state, environment_id)
@@ -1387,7 +1386,6 @@ def _environment_ids_from_state(state: RequestsEnvironmentsState) -> set[str]:
     return ids
 
 
-
 def _resolve_environment_id(
     state: RequestsEnvironmentsState,
     environment_id: str | None,
@@ -1715,9 +1713,7 @@ def _normalize_raw_credential_config(credential_type: str, raw_config: object) -
             "admin_credential_id": _require_string(
                 config.get("admin_credential_id"), "Admin credential ID"
             ),
-            "admin_token_url": _require_string(
-                config.get("admin_token_url"), "Admin token URL"
-            ),
+            "admin_token_url": _require_string(config.get("admin_token_url"), "Admin token URL"),
             "client_id": client_id,
             "issue_by_current_user": issue_by_current_user,
         }

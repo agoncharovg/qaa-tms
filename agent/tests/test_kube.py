@@ -750,4 +750,3 @@ async def test_kube_exec_returns_503_when_kubectl_is_absent(
             )
     assert response.status_code == 503
     assert response.json() == {"detail": "kubectl is not installed."}
-

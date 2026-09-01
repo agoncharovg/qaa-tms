@@ -53,10 +53,12 @@ def coerce_async_database_url(value: str) -> str:
         host = "127.0.0.1"
     query = dict(url.query)
     sslmode = query.pop("sslmode", None)
+    if isinstance(sslmode, tuple):
+        sslmode = sslmode[0] if sslmode else None
     if sslmode is not None and "ssl" not in query:
-        query["ssl"] = sslmode
+        query["ssl"] = {"require": "true", "disable": "false"}.get(sslmode, sslmode)
     elif "ssl" not in query and host in {"127.0.0.1", "::1"}:
-        query["ssl"] = "disable"
+        query["ssl"] = "false"
     url = url.set(query=query)
     return url.render_as_string(hide_password=False)
 

@@ -13,8 +13,14 @@ from app.core.config import Settings
         ("postgresql+psycopg2://u:p@h/db", "postgresql+asyncpg://u:p@h/db"),
         ("postgresql://u:p@h/db?sslmode=require", "postgresql+asyncpg://u:p@h/db?ssl=true"),
         ("postgresql://u:p@h/db?sslmode=disable", "postgresql+asyncpg://u:p@h/db?ssl=false"),
-        ("postgresql://u:p@localhost:5432/db", "postgresql+asyncpg://u:p@127.0.0.1:5432/db?ssl=false"),
-        ("postgresql://u:p@127.0.0.1:5432/db", "postgresql+asyncpg://u:p@127.0.0.1:5432/db?ssl=false"),
+        (
+            "postgresql://u:p@localhost:5432/db",
+            "postgresql+asyncpg://u:p@127.0.0.1:5432/db?ssl=false",
+        ),
+        (
+            "postgresql://u:p@127.0.0.1:5432/db",
+            "postgresql+asyncpg://u:p@127.0.0.1:5432/db?ssl=false",
+        ),
         ("postgresql+asyncpg://u:p@h/db", "postgresql+asyncpg://u:p@h/db"),
         ("sqlite+aiosqlite:///./x.db", "sqlite+aiosqlite:///./x.db"),
     ],

@@ -176,9 +176,7 @@ def _read_plugin_manifest(plugin_dir: Path) -> LocalPluginManifestFile | None:
             f'path "{manifest.entry}" does not resolve to a readable file '
             "inside the plugin directory"
         )
-        raise LocalPluginValidationError(
-            message
-        )
+        raise LocalPluginValidationError(message)
     return manifest
 
 
@@ -201,9 +199,7 @@ def _resolve_path_within_plugin_dir(plugin_dir: Path, relative_path: str, *, str
             f'path "{relative_path}" does not resolve to a readable file '
             "inside the plugin directory"
         )
-        raise LocalPluginValidationError(
-            message
-        ) from exc
+        raise LocalPluginValidationError(message) from exc
 
     try:
         resolved_path.relative_to(plugin_root)

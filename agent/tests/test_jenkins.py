@@ -343,7 +343,6 @@ def build_fe_tree_payload() -> dict[str, Any]:
     }
 
 
-
 def build_allure_suites_payload(*uids: str) -> dict[str, Any]:
     return {
         "children": [
@@ -934,7 +933,6 @@ def test_validate_job_path_accepts_only_allowed_root_scope() -> None:
         validate_job_path(settings, f"{PIPELINE_PATH}/../escape")
 
 
-
 async def test_fetch_allure_skip_candidates_collects_full_names_and_dedupes() -> None:
     settings = build_settings()
     requests: list[tuple[str, str | None]] = []
@@ -965,9 +963,9 @@ async def test_fetch_allure_skip_candidates_collects_full_names_and_dedupes() ->
                     name="test_shared",
                     product_label=None,
                 ),
-                (
-                    f"{PIPELINE_PATH}/43/allure/data/suites.json"
-                ): build_allure_suites_payload("shared-2"),
+                (f"{PIPELINE_PATH}/43/allure/data/suites.json"): build_allure_suites_payload(
+                    "shared-2"
+                ),
                 (
                     f"{PIPELINE_PATH}/43/allure/data/test-cases/shared-2.json"
                 ): build_allure_test_case_payload(
@@ -1003,9 +1001,9 @@ async def test_fetch_allure_skip_candidates_returns_partial_errors() -> None:
         ],
         transport=build_transport(
             {
-                (
-                    f"{PIPELINE_PATH}/42/allure/data/suites.json"
-                ): build_allure_suites_payload("billing-1"),
+                (f"{PIPELINE_PATH}/42/allure/data/suites.json"): build_allure_suites_payload(
+                    "billing-1"
+                ),
                 (
                     f"{PIPELINE_PATH}/42/allure/data/test-cases/billing-1.json"
                 ): build_allure_test_case_payload(
@@ -1027,7 +1025,6 @@ async def test_fetch_allure_skip_candidates_returns_partial_errors() -> None:
             "report_url": f"{JENKINS_BASE_URL}/{PIPELINE_PATH}/404/allure/",
         }
     ]
-
 
 
 async def test_jenkins_allure_skip_candidates_route_returns_candidates(
