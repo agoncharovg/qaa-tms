@@ -7,6 +7,7 @@ import {
   Group,
   Menu,
   Modal,
+  ScrollArea,
   Stack,
   Text,
   Tooltip,
@@ -217,7 +218,7 @@ export function Sidebar({ activePluginId }: SidebarProps) {
 
       <Divider mb="sm" />
 
-      <AppShell.Section grow>
+      <AppShell.Section component={ScrollArea} grow type="auto">
         <Stack gap="xs">
           {plugins.map((plugin) => {
             const Icon = resolveIcon(plugin.icon);
