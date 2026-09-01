@@ -17,7 +17,6 @@ export const BUILTIN_PLUGIN_IDS: PluginIdType[] = [
   PluginId.LEONID,
   PluginId.NOTIFICATOR,
   PluginId.STATISTICS,
-  PluginId.REQUESTS,
   PluginId.ADMIN,
   PluginId.PROFILE,
 ];
@@ -30,7 +29,6 @@ export const BUILTIN_OPTIONAL_PLUGIN_IDS: PluginIdType[] = [
   PluginId.LEONID,
   PluginId.NOTIFICATOR,
   PluginId.STATISTICS,
-  PluginId.REQUESTS,
 ];
 
 export const BUILTIN_SYSTEM_PLUGIN_IDS: PluginIdType[] = [PluginId.ADMIN, PluginId.PROFILE];
@@ -131,30 +129,6 @@ export const BUILTIN_TAB_DEFINITIONS = Object.fromEntries([
     createTabDefinition(PluginId.STATISTICS, TabId.STATISTICS_SMOKE, ViewKey.STATISTICS_SMOKE),
   ],
   [
-    TabId.REQUESTS_BUILDER,
-    createTabDefinition(PluginId.REQUESTS, TabId.REQUESTS_BUILDER, ViewKey.REQUESTS_BUILDER),
-  ],
-  [
-    TabId.REQUESTS_CREDENTIALS,
-    createTabDefinition(
-      PluginId.REQUESTS,
-      TabId.REQUESTS_CREDENTIALS,
-      ViewKey.REQUESTS_CREDENTIALS
-    ),
-  ],
-  [
-    TabId.REQUESTS_ENVIRONMENTS,
-    createTabDefinition(
-      PluginId.REQUESTS,
-      TabId.REQUESTS_ENVIRONMENTS,
-      ViewKey.REQUESTS_ENVIRONMENTS
-    ),
-  ],
-  [
-    TabId.REQUESTS_HISTORY,
-    createTabDefinition(PluginId.REQUESTS, TabId.REQUESTS_HISTORY, ViewKey.REQUESTS_HISTORY),
-  ],
-  [
     TabId.ADMIN_SECURITY,
     createTabDefinition(PluginId.ADMIN, TabId.ADMIN_SECURITY, ViewKey.ADMIN_SECURITY, true),
   ],
@@ -186,12 +160,6 @@ export const BUILTIN_TAB_CATALOG: Record<PluginIdType, TabIdType[]> = {
     TabId.NOTIFICATOR_NOTIFICATIONS,
   ],
   [PluginId.STATISTICS]: [TabId.STATISTICS_SMOKE],
-  [PluginId.REQUESTS]: [
-    TabId.REQUESTS_BUILDER,
-    TabId.REQUESTS_CREDENTIALS,
-    TabId.REQUESTS_ENVIRONMENTS,
-    TabId.REQUESTS_HISTORY,
-  ],
   [PluginId.ADMIN]: [TabId.ADMIN_SECURITY, TabId.ADMIN_INTEGRATIONS],
   [PluginId.PROFILE]: [TabId.PROFILE],
 };
@@ -204,7 +172,6 @@ export const BUILTIN_DEFAULT_TAB_ID_BY_PLUGIN: Record<PluginIdType, TabIdType | 
   [PluginId.LEONID]: TabId.LEONID_SHARED_RESOURCES,
   [PluginId.NOTIFICATOR]: TabId.NOTIFICATOR_CONTRACT_MANAGER,
   [PluginId.STATISTICS]: TabId.STATISTICS_SMOKE,
-  [PluginId.REQUESTS]: TabId.REQUESTS_BUILDER,
   [PluginId.ADMIN]: TabId.ADMIN_SECURITY,
   [PluginId.PROFILE]: TabId.PROFILE,
 };

@@ -278,10 +278,6 @@ StagingsSyncAuth = Annotated[AuthContext, Depends(require_permission(PermissionK
 StagingsE2eRunAuth = Annotated[
     AuthContext, Depends(require_permission(PermissionKey.STAGINGS_E2E_RUN))
 ]
-RequestsReadAuth = Annotated[AuthContext, Depends(require_permission(PermissionKey.REQUESTS_READ))]
-RequestsWriteAuth = Annotated[
-    AuthContext, Depends(require_permission(PermissionKey.REQUESTS_WRITE))
-]
 logger = logging.getLogger(__name__)
 CREDENTIAL_CREATE_ADAPTER: TypeAdapter[CredentialCreateRequest] = TypeAdapter(
     CredentialCreateRequest
@@ -743,7 +739,7 @@ def _build_request_document_input(
 
 @router.get(AgentPath.REQUESTS_COLLECTIONS.value, response_model=RequestsTreeResponse)
 async def get_requests_collections(
-    _: RequestsReadAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> RequestsTreeResponse:
     try:
@@ -757,7 +753,7 @@ async def get_requests_collections(
 @router.put(AgentPath.REQUESTS_COLLECTIONS.value, response_model=RequestsTreeResponse)
 async def put_requests_collections(
     request_body: RequestsTreeWriteRequest,
-    _: RequestsWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> RequestsTreeResponse:
     try:
@@ -773,7 +769,7 @@ async def put_requests_collections(
 @router.patch(AgentPath.REQUESTS_COLLECTIONS.value, response_model=RequestsTreeResponse)
 async def patch_requests_collections(
     request_body: RequestsReorderRequest,
-    _: RequestsWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> RequestsTreeResponse:
     try:
@@ -788,7 +784,7 @@ async def patch_requests_collections(
 @router.post(AgentPath.REQUESTS_FOLDER.value, response_model=RequestsTreeResponse)
 async def post_requests_folder(
     request_body: RequestsFolderCreateRequest,
-    _: RequestsWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> RequestsTreeResponse:
     try:
@@ -803,7 +799,7 @@ async def post_requests_folder(
 @router.put(AgentPath.REQUESTS_FOLDER.value, response_model=RequestsTreeResponse)
 async def put_requests_folder(
     request_body: RequestsFolderUpdateRequest,
-    _: RequestsWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> RequestsTreeResponse:
     if request_body.name is None and request_body.flags is None:
@@ -830,7 +826,7 @@ async def put_requests_folder(
 
 @router.delete(AgentPath.REQUESTS_FOLDER.value, response_model=RequestsTreeResponse)
 async def delete_requests_folder(
-    _: RequestsWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
     folder: str = Query(...),
 ) -> RequestsTreeResponse:
@@ -849,7 +845,7 @@ async def delete_requests_folder(
 
 @router.get(AgentPath.REQUESTS_ITEM.value, response_model=RequestsItemsResponse)
 async def get_requests_items(
-    _: RequestsReadAuth,
+    _: AuthDep,
     settings: SettingsDep,
     folder: str = Query(...),
 ) -> RequestsItemsResponse:
@@ -868,7 +864,7 @@ async def get_requests_items(
 @router.get(f"{AgentPath.REQUESTS_ITEM.value}/{{name}}", response_model=RequestItemReadResponse)
 async def get_requests_item(
     name: str,
-    _: RequestsReadAuth,
+    _: AuthDep,
     settings: SettingsDep,
     folder: str = Query(...),
 ) -> RequestItemReadResponse:
@@ -887,7 +883,7 @@ async def get_requests_item(
 @router.post(AgentPath.REQUESTS_ITEM.value, response_model=RequestItemReadResponse)
 async def post_requests_item(
     request_body: RequestItemCreateRequest,
-    _: RequestsWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> RequestItemReadResponse:
     try:
@@ -918,7 +914,7 @@ async def post_requests_item(
 async def put_requests_item(
     name: str,
     request_body: RequestItemUpdateRequest,
-    _: RequestsWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
     folder: str = Query(...),
 ) -> RequestItemReadResponse:
@@ -970,7 +966,7 @@ async def put_requests_item(
 @router.delete(f"{AgentPath.REQUESTS_ITEM.value}/{{name}}", response_model=RequestsItemsResponse)
 async def delete_requests_item(
     name: str,
-    _: RequestsWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
     folder: str = Query(...),
 ) -> RequestsItemsResponse:
@@ -989,7 +985,7 @@ async def delete_requests_item(
 
 @router.get(AgentPath.REQUESTS_ENVIRONMENTS.value, response_model=EnvironmentsStateResponse)
 async def get_requests_environments(
-    _: RequestsReadAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> EnvironmentsStateResponse:
     return list_state(settings)
@@ -998,7 +994,7 @@ async def get_requests_environments(
 @router.post(AgentPath.REQUESTS_ENVIRONMENTS.value, response_model=EnvironmentsStateResponse)
 async def post_requests_environment(
     request_body: dict[str, object],
-    _: RequestsWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> EnvironmentsStateResponse:
     try:
@@ -1022,7 +1018,7 @@ async def post_requests_environment(
 )
 async def put_requests_environment_active(
     request_body: dict[str, object],
-    _: RequestsWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> EnvironmentsStateResponse:
     try:
@@ -1049,7 +1045,7 @@ async def put_requests_environment_active(
 async def put_requests_environment(
     environment_id: str,
     request_body: dict[str, object],
-    _: RequestsWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> EnvironmentsStateResponse:
     try:
@@ -1081,7 +1077,7 @@ async def put_requests_environment(
 )
 async def delete_requests_environment(
     environment_id: str,
-    _: RequestsWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> EnvironmentsStateResponse:
     try:
@@ -1101,7 +1097,7 @@ async def delete_requests_environment(
 @router.post(AgentPath.REQUESTS_VARIABLES.value, response_model=EnvironmentsStateResponse)
 async def post_requests_variable(
     request_body: dict[str, object],
-    _: RequestsWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> EnvironmentsStateResponse:
     try:
@@ -1126,7 +1122,7 @@ async def post_requests_variable(
 async def put_requests_variable(
     variable_id: str,
     request_body: dict[str, object],
-    _: RequestsWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> EnvironmentsStateResponse:
     try:
@@ -1158,7 +1154,7 @@ async def put_requests_variable(
 )
 async def delete_requests_variable(
     variable_id: str,
-    _: RequestsWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> EnvironmentsStateResponse:
     try:
@@ -1177,7 +1173,7 @@ async def delete_requests_variable(
 
 @router.get(AgentPath.REQUESTS_CREDENTIALS.value, response_model=CredentialsListResponse)
 async def get_requests_credentials(
-    _: RequestsReadAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> CredentialsListResponse:
     return CredentialsListResponse(credentials=list_credentials(settings))
@@ -1189,7 +1185,7 @@ async def get_requests_credentials(
 )
 async def get_requests_credential(
     credential_id: str,
-    _: RequestsReadAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> CredentialPublic:
     try:
@@ -1203,7 +1199,7 @@ async def get_requests_credential(
 @router.post(AgentPath.REQUESTS_CREDENTIALS.value, response_model=CredentialPublic)
 async def post_requests_credential(
     request_body: dict[str, object],
-    _: RequestsWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> CredentialPublic:
     try:
@@ -1222,7 +1218,7 @@ async def post_requests_credential(
 async def put_requests_credential(
     credential_id: str,
     request_body: dict[str, object],
-    _: RequestsWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> CredentialPublic:
     try:
@@ -1247,7 +1243,7 @@ async def put_requests_credential(
 )
 async def delete_requests_credential(
     credential_id: str,
-    _: RequestsWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> CredentialsListResponse:
     try:
@@ -1264,7 +1260,7 @@ async def delete_requests_credential(
 async def post_requests_credential_resolve(
     request: Request,
     request_body: CredentialResolveRequest,
-    _: RequestsWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> CredentialResolveResponse:
     try:
@@ -1290,7 +1286,7 @@ async def post_requests_credential_resolve(
 async def post_requests_execute(
     request: Request,
     request_body: RequestExecuteRequest,
-    _: RequestsWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> RequestExecuteResponse:
     return await execute_request(request.app, settings, request_body)
@@ -1298,7 +1294,7 @@ async def post_requests_execute(
 
 @router.get(AgentPath.REQUESTS_HISTORY.value, response_model=HistoryListResponse)
 async def get_requests_history(
-    _: RequestsReadAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> HistoryListResponse:
     return list_history(settings)
@@ -1306,7 +1302,7 @@ async def get_requests_history(
 
 @router.delete(AgentPath.REQUESTS_HISTORY.value, response_model=HistoryListResponse)
 async def delete_requests_history(
-    _: RequestsWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> HistoryListResponse:
     clear_history(settings)
@@ -1319,7 +1315,7 @@ async def delete_requests_history(
 )
 async def delete_requests_history_entry_route(
     entry_id: str,
-    _: RequestsWriteAuth,
+    _: AuthDep,
     settings: SettingsDep,
 ) -> HistoryListResponse:
     delete_history_entry(settings, entry_id)

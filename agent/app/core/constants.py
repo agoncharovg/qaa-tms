@@ -216,8 +216,6 @@ class PermissionKey(StrEnum):
     JENKINS_READ = "jenkins.read"
     JENKINS_FREEZE = "jenkins.freeze"
     JENKINS_RESUME = "jenkins.resume"
-    REQUESTS_READ = "requests.read"
-    REQUESTS_WRITE = "requests.write"
     STATISTICS_READ = "statistics.read"
     STAGINGS_READ = "stagings.read"
     STAGINGS_DEPLOY = "stagings.deploy"

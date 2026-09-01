@@ -1403,7 +1403,7 @@ WRITE_ROUTE_CASES = [
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("method", "path", "kwargs"), READ_ROUTE_CASES)
-async def test_requests_read_routes_require_auth_and_permission(
+async def test_requests_read_routes_require_auth(
     fake_staging_repo: dict[str, Path],
     method: str,
     path: str,
@@ -1412,15 +1412,11 @@ async def test_requests_read_routes_require_auth_and_permission(
     async with route_client(fake_staging_repo, denied_permissions=set()) as client:
         response = await getattr(client, method)(path, **kwargs)
         assert response.status_code == 401
-
-    async with route_client(fake_staging_repo, denied_permissions={"requests.read"}) as client:
-        response = await getattr(client, method)(path, headers=AUTH_HEADERS, **kwargs)
-        assert response.status_code == 403
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("method", "path", "kwargs"), WRITE_ROUTE_CASES)
-async def test_requests_write_routes_require_auth_and_permission(
+async def test_requests_write_routes_require_auth(
     fake_staging_repo: dict[str, Path],
     method: str,
     path: str,
@@ -1429,10 +1425,6 @@ async def test_requests_write_routes_require_auth_and_permission(
     async with route_client(fake_staging_repo, denied_permissions=set()) as client:
         response = await getattr(client, method)(path, **kwargs)
         assert response.status_code == 401
-
-    async with route_client(fake_staging_repo, denied_permissions={"requests.write"}) as client:
-        response = await getattr(client, method)(path, headers=AUTH_HEADERS, **kwargs)
-        assert response.status_code == 403
 
 
 @pytest.mark.asyncio

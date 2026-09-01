@@ -21,7 +21,6 @@ DEFAULT_OPTIONAL_PLUGIN_IDS = [
     PluginId.STATISTICS.value,
     PluginId.LEONID.value,
     PluginId.NOTIFICATOR.value,
-    PluginId.REQUESTS.value,
 ]
 
 

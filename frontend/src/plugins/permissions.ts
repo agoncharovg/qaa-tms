@@ -15,7 +15,6 @@ export const PLUGIN_REQUIRED_READ_PERMISSION: Record<PluginIdType, string | null
   [PluginId.JENKINS]: "jenkins.read",
   [PluginId.STATISTICS]: "statistics.read",
   [PluginId.LEONID]: "leonid.read",
-  [PluginId.REQUESTS]: "requests.read",
   [PluginId.NOTIFICATOR]: "notificator.read",
   [PluginId.ADMIN]: null,
   [PluginId.PROFILE]: null,
