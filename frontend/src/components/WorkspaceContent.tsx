@@ -2,9 +2,10 @@ import { useEffect, useRef } from "react";
 import { Alert, Code, Stack, Text, Title } from "@mantine/core";
 import { IconInfoCircle } from "@tabler/icons-react";
 
+import { createAgentHeaders } from "@/api/agentClient";
 import type { WorkspaceTabDefinition } from "@/api/types";
 import { ContentType, PluginOrigin } from "@/constants";
-import { useBuiltinHostApi } from "@/core/plugins/host";
+import { useBuiltinHostApi, type AgentAccess } from "@/core/plugins/host";
 import {
   pluginTabHasElement,
   pluginTabHasMount,
@@ -20,13 +21,48 @@ interface WorkspaceContentProps {
   tab: WorkspaceTabDefinition | null;
 }
 
+const UNAVAILABLE_AGENT_ACCESS: AgentAccess = {
+  baseUrl: "",
+  fetch() {
+    return Promise.reject(
+      new Error("MountContext.agent.fetch is unavailable because no companion agent is bound.")
+    );
+  },
+};
+
+function createAuthenticatedAgentAccess(agentBaseUrl: string, token: string): AgentAccess {
+  const injectedHeaders = createAgentHeaders(token);
+  const authorization = injectedHeaders.get("Authorization");
+  const marker = injectedHeaders.get("X-QAA-TMS");
+
+  return {
+    baseUrl: agentBaseUrl,
+    fetch(path, init) {
+      const headers = createAgentHeaders(token, init?.headers);
+      if (authorization) {
+        headers.set("Authorization", authorization);
+      }
+      if (marker) {
+        headers.set("X-QAA-TMS", marker);
+      }
+
+      return fetch(new URL(path, agentBaseUrl), {
+        ...init,
+        headers,
+      });
+    },
+  };
+}
+
 function MountedPluginTab({
   agentBaseUrl,
   mountTab,
+  token,
   viewKey,
 }: {
   agentBaseUrl?: string;
   mountTab: PluginMountTab;
+  token?: string | null;
   viewKey: PluginMountTab["viewKey"];
 }) {
   const host = useBuiltinHostApi();
@@ -38,13 +74,19 @@ function MountedPluginTab({
       return;
     }
 
+    const agent =
+      agentBaseUrl && token
+        ? createAuthenticatedAgentAccess(agentBaseUrl, token)
+        : UNAVAILABLE_AGENT_ACCESS;
+
     return mountTab.mount({
+      agent,
       agentBaseUrl,
       container,
       host,
       viewKey,
     });
-  }, [agentBaseUrl, host, mountTab, viewKey]);
+  }, [agentBaseUrl, host, mountTab, token, viewKey]);
 
   return <div ref={containerRef} style={{ height: "100%" }} />;
 }
@@ -71,7 +113,7 @@ function PluginTabView({ plugin, tab }: { plugin: PluginManifest; tab: Workspace
       }
 
       if (pluginTabHasMount(pluginTab) && tab.viewKey) {
-        return <MountedPluginTab mountTab={pluginTab} viewKey={tab.viewKey} />;
+        return <MountedPluginTab mountTab={pluginTab} token={token} viewKey={tab.viewKey} />;
       }
 
       return null;
@@ -82,6 +124,7 @@ function PluginTabView({ plugin, tab }: { plugin: PluginManifest; tab: Workspace
           <MountedPluginTab
             agentBaseUrl={agentBaseUrl}
             mountTab={pluginTab}
+            token={token}
             viewKey={tab.viewKey}
           />
         );

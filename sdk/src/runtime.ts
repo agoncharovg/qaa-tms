@@ -1,4 +1,4 @@
-import type { MountContext } from "./contracts";
+import type { AgentAccess, MountContext } from "./contracts";
 
 export const CONTRACT_VERSION = 1 as const;
 
@@ -33,15 +33,25 @@ function normalizeAgentBaseUrl(agentBaseUrl: string): string {
   return agentBaseUrl.endsWith("/") ? agentBaseUrl : `${agentBaseUrl}/`;
 }
 
+interface AgentUrlContext {
+  agent?: Pick<AgentAccess, "baseUrl" | "fetch">;
+  agentBaseUrl?: string;
+}
+
+function readAgentBaseUrl(ctx: AgentUrlContext): string {
+  return ctx.agent?.baseUrl || ctx.agentBaseUrl || "";
+}
+
 export function resolveAgentUrl(
-  ctx: Pick<MountContext, "agentBaseUrl">,
+  ctx: AgentUrlContext,
   path: string
 ): string {
-  if (!ctx.agentBaseUrl) {
-    throw new Error("MountContext.agentBaseUrl is required for agent requests.");
+  const agentBaseUrl = readAgentBaseUrl(ctx);
+  if (!agentBaseUrl) {
+    throw new Error("MountContext.agent.baseUrl or MountContext.agentBaseUrl is required.");
   }
 
-  return new URL(path, normalizeAgentBaseUrl(ctx.agentBaseUrl)).href;
+  return new URL(path, normalizeAgentBaseUrl(agentBaseUrl)).href;
 }
 
 export interface CreateAgentHeadersOptions {
@@ -76,9 +86,16 @@ export interface AgentFetchOptions extends Omit<RequestInit, "headers"> {
 }
 
 export function agentFetch(
-  ctx: Pick<MountContext, "agentBaseUrl">,
+  ctx: Pick<MountContext, "agent" | "agentBaseUrl"> | Pick<MountContext, "agentBaseUrl">,
   { path, token, headers, fetchImpl = fetch, ...init }: AgentFetchOptions
 ): Promise<Response> {
+  if ("agent" in ctx && ctx.agent) {
+    return ctx.agent.fetch(path, {
+      ...init,
+      headers,
+    });
+  }
+
   return fetchImpl(resolveAgentUrl(ctx, path), {
     ...init,
     headers: createAgentHeaders({ headers, token }),

@@ -7,6 +7,10 @@ import { loadLocalPluginsFromAgent } from "@/plugins/localPlugins";
 
 const AGENT_BASE_URL = "http://127.0.0.1:47600";
 const TOKEN = "token-123";
+const AGENT_ACCESS = {
+  baseUrl: AGENT_BASE_URL,
+  fetch: vi.fn(),
+};
 
 function createManifestPayload() {
   return {
@@ -180,6 +184,7 @@ describe("loadLocalPluginsFromAgent", () => {
     }
 
     loadedTab.mount({
+      agent: AGENT_ACCESS,
       agentBaseUrl: AGENT_BASE_URL,
       container: document.createElement("div"),
       host: {
@@ -212,6 +217,7 @@ describe("loadLocalPluginsFromAgent", () => {
     expect(mountSpy).toHaveBeenCalledWith(
       "local-alpha-view",
       expect.objectContaining({
+        agent: AGENT_ACCESS,
         agentBaseUrl: AGENT_BASE_URL,
         viewKey: "local-alpha-view",
       })
@@ -307,6 +313,7 @@ describe("loadLocalPluginsFromAgent", () => {
     }
 
     loadedTab.mount({
+      agent: AGENT_ACCESS,
       agentBaseUrl: AGENT_BASE_URL,
       container: document.createElement("div"),
       host: {
@@ -339,6 +346,7 @@ describe("loadLocalPluginsFromAgent", () => {
     expect(mountSpy).toHaveBeenCalledWith(
       "local-alpha-view",
       expect.objectContaining({
+        agent: AGENT_ACCESS,
         agentBaseUrl: AGENT_BASE_URL,
         viewKey: "local-alpha-view",
       })

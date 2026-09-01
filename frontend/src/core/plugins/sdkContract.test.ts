@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type {
+  AgentAccess as SdkAgentAccess,
   HostApi as SdkHostApi,
   LocalPluginModule as SdkLocalPluginModule,
   MountContext as SdkMountContext,
@@ -15,6 +16,7 @@ import {
   isSupportedContractVersion as frontendIsSupportedContractVersion,
 } from "@/core/plugins/definePlugin";
 import type {
+  AgentAccess as FrontendAgentAccess,
   HostApi as FrontendHostApi,
   MountContext as FrontendMountContext,
   ThemeTokens as FrontendThemeTokens,
@@ -28,6 +30,8 @@ type IsAssignable<Left, Right> = [Left] extends [Right] ? true : false;
 describe("plugin sdk contract drift guard", () => {
   it("keeps runtime contract helpers in sync with the frontend host", () => {
     const structuralAssignments = [
+      true as Assert<IsAssignable<SdkAgentAccess, FrontendAgentAccess>>,
+      true as Assert<IsAssignable<FrontendAgentAccess, SdkAgentAccess>>,
       true as Assert<IsAssignable<SdkThemeTokens, FrontendThemeTokens>>,
       true as Assert<IsAssignable<FrontendThemeTokens, SdkThemeTokens>>,
       true as Assert<IsAssignable<SdkHostApi, FrontendHostApi>>,
@@ -38,7 +42,7 @@ describe("plugin sdk contract drift guard", () => {
       true as Assert<IsAssignable<FrontendLocalPluginModule, SdkLocalPluginModule>>,
     ];
 
-    expect(structuralAssignments).toHaveLength(8);
+    expect(structuralAssignments).toHaveLength(10);
     expect(sdkContractVersion).toBe(frontendContractVersion);
     expect(sdkIsSupportedContractVersion(frontendContractVersion)).toBe(
       frontendIsSupportedContractVersion(frontendContractVersion)

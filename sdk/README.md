@@ -15,13 +15,16 @@ The build emits ESM and type declarations into `dist/`.
 
 ## Public surface
 
-- Contract types: `HostApi`, `ThemeTokens`, `MountContext`, `Unmount`
+- Contract types: `AgentAccess`, `HostApi`, `ThemeTokens`, `MountContext`, `Unmount`
 - Local-plugin types: `LocalPluginManifestMetadata`, `LocalPluginTabMetadata`,
   `LocalPluginRead`, `LocalPluginWarning`, `LocalPluginsResponse`
 - Metadata shapes: `PluginManifestMetadata`, `PluginTabMetadata`, `PluginKind`,
   `PluginOrigin`, `NavSection`
 - Runtime helpers: `CONTRACT_VERSION`, `SUPPORTED_CONTRACT_VERSION_RANGE`,
   `isSupportedContractVersion`, `resolveAgentUrl`, `createAgentHeaders`, `agentFetch`
+
+At runtime, mounted plugins should prefer `ctx.agent.fetch("/your/endpoint")`; the legacy
+`ctx.agentBaseUrl` field remains for back-compat helpers.
 
 ## Local bundle requirement
 

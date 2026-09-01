@@ -17,3 +17,5 @@ Or copy the folder into `~/Projects/qaa-tms-plugins/hello`.
 
 Then set `AGENT_LOCAL_PLUGINS_DIR` in Profile -> Settings, reload the portal, and open the
 `Hello` entry from the sidebar.
+
+Inside `mount(viewKey, ctx)`, use `ctx.agent.fetch("/your/endpoint")` for authenticated agent calls.

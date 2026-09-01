@@ -8,7 +8,7 @@ import { pluginById } from "@/plugins/catalog";
 import { getTabDefinitions } from "@/plugins/pluginRegistryStore";
 import { useUiStore } from "@/store/uiStore";
 
-export type { HostApi, MountContext, ThemeTokens, Unmount } from "@qaa-tms/plugin-sdk";
+export type { AgentAccess, HostApi, MountContext, ThemeTokens, Unmount } from "@qaa-tms/plugin-sdk";
 
 interface BuiltinHostApiProviderProps {
   children: ReactNode;

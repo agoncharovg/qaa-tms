@@ -46,7 +46,7 @@ The shared contract surface for plugin rendering is:
 
 - `definePlugin(...)`: validates manifest shape, contract version support, and
   per-plugin tab uniqueness.
-- `MountContext`: `{ container, viewKey, host, agentBaseUrl? }`
+- `MountContext`: `{ container, viewKey, host, agent, agentBaseUrl? }`
 - `HostApi`: chrome-only host access for theme tokens, view metadata, and optional
   tab navigation.
 

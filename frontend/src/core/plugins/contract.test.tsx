@@ -21,6 +21,7 @@ vi.mock("@/plugins/companion/useCompanionStatus", () => ({
 }));
 
 import type { WorkspaceTabDefinition } from "@/api/types";
+import { createAgentHeaders } from "@/api/agentClient";
 import { WorkspaceContent } from "@/components/WorkspaceContent";
 import {
   CONTRACT_VERSION,
@@ -84,6 +85,24 @@ function createPluginManifest(overrides: Partial<PluginManifest> = {}): PluginMa
   };
 }
 
+function readHeaderEntries(headers: HeadersInit | undefined): Array<[string, string]> {
+  return Array.from(new Headers(headers).entries()).sort(([left], [right]) =>
+    left.localeCompare(right)
+  );
+}
+
+function readRequestUrl(input: string | URL | Request): string {
+  if (typeof input === "string") {
+    return input;
+  }
+
+  if (input instanceof URL) {
+    return input.href;
+  }
+
+  return input.url;
+}
+
 describe("plugin contract", () => {
   it("does not render admin-only tabs for non-admin users", () => {
     resetAuthStoreState();
@@ -130,8 +149,14 @@ describe("plugin contract", () => {
     expect(screen.queryByText("admin panel")).not.toBeInTheDocument();
   });
 
-  it("mounts a builtin definePlugin mount tab in-process and cleans it up", () => {
+  it("mounts a builtin definePlugin mount tab in-process, exposes an unavailable agent, and cleans it up", async () => {
     const cleanupSpy = vi.fn();
+    let mountedAgent:
+      | {
+          baseUrl: string;
+          fetch(path: string, init?: RequestInit): Promise<Response>;
+        }
+      | undefined;
     let mountedElement: HTMLElement | undefined;
 
     const plugin = definePlugin({
@@ -146,7 +171,8 @@ describe("plugin contract", () => {
       tabs: [
         {
           id: TabId.STAGINGS_PREFLIGHT,
-          mount({ container, host }) {
+          mount({ agent, container, host }) {
+            mountedAgent = agent;
             mountedElement = container;
             container.textContent = JSON.stringify(host.theme.getTokens());
             return () => {
@@ -168,7 +194,14 @@ describe("plugin contract", () => {
     if (!mountedElement) {
       throw new Error("Expected the mount contract test container to exist.");
     }
+    if (!mountedAgent) {
+      throw new Error("Expected the builtin mount contract agent to exist.");
+    }
     expect(mountedElement.textContent).toContain('"primaryColor"');
+    expect(mountedAgent.baseUrl).toBe("");
+    await expect(mountedAgent.fetch("/x")).rejects.toThrow(
+      /MountContext\.agent\.fetch is unavailable/i
+    );
 
     unmount();
 
@@ -176,7 +209,7 @@ describe("plugin contract", () => {
     expect(mountedElement.textContent).toBe("");
   });
 
-  it("mounts a LOCAL plugin tab through mount() and passes the agent base URL", () => {
+  it("mounts a LOCAL plugin tab through mount() and exposes authenticated agent fetch", async () => {
     resetAuthStoreState();
     useAuthStore.setState({
       currentUser: {
@@ -194,6 +227,15 @@ describe("plugin contract", () => {
     });
 
     const cleanupSpy = vi.fn();
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 204 }));
+    let mountedAgent:
+      | {
+          baseUrl: string;
+          fetch(path: string, init?: RequestInit): Promise<Response>;
+        }
+      | undefined;
     let mountedElement: HTMLElement | undefined;
     const plugin = definePlugin({
       contractVersion: CONTRACT_VERSION,
@@ -207,7 +249,8 @@ describe("plugin contract", () => {
       tabs: [
         {
           id: "local-alpha-tab" as TabId,
-          mount({ agentBaseUrl, container, viewKey }) {
+          mount({ agent, agentBaseUrl, container, viewKey }) {
+            mountedAgent = agent;
             mountedElement = container;
             container.textContent = `${viewKey}:${agentBaseUrl ?? "missing"}`;
             return () => {
@@ -239,7 +282,32 @@ describe("plugin contract", () => {
     if (!mountedElement) {
       throw new Error("Expected the local mount contract test container to exist.");
     }
+    if (!mountedAgent) {
+      throw new Error("Expected the local mount contract agent to exist.");
+    }
     expect(mountedElement.textContent).toBe("local-alpha-view:http://127.0.0.1:47600");
+    expect(mountedAgent.baseUrl).toBe("http://127.0.0.1:47600");
+
+    await mountedAgent.fetch("/x", {
+      headers: {
+        Accept: "text/plain",
+        "X-Test": "1",
+      },
+      method: "POST",
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [input, init] = fetchSpy.mock.calls[0] ?? [];
+    expect(readRequestUrl(input)).toBe("http://127.0.0.1:47600/x");
+    expect(init?.method).toBe("POST");
+    expect(readHeaderEntries(init?.headers)).toEqual(
+      readHeaderEntries(
+        createAgentHeaders("token-123", {
+          Accept: "text/plain",
+          "X-Test": "1",
+        })
+      )
+    );
 
     unmount();
 

@@ -29,10 +29,16 @@ export interface HostApi {
   };
 }
 
+export interface AgentAccess {
+  baseUrl: string;
+  fetch(path: string, init?: RequestInit): Promise<Response>;
+}
+
 export interface MountContext {
   container: HTMLElement;
   viewKey: string;
   host: HostApi;
+  agent: AgentAccess;
   agentBaseUrl?: string;
 }
 
