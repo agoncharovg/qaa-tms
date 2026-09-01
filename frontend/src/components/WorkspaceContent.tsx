@@ -11,7 +11,7 @@ import {
   type PluginManifest,
   type PluginMountTab,
 } from "@/core/plugins/types";
-import { viewRegistry } from "@/plugins/registry";
+import { useViewRegistry } from "@/plugins/registry";
 import { useAuthStore } from "@/store/authStore";
 
 interface WorkspaceContentProps {
@@ -51,6 +51,7 @@ function MountedBuiltinPluginTab({
 }
 
 function PluginTabView({ plugin, tab }: { plugin: PluginManifest; tab: WorkspaceTabDefinition }) {
+  const viewRegistry = useViewRegistry();
   const pluginTab = plugin.tabs.find(
     (candidate) => candidate.id === tab.id && candidate.viewKey === tab.viewKey
   );

@@ -36,10 +36,10 @@ import { PluginId, RoutePath, type PluginId as PluginIdType } from "@/constants"
 import { resolveIcon } from "@/core/plugins/icons";
 import { useNotebookNavStore } from "@/plugins/notebook/notebookNavStore";
 import {
-  accountVisiblePlugins,
-  enabledOptionalPluginIdSet,
-  pluginById,
-  primaryVisiblePlugins,
+  useAccountVisiblePlugins,
+  useEnabledOptionalPluginIdSet,
+  usePluginById,
+  usePrimaryVisiblePlugins,
   visibleTabs,
 } from "@/plugins/registry";
 import { useAuthStore } from "@/store/authStore";
@@ -130,10 +130,12 @@ export function Sidebar({ activePluginId }: SidebarProps) {
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [logoutConfirmOpened, logoutConfirm] = useDisclosure(false);
 
-  const enabledOptionalIds = enabledOptionalPluginIdSet(currentUser?.enabled_plugins);
-  const plugins = sortPluginsByLabel(primaryVisiblePlugins(currentUser, enabledOptionalIds));
-  const accountPlugins = accountVisiblePlugins(currentUser, enabledOptionalIds);
-  const profilePlugin = pluginById(PluginId.PROFILE);
+  const enabledOptionalIds = useEnabledOptionalPluginIdSet(currentUser?.enabled_plugins);
+  const primaryPlugins = usePrimaryVisiblePlugins(currentUser, enabledOptionalIds);
+  const plugins = sortPluginsByLabel(primaryPlugins);
+  const accountPlugins = useAccountVisiblePlugins(currentUser, enabledOptionalIds);
+  const notebookPlugin = usePluginById(PluginId.NOTEBOOK);
+  const profilePlugin = usePluginById(PluginId.PROFILE);
   const hasVisibleNotebook = plugins.some((plugin) => plugin.id === PluginId.NOTEBOOK);
   const notebookReminders = useNotebookReminders(hasVisibleNotebook);
   const shownReminderKeysRef = useRef(new Set<string>());
@@ -143,12 +145,11 @@ export function Sidebar({ activePluginId }: SidebarProps) {
     (reminder: NotebookReminder): void => {
       requestNotebookNote({ bookmark: reminder.bookmark, name: reminder.name });
       activatePluginWorkspaceTab(PluginId.NOTEBOOK);
-      const notebookPlugin = pluginById(PluginId.NOTEBOOK);
       if (notebookPlugin) {
         navigate(notebookPlugin.route);
       }
     },
-    [navigate, requestNotebookNote]
+    [navigate, notebookPlugin, requestNotebookNote]
   );
 
   useEffect(() => {

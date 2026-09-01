@@ -1,12 +1,17 @@
 import { create } from "zustand";
 
+import type { WorkspaceTabDefinition } from "@/api/types";
+
 import {
-  PluginId,
   StorageKey,
   type PluginId as PluginIdType,
   type TabId as TabIdType,
 } from "@/constants";
-import { tabDefinitions } from "@/plugins/catalog";
+import {
+  BUILTIN_PLUGIN_IDS,
+  BUILTIN_TAB_DEFINITIONS,
+} from "@/plugins/builtinRegistrySnapshot";
+import { getPluginIds, getTabDefinitions } from "@/plugins/pluginRegistryStore";
 
 export interface PluginTabState {
   activeTabId: TabIdType | null;
@@ -40,6 +45,22 @@ interface UiState extends WorkspaceTabsState {
 
 interface PersistedUiState extends WorkspaceTabsState {
   tabsByPlugin: TabsByPlugin;
+}
+
+function safeGetPluginIds(): PluginIdType[] {
+  try {
+    return getPluginIds();
+  } catch {
+    return BUILTIN_PLUGIN_IDS;
+  }
+}
+
+function safeGetTabDefinitions(): Record<TabIdType, WorkspaceTabDefinition> {
+  try {
+    return getTabDefinitions();
+  } catch {
+    return BUILTIN_TAB_DEFINITIONS;
+  }
 }
 
 export function createEmptyPluginState(): PluginTabState {
@@ -96,7 +117,7 @@ export function readStoredExpandedPluginIds(): PluginIdType[] {
   }
 
   try {
-    const parsed = JSON.parse(rawValue);
+    const parsed: unknown = JSON.parse(rawValue);
     if (!Array.isArray(parsed)) {
       return [];
     }
@@ -124,19 +145,9 @@ export function writeStoredUiState(state: PersistedUiState): void {
 }
 
 export function createBootstrapTabsByPlugin(): TabsByPlugin {
-  return {
-    [PluginId.ADMIN]: createEmptyPluginState(),
-    [PluginId.JENKINS]: createEmptyPluginState(),
-    [PluginId.KUBER]: createEmptyPluginState(),
-    [PluginId.NOTEBOOK]: createEmptyPluginState(),
-    [PluginId.REQUESTS]: createEmptyPluginState(),
-    [PluginId.PROFILE]: createEmptyPluginState(),
-    [PluginId.QAA_GENERATOR]: createEmptyPluginState(),
-    [PluginId.STAGINGS]: createEmptyPluginState(),
-    [PluginId.STATISTICS]: createEmptyPluginState(),
-    [PluginId.LEONID]: createEmptyPluginState(),
-    [PluginId.NOTIFICATOR]: createEmptyPluginState(),
-  };
+  return Object.fromEntries(
+    safeGetPluginIds().map((pluginId) => [pluginId, createEmptyPluginState()])
+  ) as TabsByPlugin;
 }
 
 export function createBootstrapWorkspaceTabsState(): WorkspaceTabsState {
@@ -269,7 +280,7 @@ function syncPluginActiveTab(
     return tabsByPlugin;
   }
 
-  const definition = tabDefinitions[activeWorkspaceTabId];
+  const definition = safeGetTabDefinitions()[activeWorkspaceTabId];
   if (!definition) {
     return tabsByPlugin;
   }

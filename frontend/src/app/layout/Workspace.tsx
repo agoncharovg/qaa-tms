@@ -2,7 +2,7 @@ import { Paper } from "@mantine/core";
 
 import { usePalette } from "@/app/theme/usePalette";
 import { WorkspaceContent } from "@/components/WorkspaceContent";
-import { pluginById } from "@/plugins/registry";
+import { usePluginById } from "@/plugins/registry";
 import { getOpenWorkspaceTabs, useUiStore } from "@/store/uiStore";
 
 export function Workspace() {
@@ -11,7 +11,7 @@ export function Workspace() {
   const workspaceTabIds = useUiStore((state) => state.workspaceTabIds);
   const activeTab =
     getOpenWorkspaceTabs(workspaceTabIds).find((tab) => tab.id === activeWorkspaceTabId) ?? null;
-  const activePlugin = pluginById(activeTab?.pluginId);
+  const activePlugin = usePluginById(activeTab?.pluginId);
 
   return (
     <Paper

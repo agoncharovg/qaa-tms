@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AppShell } from "@mantine/core";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -29,11 +28,11 @@ vi.mock("@/api/agentClient", () => ({
   getPreflight: getPreflightMock,
 }));
 
-import { Workspace } from "@/app/layout/Workspace";
 import { PluginId, TabId } from "@/constants";
+import { HistoryPanel } from "@/plugins/stagings/HistoryPanel";
 import { renderWithProviders } from "@/test/render";
 import { resetAuthStoreState, useAuthStore } from "@/store/authStore";
-import { resetStagingsStoreState } from "@/store/stagingsStore";
+import { resetStagingsStoreState, useStagingsStore } from "@/store/stagingsStore";
 import { resetUiStoreState, useUiStore } from "@/store/uiStore";
 
 function seedAuthAndTabs(): void {
@@ -185,11 +184,7 @@ describe("History panel", () => {
       type: "deploy",
     });
 
-    renderWithProviders(
-      <AppShell>
-        <Workspace />
-      </AppShell>
-    );
+    renderWithProviders(<HistoryPanel />);
 
     expect(await screen.findByText("qa-replay")).toBeInTheDocument();
 
@@ -198,12 +193,15 @@ describe("History panel", () => {
     const replayButton = await screen.findByRole("button", { name: "Replay" });
     await user.click(replayButton);
 
-    expect(await screen.findByRole("heading", { name: "Deploy namespace" })).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByRole("textbox", { name: /Namespace/i })).toHaveValue("qa-replay");
-      expect(screen.getByRole("textbox", { name: /Services/i })).toHaveValue("iam-api, billing-api");
-      expect(screen.getByRole("textbox", { name: /^Service$/i })).toHaveValue("iam-api");
-      expect(screen.getByRole("textbox", { name: /Tag/i })).toHaveValue("sha-777");
+      expect(useStagingsStore.getState().deployDraft.ns).toBe("qa-replay");
+      expect(useStagingsStore.getState().deployDraft.servicesText).toBe("iam-api, billing-api");
+      expect(useStagingsStore.getState().deployDraft.imageRows).toEqual([
+        { service: "iam-api", tag: "sha-777" },
+      ]);
+      expect(useUiStore.getState().tabsByPlugin[PluginId.STAGINGS].activeTabId).toBe(
+        TabId.STAGINGS_DEPLOY
+      );
     });
   });
 
@@ -271,11 +269,7 @@ describe("History panel", () => {
       user_id: 2,
     });
 
-    renderWithProviders(
-      <AppShell>
-        <Workspace />
-      </AppShell>
-    );
+    renderWithProviders(<HistoryPanel />);
 
     expect(await screen.findByText("Sync")).toBeInTheDocument();
     await user.click(screen.getByText("Sync"));

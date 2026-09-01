@@ -49,7 +49,7 @@ function isPluginManifest(value: unknown): value is PluginManifest {
   );
 }
 
-function sortPluginManifests(manifests: readonly PluginManifest[]): PluginManifest[] {
+export function sortPluginManifests(manifests: readonly PluginManifest[]): PluginManifest[] {
   return [...manifests].sort(
     (left, right) => left.order - right.order || left.id.localeCompare(right.id)
   );
@@ -121,4 +121,4 @@ const discoveredManifests = Object.entries(modules).map(([modulePath, moduleValu
   readDiscoveredManifest(modulePath, moduleValue)
 );
 
-export const PLUGINS: PluginManifest[] = validatePluginManifests(discoveredManifests);
+export const BUILTIN_PLUGINS: PluginManifest[] = validatePluginManifests(discoveredManifests);

@@ -42,7 +42,7 @@ import {
   ViewKey,
 } from "@/constants";
 import { PluginKind, type PluginManifest } from "@/core/plugins/types";
-import { PLUGINS, validatePluginManifests } from "@/plugins/discovery";
+import { BUILTIN_PLUGINS, validatePluginManifests } from "@/plugins/discovery";
 
 function createPluginManifest(overrides: Partial<PluginManifest>): PluginManifest {
   return {
@@ -69,7 +69,7 @@ function createPluginManifest(overrides: Partial<PluginManifest>): PluginManifes
 
 describe("plugin discovery", () => {
   it("discovers the shipped plugins in deterministic manifest order", () => {
-    expect(PLUGINS.map((plugin) => plugin.id)).toEqual([
+    expect(BUILTIN_PLUGINS.map((plugin) => plugin.id)).toEqual([
       PluginId.STAGINGS,
       PluginId.KUBER,
       PluginId.QAA_GENERATOR,
@@ -82,28 +82,28 @@ describe("plugin discovery", () => {
       PluginId.ADMIN,
       PluginId.PROFILE,
     ]);
-    expect(new Set(PLUGINS.map((plugin) => plugin.id)).size).toBe(PLUGINS.length);
-    expect(new Set(PLUGINS.map((plugin) => plugin.route)).size).toBe(PLUGINS.length);
+    expect(new Set(BUILTIN_PLUGINS.map((plugin) => plugin.id)).size).toBe(BUILTIN_PLUGINS.length);
+    expect(new Set(BUILTIN_PLUGINS.map((plugin) => plugin.route)).size).toBe(BUILTIN_PLUGINS.length);
 
-    const viewKeys = PLUGINS.flatMap((plugin) => plugin.tabs.map((tab) => tab.viewKey));
+    const viewKeys = BUILTIN_PLUGINS.flatMap((plugin) => plugin.tabs.map((tab) => tab.viewKey));
     expect(new Set(viewKeys).size).toBe(viewKeys.length);
-    expect(PLUGINS[0]?.requiresAgent).toBe(true);
-    expect(PLUGINS[1]?.requiresAgent).toBe(true);
-    expect(PLUGINS[2]?.requiresAgent).toBe(false);
-    expect(PLUGINS[3]?.kind).toBe(PluginKind.OPTIONAL);
-    expect(PLUGINS[3]?.requiresAgent).toBe(false);
-    expect(PLUGINS[4]?.kind).toBe(PluginKind.OPTIONAL);
-    expect(PLUGINS[4]?.requiresAgent).toBe(true);
-    expect(PLUGINS[5]?.kind).toBe(PluginKind.OPTIONAL);
-    expect(PLUGINS[5]?.requiresAgent).toBe(true);
-    expect(PLUGINS[6]?.kind).toBe(PluginKind.OPTIONAL);
-    expect(PLUGINS[6]?.requiresAgent).toBe(false);
-    expect(PLUGINS[7]?.kind).toBe(PluginKind.OPTIONAL);
-    expect(PLUGINS[7]?.requiresAgent).toBe(true);
-    expect(PLUGINS[8]?.kind).toBe(PluginKind.OPTIONAL);
-    expect(PLUGINS[8]?.requiresAgent).toBe(true);
-    expect(PLUGINS[9]?.kind).toBe(PluginKind.SYSTEM);
-    expect(PLUGINS[10]?.kind).toBe(PluginKind.SYSTEM);
+    expect(BUILTIN_PLUGINS[0]?.requiresAgent).toBe(true);
+    expect(BUILTIN_PLUGINS[1]?.requiresAgent).toBe(true);
+    expect(BUILTIN_PLUGINS[2]?.requiresAgent).toBe(false);
+    expect(BUILTIN_PLUGINS[3]?.kind).toBe(PluginKind.OPTIONAL);
+    expect(BUILTIN_PLUGINS[3]?.requiresAgent).toBe(false);
+    expect(BUILTIN_PLUGINS[4]?.kind).toBe(PluginKind.OPTIONAL);
+    expect(BUILTIN_PLUGINS[4]?.requiresAgent).toBe(true);
+    expect(BUILTIN_PLUGINS[5]?.kind).toBe(PluginKind.OPTIONAL);
+    expect(BUILTIN_PLUGINS[5]?.requiresAgent).toBe(true);
+    expect(BUILTIN_PLUGINS[6]?.kind).toBe(PluginKind.OPTIONAL);
+    expect(BUILTIN_PLUGINS[6]?.requiresAgent).toBe(false);
+    expect(BUILTIN_PLUGINS[7]?.kind).toBe(PluginKind.OPTIONAL);
+    expect(BUILTIN_PLUGINS[7]?.requiresAgent).toBe(true);
+    expect(BUILTIN_PLUGINS[8]?.kind).toBe(PluginKind.OPTIONAL);
+    expect(BUILTIN_PLUGINS[8]?.requiresAgent).toBe(true);
+    expect(BUILTIN_PLUGINS[9]?.kind).toBe(PluginKind.SYSTEM);
+    expect(BUILTIN_PLUGINS[10]?.kind).toBe(PluginKind.SYSTEM);
   });
 
   it("rejects duplicate plugin ids", () => {

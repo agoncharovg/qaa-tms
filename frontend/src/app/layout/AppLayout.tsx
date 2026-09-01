@@ -6,11 +6,16 @@ import { Sidebar } from "@/app/layout/Sidebar";
 import { Workspace } from "@/app/layout/Workspace";
 import { usePalette } from "@/app/theme/usePalette";
 import { BuiltinHostApiProvider } from "@/core/plugins/host";
-import { enabledOptionalPluginIdSet, pluginByRoute, visiblePlugins } from "@/plugins/registry";
+import {
+  useEnabledOptionalPluginIdSet,
+  usePluginByRoute,
+  useTabDefinitions,
+  useVisiblePlugins,
+} from "@/plugins/registry";
 import { PluginsProvider } from "@/plugins/provider";
 import { RoutePath } from "@/constants";
 import { useAuthStore } from "@/store/authStore";
-import { activatePluginWorkspaceTab, syncTabsForUser, TAB_DEFINITIONS, useUiStore } from "@/store/uiStore";
+import { activatePluginWorkspaceTab, syncTabsForUser, useUiStore } from "@/store/uiStore";
 
 export function AppLayout() {
   const location = useLocation();
@@ -18,9 +23,10 @@ export function AppLayout() {
   const currentUser = useAuthStore((state) => state.currentUser);
   const activeWorkspaceTabId = useUiStore((state) => state.activeWorkspaceTabId);
   const sidebarCollapsed = useUiStore((state) => state.sidebarCollapsed);
-  const enabledOptionalIds = enabledOptionalPluginIdSet(currentUser?.enabled_plugins);
-  const activePlugin = pluginByRoute(location.pathname);
-  const plugins = visiblePlugins(currentUser, enabledOptionalIds);
+  const tabDefinitions = useTabDefinitions();
+  const enabledOptionalIds = useEnabledOptionalPluginIdSet(currentUser?.enabled_plugins);
+  const activePlugin = usePluginByRoute(location.pathname);
+  const plugins = useVisiblePlugins(currentUser, enabledOptionalIds);
   const activePluginVisible = Boolean(activePlugin && plugins.some((plugin) => plugin.id === activePlugin.id));
   const workspaceBootstrappedRef = useRef(false);
   const syncedPathnameRef = useRef<string | null>(null);
@@ -46,7 +52,7 @@ export function AppLayout() {
       // localStorage, so the URL changes but the workspace keeps showing the old
       // tab — the link appears to do nothing.
       const bootstrappedPluginId = activeWorkspaceTabId
-        ? TAB_DEFINITIONS[activeWorkspaceTabId]?.pluginId
+        ? tabDefinitions[activeWorkspaceTabId]?.pluginId
         : undefined;
       if (activeWorkspaceTabId && bootstrappedPluginId === activePlugin.id) {
         return;
@@ -60,11 +66,11 @@ export function AppLayout() {
       return;
     }
 
-    const activeWorkspacePluginId = TAB_DEFINITIONS[activeWorkspaceTabId]?.pluginId;
+    const activeWorkspacePluginId = tabDefinitions[activeWorkspaceTabId]?.pluginId;
     if (activeWorkspacePluginId !== activePlugin.id) {
       activatePluginWorkspaceTab(activePlugin.id);
     }
-  }, [activePlugin, activePluginVisible, activeWorkspaceTabId, location.pathname]);
+  }, [activePlugin, activePluginVisible, activeWorkspaceTabId, location.pathname, tabDefinitions]);
 
   if (!currentUser) {
     return <Navigate replace to={RoutePath.LOGIN} />;

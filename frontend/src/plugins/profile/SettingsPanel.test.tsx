@@ -121,10 +121,8 @@ describe("SettingsPanel", () => {
     renderWithProviders(<SettingsPanel />);
 
     expect(await screen.findByText("Companion is not installed")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Download" })).toHaveAttribute(
-      "href",
-      "/api/v1/agent/download"
-    );
+    expect(screen.getByRole("button", { name: "Copy command" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Download" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Jenkins" })).not.toBeInTheDocument();
   });
 

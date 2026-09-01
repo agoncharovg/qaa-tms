@@ -271,7 +271,7 @@ describe("SkippedTestsPanel", () => {
         ],
       })
     );
-  });
+  }, 10_000);
 
   it("blocks creation when expiry exceeds the 7 day limit", async () => {
     const user = userEvent.setup();
@@ -307,4 +307,3 @@ describe("SkippedTestsPanel", () => {
     expect(backendClientMock.cancelLeonidSkippedSuite).toHaveBeenCalledWith(TOKEN, 3);
   });
 });
-

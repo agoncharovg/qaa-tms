@@ -1,37 +1,44 @@
 export {
   accountVisiblePlugins,
   enabledOptionalPluginIdSet,
-  OPTIONAL_PLUGIN_IDS,
   pluginById,
   pluginPermitted,
   PLUGIN_REQUIRED_READ_PERMISSION,
   pluginNavSection,
   pluginByRoute,
-  PLUGIN_IDS,
   pluginVisible,
   primaryVisiblePlugins,
   resolveEnabledOptionalPluginIds,
-  SYSTEM_PLUGIN_IDS,
-  tabById,
-  tabCatalog,
-  tabDefinitions,
   tabVisible,
   visiblePlugins,
   visibleTabs,
-  defaultTabIdByPlugin,
+  useAccountVisiblePlugins,
+  useEnabledOptionalPluginIdSet,
+  usePluginById,
+  usePluginByRoute,
+  usePrimaryVisiblePlugins,
+  useVisiblePlugins,
 } from "@/plugins/catalog";
 
-import type { PluginTab } from "@/core/plugins/types";
-import { pluginTabHasElement } from "@/core/plugins/types";
-import type { ViewKey } from "@/constants";
-import { PLUGINS } from "@/plugins/discovery";
-
-export { PLUGINS } from "@/plugins/discovery";
-
-export const viewRegistry = Object.fromEntries(
-  PLUGINS.flatMap((plugin) =>
-    plugin.tabs
-      .filter(pluginTabHasElement)
-      .map((tab) => [tab.viewKey, tab.element] as const)
-  )
-) as Record<ViewKey, PluginTab["element"]>;
+export { BUILTIN_PLUGINS } from "@/plugins/discovery";
+export {
+  getPlugins,
+  getDefaultTabIdByPlugin,
+  getOptionalPluginIds,
+  getPluginIds,
+  getSystemPluginIds,
+  getTabById,
+  getTabCatalog,
+  getTabDefinitions,
+  getViewRegistry,
+  setLocalPlugins,
+  useDefaultTabIdByPlugin,
+  useOptionalPluginIds,
+  usePluginIds,
+  usePlugins,
+  useSystemPluginIds,
+  useTabById,
+  useTabCatalog,
+  useTabDefinitions,
+  useViewRegistry,
+} from "@/plugins/pluginRegistryStore";

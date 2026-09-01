@@ -199,7 +199,7 @@ describe("Sidebar", () => {
 
     renderSidebar(PluginId.STAGINGS);
 
-    const submenuLabels = ["Deploy", "E2E", "History", "Namespaces", "Preflight", "Sync"];
+    const submenuLabels = ["Deploy", "E2E", "Namespaces"];
     const stagingSubmenuButtons = screen
       .getAllByRole("button")
       .map((button) => button.getAttribute("aria-label") ?? "")

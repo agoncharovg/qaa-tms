@@ -3,7 +3,8 @@ import { useMantineTheme, type MantineTheme } from "@mantine/core";
 import { useNavigate } from "react-router-dom";
 
 import { CONTRACT_VERSION, type TabId, type ViewKey } from "@/constants";
-import { pluginById, tabDefinitions } from "@/plugins/catalog";
+import { pluginById } from "@/plugins/catalog";
+import { getTabDefinitions } from "@/plugins/pluginRegistryStore";
 import { useUiStore } from "@/store/uiStore";
 
 export type Unmount = () => void;
@@ -121,7 +122,7 @@ export function BuiltinHostApiProvider({ children }: BuiltinHostApiProviderProps
     contractVersion: CONTRACT_VERSION,
     nav: {
       openTab(tabId) {
-        const tab = tabDefinitions[tabId];
+        const tab = getTabDefinitions()[tabId];
         if (!tab) {
           return;
         }

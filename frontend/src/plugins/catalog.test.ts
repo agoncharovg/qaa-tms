@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { PluginId } from "@/constants";
 import {
-  OPTIONAL_PLUGIN_IDS,
+  getOptionalPluginIds,
   enabledOptionalPluginIdSet,
   pluginById,
   pluginPermitted,
@@ -75,7 +75,7 @@ describe("pluginVisible", () => {
     };
     const enabledOptionalIds = enabledOptionalPluginIdSet();
 
-    for (const pluginId of OPTIONAL_PLUGIN_IDS) {
+    for (const pluginId of getOptionalPluginIds()) {
       expect(pluginVisible(requirePlugin(pluginId), guestUser, enabledOptionalIds)).toBe(false);
     }
     expect(pluginVisible(requirePlugin(PluginId.PROFILE), guestUser, enabledOptionalIds)).toBe(true);

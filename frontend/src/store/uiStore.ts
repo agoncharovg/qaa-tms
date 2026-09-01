@@ -6,15 +6,23 @@ import {
   type TabId as TabIdType,
 } from "@/constants";
 import {
-  defaultTabIdByPlugin,
+  BUILTIN_DEFAULT_TAB_ID_BY_PLUGIN,
+  BUILTIN_PLUGIN_IDS,
+  BUILTIN_TAB_CATALOG,
+  BUILTIN_TAB_DEFINITIONS,
+} from "@/plugins/builtinRegistrySnapshot";
+import {
   enabledOptionalPluginIdSet,
-  PLUGIN_IDS,
   pluginById,
   pluginVisible,
-  tabCatalog,
-  tabDefinitions,
   visibleTabs,
 } from "@/plugins/catalog";
+import {
+  getDefaultTabIdByPlugin,
+  getPluginIds,
+  getTabCatalog,
+  getTabDefinitions,
+} from "@/plugins/pluginRegistryStore";
 import {
   closeTabInPluginState,
   createBootstrapWorkspaceTabsState,
@@ -47,6 +55,46 @@ interface PersistedUiState extends WorkspaceTabsState {
   tabsByPlugin: TabsByPlugin;
 }
 
+function safeGetPluginIds(): PluginIdType[] {
+  try {
+    return getPluginIds();
+  } catch {
+    return BUILTIN_PLUGIN_IDS;
+  }
+}
+
+function safePluginById(pluginId: PluginIdType): ReturnType<typeof pluginById> {
+  try {
+    return pluginById(pluginId);
+  } catch {
+    return undefined;
+  }
+}
+
+function safeGetTabCatalog(): ReturnType<typeof getTabCatalog> {
+  try {
+    return getTabCatalog();
+  } catch {
+    return BUILTIN_TAB_CATALOG;
+  }
+}
+
+function safeGetTabDefinitions(): ReturnType<typeof getTabDefinitions> {
+  try {
+    return getTabDefinitions();
+  } catch {
+    return BUILTIN_TAB_DEFINITIONS;
+  }
+}
+
+function safeGetDefaultTabIdByPlugin(): ReturnType<typeof getDefaultTabIdByPlugin> {
+  try {
+    return getDefaultTabIdByPlugin();
+  } catch {
+    return BUILTIN_DEFAULT_TAB_ID_BY_PLUGIN;
+  }
+}
+
 function isBrowser(): boolean {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 }
@@ -63,21 +111,7 @@ function resolveVisibilityUser(user: PluginVisibilityUser | null | undefined): P
   };
 }
 
-function createDefaultStateForPlugin(
-  pluginId: PluginIdType,
-  user: PluginVisibilityUser | null | undefined
-): PluginTabState {
-  const resolvedUser = resolveVisibilityUser(user);
-  const plugin = pluginById(pluginId);
-  if (!plugin) {
-    return createEmptyPluginState();
-  }
-
-  const enabledOptionalIds = enabledOptionalPluginIdSet(resolvedUser.enabled_plugins);
-  if (!pluginVisible(plugin, resolvedUser, enabledOptionalIds)) {
-    return createEmptyPluginState();
-  }
-
+function createDefaultStateForPlugin(): PluginTabState {
   return createEmptyPluginState();
 }
 
@@ -98,8 +132,9 @@ function sanitizePluginState(
 export function createDefaultTabsByPlugin(
   user: PluginVisibilityUser | null | undefined = DEFAULT_VISIBILITY_USER
 ): TabsByPlugin {
+  void user;
   return Object.fromEntries(
-    PLUGIN_IDS.map((pluginId) => [pluginId, createDefaultStateForPlugin(pluginId, user)])
+    safeGetPluginIds().map((pluginId) => [pluginId, createDefaultStateForPlugin()])
   ) as TabsByPlugin;
 }
 
@@ -109,7 +144,7 @@ export function sanitizePluginTabs(
   user: PluginVisibilityUser | null | undefined = DEFAULT_VISIBILITY_USER
 ): PluginTabState {
   const resolvedUser = resolveVisibilityUser(user);
-  const plugin = pluginById(pluginId);
+  const plugin = safePluginById(pluginId);
   if (!plugin) {
     return createEmptyPluginState();
   }
@@ -127,7 +162,10 @@ function sanitizeTabsByPlugin(
   user: PluginVisibilityUser | null | undefined = DEFAULT_VISIBILITY_USER
 ): TabsByPlugin {
   return Object.fromEntries(
-    PLUGIN_IDS.map((pluginId) => [pluginId, sanitizePluginTabs(value?.[pluginId], pluginId, user)])
+    safeGetPluginIds().map((pluginId) => [
+      pluginId,
+      sanitizePluginTabs(value?.[pluginId], pluginId, user),
+    ])
   ) as TabsByPlugin;
 }
 
@@ -135,17 +173,20 @@ function sanitizePluginTabsStructurally(
   value: PluginTabState | undefined,
   pluginId: PluginIdType
 ): PluginTabState {
-  const plugin = pluginById(pluginId);
+  const plugin = safePluginById(pluginId);
   if (!plugin) {
     return createEmptyPluginState();
   }
 
-  return sanitizePluginState(value, new Set(tabCatalog[pluginId]));
+  return sanitizePluginState(value, new Set(safeGetTabCatalog()[pluginId]));
 }
 
 function sanitizeTabsByPluginStructurally(value: Partial<TabsByPlugin> | undefined): TabsByPlugin {
   return Object.fromEntries(
-    PLUGIN_IDS.map((pluginId) => [pluginId, sanitizePluginTabsStructurally(value?.[pluginId], pluginId)])
+    safeGetPluginIds().map((pluginId) => [
+      pluginId,
+      sanitizePluginTabsStructurally(value?.[pluginId], pluginId),
+    ])
   ) as TabsByPlugin;
 }
 
@@ -172,7 +213,7 @@ function sanitizeWorkspaceTabsState(
     };
   }
 
-  const definition = tabDefinitions[activeWorkspaceTabId];
+  const definition = safeGetTabDefinitions()[activeWorkspaceTabId];
   if (!definition) {
     return {
       activeWorkspaceTabId: null,
@@ -202,7 +243,7 @@ function syncActiveWorkspaceTab(
     return tabsByPlugin;
   }
 
-  const definition = tabDefinitions[workspaceTabsState.activeWorkspaceTabId];
+  const definition = safeGetTabDefinitions()[workspaceTabsState.activeWorkspaceTabId];
   if (!definition) {
     return tabsByPlugin;
   }
@@ -306,10 +347,12 @@ export function getTabsForPlugin(
   pluginId: PluginIdType,
   tabsByPlugin: TabsByPlugin
 ): WorkspaceTabDefinition[] {
+  const tabDefinitions = safeGetTabDefinitions();
   return tabsByPlugin[pluginId].tabIds.map((tabId) => tabDefinitions[tabId]);
 }
 
 export function getOpenWorkspaceTabs(workspaceTabIds: TabIdType[]): WorkspaceTabDefinition[] {
+  const tabDefinitions = safeGetTabDefinitions();
   return workspaceTabIds.map((tabId) => tabDefinitions[tabId]).filter(Boolean);
 }
 
@@ -335,7 +378,7 @@ export function syncTabsForUser(user: PluginVisibilityUser | null | undefined): 
 }
 
 export function ensureDefaultTabForPlugin(pluginId: PluginIdType): void {
-  const defaultTabId = defaultTabIdByPlugin[pluginId];
+  const defaultTabId = safeGetDefaultTabIdByPlugin()[pluginId];
   if (!defaultTabId) {
     return;
   }
@@ -350,7 +393,8 @@ export function ensureDefaultTabForPlugin(pluginId: PluginIdType): void {
 
 export function activatePluginWorkspaceTab(pluginId: PluginIdType): TabIdType | null {
   const pluginState = useUiStore.getState().tabsByPlugin[pluginId];
-  const tabId = pluginState.activeTabId ?? pluginState.tabIds[0] ?? defaultTabIdByPlugin[pluginId] ?? null;
+  const tabId =
+    pluginState.activeTabId ?? pluginState.tabIds[0] ?? safeGetDefaultTabIdByPlugin()[pluginId] ?? null;
   if (!tabId) {
     return null;
   }
@@ -382,7 +426,6 @@ export function resetUiStoreState(
   });
 }
 
-export { tabCatalog as PLUGIN_TAB_CATALOG, tabDefinitions as TAB_DEFINITIONS };
 export {
   closeTabInPluginState,
   createEmptyPluginState,

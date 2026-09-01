@@ -2,18 +2,20 @@ import type { ReactNode } from "react";
 
 import { enabledOptionalPluginIdSet, resolveEnabledOptionalPluginIds } from "@/plugins/catalog";
 import { PluginsContext } from "@/plugins/context";
-import { PLUGINS } from "@/plugins/discovery";
+import { usePlugins } from "@/plugins/pluginRegistryStore";
 
 interface PluginsProviderProps {
   children: ReactNode;
 }
 
 export function PluginsProvider({ children }: PluginsProviderProps) {
+  const plugins = usePlugins();
+
   return (
     <PluginsContext.Provider
       value={{
         enabledOptionalPluginIdSet,
-        plugins: PLUGINS,
+        plugins,
         resolveEnabledOptionalPluginIds,
       }}
     >

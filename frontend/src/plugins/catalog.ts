@@ -1,21 +1,28 @@
-import type { User, WorkspaceTabDefinition } from "@/api/types";
+import type { User } from "@/api/types";
 import { PluginKind, type PluginManifest, type PluginSpec, type PluginTab, type PluginTabSpec } from "@/core/plugins/types";
 import {
-  ContentType,
   NavSection,
   type PluginId as PluginIdType,
-  type TabId as TabIdType,
 } from "@/constants";
-import { PLUGINS } from "@/plugins/discovery";
 import { pluginPermitted } from "@/plugins/permissions";
-
-export const PLUGIN_IDS = PLUGINS.map((plugin) => plugin.id);
-export const OPTIONAL_PLUGIN_IDS = PLUGINS.filter(
-  (plugin) => plugin.kind === PluginKind.OPTIONAL
-).map((plugin) => plugin.id);
-export const SYSTEM_PLUGIN_IDS = PLUGINS.filter(
-  (plugin) => plugin.kind === PluginKind.SYSTEM
-).map((plugin) => plugin.id);
+import {
+  getDefaultTabIdByPlugin,
+  getOptionalPluginIds,
+  getPluginIds,
+  getPlugins,
+  getSystemPluginIds,
+  getTabById,
+  getTabCatalog,
+  getTabDefinitions,
+  useDefaultTabIdByPlugin,
+  useOptionalPluginIds,
+  usePluginIds,
+  usePlugins,
+  useSystemPluginIds,
+  useTabById,
+  useTabCatalog,
+  useTabDefinitions,
+} from "@/plugins/pluginRegistryStore";
 
 export { PLUGIN_REQUIRED_READ_PERMISSION, pluginPermitted } from "@/plugins/permissions";
 
@@ -23,27 +30,50 @@ function matchesPluginRoute(route: string, pathname: string): boolean {
   return pathname === route || pathname.startsWith(`${route}/`);
 }
 
-export function pluginById(id: PluginIdType | null | undefined): PluginManifest | undefined {
-  return PLUGINS.find((plugin) => plugin.id === id);
+export function pluginById(
+  id: PluginIdType | null | undefined,
+  plugins: readonly PluginManifest[] = getPlugins()
+): PluginManifest | undefined {
+  return plugins.find((plugin) => plugin.id === id);
 }
 
-export function pluginByRoute(pathname: string): PluginManifest | undefined {
-  return PLUGINS.find((plugin) => matchesPluginRoute(plugin.route, pathname));
+export function usePluginById(id: PluginIdType | null | undefined): PluginManifest | undefined {
+  return usePlugins().find((plugin) => plugin.id === id);
 }
 
-export function resolveEnabledOptionalPluginIds(enabledPluginIds?: readonly string[]): PluginIdType[] {
+export function pluginByRoute(
+  pathname: string,
+  plugins: readonly PluginManifest[] = getPlugins()
+): PluginManifest | undefined {
+  return plugins.find((plugin) => matchesPluginRoute(plugin.route, pathname));
+}
+
+export function usePluginByRoute(pathname: string): PluginManifest | undefined {
+  return usePlugins().find((plugin) => matchesPluginRoute(plugin.route, pathname));
+}
+
+export function resolveEnabledOptionalPluginIds(
+  enabledPluginIds?: readonly string[],
+  optionalPluginIds: readonly PluginIdType[] = getOptionalPluginIds()
+): PluginIdType[] {
   if (!enabledPluginIds) {
-    return [...OPTIONAL_PLUGIN_IDS];
+    return [...optionalPluginIds];
   }
 
   const enabled = new Set(enabledPluginIds);
-  return OPTIONAL_PLUGIN_IDS.filter((pluginId) => enabled.has(pluginId));
+  return optionalPluginIds.filter((pluginId) => enabled.has(pluginId));
 }
 
 export function enabledOptionalPluginIdSet(
-  enabledPluginIds?: readonly string[]
+  enabledPluginIds?: readonly string[],
+  optionalPluginIds: readonly PluginIdType[] = getOptionalPluginIds()
 ): Set<PluginIdType> {
-  return new Set(resolveEnabledOptionalPluginIds(enabledPluginIds));
+  return new Set(resolveEnabledOptionalPluginIds(enabledPluginIds, optionalPluginIds));
+}
+
+export function useEnabledOptionalPluginIdSet(enabledPluginIds?: readonly string[]): Set<PluginIdType> {
+  const optionalPluginIds = useOptionalPluginIds();
+  return enabledOptionalPluginIdSet(enabledPluginIds, optionalPluginIds);
 }
 
 export function pluginVisible(
@@ -75,9 +105,18 @@ export function tabVisible(
 
 export function visiblePlugins(
   user: Pick<User, "enabled_plugins" | "is_admin" | "effective_permissions"> | null | undefined,
+  enabledOptionalIds: ReadonlySet<PluginIdType>,
+  plugins: readonly PluginManifest[] = getPlugins()
+): PluginManifest[] {
+  return plugins.filter((plugin) => pluginVisible(plugin, user, enabledOptionalIds));
+}
+
+export function useVisiblePlugins(
+  user: Pick<User, "enabled_plugins" | "is_admin" | "effective_permissions"> | null | undefined,
   enabledOptionalIds: ReadonlySet<PluginIdType>
 ): PluginManifest[] {
-  return PLUGINS.filter((plugin) => pluginVisible(plugin, user, enabledOptionalIds));
+  const plugins = usePlugins();
+  return visiblePlugins(user, enabledOptionalIds, plugins);
 }
 
 export function pluginNavSection(plugin: Pick<PluginManifest, "navSection">): NavSection {
@@ -86,20 +125,38 @@ export function pluginNavSection(plugin: Pick<PluginManifest, "navSection">): Na
 
 export function primaryVisiblePlugins(
   user: Pick<User, "enabled_plugins" | "is_admin" | "effective_permissions"> | null | undefined,
-  enabledOptionalIds: ReadonlySet<PluginIdType>
+  enabledOptionalIds: ReadonlySet<PluginIdType>,
+  plugins: readonly PluginManifest[] = getPlugins()
 ): PluginManifest[] {
-  return visiblePlugins(user, enabledOptionalIds).filter(
+  return visiblePlugins(user, enabledOptionalIds, plugins).filter(
     (plugin) => pluginNavSection(plugin) === NavSection.PRIMARY
   );
 }
 
-export function accountVisiblePlugins(
+export function usePrimaryVisiblePlugins(
   user: Pick<User, "enabled_plugins" | "is_admin" | "effective_permissions"> | null | undefined,
   enabledOptionalIds: ReadonlySet<PluginIdType>
 ): PluginManifest[] {
-  return visiblePlugins(user, enabledOptionalIds).filter(
+  const plugins = usePlugins();
+  return primaryVisiblePlugins(user, enabledOptionalIds, plugins);
+}
+
+export function accountVisiblePlugins(
+  user: Pick<User, "enabled_plugins" | "is_admin" | "effective_permissions"> | null | undefined,
+  enabledOptionalIds: ReadonlySet<PluginIdType>,
+  plugins: readonly PluginManifest[] = getPlugins()
+): PluginManifest[] {
+  return visiblePlugins(user, enabledOptionalIds, plugins).filter(
     (plugin) => pluginNavSection(plugin) === NavSection.ACCOUNT
   );
+}
+
+export function useAccountVisiblePlugins(
+  user: Pick<User, "enabled_plugins" | "is_admin" | "effective_permissions"> | null | undefined,
+  enabledOptionalIds: ReadonlySet<PluginIdType>
+): PluginManifest[] {
+  const plugins = usePlugins();
+  return accountVisiblePlugins(user, enabledOptionalIds, plugins);
 }
 
 export function visibleTabs(
@@ -109,31 +166,19 @@ export function visibleTabs(
   return plugin.tabs.filter((tab) => tabVisible(tab, user));
 }
 
-export const tabById = Object.fromEntries(
-  PLUGINS.flatMap((plugin) => plugin.tabs.map((tab) => [tab.id, tab] as const))
-) as Record<TabIdType, PluginTab>;
-
-export const tabDefinitions = Object.fromEntries(
-  PLUGINS.flatMap((plugin) =>
-    plugin.tabs.map((tab) => [
-      tab.id,
-      {
-        adminOnly: tab.adminOnly,
-        closeable: true,
-        contentType: ContentType.REACT_VIEW,
-        id: tab.id,
-        pluginId: plugin.id,
-        title: tab.title,
-        viewKey: tab.viewKey,
-      } satisfies WorkspaceTabDefinition,
-    ])
-  )
-) as Record<TabIdType, WorkspaceTabDefinition>;
-
-export const tabCatalog = Object.fromEntries(
-  PLUGINS.map((plugin) => [plugin.id, plugin.tabs.map((tab) => tab.id)])
-) as Record<PluginIdType, TabIdType[]>;
-
-export const defaultTabIdByPlugin = Object.fromEntries(
-  PLUGINS.map((plugin) => [plugin.id, plugin.tabs[0]?.id ?? null])
-) as Record<PluginIdType, TabIdType | null>;
+export {
+  getDefaultTabIdByPlugin,
+  getOptionalPluginIds,
+  getPluginIds,
+  getSystemPluginIds,
+  getTabById,
+  getTabCatalog,
+  getTabDefinitions,
+  useDefaultTabIdByPlugin,
+  useOptionalPluginIds,
+  usePluginIds,
+  useSystemPluginIds,
+  useTabById,
+  useTabCatalog,
+  useTabDefinitions,
+};
