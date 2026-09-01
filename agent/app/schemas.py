@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.config import JenkinsRootGroup, Settings
 from app.core.constants import (
@@ -82,6 +82,7 @@ class AgentSettingsRead(BaseModel):
     kubectl_bin: str
     kubeconfig: str
     kubectl_request_timeout: str
+    local_plugins_dir: str | None
 
 
 class AgentSettingsUpdate(BaseModel):
@@ -108,6 +109,7 @@ class AgentSettingsUpdate(BaseModel):
     kubectl_bin: str | None = None
     kubeconfig: str | None = None
     kubectl_request_timeout: str | None = None
+    local_plugins_dir: str | None = None
 
 
 def to_agent_settings_read(settings: Settings) -> AgentSettingsRead:
@@ -131,7 +133,69 @@ def to_agent_settings_read(settings: Settings) -> AgentSettingsRead:
         kubectl_bin=settings.kubectl_bin,
         kubeconfig=settings.kubeconfig,
         kubectl_request_timeout=settings.kubectl_request_timeout,
+        local_plugins_dir=settings.local_plugins_dir,
     )
+
+
+class LocalPluginTab(BaseModel):
+    """Validated local-plugin tab metadata."""
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    view_key: str = Field(alias="viewKey", min_length=1)
+
+
+class LocalPluginManifestFile(BaseModel):
+    """`plugin.json` metadata loaded from a local plugin directory."""
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    id: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    icon: str = Field(min_length=1)
+    route: str = Field(min_length=1)
+    order: int
+    contract_version: int = Field(alias="contractVersion")
+    requires_agent: bool = Field(alias="requiresAgent")
+    entry: str = Field(min_length=1)
+    nav_section: Literal["primary", "account"] | None = Field(
+        default=None,
+        alias="navSection",
+    )
+    tabs: list[LocalPluginTab]
+
+    @field_validator("route")
+    @classmethod
+    def validate_route(cls, value: str) -> str:
+        if not value.startswith("/"):
+            raise ValueError("route must start with '/'.")
+        return value
+
+
+class LocalPluginRead(LocalPluginManifestFile):
+    """Metadata returned from `GET /plugins`."""
+
+    entry_url: str = Field(alias="entryUrl", min_length=1)
+
+
+class LocalPluginWarning(BaseModel):
+    """Non-fatal plugin scan issue."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    dir: str
+    error: str
+
+
+class LocalPluginsResponse(BaseModel):
+    """`GET /plugins` response shape."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    plugins: list[LocalPluginRead] = Field(default_factory=list)
+    warnings: list[LocalPluginWarning] = Field(default_factory=list)
 
 
 type NotebookFlags = dict[str, object]

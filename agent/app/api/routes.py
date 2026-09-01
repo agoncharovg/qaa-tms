@@ -9,7 +9,7 @@ from typing import Annotated, cast
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import TypeAdapter, ValidationError
 
 from app.api.deps import (
@@ -89,6 +89,7 @@ from app.schemas import (
     KubePodsResponse,
     KubeTopResponse,
     KubeUseContextRequest,
+    LocalPluginsResponse,
     NamespaceCredsResponse,
     NamespaceDeployRecipeResponse,
     NamespaceListResponse,
@@ -164,6 +165,7 @@ from app.services.kubeconfig import (
     read_status,
     refresh,
 )
+from app.services.local_plugins import resolve_local_plugin_asset, scan_local_plugins
 from app.services.namespaces import (
     list_namespaces,
     read_namespace_creds,
@@ -307,6 +309,7 @@ AGENT_SETTINGS_ENV_KEY_BY_FIELD = {
     "kubeconfig_active_path": EnvKey.KUBECONFIG_ACTIVE_PATH,
     "kubectl_bin": EnvKey.KUBECTL_BIN,
     "kubectl_request_timeout": EnvKey.KUBECTL_REQUEST_TIMEOUT,
+    "local_plugins_dir": EnvKey.LOCAL_PLUGINS_DIR,
     "staging_bin": EnvKey.STAGING_BIN,
     "staging_kubeconfig": StagingEnvKey.KUBECONFIG,
     "staging_kubeconfig_max_age_hours": EnvKey.STAGING_KUBECONFIG_MAX_AGE_HOURS,
@@ -377,6 +380,29 @@ async def update_companion_settings(
         backend_client=request.app.state.backend_client,
     )
     return to_agent_settings_read(updated_settings)
+
+
+@router.get(AgentPath.PLUGINS.value, response_model=LocalPluginsResponse)
+async def get_local_plugins(_: AuthDep, settings: SettingsDep) -> LocalPluginsResponse:
+    return scan_local_plugins(settings)
+
+
+@router.get(f"{AgentPath.PLUGINS.value}/{{plugin_id}}/assets/{{asset_path:path}}")
+async def get_local_plugin_asset(
+    plugin_id: str,
+    asset_path: str,
+    _: AuthDep,
+    settings: SettingsDep,
+) -> FileResponse:
+    resolved_asset = resolve_local_plugin_asset(settings, plugin_id, asset_path)
+    if resolved_asset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Plugin asset not found.",
+        )
+
+    asset_file, media_type = resolved_asset
+    return FileResponse(asset_file, media_type=media_type)
 
 
 @router.get(AgentPath.NOTEBOOK_CONTENTS.value, response_model=NotebookContentsResponse)

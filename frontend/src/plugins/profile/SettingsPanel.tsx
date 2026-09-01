@@ -32,7 +32,6 @@ const SettingsPanelCopy = {
   AGENT_LOADING: "Checking the local companion app.",
   AGENT_SETTINGS_LOADING: "Loading companion settings.",
   CLEAR_SECRET: "Clear stored value",
-  EMPTY_STATE: "No plugin-specific settings are enabled for this user.",
   JENKINS_DESCRIPTION:
     "Your personal Jenkins credentials are written to the local companion `.env` on this machine.",
   JENKINS_SAVE: "Save Jenkins settings",
@@ -48,13 +47,18 @@ const SettingsPanelCopy = {
   KUBER_SAVE: "Save Kuber settings",
   KUBER_TITLE: "Kuber",
   LOADING: "Loading settings.",
+  LOCAL_PLUGINS_DESCRIPTION:
+    "The local companion scans this folder for per-user plugin packages on this machine. Leave empty to disable local plugin discovery.",
+  LOCAL_PLUGINS_DIR_LABEL: "Folder path",
+  LOCAL_PLUGINS_SAVE: "Save local plugin settings",
+  LOCAL_PLUGINS_TITLE: "Local plugins",
   QAA_GENERATOR_DESCRIPTION:
     "Your personal qaa-generator token is written to the local companion `.env` on this machine.",
   QAA_GENERATOR_SAVE: "Save qaa-generator token",
   QAA_GENERATOR_TITLE: "QAA generator",
   QAA_GENERATOR_TOKEN_LABEL: "Personal token",
   SECTION_DESCRIPTION:
-    "Edit only the personal credentials required by the plugins enabled for your account.",
+    "Edit the personal companion settings and credentials stored only on this machine.",
   TITLE: "Settings",
   UPDATE_FAILED: "Save failed",
   UPDATE_REQUIRED: "Authentication is required.",
@@ -96,6 +100,7 @@ type AgentFormState = {
   jenkinsUrl: string;
   jenkinsUsername: string;
   kubeconfig: string;
+  localPluginsDir: string;
   stagingKubeconfig: string;
   stagingKubeconfigUrl: string;
 };
@@ -113,6 +118,7 @@ function buildAgentFormState(settings: AgentSettings): AgentFormState {
     jenkinsUrl: settings.jenkins_url,
     jenkinsUsername: settings.jenkins_username,
     kubeconfig: settings.kubeconfig,
+    localPluginsDir: settings.local_plugins_dir ?? EMPTY_VALUE,
     stagingKubeconfig: settings.staging_kubeconfig,
     stagingKubeconfigUrl: settings.staging_kubeconfig_url,
   };
@@ -188,6 +194,7 @@ function SettingsPanelAgentSettings({
   agentPort,
   showJenkins,
   showKuber,
+  showLocalPlugins,
   showQaaGenerator,
   showStagings,
   token,
@@ -195,6 +202,7 @@ function SettingsPanelAgentSettings({
   agentPort: number;
   showJenkins: boolean;
   showKuber: boolean;
+  showLocalPlugins: boolean;
   showQaaGenerator: boolean;
   showStagings: boolean;
   token: string;
@@ -204,6 +212,7 @@ function SettingsPanelAgentSettings({
   const [jenkinsNotice, setJenkinsNotice] = useState<Notice | null>(null);
   const [stagingsNotice, setStagingsNotice] = useState<Notice | null>(null);
   const [kuberNotice, setKuberNotice] = useState<Notice | null>(null);
+  const [localPluginsNotice, setLocalPluginsNotice] = useState<Notice | null>(null);
   const [qaaGeneratorForm, setQaaGeneratorForm] = useState<QaaGeneratorFormState | null>(null);
   const [qaaGeneratorNotice, setQaaGeneratorNotice] = useState<Notice | null>(null);
 
@@ -275,6 +284,26 @@ function SettingsPanelAgentSettings({
     },
     onError: (error) => {
       setKuberNotice({
+        message: error instanceof Error ? error.message : SettingsPanelCopy.UPDATE_FAILED,
+        status: NoticeStatus.ERROR,
+      });
+    },
+  });
+
+  const localPluginsUpdateMutation = useMutation({
+    mutationFn: async (payload: AgentSettingsUpdate) => {
+      return agentClient.updateSettings(agentPort, token, payload);
+    },
+    onSuccess: async (updatedSettings) => {
+      setAgentForm(buildAgentFormState(updatedSettings));
+      setLocalPluginsNotice({
+        message: SettingsPanelCopy.UPDATE_SUCCESS,
+        status: NoticeStatus.SUCCESS,
+      });
+      await queryClient.invalidateQueries({ queryKey: [QueryKey.AGENT_SETTINGS] });
+    },
+    onError: (error) => {
+      setLocalPluginsNotice({
         message: error instanceof Error ? error.message : SettingsPanelCopy.UPDATE_FAILED,
         status: NoticeStatus.ERROR,
       });
@@ -370,6 +399,17 @@ function SettingsPanelAgentSettings({
     setKuberNotice(null);
     kuberUpdateMutation.mutate({
       kubeconfig: agentForm.kubeconfig,
+    });
+  }
+
+  function saveLocalPluginsSettings(): void {
+    if (!agentForm) {
+      return;
+    }
+
+    setLocalPluginsNotice(null);
+    localPluginsUpdateMutation.mutate({
+      local_plugins_dir: agentForm.localPluginsDir,
     });
   }
 
@@ -516,6 +556,29 @@ function SettingsPanelAgentSettings({
         </CardShell>
       ) : null}
 
+      {showLocalPlugins ? (
+        <CardShell
+          description={SettingsPanelCopy.LOCAL_PLUGINS_DESCRIPTION}
+          title={SettingsPanelCopy.LOCAL_PLUGINS_TITLE}
+        >
+          <NoticeAlert notice={localPluginsNotice} successTitle={SettingsPanelCopy.UPDATE_SUCCESS} />
+          {agentForm ? (
+            <Stack gap="md">
+              <TextInput
+                label={SettingsPanelCopy.LOCAL_PLUGINS_DIR_LABEL}
+                onChange={(event) => setAgentField("localPluginsDir", event.currentTarget.value)}
+                value={agentForm.localPluginsDir}
+              />
+              <Group justify="flex-end">
+                <Button loading={localPluginsUpdateMutation.isPending} onClick={saveLocalPluginsSettings}>
+                  {SettingsPanelCopy.LOCAL_PLUGINS_SAVE}
+                </Button>
+              </Group>
+            </Stack>
+          ) : null}
+        </CardShell>
+      ) : null}
+
       {showQaaGenerator && qaaGeneratorForm ? (
         <CardShell
           description={SettingsPanelCopy.QAA_GENERATOR_DESCRIPTION}
@@ -566,9 +629,10 @@ export function SettingsPanel() {
   const showJenkins = canSeePluginSettings(PluginId.JENKINS);
   const showStagings = canSeePluginSettings(PluginId.STAGINGS);
   const showKuber = canSeePluginSettings(PluginId.KUBER);
+  const showLocalPlugins = Boolean(token);
   const showQaaGenerator = canSeePluginSettings(PluginId.QAA_GENERATOR);
-  const hasEnabledAgentPlugins = showJenkins || showStagings || showKuber || showQaaGenerator;
-  const hasVisiblePluginSettings = hasEnabledAgentPlugins;
+  const hasEnabledAgentPlugins =
+    showJenkins || showStagings || showKuber || showLocalPlugins || showQaaGenerator;
 
   if (!currentUser) {
     return (
@@ -586,10 +650,6 @@ export function SettingsPanel() {
         <Text c="dimmed">{SettingsPanelCopy.SECTION_DESCRIPTION}</Text>
       </div>
 
-      {!hasVisiblePluginSettings ? (
-        <Alert title={SettingsPanelCopy.TITLE}>{SettingsPanelCopy.EMPTY_STATE}</Alert>
-      ) : null}
-
       {hasEnabledAgentPlugins ? (
         <CompanionGate
           enabled={Boolean(token)}
@@ -601,6 +661,7 @@ export function SettingsPanel() {
               agentPort={agentPort}
               showJenkins={showJenkins}
               showKuber={showKuber}
+              showLocalPlugins={showLocalPlugins}
               showQaaGenerator={showQaaGenerator}
               showStagings={showStagings}
               token={token ?? EMPTY_VALUE}

@@ -8,6 +8,7 @@ from enum import StrEnum
 class AgentPath(StrEnum):
     PING = "/ping"
     SETTINGS = "/settings"
+    PLUGINS = "/plugins"
     PREFLIGHT = "/preflight"
     UPDATE = "/update"
     NOTEBOOK_CONTENTS = "/notebook/contents"
@@ -137,6 +138,7 @@ class EnvKey(StrEnum):
     PORT = "AGENT_PORT"
     CORS_ORIGINS = "AGENT_CORS_ORIGINS"
     BACKEND_URL = "AGENT_BACKEND_URL"
+    LOCAL_PLUGINS_DIR = "AGENT_LOCAL_PLUGINS_DIR"
     JENKINS_URL = "AGENT_JENKINS_URL"
     JENKINS_USERNAME = "AGENT_JENKINS_USERNAME"
     JENKINS_TOKEN = "AGENT_JENKINS_TOKEN"

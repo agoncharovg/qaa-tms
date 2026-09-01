@@ -63,6 +63,7 @@ const agentSettingsResponse = {
   kubectl_bin: "kubectl",
   kubeconfig: "~/.kube/config",
   kubectl_request_timeout: "10s",
+  local_plugins_dir: null,
 };
 
 function createCurrentUser(
@@ -101,6 +102,17 @@ describe("SettingsPanel", () => {
     agentClientMock.getSettings.mockReset();
     agentClientMock.requestUpdate.mockReset();
     agentClientMock.updateSettings.mockReset();
+    agentClientMock.discoverAgent.mockResolvedValue({
+      agent: {
+        app: "qaa-tms-agent",
+        os: "linux",
+        stagingsInstalled: true,
+        stagingsSha: "abc123",
+        version: "0.1.0",
+      },
+      port: 47600,
+    });
+    agentClientMock.getSettings.mockResolvedValue(agentSettingsResponse);
     backendClientMock.getAgentManifest.mockReset();
     backendClientMock.getAgentManifest.mockResolvedValue({
       downloadUrl: "/api/v1/agent/download",
@@ -227,6 +239,32 @@ describe("SettingsPanel", () => {
     await waitFor(() => {
       expect(agentClientMock.updateSettings).toHaveBeenCalledWith(47600, "token-123", {
         kubeconfig: "/tmp/kubeconfig",
+      });
+    });
+  });
+
+  it("renders the local plugins companion section for authenticated users and saves the folder path", async () => {
+    const user = userEvent.setup();
+
+    useAuthStore.setState({
+      currentUser: createCurrentUser([]),
+      token: "token-123",
+    });
+    agentClientMock.updateSettings.mockResolvedValue({
+      ...agentSettingsResponse,
+      local_plugins_dir: "/tmp/qaa-tms-plugins",
+    });
+
+    renderWithProviders(<SettingsPanel />);
+
+    expect(await screen.findByRole("heading", { name: "Local plugins" })).toBeInTheDocument();
+    const folderInput = await screen.findByLabelText("Folder path");
+    await user.type(folderInput, "/tmp/qaa-tms-plugins");
+    await user.click(screen.getByRole("button", { name: "Save local plugin settings" }));
+
+    await waitFor(() => {
+      expect(agentClientMock.updateSettings).toHaveBeenCalledWith(47600, "token-123", {
+        local_plugins_dir: "/tmp/qaa-tms-plugins",
       });
     });
   });

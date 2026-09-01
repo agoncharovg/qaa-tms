@@ -32,6 +32,7 @@ def write_agent_env(path: Path) -> None:
                 "AGENT_KUBECTL_BIN=kubectl",
                 "AGENT_KUBECONFIG=",
                 "AGENT_KUBECTL_REQUEST_TIMEOUT=10s",
+                "AGENT_LOCAL_PLUGINS_DIR=/tmp/qaa-tms-plugins",
                 "",
             ]
         ),
@@ -73,6 +74,7 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
     ]
     assert body["jenkins_root_folders"] == ["PREPROD", "PROD"]
     assert body["jenkins_history_limit"] == 8
+    assert body["local_plugins_dir"] == "/tmp/qaa-tms-plugins"
     assert "jenkins_token" not in body
     assert "qaa_generator_token" not in body
     assert "host" not in body
@@ -106,6 +108,7 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
             "kubectl_bin": "/usr/bin/kubectl",
             "kubeconfig": "/tmp/kubeconfig",
             "kubectl_request_timeout": "20s",
+            "local_plugins_dir": "/tmp/updated-local-plugins",
         },
     )
 
@@ -123,6 +126,7 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
     assert updated["jenkins_history_limit"] == 10
     assert updated["staging_bin"] == "/opt/staging"
     assert updated["kubectl_request_timeout"] == "20s"
+    assert updated["local_plugins_dir"] == "/tmp/updated-local-plugins"
 
     runtime_settings = client._transport.app.state.settings
     assert runtime_settings.jenkins_url == "https://updated.jenkins"
@@ -135,6 +139,7 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
     ]
     assert runtime_settings.jenkins_root_folders == ["UPDATED", "MORE"]
     assert runtime_settings.jenkins_history_limit == 10
+    assert runtime_settings.local_plugins_dir == "/tmp/updated-local-plugins"
     assert (
         client._transport.app.state.job_manager._settings.jenkins_url == "https://updated.jenkins"
     )
@@ -153,3 +158,4 @@ async def test_get_and_put_settings_mask_tokens_round_trip_lists_and_refresh_run
     )
     assert "AGENT_JENKINS_ROOT_FOLDERS=UPDATED,MORE\n" in serialized_env
     assert "AGENT_JENKINS_HISTORY_LIMIT=10\n" in serialized_env
+    assert "AGENT_LOCAL_PLUGINS_DIR=/tmp/updated-local-plugins\n" in serialized_env

@@ -163,6 +163,7 @@ export interface AgentSettings {
   kubectl_bin: string;
   kubeconfig: string;
   kubectl_request_timeout: string;
+  local_plugins_dir: string | null;
 }
 
 export interface AgentSettingsUpdate {
@@ -185,6 +186,7 @@ export interface AgentSettingsUpdate {
   kubectl_bin?: string;
   kubeconfig?: string;
   kubectl_request_timeout?: string;
+  local_plugins_dir?: string | null;
 }
 
 export interface JenkinsAllureSkipCandidatesRequest {

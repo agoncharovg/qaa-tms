@@ -76,6 +76,7 @@ class Settings(BaseSettings):
         alias=EnvKey.CORS_ORIGINS.value,
     )
     backend_url: str = Field(default=DEFAULT_BACKEND_URL, alias=EnvKey.BACKEND_URL.value)
+    local_plugins_dir: str | None = Field(default=None, alias=EnvKey.LOCAL_PLUGINS_DIR.value)
     jenkins_url: str = Field(default=DEFAULT_JENKINS_URL, alias=EnvKey.JENKINS_URL.value)
     jenkins_username: str = Field(default="", alias=EnvKey.JENKINS_USERNAME.value)
     jenkins_token: str = Field(default="", alias=EnvKey.JENKINS_TOKEN.value)
@@ -145,6 +146,15 @@ class Settings(BaseSettings):
             return ""
         if isinstance(value, str) and not value.strip():
             return ""
+        return str(value)
+
+    @field_validator("local_plugins_dir", mode="before")
+    @classmethod
+    def normalize_local_plugins_dir(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, str) and not value.strip():
+            return None
         return str(value)
 
     @field_validator("host")
