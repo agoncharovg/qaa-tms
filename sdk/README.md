@@ -32,5 +32,8 @@ self-contained ESM bundle:
 - no code splitting
 - no bare module specifiers at runtime
 - no relative chunk imports
+- if you bundle React, define `process.env.NODE_ENV` (and `process.env`) at build time so no
+  `process` reference survives into the browser bundle; otherwise the portal import throws
+  `process is not defined`
 
 See [`examples/hello-plugin`](./examples/hello-plugin/) for the template build setup.
